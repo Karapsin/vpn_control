@@ -2,12 +2,11 @@ package com.kardinal.vpncontrol.desktop
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.awt.ComposeWindow
-import com.sun.jna.platform.win32.User32
-import com.sun.jna.platform.win32.WinDef
-import com.sun.jna.platform.win32.WinUser
+import com.sun.jna.Native
 import com.kardinal.vpncontrol.model.RuntimeStatusMessages
 import com.kardinal.vpncontrol.shared.ui.VpnControlTheme
 import dorkbox.systemTray.SystemTray as DorkboxSystemTray
+import java.awt.Color
 import java.awt.EventQueue
 import java.awt.FileDialog
 import java.awt.GraphicsEnvironment
@@ -20,17 +19,24 @@ import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
+import javax.swing.JWindow
 import javax.swing.SwingUtilities
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import org.junit.Test
 
 /**
  * Captures only surfaces owned by the host operating system. The caller must provide an
  * isolated desktop or an ephemeral hosted runner; this test deliberately refuses the
  * operator's ordinary desktop because a full-screen capture could expose private data.
+ * Windows scenes are region captures (VISUAL-002): the target surface's own region located by
+ * native identity, with the full screen of the same moment kept beside it as diagnostic evidence.
  */
 class DesktopNativeVisualCaptureTest {
     private var macosPrivateWindowPermissionPrepared = false
@@ -58,108 +64,6 @@ class DesktopNativeVisualCaptureTest {
             autoDelay = 120
             isAutoWaitForIdle = true
         }
-    }
-
-    @Test
-    fun windowsForeignSystemPropertiesDialogRejectsFrameBeforeAndAfterCapture() {
-        var captures = 0
-        var recoveredDismissals = 0
-        var recoveredCensuses = 0
-        fun <T> inertWindowsFrame(sceneId: String, titles: () -> List<String>, capture: () -> T): T =
-            captureWindowsNativeFrame(
-                sceneId, titles, dismissForeignDialog = {}, capture = capture, pauseBeforeRetry = {},
-            )
-        val recovered = captureWindowsNativeFrame(
-            "windows-tray-disconnected",
-            {
-                recoveredCensuses++
-                if (recoveredCensuses <= 2) listOf("System Properties") else listOf("VPN Control")
-            },
-            {
-                recoveredDismissals++
-            },
-            {
-                captures++
-                "recovered frame"
-            },
-            pauseBeforeRetry = {},
-        )
-        check(recovered == "recovered frame" && recoveredDismissals == 4 && captures == 1) {
-            "Hosted residue must remain absent for two consecutive censuses before publishing a recovered frame"
-        }
-
-        var persistentDismissals = 0
-        var persistentCensuses = 0
-        val persistent = runCatching {
-            captureWindowsNativeFrame(
-                "windows-tray-disconnected",
-                {
-                    persistentCensuses++
-                    listOf("System Properties")
-                },
-                { persistentDismissals++ },
-                {
-                    captures++
-                    "frame"
-                },
-                pauseBeforeRetry = {},
-            )
-        }.exceptionOrNull()
-        check(persistent is IllegalStateException && persistent.message.orEmpty().contains("System Properties"))
-        check(persistentDismissals == 20 && persistentCensuses == 20) {
-            "Persistent residue must exhaust the bounded close-and-census retry loop"
-        }
-        check(captures == 1) { "Persistent foreign dialog must prevent screenshot publication" }
-
-        val before = runCatching {
-            inertWindowsFrame("windows-tray-disconnected", { listOf("System Properties") }) {
-                captures++
-                "frame"
-            }
-        }.exceptionOrNull()
-        check(before is IllegalStateException && before.message.orEmpty().contains("System Properties"))
-        check(captures == 1) { "Foreign pre-frame dialog must prevent screenshot publication" }
-
-        var census = 0
-        val after = runCatching {
-            inertWindowsFrame("windows-tray-connected", {
-                census++
-                if (census <= 3) listOf("VPN Control") else listOf("VPN Control", "System Properties")
-            }) {
-                captures++
-                "frame"
-            }
-        }.exceptionOrNull()
-        check(after is IllegalStateException && after.message.orEmpty().contains("System Properties"))
-        check(captures == 2) { "Post-frame dialog must reject the captured screenshot" }
-
-        val suffixedBefore = runCatching {
-            inertWindowsFrame("windows-tray-disconnected", { listOf("SYSTEM PROPERTIES - Virtual Memory") }) {
-                captures++
-                "frame"
-            }
-        }.exceptionOrNull()
-        check(suffixedBefore is IllegalStateException)
-        check(captures == 2) { "Suffixed pre-frame dialog must prevent screenshot publication" }
-
-        census = 0
-        val suffixedAfter = runCatching {
-            inertWindowsFrame("windows-tray-connected", {
-                census++
-                if (census <= 3) listOf("VPN Control") else listOf("System Properties: Paging File")
-            }) {
-                captures++
-                "frame"
-            }
-        }.exceptionOrNull()
-        check(suffixedAfter is IllegalStateException)
-        check(captures == 3) { "Suffixed post-frame dialog must reject the captured screenshot" }
-
-        val clean = inertWindowsFrame("windows-tray-disconnected", { listOf("VPN Control") }) {
-            captures++
-            "clean frame"
-        }
-        check(clean == "clean frame" && captures == 4)
     }
 
     @Test
@@ -193,6 +97,10 @@ class DesktopNativeVisualCaptureTest {
         Files.createDirectories(output)
 
         val captureBounds = canonicalCaptureBounds()
+        if (platform == "windows") {
+            captureWindowsRegionScenes(scenes, output, captureBounds)
+            return
+        }
         if (System.getenv("VPN_CONTROL_VISUAL_EXTERNAL_FRAMEBUFFER") != "1") {
             prepareScreenCapturePermission(platform)
         }
@@ -214,9 +122,233 @@ class DesktopNativeVisualCaptureTest {
             }
             "tray" in sceneId || "menu-bar" in sceneId -> captureTray(sceneId, output, bounds)
             platform == "linux" -> captureLinuxSurface(sceneId, output, bounds)
-            platform == "windows" -> captureWindowsSurface(sceneId, output, bounds)
             platform == "macos" -> captureMacSurface(sceneId, output, bounds)
             else -> error("Unsupported native visual scene: $platform/$sceneId")
+        }
+    }
+
+    /**
+     * Every Windows scene runs under one capture session (caret blink, animations, keyboard cues,
+     * transparency and theme pinned, then restored). A refused scene keeps its diagnostic frame
+     * and named reason, and the remaining scenes still run before the task fails.
+     */
+    private fun captureWindowsRegionScenes(scenes: List<String>, output: Path, bounds: Rectangle) {
+        require(System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+            "Windows region capture requires a Windows desktop"
+        }
+        val desktop = WindowsRegionDesktop(robot)
+        val failures = mutableListOf<Throwable>()
+        CaptureSessionSettings.applyAll(desktop.sessionSettings()).use { session ->
+            val region = WindowsRegion(desktop, RegionCaptureEngine(desktop, "windows", session.json()))
+            scenes.forEach { sceneId ->
+                try {
+                    captureWindowsRegionScene(region, sceneId, output, bounds)
+                } catch (refusal: RegionCaptureRefusedException) {
+                    region.engine.recordRefusal(output, refusal)
+                    failures += refusal
+                } catch (error: Exception) {
+                    failures += error
+                }
+            }
+        }
+        if (failures.isNotEmpty()) {
+            throw IllegalStateException(
+                "Windows region capture failed for ${failures.size} scene(s): " +
+                    failures.joinToString("; ") { it.message.orEmpty() },
+            ).apply { failures.forEach(::addSuppressed) }
+        }
+    }
+
+    private class WindowsRegion(val desktop: WindowsRegionDesktop, val engine: RegionCaptureEngine)
+
+    private fun captureWindowsRegionScene(region: WindowsRegion, sceneId: String, output: Path, bounds: Rectangle) {
+        when {
+            sceneId == "windows-uac" -> refuseRegion(
+                sceneId,
+                RegionCaptureRefusal.SECURE_DESKTOP,
+                "the secure desktop cannot be captured from the user session; crop the owned VM frame with scripts/visual_region.py",
+            )
+            sceneId.endsWith("window-frame") -> withApplicationWindow(sceneId) { window ->
+                captureWindowsApplicationWindow(region, sceneId, window, output)
+            }
+            sceneId.endsWith("open-dialog") -> withApplicationWindow(sceneId) { window ->
+                captureFileDialog("windows", window, save = false, output = output.resolve("$sceneId.png"), bounds = bounds, region = region)
+            }
+            sceneId.endsWith("save-dialog") -> withApplicationWindow(sceneId) { window ->
+                captureFileDialog("windows", window, save = true, output = output.resolve("$sceneId.png"), bounds = bounds, region = region)
+            }
+            "tray" in sceneId -> captureTray(sceneId, output.resolve("$sceneId.png"), bounds, region)
+            sceneId == "windows-msi" -> captureWindowsInstaller(
+                region, sceneId, output, listOf("msiexec.exe", "/i", requireVisualPackage(".msi").toString()),
+            )
+            sceneId == "windows-update-installer" -> captureWindowsInstaller(
+                region, sceneId, output, listOf("msiexec.exe", "/i", requireVisualPackage(".msi").toString(), "/norestart"),
+            )
+            else -> error("Unsupported Windows native scene: $sceneId")
+        }
+    }
+
+    private fun awtHandle(window: Window): Long = Native.getWindowID(window)
+
+    /** AWT owns its windows' bounds; its bounds on Windows are the window rectangle. */
+    private fun awtMover(window: Window): (Long, PlacementMove, Boolean) -> Unit = { _, move, resize ->
+        onEventThread {
+            val rect = move.windowRect
+            if (resize) window.setBounds(rect.left, rect.top, rect.width, rect.height) else window.setLocation(rect.left, rect.top)
+        }
+    }
+
+    /** Opaque backdrop directly beneath a window part, so its border blends with a fixed colour. */
+    private fun withRegionBackdrop(
+        region: WindowsRegion,
+        sceneId: String,
+        part: LocatedPart,
+        block: (LocatedPart) -> Unit,
+    ) {
+        val rect = part.rect.expanded(WindowsRegionScenes.BACKDROP_MARGIN)
+        val backdrop = onEventThread {
+            JWindow().apply {
+                name = "vpn-control-visual-backdrop"
+                focusableWindowState = false
+                background = Color(WindowsRegionScenes.BACKDROP_RGB)
+                contentPane.background = Color(WindowsRegionScenes.BACKDROP_RGB)
+                setBounds(rect.left, rect.top, rect.width, rect.height)
+                isVisible = true
+            }
+        }
+        try {
+            val handle = awtHandle(backdrop)
+            awaitTarget(
+                sceneId,
+                TargetRule("capture-backdrop", handle = handle, processId = region.desktop.processId),
+                40,
+                region.desktop::census,
+            ) { region.desktop.pause(100) }
+            block(part.copy(backdropHandle = handle))
+        } finally {
+            onEventThread {
+                backdrop.isVisible = false
+                backdrop.dispose()
+            }
+        }
+    }
+
+    private fun captureWindowsApplicationWindow(region: WindowsRegion, sceneId: String, window: ComposeWindow, output: Path) {
+        val handle = awtHandle(window)
+        val part = region.engine.placeWindow(
+            sceneId,
+            "application-window",
+            TargetRule("application-window", handle = handle, processId = region.desktop.processId),
+            WindowsRegionScenes.windowFrame,
+            awtMover(window),
+        )
+        withRegionBackdrop(region, sceneId, part) { backed ->
+            region.engine.capture(sceneId, output, listOf(backed), handle)
+        }
+    }
+
+    private fun captureWindowsFileDialog(region: WindowsRegion, sceneId: String, owner: ComposeWindow, title: String, output: Path) {
+        val part = region.engine.placeWindow(
+            sceneId,
+            "file-dialog",
+            TargetRule(
+                "file-dialog",
+                processId = region.desktop.processId,
+                className = WindowsRegionScenes.FILE_DIALOG_CLASS,
+                title = title,
+                ownerHandle = awtHandle(owner),
+            ),
+            WindowsRegionScenes.fileDialog,
+            region.desktop::moveForeign,
+        )
+        withRegionBackdrop(region, sceneId, part) { backed ->
+            region.engine.capture(sceneId, output, listOf(backed), backed.targetHandle)
+        }
+    }
+
+    /** The wizard is located by the msiexec process this test started, never by screen position. */
+    private fun captureWindowsInstaller(region: WindowsRegion, sceneId: String, output: Path, command: List<String>) {
+        val process = checkNotNull(runCommand(command, wait = false))
+        val processId = process.pid().toInt()
+        try {
+            val part = region.engine.placeWindow(
+                sceneId,
+                "installer-wizard",
+                TargetRule("installer-wizard", processId = processId, titleSuffix = WindowsRegionScenes.INSTALLER_TITLE_SUFFIX),
+                WindowsRegionScenes.installerWizard,
+                region.desktop::moveForeign,
+                maxPolls = 240,
+            )
+            withRegionBackdrop(region, sceneId, part) { backed ->
+                region.engine.capture(sceneId, output, listOf(backed), backed.targetHandle)
+            }
+        } finally {
+            if (process.isAlive) {
+                process.destroy()
+                process.waitFor(30, TimeUnit.SECONDS)
+            }
+            awaitProcessWindowsClosed(region, processId)
+        }
+    }
+
+    /** The next scene's occlusion guard must not meet a closing wizard; bounded, never throws. */
+    private fun awaitProcessWindowsClosed(region: WindowsRegion, processId: Int) {
+        for (poll in 1..40) {
+            if (region.desktop.census().none { it.processId == processId && it.paints }) break
+            region.desktop.pause(250)
+        }
+    }
+
+    /**
+     * The tray scene is two native surfaces stacked in a fixed layout: the popup menu window
+     * moved to its canonical place over a backdrop, then the notification icon's own rectangle
+     * (Shell_NotifyIconGetRect). Their union would include the taskbar between them, other icons
+     * and possibly the clock, so the union is never captured.
+     */
+    private fun captureWindowsTray(region: WindowsRegion, sceneId: String, popup: Window, helper: Window, output: Path) {
+        val desktop = region.desktop
+        val menu = region.engine.placeWindow(
+            sceneId,
+            "tray-menu",
+            TargetRule("tray-menu", handle = awtHandle(popup), processId = desktop.processId),
+            WindowsRegionScenes.trayMenu,
+            awtMover(popup),
+        )
+        val icon = SystemTray.getSystemTray().trayIcons.firstOrNull() ?: refuseRegion(
+            sceneId, RegionCaptureRefusal.TRAY_ICON_UNAVAILABLE, "no AWT tray icon is installed",
+        )
+        val id = runCatching { WindowsRegionDesktop.awtTrayIconId(icon) }.getOrElse { error ->
+            refuseRegion(sceneId, RegionCaptureRefusal.TRAY_ICON_UNAVAILABLE, "TrayIcon.id is unreadable: ${error.message}")
+        }
+        val (before, identity) = desktop.trayIconRect(icon)
+        val promotion = desktop.promoteTrayIcon(id)
+        try {
+            val taskbar = desktop.taskbar() ?: refuseRegion(
+                sceneId, RegionCaptureRefusal.TRAY_ICON_UNAVAILABLE, "no visible ${WindowsRegionScenes.TASKBAR_CLASS}",
+            )
+            val (iconRect, reads) = awaitIconRect(sceneId, 40, taskbar.bounds, { desktop.trayIconRect(icon).first }) {
+                desktop.pause(250)
+            }
+            val iconPart = LocatedPart(
+                role = "tray-icon",
+                target = JsonObject(identity + ("taskbar" to taskbar.identity("taskbar", "class=${WindowsRegionScenes.TASKBAR_CLASS}"))),
+                rect = iconRect,
+                placement = buildJsonObject {
+                    put("policy", "shell-placed")
+                    put("rect_before_promotion", before?.json() ?: JsonNull)
+                    put("promotion", promotion?.let { "${it.original} -> ${it.capture}" } ?: "not-applied")
+                    put("reads", reads)
+                },
+                targetHandle = taskbar.handle,
+                keyboardCues = false,
+                current = { desktop.trayIconRect(icon).first },
+            )
+            withRegionBackdrop(region, sceneId, menu) { backedMenu ->
+                // The helper window takes focus so neither the menu nor the taskbar shows focus.
+                region.engine.capture(sceneId, output, listOf(backedMenu, iconPart), awtHandle(helper))
+            }
+        } finally {
+            promotion?.restore?.invoke()
         }
     }
 
@@ -273,6 +405,7 @@ class DesktopNativeVisualCaptureTest {
         save: Boolean,
         output: Path,
         bounds: Rectangle,
+        region: WindowsRegion? = null,
     ) {
         // macOS column view exposes the selected directory's parent. Use a dedicated clean
         // two-level container instead of the shared temp directory so every visible ancestor is
@@ -289,12 +422,13 @@ class DesktopNativeVisualCaptureTest {
         }
         fixtureRoot.toFile().deleteRecursively()
         Files.createDirectories(fixtureDirectory)
+        val title = if (save) "Export VPN Control diagnostics" else "Import VPN Control configuration"
         val completed = CountDownLatch(1)
         val thread = Thread({
             try {
                 FileDialog(
                     window,
-                    if (save) "Export VPN Control diagnostics" else "Import VPN Control configuration",
+                    title,
                     if (save) FileDialog.SAVE else FileDialog.LOAD,
                 ).apply {
                     directory = fixtureDirectory.toString()
@@ -310,7 +444,11 @@ class DesktopNativeVisualCaptureTest {
         val dialog = waitForWindow<FileDialog>()
         try {
             activateWindow(dialog)
-            captureVisibleSurface(output, bounds)
+            if (region != null) {
+                captureWindowsFileDialog(region, output.fileName.toString().removeSuffix(".png"), window, title, output.parent)
+            } else {
+                captureVisibleSurface(output, bounds)
+            }
         } finally {
             onEventThread {
                 dialog.isVisible = false
@@ -325,7 +463,7 @@ class DesktopNativeVisualCaptureTest {
         }
     }
 
-    private fun captureTray(sceneId: String, output: Path, bounds: Rectangle) {
+    private fun captureTray(sceneId: String, output: Path, bounds: Rectangle, region: WindowsRegion? = null) {
         val connected = "connected" in sceneId && "disconnected" !in sceneId
         val backend = when {
             "tray-awt" in sceneId -> "awt"
@@ -374,12 +512,16 @@ class DesktopNativeVisualCaptureTest {
         var awtPopup: Window? = null
         try {
             check(available.await(30, TimeUnit.SECONDS)) { "The production tray backend did not become available" }
-            preparePrivateWindowCapturePermission(bounds)
+            if (region == null) preparePrivateWindowCapturePermission(bounds)
             if (backend == "native") openNativeTrayMenuWhenAvailable()
             else awtPopup = openAwtTrayMenuWhenAvailable(sceneId, bounds)
             Thread.sleep(300)
             check(awtPopup == null || awtPopup.isShowing) { "VPN Control tray menu closed before capture" }
-            captureVisibleSurface(output, bounds)
+            if (region != null) {
+                captureWindowsTray(region, sceneId, checkNotNull(awtPopup), window, output.parent)
+            } else {
+                captureVisibleSurface(output, bounds)
+            }
             check(awtPopup == null || awtPopup.isShowing) { "VPN Control tray menu closed during capture" }
         } finally {
             awtPopup?.let { popup ->
@@ -407,7 +549,8 @@ class DesktopNativeVisualCaptureTest {
         val listeners = icon.actionListeners.toList()
         check(listeners.isNotEmpty()) { "AWT tray icon has no menu action listener" }
         // Each desktop positions an undecorated popup relative to the pointer with different
-        // insets. These fixture anchors preserve the established comparison regions.
+        // insets. These fixture anchors preserve the established comparison regions; Windows
+        // then moves the popup to its canonical region-capture placement.
         val (anchorX, anchorY) = when {
             sceneId.startsWith("linux-") -> bounds.width / 2 to 400
             sceneId.startsWith("windows-") -> bounds.width / 2 to 400
@@ -460,21 +603,6 @@ class DesktopNativeVisualCaptureTest {
                 requireVisualPackage(".deb").toString(),
             )
             else -> error("Unsupported Linux native scene: $sceneId")
-        }
-        captureProcessSurface(command, output, bounds)
-    }
-
-    private fun captureWindowsSurface(sceneId: String, output: Path, bounds: Rectangle) {
-        val command = when (sceneId) {
-            "windows-msi" -> listOf("msiexec.exe", "/i", requireVisualPackage(".msi").toString())
-            "windows-update-installer" -> listOf(
-                "msiexec.exe", "/i", requireVisualPackage(".msi").toString(), "/norestart",
-            )
-            "windows-uac" -> listOf(
-                "powershell.exe", "-NoProfile", "-Command",
-                "Start-Process powershell.exe -Verb RunAs -ArgumentList '-NoProfile','-Command','Start-Sleep 30'",
-            )
-            else -> error("Unsupported Windows native scene: $sceneId")
         }
         captureProcessSurface(command, output, bounds)
     }
@@ -539,7 +667,6 @@ class DesktopNativeVisualCaptureTest {
         val process = runCommand(command, wait = false)
         try {
             Thread.sleep(2_500)
-            activateNativeProcess(process)
             captureScreen(output, bounds)
         } finally {
             robot.keyPress(java.awt.event.KeyEvent.VK_ESCAPE)
@@ -590,98 +717,10 @@ class DesktopNativeVisualCaptureTest {
         return output.trim()
     }
 
-    private fun windowsVisualTopLevelTitles(): List<String> {
-        val titles = mutableListOf<String>()
-        check(User32.INSTANCE.EnumWindows(WinUser.WNDENUMPROC { handle, _ ->
-            if (User32.INSTANCE.IsWindowVisible(handle)) {
-                val length = User32.INSTANCE.GetWindowTextLength(handle)
-                if (length > 0) {
-                    val buffer = CharArray(length + 1)
-                    val copied = User32.INSTANCE.GetWindowText(handle, buffer, buffer.size)
-                    if (copied > 0) titles += String(buffer, 0, copied)
-                }
-            }
-            true
-        }, null)) { "Windows top-level visual window census failed" }
-        return titles
-    }
-
-    private fun dismissHostedWindowsSystemPropertiesDialog() {
-        if (System.getenv("VPN_CONTROL_VISUAL_PROVIDER") != "hosted") return
-        val foreign = mutableListOf<WinDef.HWND>()
-        check(User32.INSTANCE.EnumWindows(WinUser.WNDENUMPROC { handle, _ ->
-            if (User32.INSTANCE.IsWindowVisible(handle)) {
-                val length = User32.INSTANCE.GetWindowTextLength(handle)
-                if (length > 0) {
-                    val buffer = CharArray(length + 1)
-                    val copied = User32.INSTANCE.GetWindowText(handle, buffer, buffer.size)
-                    if (copied > 0 && String(buffer, 0, copied).startsWith("System Properties", ignoreCase = true)) {
-                        foreign += handle
-                    }
-                }
-            }
-            true
-        }, null)) { "Windows top-level visual window census failed" }
-        foreign.forEach { handle ->
-            User32.INSTANCE.PostMessage(handle, WinUser.WM_CLOSE, WinDef.WPARAM(0), WinDef.LPARAM(0))
-        }
-        if (foreign.isNotEmpty()) Thread.sleep(250)
-    }
-
-    private fun <T> captureWindowsNativeFrame(
-        sceneId: String,
-        windowTitles: () -> List<String>,
-        capture: () -> T,
-    ): T = captureWindowsNativeFrame(
-        sceneId,
-        windowTitles,
-        ::dismissHostedWindowsSystemPropertiesDialog,
-        capture,
-    )
-
-    private fun <T> captureWindowsNativeFrame(
-        sceneId: String,
-        windowTitles: () -> List<String>,
-        dismissForeignDialog: () -> Unit,
-        capture: () -> T,
-        pauseBeforeRetry: () -> Unit = { Thread.sleep(250) },
-    ): T {
-        fun rejectForeignDialog(phase: String) {
-            check(windowTitles().none { it.startsWith("System Properties", ignoreCase = true) }) {
-                "$sceneId: foreign System Properties dialog visible $phase native screenshot"
-            }
-        }
-        var clearCensuses = 0
-        for (attempt in 0 until 20) {
-            dismissForeignDialog()
-            if (windowTitles().none { it.startsWith("System Properties", ignoreCase = true) }) {
-                clearCensuses++
-                if (clearCensuses >= 2) break
-            } else {
-                clearCensuses = 0
-            }
-            pauseBeforeRetry()
-        }
-        check(clearCensuses >= 2) {
-            "$sceneId: foreign System Properties dialog remained before native screenshot"
-        }
-        rejectForeignDialog("before")
-        val frame = capture()
-        rejectForeignDialog("after")
-        return frame
-    }
-
+    /** Full-screen capture for the Linux and macOS OS-owned scenes. */
     private fun captureScreen(output: Path, bounds: Rectangle) {
         Thread.sleep(800)
-        val image = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
-            val sceneId = output.fileName.toString().removeSuffix(".png")
-            captureWindowsNativeFrame(sceneId, ::windowsVisualTopLevelTitles) {
-                robot.createScreenCapture(bounds)
-            }
-        } else {
-            robot.createScreenCapture(bounds)
-        }
-        ImageIO.write(image, "png", output.toFile())
+        ImageIO.write(robot.createScreenCapture(bounds), "png", output.toFile())
     }
 
     private fun captureVisibleSurface(output: Path, bounds: Rectangle) {
@@ -752,24 +791,6 @@ class DesktopNativeVisualCaptureTest {
             window.requestFocus()
         }
         Thread.sleep(300)
-    }
-
-    /**
-     * Installer and privilege prompts are native windows rather than AWT
-     * windows. On Windows, ask the shell to foreground the process we just
-     * launched so a resident runner console cannot cover the surface.
-     */
-    private fun activateNativeProcess(process: Process?) {
-        if (process == null || !System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) return
-        runCatching {
-            ProcessBuilder(
-                "powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
-                "\$p = Get-Process -Id ${process.pid()} -ErrorAction SilentlyContinue; " +
-                    "if (\$p -and \$p.MainWindowHandle -ne 0) { \$sig = '[System.Runtime.InteropServices.DllImport(\"user32.dll\")]public static extern bool SetForegroundWindow(System.IntPtr h);'; " +
-                    "Add-Type -MemberDefinition \$sig -Name Foreground -Namespace VpnControlVisual -ErrorAction SilentlyContinue; " +
-                    "[VpnControlVisual.Foreground]::SetForegroundWindow(\$p.MainWindowHandle) | Out-Null }",
-            ).start().waitFor(10, TimeUnit.SECONDS)
-        }
     }
 
     private fun canonicalCaptureBounds(): Rectangle {

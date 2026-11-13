@@ -168,6 +168,36 @@ class VisualReviewTest(unittest.TestCase):
         with self.assertRaisesRegex(visual_review.VisualReviewError, "evidence changed"):
             visual_review.complete_review(sha)
 
+    def test_ingest_binds_a_region_captures_never_compared_frame_and_record(self) -> None:
+        sha = self._start(["windows"])
+        actual_dir = self.root / "actual-windows"
+        report_dir = self.root / "report-windows"
+        actual_dir.mkdir()
+        report_dir.mkdir()
+        files = {"actual": "secure.png", "frame": "secure.frame.png", "region": "secure.region.json"}
+        for name in files.values():
+            (actual_dir / name).write_bytes(name.encode("utf-8"))
+        environment = {"fixture": True}
+        capture = {
+            "schema_version": 1, "platform": "windows", "provider": "local", "target_sha": sha,
+            "manifest_sha256": visual_review._json_hash(self.manifest),
+            "environment": environment, "environment_sha256": visual_review._canonical_hash(environment),
+            "scenes": {"secure": {
+                **files, **{f"{kind}_sha256": visual_review._file_hash(actual_dir / name) for kind, name in files.items()},
+            }},
+        }
+        (actual_dir / "capture-local.json").write_text(json.dumps(capture), encoding="utf-8")
+        contact = report_dir / "secure.contact.png"
+        contact.write_bytes(b"contact")
+        report = report_dir / "report.json"
+        report.write_text(json.dumps({"schema_version": 1, "platform": "windows", "scenes": [
+            {"id": "secure", "passed": True, "errors": [], "contact_sheet": str(contact)},
+        ]}), encoding="utf-8")
+        visual_review.ingest_report(sha, "windows", report, actual_dir)
+        (actual_dir / "secure.frame.png").write_bytes(b"another moment")
+        with self.assertRaisesRegex(visual_review.VisualReviewError, "captured frame changed after stamping"):
+            visual_review.ingest_report(sha, "windows", report, actual_dir)
+
     def test_reingest_resets_agent_verdict(self) -> None:
         sha = self._start()
         self._ingest(sha, "android", "app")

@@ -21,8 +21,9 @@ from pathlib import Path
 from typing import Any
 
 if __package__:
-    from . import visual_target
+    from . import visual_region, visual_target
 else:
+    import visual_region
     import visual_target
 
 if __package__:
@@ -1217,20 +1218,35 @@ def stamp_capture(
     unknown = sorted(set(scene_ids) - set(known))
     if unknown:
         raise VisualPlatformError("capture requested unknown scenes: " + ", ".join(unknown))
-    files: dict[str, dict[str, str]] = {}
+    files: dict[str, dict[str, Any]] = {}
     missing: list[str] = []
     for scene_id in scene_ids:
         scene = known[scene_id]
         paths = {"actual": output / f"{scene_id}.png"}
         if scene.get("geometry_required", True):
             paths["geometry"] = output / f"{scene_id}.geometry.json"
-        entry: dict[str, str] = {}
+        region_paths = {
+            "frame": output / visual_region.frame_name(scene_id),
+            "region": output / visual_region.record_name(scene_id),
+        }
+        # In-session Windows captures always carry region evidence. The secure-desktop scene's
+        # region comes from its VM capture route, so verify_capture_provenance enforces it there.
+        if any(path.exists() for path in region_paths.values()) or (
+            visual_region.requires_region(platform, scene) and scene.get("required_capability") != "secure_desktop"
+        ):
+            paths.update(region_paths)
+        entry: dict[str, Any] = {}
         for kind, path in paths.items():
             if not path.is_file():
                 missing.append(path.name)
                 continue
             entry[kind] = path.name
             entry[f"{kind}_sha256"] = _file_hash(path)
+        if "region" in entry and "frame" in entry and (output / f"{scene_id}.png").is_file():
+            try:
+                entry["region_record"] = visual_region.check_scene(platform, scene_id, output)
+            except visual_region.RegionEvidenceError as exc:
+                raise VisualPlatformError(f"capture region evidence is invalid for {platform}/{scene_id}: {exc}") from exc
         files[scene_id] = entry
     if missing:
         raise VisualPlatformError("capture returned an incomplete set: " + ", ".join(missing))
@@ -1296,7 +1312,8 @@ def run_local_driver(platform: str, driver: str, output: Path, scene_ids: list[s
 
 
 def verify_capture_provenance(platform: str, target_sha: str, actual_dir: Path) -> list[Path]:
-    expected = {str(scene["id"]) for scene in scenes_for(platform)}
+    known = {str(scene["id"]): scene for scene in scenes_for(platform)}
+    expected = set(known)
     covered: set[str] = set()
     metadata_paths = sorted(actual_dir.glob("capture-*.json"))
     if not metadata_paths:
@@ -1321,7 +1338,7 @@ def verify_capture_provenance(platform: str, target_sha: str, actual_dir: Path) 
         for scene_id, values in files.items():
             if scene_id not in expected or not isinstance(values, dict):
                 raise VisualPlatformError(f"capture provenance has an unexpected scene: {scene_id}")
-            for kind in ("actual", "geometry"):
+            for kind in ("actual", "geometry", "frame", "region"):
                 raw_path = str(values.get(kind, ""))
                 expected_hash = str(values.get(f"{kind}_sha256", ""))
                 if not raw_path:
@@ -1331,6 +1348,20 @@ def verify_capture_provenance(platform: str, target_sha: str, actual_dir: Path) 
                 path = actual_dir / raw_path
                 if not path.is_file() or not expected_hash or _file_hash(path) != expected_hash:
                     raise VisualPlatformError(f"captured {kind} changed after stamping: {platform}/{scene_id}")
+            if visual_region.requires_region(platform, known[scene_id]):
+                # VISUAL-002: the compared image is the target's region and its frame stays as evidence.
+                if (
+                    values.get("frame") != visual_region.frame_name(scene_id)
+                    or values.get("region") != visual_region.record_name(scene_id)
+                    or not isinstance(values.get("region_record"), dict)
+                ):
+                    raise VisualPlatformError(f"capture provenance lacks region evidence: {platform}/{scene_id}")
+                try:
+                    recorded = visual_region.load_record(actual_dir / visual_region.record_name(scene_id))
+                except visual_region.RegionEvidenceError as exc:
+                    raise VisualPlatformError(f"capture region record is unreadable: {platform}/{scene_id}: {exc}") from exc
+                if recorded != values["region_record"]:
+                    raise VisualPlatformError(f"capture provenance region record differs from its file: {platform}/{scene_id}")
             covered.add(scene_id)
     missing = sorted(expected - covered)
     if missing:

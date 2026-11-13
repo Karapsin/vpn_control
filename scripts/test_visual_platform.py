@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import visual_region
 import visual_regression
 
 
@@ -1448,7 +1449,7 @@ class VisualPlatformTest(unittest.TestCase):
         execute.assert_called_once_with(visual_platform.RUNTIME_ROOT / "windows" / "qmp.sock", "system_powerdown", disk=Path(state["identifier"]), expected_actor=state["actor"])
         self.assertTrue(result["stopped"])
 
-    def test_hosted_native_capture_freezes_platform_clocks(self) -> None:
+    def test_hosted_native_capture_freezes_macos_clock_and_leaves_windows_clock_alone(self) -> None:
         macos = (visual_platform.ROOT / "scripts/capture_visual_desktop.sh").read_text(
             encoding="utf-8",
         )
@@ -1456,14 +1457,12 @@ class VisualPlatformTest(unittest.TestCase):
             encoding="utf-8",
         )
         self.assertIn("sudo date 0903120026.00", macos)
-        self.assertIn('Set-Date -Date "2026-09-03T12:00:00"', windows)
-        self.assertIn("WM_TIMECHANGE", windows)
-        self.assertIn("Notify-SystemClockChanged", windows)
+        # Windows scenes are region captures: the taskbar clock is outside every compared image,
+        # and hosted time sync undid Set-Date (the f31ab987 clocks showed real time).
+        self.assertNotIn("Set-Date", windows)
+        self.assertNotIn("WM_TIMECHANGE", windows)
+        self.assertNotIn("Notify-SystemClockChanged", windows)
         self.assertIn("Dismiss-HostedVisualResidue", windows)
-        add_type_start = windows.index('Add-Type @"', windows.index("function Notify-SystemClockChanged"))
-        add_type_end = windows.index('"@', add_type_start)
-        residue_start = windows.index("function Dismiss-HostedVisualResidue")
-        self.assertGreater(residue_start, add_type_end)
 
     def test_hosted_capture_wrappers_name_the_target_the_parser_requires(self) -> None:
         # capture-local refuses without --target, which a hosted run reports only after
@@ -1473,32 +1472,32 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn('--target "native:$platform_name"', shell)
         self.assertIn('"capture-local", "--platform", $Platform, "--target", "native:$Platform", "--driver"', windows)
 
-    def test_windows_foreign_dialog_is_checked_after_native_capture_before_provenance(self) -> None:
+    def test_windows_foreign_dialog_is_dismissed_and_left_to_the_region_occlusion_guard(self) -> None:
         wrapper = (visual_platform.ROOT / "scripts/capture_visual_desktop.ps1").read_text(
             encoding="utf-8",
         )
-        native = (
+        desktop = (
             visual_platform.ROOT
-            / "desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopNativeVisualCaptureTest.kt"
+            / "desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/WindowsRegionDesktop.kt"
+        ).read_text(encoding="utf-8")
+        engine = (
+            visual_platform.ROOT
+            / "desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/NativeRegionCaptureEngine.kt"
         ).read_text(encoding="utf-8")
         native_capture = wrapper.index(':desktopApp:nativeVisualCapture')
-        clock_change = wrapper.index('Notify-SystemClockChanged', native_capture - 300)
-        pre_capture_dismissal = wrapper.index('Dismiss-HostedVisualResidue', clock_change)
-        post_capture_guard = wrapper.index('Assert-NoHostedVisualResidue', native_capture)
+        pre_capture_dismissal = wrapper.index('Dismiss-HostedVisualResidue', native_capture - 400)
         provenance = wrapper.index('"capture-local", "--platform"', native_capture)
-        self.assertLess(clock_change, pre_capture_dismissal)
         self.assertLess(pre_capture_dismissal, native_capture)
-        self.assertLess(native_capture, post_capture_guard)
-        self.assertLess(post_capture_guard, provenance)
-        assertion = wrapper.split('function Assert-NoHostedVisualResidue {', 1)[1].split('\n}', 1)[0]
-        self.assertIn('-like "System Properties*"', assertion)
+        self.assertLess(native_capture, provenance)
+        # The title-only post-capture check is gone; a dialog that stays is judged by geometry.
+        self.assertNotIn('Assert-NoHostedVisualResidue', wrapper)
         dismissal = wrapper.split('function Dismiss-HostedVisualResidue {', 1)[1].split('\n}', 1)[0]
         self.assertIn('$clearCensuses -ge 2', dismissal)
         self.assertIn('Start-Sleep -Milliseconds 250', dismissal)
-        self.assertIn('captureWindowsNativeFrame(', native)
-        self.assertIn('windowsVisualTopLevelTitles()', native)
-        self.assertIn('dismissHostedWindowsSystemPropertiesDialog()', native)
-        self.assertIn('PostMessage(handle, WinUser.WM_CLOSE', native)
+        self.assertNotIn('throw', dismissal)
+        self.assertIn('PostMessage(hwnd(window.handle), WinUser.WM_CLOSE', desktop)
+        self.assertIn('requireUnoccluded(sceneId, "before"', engine)
+        self.assertIn('requireUnoccluded(sceneId, "after"', engine)
 
     def test_hosted_macos_capture_disables_first_run_desktop_help(self) -> None:
         workflow = (visual_platform.ROOT / ".github/workflows/visual-regression.yml").read_text(
@@ -1823,6 +1822,227 @@ class VisualAvailabilityQualificationTest(unittest.TestCase):
         self.assertFalse(plan["release_capable"])
         self.assertIn("windows-uac", plan["routes"]["blocked"])
 
+
+class WindowsRegionEvidenceTest(unittest.TestCase):
+    """VISUAL-002/VISUAL-004: a Windows OS-owned scene image is its target's region; the full
+    frame of the same moment is kept beside it, bound by provenance, and never compared."""
+
+    SHA = "a" * 40
+    GOLDEN = Path(__file__).with_name("testdata") / "visual_region" / "windows-tray-connected.region.json"
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.output = Path(temporary.name)
+        self.scenes = [
+            {"id": "windows-msi", "platforms": ["windows"], "geometry_required": False, "required_capability": "native"},
+        ]
+        patch = mock.patch.object(visual_platform, "scenes_for", side_effect=lambda platform: [dict(item) for item in self.scenes])
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    @staticmethod
+    def frame(width: int = 40, height: int = 30, *, seed: int = 0) -> visual_regression.PngImage:
+        pixels = bytearray()
+        for y in range(height):
+            for x in range(width):
+                pixels += bytes(((x * 6 + seed) % 256, (y * 8) % 256, (x + y) % 256, 255))
+        return visual_regression.PngImage(width, height, bytes(pixels))
+
+    def record(self, scene_id: str, rect: tuple[int, int, int, int], **changes: object) -> dict[str, object]:
+        value: dict[str, object] = {
+            "schema_version": 1, "platform": "windows", "scene": scene_id,
+            "image": f"{scene_id}.png", "image_size": [rect[2] - rect[0], rect[3] - rect[1]],
+            "frame": f"{scene_id}.frame.png", "frame_size": [40, 30], "screen": [0, 0, 40, 30],
+            "work_area": [0, 0, 40, 26], "fill_rgb": [0, 0, 0],
+            "parts": [{
+                "role": "installer-wizard",
+                "target": {"kind": "installer-wizard", "locator": "pid=700 title-suffix=' Setup'", "handle": "0x2A",
+                           "process_id": 700, "class": "MsiDialogCloseClass", "title": "vpn-control Setup"},
+                "rect": list(rect), "offset": [0, 0],
+                "placement": {"canonical": {"origin": [rect[0], rect[1]], "size": None}, "moves": 1},
+            }],
+            "stable_frame": {"attempts": 2, "max_attempts": 20, "interval_ms": 250},
+            "occlusion": {"phases": ["before", "after"], "checks": []},
+        }
+        value.update(changes)
+        return value
+
+    def write_evidence(self, scene_id: str = "windows-msi", rect: tuple[int, int, int, int] = (5, 4, 21, 16), *,
+                       image_rect: tuple[int, int, int, int] | None = None, **changes: object) -> dict[str, object]:
+        frame = self.frame()
+        image, _ = visual_region.compose(frame, (0, 0, 40, 30), [image_rect or rect])
+        visual_regression.write_png(self.output / f"{scene_id}.frame.png", frame)
+        visual_regression.write_png(self.output / f"{scene_id}.png", image)
+        record = self.record(scene_id, rect, **changes)
+        (self.output / f"{scene_id}.region.json").write_text(json.dumps(record), encoding="utf-8")
+        return record
+
+    def test_windows_os_owned_capture_without_region_evidence_is_refused_at_stamp(self) -> None:
+        # The f31ab987 hosted frames were full screens (clock, desktop shortcuts, taskbar focus).
+        visual_regression.write_png(self.output / "windows-msi.png", self.frame())
+        with self.assertRaisesRegex(visual_platform.VisualPlatformError, "windows-msi.frame.png, windows-msi.region.json"):
+            visual_platform.stamp_capture("windows", self.SHA, "hosted", self.output, ["windows-msi"])
+        self.assertFalse((self.output / "capture-hosted.json").exists())
+
+    def test_stamp_embeds_the_region_record_and_verify_binds_every_evidence_file(self) -> None:
+        self.write_evidence()
+        visual_platform.stamp_capture("windows", self.SHA, "hosted", self.output, ["windows-msi"])
+        capture = json.loads((self.output / "capture-hosted.json").read_text(encoding="utf-8"))
+        entry = capture["scenes"]["windows-msi"]
+        self.assertEqual(("windows-msi.frame.png", "windows-msi.region.json"), (entry["frame"], entry["region"]))
+        self.assertEqual(visual_platform._file_hash(self.output / "windows-msi.frame.png"), entry["frame_sha256"])
+        part = entry["region_record"]["parts"][0]
+        self.assertEqual(("installer-wizard", "0x2A", [5, 4, 21, 16]), (part["target"]["kind"], part["target"]["handle"], part["rect"]))
+        self.assertEqual([5, 4], part["placement"]["canonical"]["origin"])
+        self.assertEqual(2, entry["region_record"]["stable_frame"]["attempts"])
+        self.assertEqual([self.output / "capture-hosted.json"],
+                         visual_platform.verify_capture_provenance("windows", self.SHA, self.output))
+        original = (self.output / "windows-msi.frame.png").read_bytes()
+        visual_regression.write_png(self.output / "windows-msi.frame.png", self.frame(seed=1))
+        with self.assertRaisesRegex(visual_platform.VisualPlatformError, "frame changed after stamping"):
+            visual_platform.verify_capture_provenance("windows", self.SHA, self.output)
+        (self.output / "windows-msi.frame.png").write_bytes(original)
+        (self.output / "windows-msi.region.json").write_text(json.dumps(self.record("windows-msi", (5, 4, 21, 16))) + " ", encoding="utf-8")
+        with self.assertRaisesRegex(visual_platform.VisualPlatformError, "region changed after stamping"):
+            visual_platform.verify_capture_provenance("windows", self.SHA, self.output)
+
+    def test_region_image_must_equal_its_rectangle_in_the_diagnostic_frame(self) -> None:
+        self.write_evidence(image_rect=(6, 4, 22, 16))
+        with self.assertRaisesRegex(visual_platform.VisualPlatformError, "differs from its rectangle"):
+            visual_platform.stamp_capture("windows", self.SHA, "hosted", self.output, ["windows-msi"])
+
+    def test_region_record_must_be_self_consistent(self) -> None:
+        cases = {
+            "attempts": {"stable_frame": {"attempts": 1, "max_attempts": 20}},
+            "outside": {"parts": [{**self.record("windows-msi", (5, 4, 21, 16))["parts"][0], "rect": [30, 20, 46, 32]}]},
+            "names": {"scene": "windows-update-installer"},
+            "identity": {"parts": [{**self.record("windows-msi", (5, 4, 21, 16))["parts"][0], "target": {"kind": "installer-wizard"}}]},
+            "screen": {"frame_size": [1280, 800]},
+        }
+        for name, changes in cases.items():
+            with self.subTest(name), self.assertRaises(visual_region.RegionEvidenceError):
+                visual_region.validate_record(self.record("windows-msi", (5, 4, 21, 16), **changes), scene_id="windows-msi", platform="windows")
+        (self.output / "duplicate.json").write_text('{"scene": "a", "scene": "b"}', encoding="utf-8")
+        with self.assertRaisesRegex(visual_region.RegionEvidenceError, "duplicate JSON field"):
+            visual_region.load_record(self.output / "duplicate.json")
+
+    def test_verify_refuses_windows_provenance_without_region_evidence(self) -> None:
+        self.scenes.append(
+            {"id": "windows-uac", "platforms": ["windows"], "geometry_required": False, "required_capability": "secure_desktop"},
+        )
+        self.write_evidence()
+        visual_regression.write_png(self.output / "windows-uac.png", self.frame())
+        # The secure-desktop scene's region comes from its VM route; its collector still stamps.
+        visual_platform.stamp_capture("windows", self.SHA, "local", self.output, ["windows-msi", "windows-uac"])
+        with self.assertRaisesRegex(visual_platform.VisualPlatformError, "lacks region evidence: windows/windows-uac"):
+            visual_platform.verify_capture_provenance("windows", self.SHA, self.output)
+        capture = self.output / "capture-local.json"
+        legacy = json.loads(capture.read_text(encoding="utf-8"))
+        for key in ("frame", "frame_sha256", "region", "region_sha256", "region_record"):
+            legacy["scenes"]["windows-msi"].pop(key)
+        legacy["scenes"].pop("windows-uac")
+        capture.write_text(json.dumps(legacy), encoding="utf-8")
+        self.scenes.pop()
+        with self.assertRaisesRegex(visual_platform.VisualPlatformError, "lacks region evidence: windows/windows-msi"):
+            visual_platform.verify_capture_provenance("windows", self.SHA, self.output)
+
+    def test_other_platforms_keep_full_screen_provenance(self) -> None:
+        self.scenes = [{"id": "linux-window-frame", "platforms": ["linux"], "geometry_required": False}]
+        visual_regression.write_png(self.output / "linux-window-frame.png", self.frame())
+        visual_platform.stamp_capture("linux", self.SHA, "hosted", self.output, ["linux-window-frame"])
+        self.assertEqual([self.output / "capture-hosted.json"],
+                         visual_platform.verify_capture_provenance("linux", self.SHA, self.output))
+
+    def test_kotlin_golden_region_record_is_valid_and_uses_the_same_layout(self) -> None:
+        record = visual_region.load_record(self.GOLDEN)
+        geometry = visual_region.validate_record(record, scene_id="windows-tray-connected", platform="windows")
+        sizes = [(rect[2] - rect[0], rect[3] - rect[1]) for rect, _ in geometry["parts"]]
+        size, offsets = visual_region.stack_layout(sizes)
+        self.assertEqual(tuple(record["image_size"]), size)
+        self.assertEqual([offset for _, offset in geometry["parts"]], offsets)
+        self.assertEqual(["tray-menu", "tray-icon"], [part["role"] for part in record["parts"]])
+
+    def write_uac_frames(self, *frames: visual_regression.PngImage) -> list[Path]:
+        paths = []
+        for index, image in enumerate(frames):
+            path = self.output / "frames" / f"frame-{index}.png"
+            visual_regression.write_png(path, image)
+            paths.append(path)
+        return paths
+
+    def uac_region(self, rect: list[int] | None = None) -> dict[str, object]:
+        return {
+            "schema_version": 1, "platform": "windows", "scene": "windows-uac", "frame_size": [40, 30],
+            "parts": [{
+                "role": "consent-prompt",
+                "target": {"kind": "secure-desktop-window", "locator": "consent.exe pid=812 desktop=Winlogon",
+                           "process": "consent.exe", "process_id": 812, "desktop": "Winlogon"},
+                "rect": rect or [10, 6, 30, 22],
+                "placement": {"policy": "os-placed"},
+            }],
+            "occlusion": {"desktop": "Winlogon", "policy": "the secure desktop shows only the consent UI"},
+        }
+
+    @staticmethod
+    def with_pixel(image: visual_regression.PngImage, x: int, y: int, rgb: tuple[int, int, int]) -> visual_regression.PngImage:
+        pixels = bytearray(image.pixels)
+        offset = (y * image.width + x) * 4
+        pixels[offset : offset + 3] = bytes(rgb)
+        return visual_regression.PngImage(image.width, image.height, bytes(pixels))
+
+    def test_uac_crop_step_publishes_the_first_stable_crop_and_keeps_its_full_frame(self) -> None:
+        base = self.frame()
+        fading = self.with_pixel(base, 15, 10, (1, 2, 3))
+        pointer = self.with_pixel(base, 2, 2, (250, 250, 250))
+        frames = self.write_uac_frames(fading, base, pointer)
+        evidence = self.output / "evidence"
+        record = visual_region.crop_frames(platform="windows", scene_id="windows-uac", frames=frames,
+                                           region=self.uac_region(), output=evidence)
+        self.assertEqual(3, record["stable_frame"]["attempts"])
+        self.assertEqual(frames[2].read_bytes(), (evidence / "windows-uac.frame.png").read_bytes())
+        image = visual_regression.read_png(evidence / "windows-uac.png")
+        self.assertEqual((20, 16), (image.width, image.height))
+        self.assertEqual(record, visual_region.check_scene("windows", "windows-uac", evidence))
+        with self.assertRaisesRegex(visual_region.RegionEvidenceError, "existing capture evidence"):
+            visual_region.crop_frames(platform="windows", scene_id="windows-uac", frames=frames,
+                                      region=self.uac_region(), output=evidence)
+
+    def test_uac_crop_step_refuses_unstable_or_misplaced_regions(self) -> None:
+        base = self.frame()
+        unstable = self.write_uac_frames(base, self.with_pixel(base, 15, 10, (9, 9, 9)), base)
+        with self.assertRaisesRegex(visual_region.RegionEvidenceError, "unstable-frame"):
+            visual_region.crop_frames(platform="windows", scene_id="windows-uac", frames=unstable,
+                                      region=self.uac_region(), output=self.output / "unstable")
+        stable = self.write_uac_frames(base, base)
+        refusals = {
+            "outside": (self.uac_region([30, 20, 50, 40]), stable),
+            "one frame": (self.uac_region(), stable[:1]),
+            "scene": ({**self.uac_region(), "scene": "windows-msi"}, stable),
+            "size": ({**self.uac_region(), "frame_size": [1280, 800]}, stable),
+            "identity": ({**self.uac_region(), "parts": [{"role": "consent-prompt", "rect": [10, 6, 30, 22]}]}, stable),
+        }
+        for name, (region, frames) in refusals.items():
+            with self.subTest(name), self.assertRaises(visual_region.RegionEvidenceError):
+                visual_region.crop_frames(platform="windows", scene_id="windows-uac", frames=frames,
+                                          region=region, output=self.output / name)
+            self.assertFalse((self.output / name / "windows-uac.png").exists())
+
+    def test_region_cli_crops_and_checks_evidence(self) -> None:
+        base = self.frame()
+        frames = self.write_uac_frames(base, base)
+        region = self.output / "region.json"
+        region.write_text(json.dumps(self.uac_region()), encoding="utf-8")
+        evidence = self.output / "cli"
+        arguments = ["crop", "--platform", "windows", "--scene", "windows-uac", "--region", str(region), "--output", str(evidence)]
+        for path in frames:
+            arguments += ["--frame", str(path)]
+        with contextlib.redirect_stdout(open(os.devnull, "w", encoding="utf-8")) as quiet:
+            self.addCleanup(quiet.close)
+            self.assertEqual(0, visual_region.main(arguments))
+            self.assertEqual(0, visual_region.main(["check", "--platform", "windows", "--scene", "windows-uac", "--dir", str(evidence)]))
+            visual_regression.write_png(evidence / "windows-uac.png", visual_region.compose(base, (0, 0, 40, 30), [(11, 6, 31, 22)])[0])
+            self.assertEqual(1, visual_region.main(["check", "--platform", "windows", "--scene", "windows-uac", "--dir", str(evidence)]))
 
 
 if __name__ == "__main__":

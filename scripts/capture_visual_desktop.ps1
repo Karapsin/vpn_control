@@ -32,33 +32,12 @@ public static class VpnControlVisualNativeWindow {
         ForEach-Object { [VpnControlVisualNativeWindow]::ShowWindow($_.MainWindowHandle, 6) | Out-Null }
 }
 
-function Notify-SystemClockChanged {
-    if ($env:OS -ne "Windows_NT") { return }
-    if (-not ("VpnControlVisualClock" -as [type])) {
-        Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public static class VpnControlVisualClock {
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr SendMessageTimeout(
-        IntPtr window, uint message, UIntPtr wParam, IntPtr lParam,
-        uint flags, uint timeout, out UIntPtr result);
-}
-"@
-    }
-    $result = [UIntPtr]::Zero
-    # WM_TIMECHANGE tells Explorer and native dialogs to redraw their frozen fixture time.
-    [VpnControlVisualClock]::SendMessageTimeout(
-        [IntPtr]0xffff, 0x001e, [UIntPtr]::Zero, [IntPtr]::Zero, 0x0002, 5000, [ref]$result
-    ) | Out-Null
-    Start-Sleep -Seconds 2
-}
-
 function Dismiss-HostedVisualResidue {
     if ($env:VPN_CONTROL_VISUAL_PROVIDER -ne "hosted") { return }
     # A recycled hosted image can surface Windows' paging-file warning before the
-    # fixture starts. Closing it is asynchronous, so do not begin capture until
-    # two consecutive censuses confirm that it is gone.
+    # fixture starts. Closing it is asynchronous, so wait for two consecutive clear
+    # censuses. A dialog that stays is not fatal here: the native capture's occlusion
+    # guard refuses any scene whose region it actually covers (VISUAL-002).
     $deadline = (Get-Date).AddSeconds(10)
     $clearCensuses = 0
     do {
@@ -73,18 +52,7 @@ function Dismiss-HostedVisualResidue {
         }
         Start-Sleep -Milliseconds 250
     } while ((Get-Date) -lt $deadline)
-    throw "Foreign System Properties dialog remained before native visual capture"
-}
-
-function Assert-NoHostedVisualResidue {
-    if ($env:VPN_CONTROL_VISUAL_PROVIDER -ne "hosted") { return }
-    # Capture can outlive the initial dismissal. A late OS dialog invalidates
-    # every full-screen scene it covered, so fail before provenance is stamped.
-    $foreign = @(Get-Process -ErrorAction SilentlyContinue |
-        Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like "System Properties*" })
-    if ($foreign.Count -ne 0) {
-        throw "Foreign System Properties dialog remained after native visual capture"
-    }
+    Write-Warning "A System Properties dialog remained; region capture refuses only scenes it covers"
 }
 
 Hide-HostConsoleWindows
@@ -120,18 +88,13 @@ if ($NativeScenes) {
     $env:VPN_CONTROL_VISUAL_NATIVE_SCENES = $NativeScenes
     $env:VPN_CONTROL_VISUAL_PACKAGE = $VisualPackage
     Hide-HostConsoleWindows
-    $OriginalDate = Get-Date
-    try {
-        Set-Date -Date "2026-09-03T12:00:00" | Out-Null
-        Notify-SystemClockChanged
-        Dismiss-HostedVisualResidue
-        & (Join-Path $RepoRoot "gradlew.bat") :desktopApp:nativeVisualCapture
-        if ($LASTEXITCODE -ne 0) { throw "Desktop native visual capture task failed" }
-    } finally {
-        Set-Date -Date $OriginalDate | Out-Null
-        Notify-SystemClockChanged
-    }
-    Assert-NoHostedVisualResidue
+    # Windows OS-owned scenes are region captures of the target surface itself, so the
+    # taskbar clock is outside every compared image and the system clock is left alone
+    # (hosted time sync reset the former clock freeze anyway). Each scene keeps <scene>.frame.png and
+    # <scene>.region.json beside its image; capture-local binds them into provenance.
+    Dismiss-HostedVisualResidue
+    & (Join-Path $RepoRoot "gradlew.bat") :desktopApp:nativeVisualCapture
+    if ($LASTEXITCODE -ne 0) { throw "Desktop native visual capture task failed" }
 }
 
 $Driver = if ($IsWindows) { "cmd.exe /c exit 0" } else { "/usr/bin/true" }

@@ -14,6 +14,7 @@ Authoritative behavior is `UI-001` through `UI-008` and `VISUAL-001` through `VI
 | `scripts/capture_visual_windows_remote.py` | Collects one retained frame of the Windows UAC scene from an owned remote deployment through the capture-only `deployment:<id>` target. |
 | `scripts/capture_visual_macos_tart.py` | Headless VNC capture of Gatekeeper and authorization surfaces in the managed macOS Tart VM. |
 | `scripts/visual_regression.py` | Pixel comparator, geometry validator, diffs, reports, and contact sheets. |
+| `scripts/visual_region.py` | Windows region evidence: validates scene image, diagnostic frame and region record; crops retained full VM frames for `windows-uac`. |
 | `scripts/visual_review.py` | Exact-SHA review queue, scene verdicts, evidence receipt, and GitHub status. |
 | `.github/workflows/visual-regression.yml` | Agent-dispatched hosted fallback capture on ephemeral GitHub runners. |
 
@@ -21,11 +22,11 @@ Generated VM state stays in `.runtime/visual-vms/`. Screenshots and reports stay
 
 ## Scope
 
-A targeted development review may name one or more affected platforms. A release review always includes every scene on Android, Linux, Windows, and macOS. App-owned scenes require PNG and geometry JSON; OS-owned scenes require a full-screen PNG. The agent opens every image, normally in six-scene batches, and records a verdict for every individual scene.
+A targeted development review may name one or more affected platforms. A release review always includes every scene on Android, Linux, Windows, and macOS. App-owned scenes require PNG and geometry JSON; OS-owned scenes require a full-screen PNG, except Windows OS-owned scenes, which require the target region's PNG plus `<scene>.frame.png` and `<scene>.region.json` ([Windows region capture](#windows-region-capture)). The agent opens every image, normally in six-scene batches, and records a verdict for every individual scene.
 
 Synthetic fixtures freeze time, traffic, progress, data, locale, animations, window position, display scaling, and font selection. Capture must never use the operator's real workspace, credentials, subscriptions, or active VPN/runtime. Every local or hosted subset writes `capture-<provider>.json`, binding its environment fingerprint, scene files, manifest, and checked-out target SHA; comparison refuses a missing, stale, modified, or incomplete provenance set. JSON provenance hashes use canonical parsed content so Windows CRLF checkout rules cannot invalidate otherwise identical evidence.
 
-Every scene compares the complete image under `VISUAL-004`, including OS-owned chrome. Dynamic values such as clocks, dates, and status icons must be frozen in the isolated capture environment. Nonempty `ignore_regions` or `ignore_regions_by_platform` declarations are rejected during manifest admission, and direct comparator calls also reject masks. Agent review accompanies the full-image comparison.
+Every scene compares its complete scene image under `VISUAL-004`, including the OS-owned chrome inside it; a Windows diagnostic frame is never compared. Dynamic values inside a compared image, such as clocks, dates, and status icons, must be frozen in the isolated capture environment; Windows region captures leave the taskbar clock, desktop icons and other windows outside the image by construction. Nonempty `ignore_regions` or `ignore_regions_by_platform` declarations are rejected during manifest admission, and direct comparator calls also reject masks. Agent review accompanies the full-image comparison.
 
 ## Provider Selection
 
@@ -164,6 +165,66 @@ python3 scripts/visual_platform.py stop --platform <platform> --target <provider
 ```
 
 The stop command refuses to touch pre-existing environments and does not stop VPN Control or `sing-box`.
+
+## Windows Region Capture
+
+`DesktopNativeVisualCaptureTest` captures every in-session Windows OS-owned scene as the target
+surface's own region (`VISUAL-002`). The decisions live in `NativeRegionCapture.kt` and
+`NativeRegionCaptureEngine.kt`, covered on every host by `NativeRegionCaptureTest`;
+`WindowsRegionDesktop.kt` only reads native state and applies the plans.
+
+| Scene | Target, located by native identity | Image | Canonical placement |
+| --- | --- | --- | --- |
+| `windows-window-frame` | The app's own top-level window (its AWT handle, this process), frame included | DWM extended frame bounds | Visible frame 1000x720 at 140,16 |
+| `windows-open-dialog`, `windows-save-dialog` | The `#32770` dialog of this process with the fixture title, owned by the app window | DWM extended frame bounds | Visible frame 640x460 at 160,60 |
+| `windows-msi`, `windows-update-installer` | The visible top-level `... Setup` window of the `msiexec` process the test started | DWM extended frame bounds | Moved to 160,60; intrinsic size |
+| `windows-tray-disconnected`, `windows-tray-connected` | The AWT tray popup window, then the notification icon from `Shell_NotifyIconGetRect` (AWT message window and `TrayIcon.id`) | Menu region, 8 px gap, icon rectangle, stacked left-aligned on black | Menu moved to 320,160; icon promoted out of the Windows 11 overflow, shell-placed |
+| `windows-uac` | The consent window on the secure desktop, located in the guest by the prompt route | Crop of the retained full VM frame | Placed by Windows |
+
+The tray image is two parts, not their union: the union would take in the taskbar between them,
+other notification icons and possibly the clock.
+
+Before the first scene the capture turns caret blink, window, menu, tooltip, combo box, list box,
+selection and client-area animations and transparency off, keyboard cues on and the light theme on,
+reads each value back, and restores all of them in reverse order afterwards. Every window part gets
+an opaque `#404040` backdrop stacked directly beneath it: Windows blends a window's 1 px border and
+any translucent pixel with whatever lies behind it, which in the full-screen baselines was the
+runner wallpaper. The cursor is parked in a work-area corner clear of every region. The target, or the tray
+fixture's helper window, is made foreground with keyboard focus inside it, and focus rectangles and
+access keys are shown on the target.
+
+A scene is refused when a visible, uncloaked, non-minimized top-level window above the part's
+backdrop, or above the target where there is none, intersects the region, checked before and after
+capture. The hosted paging-file `System Properties` warning is still dismissed first and refuses a
+scene only where it overlaps a region. The image is published once two consecutive captures of the
+region are identical, within 20 captures 250 ms apart; no fixed sleep is the readiness signal.
+
+Each scene writes `<scene>.png` (compared), `<scene>.frame.png` (the full screen of the same moment,
+never compared) and `<scene>.region.json` (target identity, rectangle, image offset, canonical
+placement, backdrop, stable-frame attempts, occlusion checks, cursor, foreground and focus, session
+settings). `capture-local` checks the record and that every part equals its rectangle in the frame,
+then stamps both files' hashes and the record into `capture-<provider>.json`; `verify` refuses a
+Windows OS-owned scene without that evidence. A refused scene keeps `<scene>.frame.png` and
+`<scene>.refusal.json` with its named reason: `non-canonical-display`, `target-missing`,
+`target-ambiguous`, `placement-not-converged`, `outside-work-area`, `target-not-foreground`,
+`cursor-not-parked`, `occluded`, `target-moved`, `unstable-frame`, `tray-icon-unavailable`,
+`session-setting-failed` or `secure-desktop-not-capturable`. Every refusal is an
+`infrastructure_failure`.
+
+`windows-uac` cannot be captured from the user session. Its route reports the consent window's
+rectangle in framebuffer pixels with the census identity of its `consent.exe` (region input, schema 1),
+and the crop step turns two or more consecutive full VM frames into the same evidence, publishing the
+first frame whose crop equals the previous one:
+
+```bash
+python3 scripts/visual_region.py crop --platform windows --scene windows-uac \
+  --frame <full-frame-1.png> --frame <full-frame-2.png> --region <region-input.json> \
+  --output build/visual-actual/windows
+```
+
+Until the route supplies that input, a collected full frame still stamps but `verify` refuses it.
+Region capture changes the dimensions of every Windows OS-owned baseline; re-record them only from a
+complete reviewed capture.
 
 ## Exact-SHA Review
 

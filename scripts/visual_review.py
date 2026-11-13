@@ -255,7 +255,8 @@ def ingest_report(target_sha: str, platform: str, report_path: Path, actual_dir:
         for captured_scene, files in capture_scenes.items():
             if not isinstance(files, dict):
                 raise VisualReviewError(f"capture provenance has invalid files: {captured_scene}")
-            for kind in ("actual", "geometry"):
+            # Region captures also bind their never-compared diagnostic frame and region record.
+            for kind in ("actual", "geometry", "frame", "region"):
                 raw_path = str(files.get(kind, ""))
                 expected_hash = str(files.get(f"{kind}_sha256", ""))
                 if not raw_path:

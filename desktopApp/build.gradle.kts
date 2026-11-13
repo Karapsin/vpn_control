@@ -233,6 +233,9 @@ val nativeVisualCapture by tasks.registering(Test::class) {
     testClassesDirs = sourceSets.test.get().output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath
     outputs.upToDateWhen { false }
+    // Windows region capture locates the AWT notification icon by its Shell_NotifyIcon uID,
+    // which AWT keeps in the package-private java.awt.TrayIcon.id.
+    jvmArgs("--add-opens=java.desktop/java.awt=ALL-UNNAMED")
     filter {
         includeTestsMatching("com.kardinal.vpncontrol.desktop.DesktopNativeVisualCaptureTest")
     }

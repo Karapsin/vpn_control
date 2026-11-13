@@ -132,7 +132,7 @@ def _chunk(kind: bytes, payload: bytes) -> bytes:
     return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload) & 0xFFFFFFFF)
 
 
-def write_png(path: Path, image: PngImage) -> None:
+def encode_png(image: PngImage) -> bytes:
     if len(image.pixels) != image.width * image.height * 4:
         raise ValueError("RGBA pixel buffer has the wrong size")
     scanlines = bytearray()
@@ -145,6 +145,11 @@ def write_png(path: Path, image: PngImage) -> None:
     payload += _chunk(b"IHDR", struct.pack(">IIBBBBB", image.width, image.height, 8, 6, 0, 0, 0))
     payload += _chunk(b"IDAT", zlib.compress(bytes(scanlines), level=9))
     payload += _chunk(b"IEND", b"")
+    return payload
+
+
+def write_png(path: Path, image: PngImage) -> None:
+    payload = encode_png(image)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(payload)
 

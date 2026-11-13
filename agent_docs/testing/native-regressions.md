@@ -211,12 +211,17 @@ correlated preparation locations resolve identical receipt bytes without changin
 registry defaults. Remote guest ownership, display admission and full GUI/traffic
 cleanup still require direct native proof and matching MCP retesting.
 
-`DesktopNativeVisualCaptureTest.windowsForeignSystemPropertiesDialogRejectsFrameBeforeAndAfterCapture`
-uses the real capture guard with injected inert dismissal for modeled Windows
-titles, including when the provider is hosted on Linux or macOS. It runs in
-ordinary desktop tests and hosted native capture. Real Windows dismissal remains
-separate and is used only at the actual Windows capture boundary. The portable
-control does not prove secure OS surface capture.
+`NativeRegionCaptureTest` runs the actual Windows region-capture engine against a
+modeled 1280x800 desktop on every host: the taskbar clock and a desktop shortcut
+change on every capture outside the target region, a remaining `System Properties`
+dialog refuses only where it covers the region (before any image is published),
+and caret-like changes, lost foreground or focus, unconverged placement, ambiguous
+or missing targets and unstable icons are refused with named reasons. It also pins
+the region record to the golden file that `scripts/test_visual_platform.py`
+validates. It runs in ordinary desktop tests. Real Windows window enumeration, DWM
+bounds, `Shell_NotifyIconGetRect`, foreground and session settings remain covered
+only by hosted native capture, and the portable control does not prove secure OS
+surface capture.
 
 Run `python3 -m unittest discover -s agent_tools/tests -t .` for private SSH profile
 validation, strict host-key routing, actual fake-SSH timeout/quoting behavior,
