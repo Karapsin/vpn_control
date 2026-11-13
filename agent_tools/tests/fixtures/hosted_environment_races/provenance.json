@@ -1,0 +1,123 @@
+{
+  "cause": {
+    "highDescriptor": "Confirmed mechanism: the unfixed reader records ValueError only if its first step runs and select() gets a descriptor of at least FD_SETSIZE. The inner child takes the lowest free numbers for its null device and its two pipe pairs, so four numbers below the table are enough for select() to work. Earlier serial cases leave such numbers pending: PrivateConfigCustody owners reachable only through MagicMock call records (PlannedArgv <- BoundInlineArgv <- tuple <- _Call <- _CallList), closed silently by __del__; each case of test_ssh_gateway_tmux_reconciliation_status, two modules earlier in that shard, leaves 30 or 40. On CPython 3.12 _fixed546_inner_source() calls inspect.getsource() on a class, which parses the whole 61 KB beforeimage with ast.parse; the first automatic collection of the case runs right after it, between the outer and the inner capture (10 of 10 runs here; CPython 3.14 reads __firstlineno__ and collects there in 0 of 10). Both hosted failures are at the inner capture. Inferred, not observed: that the hosted collection reached those owners' generation; the hosted runs lasted longer up to the failure than a complete pass, which a collection of an older generation explains and a normal run does not. The stalled budget fails the same assertion and cannot be excluded.",
+    "lowDisk": "Confirmed mechanism: the observer and the case take separate statvfs samples of a filesystem that other actors change. Here 20000 back-to-back sample pairs, with nothing done by the sampling process, showed 10 gains and 35 losses. Neither the observer nor its test changed since cc2873b5, and the three commits before 529cc610 touch neither; they add test modules, which moves the shard partition. Not known: which actor freed space on the hosted runner inside that window."
+  },
+  "controlledRegression": "agent_tools.tests.test_hosted_environment_races runs each actual case from its whole beforeimage and from the current module, with real fixtures and local children. Descriptors: one real custody pair reachable only from a cycle is pending, automatic collection is off, and one full collection runs before the second child is created. Stall: that child's first poll sleeps .1 s. Free space: a real megabyte beside the case's root is deleted before every observer entry after the first, and the gain is measured with the unprojected statvfs. Unfixed: each case fails with the hosted trace itself (frames, lines, source text and message; only checkout paths and position markers are normalized). Current: each case passes, and the window names exactly the planted descriptors it finalized before the table was filled. A control runs the unfixed high-descriptor case with the same collection and nothing pending: it passes.",
+  "earlierFailureLogSha256": "94f090f63ebe9b1e2bbc4bc5410963447f1c55b55accfe39681a62490b92a13f",
+  "failingEvidence": "Unfixed tree (529cc610 agent_tools plus only this regression and its fixtures), CPython 3.12.13 and 3.14.3: python -m unittest agent_tools.tests.test_hosted_environment_races runs 4 tests with failures=3, each at the assertion that the current case passes, carrying AssertionError: False is not true twice and AssertionError: ValueError not raised once.",
+  "failureTypes": {
+    "highDescriptor": "A case that fills the descriptor table to prove a select() range defect assumes that no lower number comes back while the table is held and that its .08 s real-time budget lasts until the first readiness step. Neither holds in a serial worker: a cyclic collection inside the case runs finalizers of earlier cases that close descriptors, and a stalled runner can spend the budget first. Either way the unfixed owner records no ValueError and the rescue seam's first assertion fails.",
+    "lowDisk": "A case samples the live filesystem's available bytes and requires the observer's later sample not to exceed it by one byte. Any gain between the two samples admits the request, so no refusal is raised."
+  },
+  "fix": "Tests only. The high-descriptor case opens the shared descriptor_window before it fills the table (pending garbage is finalized, the automatic collector stays off until the table is released, earlier descriptors are named on stderr), asserts before every capture that the lowest free number is above the table and in the rescue seam that the child's own descriptors are, and gives the unfixed owner a clock that counts each thread's own reads, so exactly two readiness steps run whatever the wall clock does. The low-disk case no longer compares two samples: the observer's own unprojected sample refuses a minimum above the filesystem's capacity, and one actual sample handed to the observer refuses a single missing byte and admits exactly the bytes it reports. No product source changes.",
+  "kind": "whole-test-module-beforeimages",
+  "localReproductions": [
+    {
+      "by": "this fix",
+      "command": "the unfixed high-descriptor case alone, 10 runs each, every automatic collection recorded",
+      "host": "this macOS arm64 host",
+      "python": "3.12.13 and 3.14.3",
+      "result": "20 of 20 pass. 3.12.13: one collection between the first rescue and the second child's creation in 10 of 10 runs and none before the first child in 9 of 10; 3.14.3: none there in 10 of 10."
+    },
+    {
+      "by": "this fix",
+      "command": "the same case with the second child's first poll delayed by .09 s, 5 runs each",
+      "host": "this macOS arm64 host",
+      "python": "3.12.13 and 3.14.3",
+      "result": "unfixed 10 of 10 fail with AssertionError: False is not true at the hosted lines; current 0 of 10."
+    },
+    {
+      "by": "this fix",
+      "command": "the unfixed case with three, then four, of its own held descriptors closed right before the second child",
+      "host": "this macOS arm64 host",
+      "python": "3.12.13",
+      "result": "three: passes (stderr pipe still above the table). Four: fails with the hosted assertion, the child's pipes at 5 and 7, both streams read completely."
+    },
+    {
+      "by": "this fix",
+      "command": "ReconciliationStatusTests.test_forged_adoption_terminal_rejects, then the high-descriptor case in the same process, one full collection before the second child",
+      "host": "this macOS arm64 host",
+      "python": "3.12.13 and 3.14.3",
+      "result": "unfixed: fails with the hosted assertion on both; the collection released 30 custody descriptors and the child's pipes were 74 and 76. Current: passes on both; the window reported 'finalized 30 earlier descriptors {\".vm-hosts.local.json\": 3, \"directory\": 24, \"key\": 3}' and the collection released none. With automatic collection only, the unfixed case passed once: the owners were in an older generation than the collections that ran. The producer case itself fails here in its own setUp ('unknown' != 'ready') on both trees; its owners are held by mock call records, not by that failure."
+    },
+    {
+      "by": "this fix",
+      "command": "the low-disk case 400 times in one process, with one thread writing and deleting a 256 KiB file beside it, and without",
+      "host": "this macOS arm64 host",
+      "python": "3.12.13 and 3.14.3",
+      "result": "unfixed: 13 and 17 of 400 fail with the thread, 3 and 10 of 400 without it, all AssertionError: ValueError not raised. Current: 0 of 400 in all four loops."
+    }
+  ],
+  "nativeEvidenceLimit": "Hosted-runner test-harness behaviour only; no SSH, VM, guest or product native behaviour is involved or claimed. Which of the two high-descriptor triggers the hosted runner met is not recorded by the run. The next Linux Fast Checks run shows the cases green in the hosted shard order, and the window line names any earlier descriptors pending at the high-descriptor case.",
+  "nativeFailureClaimed": false,
+  "originalFailureLogScope": "Preserved failed-job log of run 42656925414, .runtime/windows-parity-20261107/ci/failed-42656925414.log (1354663 bytes); both traces are its Agent Tools Shard 5 lines 4987-5007. The log also holds that shard's unrelated PowerShell parser failure. The earlier high-descriptor failure is .runtime/windows-parity-20261107/ci/failed-42579108201.log lines 4011-4022.",
+  "originalFailureLogSha256": "7f6f4c6048bee64e59978706ca579712eb1bb5bd40a9e0970dbc616761092575",
+  "originalFailures": {
+    "highDescriptor": {
+      "earlier": "The same trace, line for line, in Fast Checks run 42579108201 on 251184fe after 0.308 s. The one hosted pass on record with the same case body (first run of the merge, 2026-11-07) took 0.267 s for the complete case; the module's other cases ran within 10% of each other in all three runs.",
+      "event": {
+        "elapsedSeconds": 0.3333041860000776,
+        "event": "finished",
+        "outcome": "failure",
+        "publicTestId": "agent_tools.tests.test_ssh_owned_channel_retirement.Fixed546RetirementTests.test_whole_high_fd_reader_writer_red_and_scalable_outer_inner_green",
+        "schemaVersion": 1
+      },
+      "run": "Fast Checks run 42656925414, job 'Agent Tools Shard 5' (ubuntu-24.04, CPython 3.12.16, hosted shard index 4, the shard's one serial non-isolated worker, module 70 of 143)",
+      "trace": [
+        "======================================================================",
+        "FAIL: test_whole_high_fd_reader_writer_red_and_scalable_outer_inner_green (agent_tools.tests.test_ssh_owned_channel_retirement.Fixed546RetirementTests.test_whole_high_fd_reader_writer_red_and_scalable_outer_inner_green)",
+        "----------------------------------------------------------------------",
+        "Traceback (most recent call last):",
+        "  File \"/home/runner/work/vpn_control/vpn_control/agent_tools/tests/test_ssh_owned_channel_retirement.py\", line 1277, in test_whole_high_fd_reader_writer_red_and_scalable_outer_inner_green",
+        "    inner = scope[\"inner\"](argv, .08)",
+        "            ^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "  File \"actual-highfd-generated-inner\", line 175, in inner",
+        "  File \"actual-highfd-generated-inner\", line 157, in _fixed546_capture",
+        "  File \"/home/runner/work/vpn_control/vpn_control/agent_tools/tests/test_ssh_owned_channel_retirement.py\", line 1223, in rescue_original",
+        "    self.assertTrue(\"ValueError\" in owner.read_errors or \"ValueError\" in owner.writer_errors)",
+        "AssertionError: False is not true"
+      ],
+      "traceSha256": "f25e9edae2793b01b993fa19546a6306358e4cbfa08570a735ab018c7d400495"
+    },
+    "lowDisk": {
+      "event": {
+        "elapsedSeconds": 0.0021585429999504413,
+        "event": "finished",
+        "outcome": "failure",
+        "publicTestId": "agent_tools.tests.test_windows_process_executable_identity.SourceInventoryTest.test_actual_destination_and_low_disk_refuse_without_hash",
+        "schemaVersion": 1
+      },
+      "run": "The same job. The case ran after 0.0022 s as part of agent_tools.tests.test_windows_process_executable_identity, which imports SourceInventoryTest; the peer module itself belongs to another shard.",
+      "trace": [
+        "======================================================================",
+        "FAIL: test_actual_destination_and_low_disk_refuse_without_hash (agent_tools.tests.test_windows_parallel_vm_source_inventory.SourceInventoryTest.test_actual_destination_and_low_disk_refuse_without_hash)",
+        "----------------------------------------------------------------------",
+        "Traceback (most recent call last):",
+        "  File \"/home/runner/work/vpn_control/vpn_control/agent_tools/tests/test_windows_parallel_vm_source_inventory.py\", line 214, in test_actual_destination_and_low_disk_refuse_without_hash",
+        "    with self.assertRaisesRegex(ValueError, \"disk-free\"):",
+        "         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "AssertionError: ValueError not raised"
+      ],
+      "traceSha256": "d78ff6b69f0a4588bd5de930bb6961d68db44f7c16d7b4209aa66ae09b0c209f"
+    }
+  },
+  "passingEvidence": "This tree, both interpreters: the same command runs 4 tests, OK.",
+  "routineSuite": "agent_tools.tests.test_hosted_environment_races runs in the affected agent-test stage of the managed pre-push tier and in the Fast Checks agent shards whenever the selector reaches it, including changes to either peer, descriptor_window.py, private_config_custody.py, windows_parallel_vm_source_inventory.py, these beforeimages or this provenance.",
+  "schemaVersion": 1,
+  "sourceBaseline": "529cc6106160bd5b85a25d261ad2f9a68570306d (pushed dev commit of Fast Checks run 42656925414)",
+  "sources": {
+    "agent_tools/tests/test_ssh_owned_channel_retirement.py": {
+      "beforeimage": "test_ssh_owned_channel_retirement.py.before.source",
+      "case": "Fixed546RetirementTests.test_whole_high_fd_reader_writer_red_and_scalable_outer_inner_green",
+      "sourceBytes": 135196,
+      "sourceSha256": "6794b8d22abd1e807f419f1e8589275dac6753dff666f63b9fa37e10144f9562"
+    },
+    "agent_tools/tests/test_windows_parallel_vm_source_inventory.py": {
+      "beforeimage": "test_windows_parallel_vm_source_inventory.py.before.source",
+      "case": "SourceInventoryTest.test_actual_destination_and_low_disk_refuse_without_hash",
+      "sourceBytes": 20634,
+      "sourceSha256": "c544aa50d8596e55881368d2ea6341a379fecb5c7da006c02b6b68104858e75d"
+    }
+  }
+}

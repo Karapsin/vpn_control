@@ -1203,7 +1203,8 @@ class Fixed546RetirementTests(unittest.TestCase):
                     finally: self.root = oldroot
 
     def test_whole_high_fd_reader_writer_red_and_scalable_outer_inner_green(self):
-        import resource, selectors, shlex
+        import resource, selectors, shlex, threading
+        from agent_tools.tests import descriptor_window
         subject = self.subject
         path = FIXTURE / "546-high-fd.before.source"
         raw = path.read_bytes(); provenance = json.loads((FIXTURE / "546-high-fd-provenance.json").read_bytes())
@@ -1220,6 +1221,9 @@ class Fixed546RetirementTests(unittest.TestCase):
         def rescue_original(owner):
             # Safety seam only after authentic1433 readiness failure: drain the
             # same original harmless child without a signal, retry, or replay.
+            # That failure is evidence only for a child whose own descriptors are
+            # above the held table; a lower one is a held number that came back.
+            self.assertGreater(min(owner.child.stdout.fileno(), owner.child.stderr.fileno()), max(held))
             self.assertTrue("ValueError" in owner.read_errors or "ValueError" in owner.writer_errors)
             first = owner.snapshot(); deadline = time.monotonic() + 5
             with selectors.DefaultSelector() as readiness:
@@ -1236,10 +1240,30 @@ class Fixed546RetirementTests(unittest.TestCase):
                 owner.writer.join(1); self.assertFalse(owner.writer.is_alive())
             owner.child.wait(timeout=1); owner.child.stdout.close(); owner.child.stderr.close(); owner.closed = True
             rescues.append(first)
+        def budget_clock():
+            # The unfixed owner leaves observe() only through its deadline. Each
+            # thread's own clock reads are counted instead of wall time, so a
+            # stalled runner cannot spend the .08 budget before the first
+            # readiness step: two steps always run, then the budget expires.
+            reads = {}
+            def clock():
+                thread = threading.get_ident(); reads[thread] = reads.get(thread, 0) + 1
+                return reads[thread] * .03
+            return clock
+        def table_is_full():
+            # Whatever a capture opens next is numbered above the held table.
+            lowest = os.open("/dev/null", os.O_RDONLY); os.close(lowest)
+            self.assertGreater(lowest, max(held))
         soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE); desired = 3564
         if soft < desired:
             if hard != resource.RLIM_INFINITY and hard < desired: self.skipTest("hard FD limit cannot reproduce real3308 FD ownership")
             resource.setrlimit(resource.RLIMIT_NOFILE, (desired, hard))
+        # Earlier cases of this serial worker leave cyclic garbage whose
+        # finalizers close descriptors. A collection after the table is filled
+        # hands those low numbers to the next child's pipes, and select() then
+        # works on the unfixed owner. Finalize that garbage first and keep the
+        # automatic collector off for as long as the table is held.
+        window = descriptor_window.begin(); self.addCleanup(descriptor_window.restore, window)
         held = []
         try:
             while not held or held[-1] < 3308: held.append(os.open("/dev/null", os.O_RDONLY))
@@ -1251,11 +1275,12 @@ class Fixed546RetirementTests(unittest.TestCase):
                     child = subprocess.Popen([sys.executable, "-I", "-B", "-c", command[4]], **kwargs)
                     children.append(child); return child
                 packet = owner._fixed546_transport_packet(["ssh-inert-only"], "gateway-inert-only", source, request)
+                table_is_full()
                 if fixed:
                     result = owner._fixed546_collect(packet, 3, _popen=peer)
                 else:
                     with mock.patch.object(owner._Fixed546Owner, "finish_naturally", rescue_original):
-                        result = owner._fixed546_collect(packet, .08, _popen=peer)
+                        result = owner._fixed546_collect(packet, .08, _popen=peer, _clock=budget_clock())
                 self.assertEqual(1, len(children)); self.assertTrue(result["originalTerminal"]["complete"])
                 self.assertTrue(result["originalStreamsClosed"])
                 self.assertEqual({"stdout": True, "stderr": True}, result["eof"])
@@ -1270,10 +1295,16 @@ class Fixed546RetirementTests(unittest.TestCase):
                 # only the control command is a finite harmless local child.
                 scope = {}; exec(compile(owner._fixed546_inner_source(), "actual-highfd-generated-inner", "exec"), scope)
                 argv = [sys.executable, "-I", "-B", "-c", "import sys;print('INNER HIGHFD OUT');sys.stderr.write('INNER HIGHFD ERR\\n');sys.exit(7)"]
+                table_is_full()
                 if fixed:
                     inner = scope["inner"](argv, 3)
                 else:
-                    with mock.patch.object(scope["_Fixed546Owner"], "finish_naturally", rescue_original):
+                    # The emitted inner entry takes no clock, so its own capture
+                    # call receives the counted one; the emitted source still runs whole.
+                    emitted_capture = scope["_fixed546_capture"]
+                    def counted_capture(*args, **kwargs): return emitted_capture(*args, _clock=budget_clock(), **kwargs)
+                    with mock.patch.dict(scope, {"_fixed546_capture": counted_capture}), \
+                            mock.patch.object(scope["_Fixed546Owner"], "finish_naturally", rescue_original):
                         inner = scope["inner"](argv, .08)
                 self.assertTrue(inner["originalTerminal"]["complete"])
                 self.assertEqual(b"INNER HIGHFD OUT\n", inner["stdout"]); self.assertEqual(b"INNER HIGHFD ERR\n", inner["stderr"])

@@ -210,10 +210,21 @@ class SourceInventoryTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "destination-exists"):
             self.observe()
         Path(self.destinations[0]).rmdir()
+        # This filesystem is live: its available bytes can grow between any two
+        # samples, so the observer's sample is never compared with an earlier one.
         actual = os.statvfs(self.root)
+        # Its own unprojected sample refuses a minimum the whole filesystem cannot hold.
         with self.assertRaisesRegex(ValueError, "disk-free"):
-            self.observe(actual.f_bavail * actual.f_frsize + 1)
-        self.assertEqual(self.hash_calls, [])
+            self.observe(actual.f_blocks * actual.f_frsize + 1)
+        # One actual sample, handed to the observer as the one it takes, refuses a
+        # single missing byte and admits exactly the bytes it reports.
+        available = actual.f_bavail * actual.f_frsize
+        with patch.object(inventory.os, "statvfs", return_value=actual) as sampled:
+            with self.assertRaisesRegex(ValueError, "disk-free"):
+                self.observe(available + 1)
+            self.assertEqual(self.hash_calls, [])
+            self.assertEqual(self.observe(available)["diskFreeBytes"], available)
+        self.assertEqual([call.args for call in sampled.call_args_list], [(self.root,), (self.root,)])
 
     def test_real_loopback_listener_conflict_parsed_before_hash(self):
         server = socket.socket()

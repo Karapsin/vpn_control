@@ -1404,6 +1404,94 @@
         "758df05a4f089a0f21636bb6aee5f128e38721ab12e21c2a93c1a94eb767505d"
       ]
     },
+    "agent_tools/tests/fixtures/hosted_environment_races/test_ssh_owned_channel_retirement.py.before.source": {
+      "reason": "Authentic whole unfixed 529cc610 generation of test_ssh_owned_channel_retirement.py, held byte-for-byte for the hosted-environment-race causal regression. test_hosted_environment_races compiles and executes it only in a ModuleType whose __file__ is the current public module and runs exactly its one high-descriptor case with the real beforeimage owner, held descriptors and harmless local children; only the moment of one full collection or of one slow poll is chosen. Its source readers are those of the public module it preserves, so it carries that module's exact scopes. No SSH, VM, guest or network action is reachable from that case.",
+      "scopes": [
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_fresh_nested_channel.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/ssh_connection_session.py",
+        "agent_tools/ssh_connection_recovery.py",
+        "agent_tools/private_inventory_lock.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/check_output_retention.py",
+        "agent_tools/ssh_nested_socket_owned_home_observation.py",
+        "agent_tools/ssh_nested_socket_noninteractive_observation.py",
+        "agent_tools/ssh_nested_socket_retirement.py",
+        "agent_tools/ssh_nested_socket_route_diagnostic.py",
+        "agent_tools/ssh_recovery_adoption.py",
+        "agent_tools/ssh_channel_inventory_diagnostics.py",
+        "agent_tools/ssh_channel_selection.py",
+        "agent_tools/mcp_server.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/ssh_owned_channel_retirement.py",
+        "agent_tools/tests/fixtures/owned_channel_retirement/intent.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/ready.json",
+        "agent_tools/tests/fixtures/retirement_default_config/before.source",
+        "agent_tools/tests/fixtures/retirement_default_config/probe-request.json",
+        "agent_tools/tests/fixtures/retirement_default_config/probe.json",
+        "agent_tools/tests/fixtures/retirement_default_config/probe.stderr",
+        "agent_tools/tests/fixtures/retirement_default_config/provenance.json",
+        "agent_tools/tests/fixtures/retirement_default_config/submission-intent.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/315-intent.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/315-ready.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/315-programs.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/315-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/fbac-only.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-intent.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-ready.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-helper.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-empty-stderr.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-private-preparation-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-capture-custody.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-capture-custody-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-high-fd.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-high-fd-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-route-fixture.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-route-fixture-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/diagnostic-retention-before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/diagnostic-retention-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/diagnostic-retention-v2.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/diagnostic-retention-v3.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/diagnostic-retention-v4.source",
+        "agent_tools/affected_agent_test_dependencies.json",
+        "agent_tools/android_original_host_status.py",
+        "agent_tools/android_qualified_cli_observation.py",
+        "agent_tools/ssh_automatic_program.py",
+        "agent_tools/ssh_channel_keeper.py",
+        "agent_tools/ssh_channel_keeper_entry.py",
+        "agent_tools/ssh_program_execution.py",
+        "agent_tools/ssh_program_execution_remote.py",
+        "agent_tools/ssh_source_file_gateway.source",
+        "agent_tools/ssh_source_file_stage.py",
+        "agent_tools/ssh_source_file_stage_direct.py",
+        "agent_tools/windows_artifact_transfer.py",
+        "agent_tools/windows_qga_transfer.py",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-admission.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-closed-unknown-owner-closed.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-closed-unknown-terminal.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-helper.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-intent.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-program-records-intake.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-ready.json",
+        "agent_tools/readiness.py",
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/readiness_transport.py",
+        "agent_tools/readiness_ssh_master.py",
+        "agent_tools/readiness_nested_channel.py",
+        "agent_tools/readiness_nested_membership.py",
+        "agent_tools/ssh_direct_inventory.py",
+        "agent_tools/private_config_custody.py",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/mcp_server.source",
+        "agent_tools/tests/fixtures/nested_directory_membership/original-ee4-remote.before.source"
+      ],
+      "sourceSha256": [
+        "6794b8d22abd1e807f419f1e8589275dac6753dff666f63b9fa37e10144f9562"
+      ]
+    },
     "agent_tools/tests/fixtures/inventory_fd_baseline/before.source": {
       "reason": "The complete historical diagnostic test has only its fixed source-relative backend_context loader. That helper separately declares its authenticated historical epoch; no arbitrary test source is loaded.",
       "scopes": [
@@ -8146,6 +8234,17 @@
         "fba56fc2cfc2c3cee5c693662f9138ae35fd7102f28196c57fb1b1eef8e6924a"
       ]
     },
+    "agent_tools/tests/test_hosted_environment_races.py": {
+      "reason": "Executes only the authenticated whole 529cc610 beforeimages named in its provenance, each in a ModuleType whose __file__ is the current public peer, plus the current peers it imports. One planted real cyclic PrivateConfigCustody pair with one in-case collection, one slow poll of a harmless local child, and one real megabyte deleted beside the case's root reproduce the hosted traces of the unfixed cases; the current cases pass under the same events. The beforeimage names are a finite literal map checked against the provenance hashes and sizes. No SSH, VM, guest or network action.",
+      "scopes": [
+        "agent_tools/tests/fixtures/hosted_environment_races/provenance.json",
+        "agent_tools/tests/fixtures/hosted_environment_races/test_ssh_owned_channel_retirement.py.before.source",
+        "agent_tools/tests/fixtures/hosted_environment_races/test_windows_parallel_vm_source_inventory.py.before.source"
+      ],
+      "sourceSha256": [
+        "39a6bb4ac66aa33bd235679aae0aa4cf0697aef22a21d9048963fa2f9490b4d9"
+      ]
+    },
     "agent_tools/tests/test_inventory_fd_baseline.py": {
       "reason": "Executes only the authenticated complete diagnostic before test, preserving its original __file__ for fixed public fixture lookup. A real disposable descriptor cycle reproduces the old false leak; the current exact FD equality still rejects a positively owned leak. No native transport or source graph is relaxed.",
       "scopes": [
@@ -10340,7 +10439,8 @@
         "e50befaf39859ecd0d6a041aa26cae7986becbf3efb5c37b1f2d829ac0f99dd4",
         "cf8a125c7480641a418bd96ae9e625bb38624904cdd2c8d9a2220114d063ab2c",
         "d9769644baeccd7b35c042f30d7f4d3c4a6252a37dfec05e32996acdb1344a15",
-        "6794b8d22abd1e807f419f1e8589275dac6753dff666f63b9fa37e10144f9562"
+        "6794b8d22abd1e807f419f1e8589275dac6753dff666f63b9fa37e10144f9562",
+        "1aae77f3a041ce4f912303d210326e49a33243ad47292fd2103d60ad9ac983d9"
       ]
     },
     "agent_tools/tests/test_ssh_privileged_program.py": {
