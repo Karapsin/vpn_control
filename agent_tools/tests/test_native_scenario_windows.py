@@ -43,7 +43,7 @@ MACHINE = "33333333-4444-4555-8666-777777777777"
 SCENARIO = "windows-ordinary-qualification"
 PROXY_ROWS = tuple("windows-proxy-lifecycle." + variant for variant in (
     "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated", "custom", "large",
-    "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh"))
+    "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh", "no-tray-close"))
 DOCUMENT_ROWS = ("windows-document-acceptance", *("windows-document-cold." + variant for variant in (
     "cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")))
 # The responsive row runs the same document action with its responsiveWork; cache-bytes is refused before any journal.
@@ -361,12 +361,13 @@ class TableTests(unittest.TestCase):
     def test_proxy_rows_are_the_dedicated_drivers_variants_with_the_builders_files(self):
         from agent_tools import windows_ordinary_dedicated_driver as dedicated
         from agent_tools import windows_scenario_proxy as proxy
-        self.assertEqual(set(windows.PROXY_VARIANTS), dedicated.PROXY_VARIANTS | dedicated.BRANCH_VARIANTS | dedicated.SCHEDULED_VARIANTS)
+        self.assertEqual(set(windows.PROXY_VARIANTS), dedicated.PROXY_VARIANTS | dedicated.BRANCH_VARIANTS | dedicated.SCHEDULED_VARIANTS
+                         | dedicated.NO_TRAY_VARIANTS)
         self.assertEqual(windows.PROXY_VARIANTS, proxy.VARIANTS)
         self.assertEqual(windows._PROXY_BRANCH_VARIANTS, dedicated.BRANCH_VARIANTS)
         self.assertEqual(windows._PROXY_SCHEDULED_VARIANTS, dedicated.SCHEDULED_VARIANTS)
-        # No public path leaves a Windows GUI without a tray, so no-tray-close has no row (MATRIX_SCENARIOS).
-        self.assertFalse({"no-tray-close", "restart-deny"} & set(windows.PROXY_VARIANTS), "the driver refuses these")
+        self.assertEqual(windows._PROXY_NO_TRAY_VARIANTS, dedicated.NO_TRAY_VARIANTS)
+        self.assertFalse({"restart-deny"} & set(windows.PROXY_VARIANTS), "a TUN variant is the scoped-TUN family's own")
         for variant in windows.PROXY_VARIANTS:
             with self.subTest(variant=variant):
                 row = windows.RECIPES["windows-proxy-lifecycle." + variant]
@@ -379,6 +380,7 @@ class TableTests(unittest.TestCase):
                 self.assertEqual(variant in proxy.TRAFFIC_VARIANTS, "traffic" in roles)
                 self.assertEqual(variant in dedicated.BRANCH_VARIANTS, {"branches", "listener"} <= roles)
                 self.assertEqual(variant in dedicated.SCHEDULED_VARIANTS, "scheduled" in roles)
+                self.assertEqual(variant in dedicated.NO_TRAY_VARIANTS, "noTray" in roles)
                 leaves = [relative.rsplit("/", 1)[1] for relative, _, _ in row["guestFiles"]] + [leaf for _, leaf in row["generated"] + row["extracted"]]
                 self.assertEqual(len(leaves), len(set(leaves)), "every published file has its own leaf in the workspace")
                 named = [role for _, role, _ in row["guestFiles"]] + [role for role, _ in row["generated"] + row["extracted"]]

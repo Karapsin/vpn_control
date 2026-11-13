@@ -946,10 +946,8 @@ does the proxy rows'.
 `windows_ordinary_dedicated_driver.py` accepts for that action: `gui-pending`,
 `find-best-success`, `find-best-verification-failure`, `find-best-cancel`,
 `generated`, `custom`, `large`, `prepare-failure`, `commit-readiness-failure`,
-`sibling-off` and `scheduled-refresh`. `no-tray-close` has no row: a GUI window's
-close detaches only without a tray (`Main.kt`), and on Windows the product marks its
-tray available as soon as AWT takes the icon (`DesktopTray.kt`), with no setting,
-flag or command that turns it off. Inputs are those of every product row: the bundle manifest,
+`sibling-off`, `scheduled-refresh` and `no-tray-close`. Inputs are those of every
+product row: the bundle manifest,
 `targetPackage`, and a `scenarioInput` whose `priorInstall` names the passed
 `windows-msi-base-install` or `windows-msi-base-reset` of that same package on
 this VM. An absent, malformed or self-referencing `priorInstall` refuses before
@@ -957,9 +955,10 @@ any journal; one that names no passed install of this package on this VM is
 refused by the job with exit 2, after the journal and before any guest effect.
 The job publishes the driver's reviewed roles (driver, lifecycle cases,
 runtime stages, observer, fixture worker, both loopback fixtures, and for
-`gui-pending`, `scheduled-refresh` and the six branch variants the traffic sampler,
-with the branch cases and listener script for the branch variants and
-`windows_lifecycle_scheduled_cases.py` for `scheduled-refresh`). It extracts the bundled
+`gui-pending`, `scheduled-refresh`, `no-tray-close` and the six branch variants the
+traffic sampler, with the branch cases and listener script for the branch variants,
+`windows_lifecycle_scheduled_cases.py` for `scheduled-refresh` and
+`windows_no_tray_desktop.py` for `no-tray-close`). It extracts the bundled
 `sing-box.exe` from the one installed jar that holds it, through a pin equal to
 the installed tree's, and makes a literal harness, a self-signed `localhost`
 certificate and key, a JKS trust store and the sampler's input. The key is made on
@@ -971,7 +970,7 @@ product row: `installed-package` only from a passed, unstopped run whose MSI
 registration and complete installed tree still match its prior install and whose
 installed launcher, run under the ordinary token, answered `--help` and reported
 the admitted version to `--version`. The driver asks before the row's runtime
-starts, and another version ends the row 1. All ten variants can share one
+starts, and another version ends the row 1. Every variant can share one
 installed base. A reviewed oracle failure closes what the row started and ends
 1; an unknown outcome parks and ends UNKNOWN as before. The closing issues its
 own off and quit, so an off that left the runtime running, or a refused quit,
@@ -1022,6 +1021,71 @@ whether a refresh of an unchanged subscription leaves the runtime untouched on
 Windows are proved only offline. The scheduled run comes five minutes after the
 manual refresh, and the sampler alone, at 1,800 samples a quarter second apart,
 takes about eight minutes before the closing starts.
+
+`no-tray-close` proves a detach by window close (DESKTOP-002) on Windows. After the
+runtime stages started proxy A, it checks that the same owner, JVM and runtime run
+and that the owned runtime image runs once, starts the sampler (1,800 samples 0.2 s
+apart) against the product's mixed port, and creates one owned private desktop
+(`windows_no_tray_desktop.OwnedNoTrayDesktop`, `WinSta0\VcParityNoTray-<hex>`, open to
+SYSTEM and the ordinary user only), which has no `Shell_TrayWnd`. Python's `subprocess`
+cannot name a desktop, so the Owner starts the lease's one GUI child, the installed
+`vpn-control.exe --state-dir <workspace>` and nothing else, through `DesktopProcess`: a
+ctypes `CreateProcessW` with `STARTUPINFO.lpDesktop` and Popen's own custody (DEVNULL
+input, two pipes, exactly those three inheritable handles in the handle list,
+`CREATE_NO_WINDOW`, the Owner's environment, root and raw capture, and the process
+handle kept for its birth time and terminal). Window messages pass only between
+threads of one desktop, so every read of that desktop's windows and the one `WM_CLOSE`
+run on a fresh owner thread that `SetThreadDesktop` put there. The row waits up to
+60 s for the GUI's one visible main window there, with every window of the desktop
+the launcher's or its relaunched JVM's and none of theirs on Default, and records
+Default's own `Shell_TrayWnd`, the desktop's security digest and, where
+`GetThreadDesktop` can name it for another process, the window thread's desktop. The
+window must then stay visible for 75 s, past `TrayInstallMaxAttempts` times
+`TrayInstallRetryDelayMillis` (60 s), so the product's tray decision is final. The
+row reads that decision through the frontend: `gui hide` must answer UNSUPPORTED
+(`Main.kt` refuses a hide without a tray) and leave the window visible. Then one
+`WM_CLOSE`: within 30 s the GUI exits, and the owner, asked at once, answers
+`gui hide` NOT_FOUND less than 9 s after the close was posted. That is a released
+lease: one nobody released is held until 15 s after its last heartbeat, and a live
+frontend sends one every 5 s (status has no frontend field). The GUI's terminal is
+exit 0 with both streams at EOF, and its JVM is gone. No window stays on the desktop,
+status and both actors are unchanged, the owned runtime still runs once, the desktop
+closes, and the samples cover the attach, the probe and the close before, during and
+after, all successful. The row's own explicit
+off, second serve, fixture stop and quit follow. A live GUI whose main window is
+hidden at any observation fails `gui-hidden-without-usable-tray`, a hide the frontend
+admitted included; that is a product defect to fix. Other named ends include
+`no-tray-gui-not-on-private-desktop`, `no-tray-gui-decided-it-has-a-tray`,
+`no-tray-close-post-refused`, `no-tray-close-kept-the-window`,
+`no-tray-close-gui-terminal`, `no-tray-close-left-frontend-attached`,
+`no-tray-close-release-unproven`, `no-tray-close-stopped-owner-or-runtime` and
+`no-tray-one-runtime-owner`. The module records each once as `no-tray-close-failed`,
+with the stage it stopped in and, for a refused Win32 call, the error code. A window
+census whose callback raised is refused (`owned-desktop-window-census`,
+`no-tray-default-desktop-census`) and never read as a shorter list; the record's
+`detail` names the exception. A
+refusal over what a census found records that first: `no-tray-desktop-not-empty`
+lists the windows of a new desktop that is not empty
+(`new-owned-desktop-must-have-no-foreign-windows`) or of one the ended GUI left a
+window on (`no-tray-closed-gui-left-a-window`),
+`no-tray-foreign-window-on-private-desktop` lists every window when one belongs to
+neither the launcher nor its JVM (`unowned-process-window-on-private-desktop`),
+`no-tray-jvm-exit-unproven` holds what was seen of a JVM that outlived its launcher
+(`no-tray-close-jvm-exit-unproven`), and `no-tray-runtime-census` holds the runtimes
+counted. Each
+closes like any known failure: the closing's quit ends a GUI still live, hidden or
+not, and then the desktop closes. A GUI that exited
+nonzero after the close keeps that terminal, so the closing ends on
+`dedicated-known-failure-terminal-and-eof` with every child terminal and the owner
+finishes 1; the desktop handle then closes with the owner process. A window still
+unresolved at its bound parks. Unknown before any native
+run: whether AWT takes a tray icon where no `Shell_TrayWnd` exists; `installTrayIcon`
+would then mark the tray available at once, and the row fails
+`gui-hidden-without-usable-tray`. Java and Compose on a desktop that never takes
+input, `CreateProcessW` with that `lpDesktop`, the relaunched JVM's inheritance of it,
+and the window reads and posted close from a thread of that desktop are proved only
+offline. A guest too slow to answer the lease read inside its 9 s ends
+`no-tray-close-release-unproven`, never a pass.
 
 `windows-scoped-tun.<variant>` has one row per variant `windows_tun_stages.py`
 accepts: `restart-deny`, `restart-grant`, `find-best-deny` and `find-best-grant`.
@@ -1482,10 +1546,7 @@ design.md adapter steps 4-8 with the names the code accepts: all 48 Windows
 scenarios and the 16 Windows document scenarios. A scenario whose design rows are not
 all built, or whose only row declares procedures still to do, maps to `()` and stays
 missing: the TUN grant (`TUN(approve)`), fault and config rows (the two grant rows
-exist but are refused at admission), `close-detach-traffic` and `gui-attach-detach`
-(design.md's `no-tray-close`: no Windows GUI closes without a tray, so no row can
-detach one; `gui-pending` proves an attach, a crash and the re-attach after it, and
-DESKTOP-001 names a detach apart from a crash), `cache-digest-bytes` (`windows-document-cold.cache-bytes`
+exist but are refused at admission), `cache-digest-bytes` (`windows-document-cold.cache-bytes`
 is refused before any journal), the GUI half of `gui-cli-transfer`
 (`windows-document-cold.gui-owner` is only its CLI half and is named for no
 scenario), the SSH relay transfer and stdin import of `ssh-import-routing`, and
@@ -1496,8 +1557,11 @@ where design.md step 8 adds it; the second real principal of
 run passes only with it observed denied, and one whose probe proved no denial fails
 that scenario alone (`failed-principal`, below). RSP also names `cli-disconnect-long-work` and its part of
 `operation-progress-cancellation`, `windows-scoped-tun.restart-deny` names
-`denial-preserves-active-a`, and `windows-proxy-lifecycle.scheduled-refresh` names
-`scheduled-without-gui` alone. A built row proves its part only with a passed run
+`denial-preserves-active-a`, `windows-proxy-lifecycle.scheduled-refresh` names
+`scheduled-without-gui` alone, and `windows-proxy-lifecycle.no-tray-close` names
+`close-detach-traffic` alone and `gui-attach-detach` with `gui-pending`: that row
+proves the attach, a crash and the re-attach, and DESKTOP-001 names a detach apart
+from a crash, which only a close without a tray makes. A built row proves its part only with a passed run
 through each route, and every row named for a scenario must. The observation reads each journal without collecting, so call
 `scenario-status` for every row first, then it classifies each row:
 

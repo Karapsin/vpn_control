@@ -39,7 +39,7 @@ WINDOWS_SCENARIOS = frozenset({  # Rows live in native_scenario_windows; a varia
     "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect",
     *("windows-proxy-lifecycle." + variant for variant in (
         "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated", "custom", "large",
-        "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh")),
+        "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh", "no-tray-close")),
     *("windows-scoped-tun." + variant for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")),
     *("windows-public-update." + variant for variant in (
         "public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "install-cancelled", "participating-copy-lock",

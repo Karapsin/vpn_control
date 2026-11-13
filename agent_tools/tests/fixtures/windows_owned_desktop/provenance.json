@@ -14,5 +14,12 @@
   "observerThreadBeforeSha256": "63277433be5831449de4b852e22b593eef12a8c29278b47f9cc437e6364066d3",
   "observerThreadBeforeSizeBytes": 22301,
   "observerThreadClassification": "PRIVATE_STATIC_REVIEW_NOT_NATIVE_FAILURE",
-  "observerThreadOracle": "Actual before observer uses construction thread for foreground context without checking actual current caller; same refusal oracle fails before and passes after GetCurrentThreadId check"
+  "observerThreadOracle": "Actual before observer uses construction thread for foreground context without checking actual current caller; same refusal oracle fails before and passes after GetCurrentThreadId check",
+  "popenSeamOwnerBeforeSha256": "565131c840e6ceccbde67bc01981c05a00eafb49663a2767c5f34f3696d97a00",
+  "popenSeamOwnerBeforeSizeBytes": 64238,
+  "popenSeamLeaseBeforeSha256": "a95e3724e73c0f3a11e462bb0ad6321eaf493f8553e5fd90806be61a224dec19",
+  "popenSeamLeaseBeforeSizeBytes": 22565,
+  "popenSeamAuthenticSource": "git 529cc610: agent_tools/windows_ordinary_process_owner.py and agent_tools/windows_no_tray_desktop.py, whole",
+  "popenSeamClassification": "LOCAL_FRAMEWORK_SEAM_NAMED_NO_DESKTOP_NOT_PRODUCT_OR_NATIVE_FAILURE",
+  "popenSeamOracle": "desktop_launch_oracle: real Owner.child/Child with the lease's module, declared inert Popen/CreateProcessW/thread peers; the owner and lease of 529cc610 start the lease's GUI through Popen with a handle_list startupinfo and no lpDesktop, the current pair through one CreateProcessW naming WinSta0\\<desktop>"
 }

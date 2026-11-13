@@ -21,8 +21,10 @@ PROXY_VARIANTS = ("gui-pending", "find-best-success", "find-best-verification-fa
 BRANCH_VARIANTS = ("generated", "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off")
 # The owner's own scheduled refresh with no GUI attached: windows_lifecycle_scheduled_cases and the sampler.
 SCHEDULED_VARIANTS = ("scheduled-refresh",)
-VARIANTS = PROXY_VARIANTS + BRANCH_VARIANTS + SCHEDULED_VARIANTS
-TRAFFIC_VARIANTS = frozenset({"gui-pending", *BRANCH_VARIANTS, *SCHEDULED_VARIANTS})
+# The GUI attached on an owned desktop with no notification area, then closed once: windows_no_tray_desktop and the sampler.
+NO_TRAY_VARIANTS = ("no-tray-close",)
+VARIANTS = PROXY_VARIANTS + BRANCH_VARIANTS + SCHEDULED_VARIANTS + NO_TRAY_VARIANTS
+TRAFFIC_VARIANTS = frozenset({"gui-pending", *BRANCH_VARIANTS, *SCHEDULED_VARIANTS, *NO_TRAY_VARIANTS})
 # windows-scoped-tun.<variant>: the same action and runtime, plus windows_tun_stages; a grant adds the direct sampler.
 TUN_VARIANTS = ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")
 TUN_GRANT_VARIANTS = frozenset({"restart-grant", "find-best-grant"})
@@ -179,8 +181,10 @@ def traffic_input(variant, operation):
 
     A scheduled refresh runs one five-minute interval after the case's manual refresh, and the case waits two minutes
     past that: 1,800 samples a quarter second apart (the worker's most), started after the case's own on, run past it.
+    A no-tray close waits up to a minute for the GUI's window, 75 s for its tray decision and 30 s for its exit: the
+    gui-pending sampler's six minutes cover all three with samples after the close.
     """
-    count, interval = {"gui-pending": (1800, 0.2), "scheduled-refresh": (1800, 0.25)}.get(variant, (8, 0.05))
+    count, interval = {"gui-pending": (1800, 0.2), "scheduled-refresh": (1800, 0.25), "no-tray-close": (1800, 0.2)}.get(variant, (8, 0.05))
     value = {"schemaVersion": 1, "mixedPort": 1, "expectedBodyHex": fixture_body(operation).encode("ascii").hex(),
              "sampleCount": count, "intervalSeconds": interval, "ioTimeoutSeconds": 5}
     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
@@ -234,6 +238,11 @@ def harness(variant, *, operation, paths, runtime_sha256, source_sha, admissions
         value["scheduled"] = {"schemaVersion": 1, "guiPath": paths["installed"] + "\\vpn-control.exe",
                               "trafficWorkerPath": paths["file:traffic"], "trafficInputPath": paths["file:trafficInput"],
                               "installedAdmissionArtifactId": admissions["installed"], "fixtureAdmissionArtifactId": admissions["fixture"]}
+    if variant in NO_TRAY_VARIANTS:
+        value["modules"]["noTray"] = paths["file:noTray"]
+        value["noTray"] = {"schemaVersion": 1, "guiPath": paths["installed"] + "\\vpn-control.exe",
+                           "trafficWorkerPath": paths["file:traffic"], "trafficInputPath": paths["file:trafficInput"],
+                           "installedAdmissionArtifactId": admissions["installed"], "fixtureAdmissionArtifactId": admissions["fixture"]}
     if variant in BRANCH_VARIANTS:
         value["modules"]["branches"] = paths["file:branches"]
         value["branch"] = {"schemaVersion": 1, "fixtureRuntimeToolPath": paths["file:" + RUNTIME_ROLE],

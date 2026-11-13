@@ -150,27 +150,27 @@ class DesktopCases(unittest.TestCase):
     def test_absent_child_api_refuses_before_any_native_effect(self):
         owner=N(child=lambda label,argv:None)
         with self.assertRaisesRegex(AssertionError,'OWNED_DESKTOP_CHILD_API_MISSING'):
-            desktop.no_tray_close_case(owner,{}, {'guiPath':'gui','trafficWorkerPath':'worker',
-                'trafficInputPath':'input','startupKind':'normal'},N(),N())
+            desktop.no_tray_close_case(owner,{}, {'schemaVersion':1,'guiPath':'gui','trafficWorkerPath':'worker',
+                'trafficInputPath':'input','installedAdmissionArtifactId':'installed',
+                'fixtureAdmissionArtifactId':'fixture'},N(),N(),N())
 
-    def test_exact_inherited_owned_desktop_handle_and_single_launch(self):
+    def test_exact_private_desktop_name_and_single_launch(self):
         owner=N(event=lambda *_:None);lease=object.__new__(desktop.OwnedNoTrayDesktop)
-        lease.current=lambda:None;lease.owner=owner;lease.gui_path='C:\\App\\gui.exe';lease.workspace='C:\\Owned\\state'
-        lease.startup_kind='normal';lease.used=False;lease.name='owned';lease.security=b'private';lease.handle=42
+        lease.current=lambda:None;lease.owner=owner;lease.gui_path='C:\\App\\vpn-control.exe';lease.workspace='C:\\Owned\\state'
+        lease.used=False;lease.name='owned';lease.security=b'private';lease.handle=42
         owner.no_tray_desktop_leases=[lease]
         argv=[lease.gui_path,'--state-dir',lease.workspace]
-        with patch.object(desktop.subprocess,'STARTUPINFO',create=True,side_effect=lambda **kw:N(**kw)):
-            result=lease.startup_info(owner,'lifecycle-gui',argv)
-            self.assertEqual(result.lpAttributeList,{'handle_list':[42]})
-            with self.assertRaisesRegex(AssertionError,'closed-no-tray-child-role'):
-                lease.startup_info(owner,'lifecycle-gui',argv)
+        self.assertEqual(lease.desktop_for_child(owner,'lifecycle-gui',argv),'WinSta0\\owned')
+        with self.assertRaisesRegex(AssertionError,'closed-no-tray-child-role'):
+            lease.desktop_for_child(owner,'lifecycle-gui',argv)
 
     def test_foreign_gui_path_never_consumes_desktop_launch(self):
         owner=N(event=lambda *_:None);lease=object.__new__(desktop.OwnedNoTrayDesktop)
-        lease.current=lambda:None;lease.owner=owner;lease.gui_path='C:\\App\\gui.exe';lease.workspace='C:\\Owned\\state'
-        lease.startup_kind='normal';lease.used=False;owner.no_tray_desktop_leases=[lease]
-        with self.assertRaisesRegex(AssertionError,'closed-no-tray-child-role'):
-            lease.startup_info(owner,'lifecycle-gui',['C:\\Other.exe','--state-dir',lease.workspace])
+        lease.current=lambda:None;lease.owner=owner;lease.gui_path='C:\\App\\vpn-control.exe';lease.workspace='C:\\Owned\\state'
+        lease.used=False;owner.no_tray_desktop_leases=[lease]
+        for argv in (['C:\\Other.exe','--state-dir',lease.workspace],[lease.gui_path,'--autostart','--state-dir',lease.workspace]):
+            with self.assertRaisesRegex(AssertionError,'closed-no-tray-child-role'):
+                lease.desktop_for_child(owner,'lifecycle-gui',argv)
         self.assertFalse(lease.used)
 
 

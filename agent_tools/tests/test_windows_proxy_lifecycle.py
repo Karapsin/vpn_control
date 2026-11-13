@@ -53,7 +53,8 @@ SOURCE_PATHS = ("agent_tools/windows_lifecycle_runtime_stages.py", "scripts/wind
                 "agent_tools/windows_lifecycle_runtime_fixture_worker.py", "scripts/integration/socks_http_fixture.py",
                 "scripts/integration/https_subscription_relay_fixture.py", "agent_tools/windows_lifecycle_traffic_worker.py",
                 "agent_tools/windows_runtime_branch_cases.py", "agent_tools/windows_runtime_tcp_listeners.ps1",
-                "agent_tools/windows_tun_stages.py", "agent_tools/windows_lifecycle_scheduled_cases.py")
+                "agent_tools/windows_tun_stages.py", "agent_tools/windows_lifecycle_scheduled_cases.py",
+                "agent_tools/windows_no_tray_desktop.py")
 SOURCES = {}
 DESKTOP = ROOT / "desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop"
 LEASE_SOURCE = DESKTOP / "DesktopOwnerFrontendLifecycle.kt"
@@ -1583,7 +1584,8 @@ class HarnessTests(unittest.TestCase):
                            ("fixture", "windows_lifecycle_runtime_fixture_worker.py"), ("socks", "socks_http_fixture.py"),
                            ("https", "https_subscription_relay_fixture.py"), ("traffic", "windows_lifecycle_traffic_worker.py"),
                            ("branches", "windows_runtime_branch_cases.py"), ("listener", "windows_runtime_tcp_listeners.ps1"),
-                           ("scheduled", "windows_lifecycle_scheduled_cases.py"), (proxy.RUNTIME_ROLE, proxy.RUNTIME_LEAF),
+                           ("scheduled", "windows_lifecycle_scheduled_cases.py"), ("noTray", "windows_no_tray_desktop.py"),
+                           (proxy.RUNTIME_ROLE, proxy.RUNTIME_LEAF),
                            *proxy.GENERATED.items()):
             paths["file:" + role] = workspace + "\\" + leaf
         return paths
@@ -1598,7 +1600,7 @@ class HarnessTests(unittest.TestCase):
                    "file:fixture": "agent_tools/windows_lifecycle_runtime_fixture_worker.py", "file:socks": "scripts/integration/socks_http_fixture.py",
                    "file:https": "scripts/integration/https_subscription_relay_fixture.py", "file:traffic": "agent_tools/windows_lifecycle_traffic_worker.py",
                    "file:branches": "agent_tools/windows_runtime_branch_cases.py", "file:listener": "agent_tools/windows_runtime_tcp_listeners.ps1",
-                   "file:scheduled": "agent_tools/windows_lifecycle_scheduled_cases.py"}
+                   "file:scheduled": "agent_tools/windows_lifecycle_scheduled_cases.py", "file:noTray": "agent_tools/windows_no_tray_desktop.py"}
         by_path = {}
         for key, relative in sources.items():
             body = source_bytes()[relative]
@@ -1621,7 +1623,7 @@ class HarnessTests(unittest.TestCase):
 
     def test_every_variant_the_driver_accepts_has_an_admitted_harness(self):
         self.assertEqual(set(proxy.VARIANTS), set(dedicated_driver.PROXY_VARIANTS | dedicated_driver.BRANCH_VARIANTS
-                                                  | dedicated_driver.SCHEDULED_VARIANTS))
+                                                  | dedicated_driver.SCHEDULED_VARIANTS | dedicated_driver.NO_TRAY_VARIANTS))
         for variant in proxy.VARIANTS:
             with self.subTest(variant=variant):
                 raw, inputs, paths = self.admitted(variant)
@@ -1636,6 +1638,12 @@ class HarnessTests(unittest.TestCase):
                     self.assertEqual((paths["installed"] + "\\vpn-control.exe", paths["file:traffic"], paths["file:trafficInput"]),
                                      tuple(inputs["scheduled"][key] for key in ("guiPath", "trafficWorkerPath", "trafficInputPath")))
                     self.assertEqual(paths["file:scheduled"], inputs["modules"]["scheduled"])
+                self.assertEqual(variant in dedicated_driver.NO_TRAY_VARIANTS, "noTray" in inputs)
+                if "noTray" in inputs:
+                    # The lease starts the installed launcher's own GUI sibling; the sampler is the same worker.
+                    self.assertEqual((paths["installed"] + "\\vpn-control.exe", paths["file:traffic"], paths["file:trafficInput"]),
+                                     tuple(inputs["noTray"][key] for key in ("guiPath", "trafficWorkerPath", "trafficInputPath")))
+                    self.assertEqual(paths["file:noTray"], inputs["modules"]["noTray"])
                 self.assertEqual(1800, inputs["runtime"]["maxFixtureSeconds"])
 
     def test_a_mutated_harness_is_refused_by_the_driver(self):
@@ -1654,9 +1662,10 @@ class HarnessTests(unittest.TestCase):
                 worker.validate(value)
                 self.assertEqual(proxy.fixture_body(self.OPERATION).encode().hex(), value["expectedBodyHex"])
         self.assertEqual(("harness", "certificate", "privateKey", "trustStore"), proxy.generated_roles("find-best-cancel"))
-        # No row can make a Windows GUI close without a tray, so there is no no-tray-close variant.
+        # A no-tray close is sampled like the GUI rows; a variant the driver does not name has no files at all.
+        self.assertIn("trafficInput", proxy.generated_roles("no-tray-close"))
         with self.assertRaisesRegex(ValueError, "proxy_variant"):
-            proxy.generated_roles("no-tray-close")
+            proxy.generated_roles("no-tray-autostart")
 
 
 class MaterialTests(unittest.TestCase):

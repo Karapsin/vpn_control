@@ -123,12 +123,12 @@
       "sha256": "e6f318b6b346fcb8d6932b26dabf28bbc0f1d3f5fcf71bd0ab425626ac3b24f1"
     },
     "agent_tools/tests/fixtures/windows_lifecycle_runtime/stages/controls.source": {
-      "bytes": 16755,
-      "currentRoleAdjustment": "TunDecisionCases checks the route's one UAC decision instead of the removed frame handoff (bind_reviewed_decision), and begin takes the observer. originalPath/originalSourceSha256 retain the source-exact historical copy.",
+      "bytes": 16752,
+      "currentRoleAdjustment": "TunDecisionCases checks the route's one UAC decision instead of the removed frame handoff (bind_reviewed_decision), and begin takes the observer. DesktopCases call no_tray_close_case with its six input fields and the runtime stages, and take the lease's lpDesktop from desktop_for_child, refusing an --autostart or foreign argv. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/qualify_stages.py",
       "originalSourceBytes": 18117,
       "originalSourceSha256": "897638264d70518a412fb822301e885c5d271e6a472ef625db69ca43e9190054",
-      "sha256": "4ea1924d893057b548f2b2825e101d6a5934b1fb767ef297e57b8c282212a932"
+      "sha256": "3b16df2d6ba2bd727d381596f948f394a54091d0acd6830a7ebeeaa6e15bf6d4"
     },
     "agent_tools/tests/fixtures/windows_lifecycle_runtime/tun_stages.context.before.source": {
       "bytes": 14775,
@@ -175,9 +175,12 @@
       "sha256": "c37423c7627e6972eff2b7d717904f9b07fdaeb5b1d880d1606559b58d2e2e2d"
     },
     "agent_tools/windows_no_tray_desktop.py": {
-      "bytes": 22565,
+      "bytes": 45965,
+      "currentRoleAdjustment": "The lease hands the owner's CreateProcessW path the lpDesktop of its one GUI child (desktop_for_child) for the closed argv, the installed GUI with --state-dir, instead of a Popen startupinfo handle_list, which named no desktop. Window reads and the one WM_CLOSE run on a thread of the private desktop, an empty desktop's enumeration is no failure, and no_tray_close_case is the windows-proxy-lifecycle.no-tray-close row. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-owned-desktop-preparation-v1/candidate/agent_tools/windows_no_tray_desktop.py",
-      "sha256": "a95e3724e73c0f3a11e462bb0ad6321eaf493f8553e5fd90806be61a224dec19"
+      "originalSourceBytes": 22565,
+      "originalSourceSha256": "a95e3724e73c0f3a11e462bb0ad6321eaf493f8553e5fd90806be61a224dec19",
+      "sha256": "89b560bd8be11c4098a627fce00bf9a9f2ecb7a8298c80b2ddcc90bf1970b030"
     },
     "agent_tools/windows_runtime_branch_cases.py": {
       "bytes": 34972,

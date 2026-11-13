@@ -525,33 +525,5 @@ class AdmissionTests(unittest.TestCase):
         self.assertEqual((SCENARIO,), windows.MATRIX_SCENARIOS["windows-owner-lifecycle"]["scheduled-without-gui"])
 
 
-class NoTrayCloseDecisionTests(unittest.TestCase):
-    """Why close-detach-traffic and gui-attach-detach have no row on Windows, read from the product source.
-
-    A change to any of these facts can make a no-tray close producible: the matrix mapping must then be reviewed.
-    """
-
-    def test_no_public_setting_flag_or_command_leaves_a_windows_gui_without_a_tray(self):
-        settings = kotlin("shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/control/ControlSettingsLogic.kt")
-        writable = re.findall(r"val writableKeys: Set<String> = setOf\(([^)]*)\)", settings)
-        self.assertEqual(1, len(writable))
-        self.assertFalse([key for key in re.findall(r"\"([^\"]+)\"", writable[0]) if "tray" in key or "close" in key])
-        parser = kotlin("shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/control/ControlCliParser.kt")
-        self.assertEqual(['"--autostart", "--tray", "--minimized"'], re.findall(r"private val guiFlags = setOf\(([^)]*)\)", parser),
-                         "the GUI's only flags start it hidden in a tray")
-        self.assertEqual({"gui.show", "gui.hide"}, {wire for wire in WIRES if wire.startswith("gui.")}, "no command closes or detaches a GUI")
-
-    def test_a_close_detaches_only_without_a_tray_and_windows_always_has_one(self):
-        main = kotlin("desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/Main.kt")
-        self.assertRegex(main, r"onCloseRequest = \{\n\s+if \(trayWindowState\.canHideToTray\) \{\n\s+trayWindowState = trayWindowState\."
-                               r"withCloseRequestHiddenToTray\(\)\n\s+\} else \{\n\s+detachFrontend\(\)\n")
-        tray = kotlin("desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopTray.kt")
-        self.assertRegex(tray, r"fun installTrayIcon\(icon: TrayIcon\) \{\n\s+if \(disposed\) return\n\s+trayIcon = icon\n"
-                               r"\s+if \(desktopTrayPlatform\(\) != DesktopTrayPlatform\.Linux\) \{\n\s+markAvailable\(\)\n\s+return\n")
-        self.assertEqual((), windows.MATRIX_SCENARIOS["windows-owner-lifecycle"]["close-detach-traffic"])
-        self.assertEqual((), windows.MATRIX_SCENARIOS["windows-native-cli"]["gui-attach-detach"])
-        self.assertNotIn("windows-proxy-lifecycle.no-tray-close", windows.RECIPES)
-
-
 if __name__ == "__main__":
     unittest.main()

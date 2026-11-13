@@ -73,6 +73,7 @@ BUNDLE_FILES = ("agent_tools/windows_scenario_host_job.py", "agent_tools/windows
                 "agent_tools/windows_scenario_proxy.py", "agent_tools/windows_ordinary_dedicated_driver.py",
                 "agent_tools/windows_lifecycle_runtime_fixture_worker.py", "scripts/integration/https_subscription_relay_fixture.py",
                 "agent_tools/windows_tun_stages.py", "agent_tools/windows_tun_direct_sampler.py", "agent_tools/windows_lifecycle_scheduled_cases.py",
+                "agent_tools/windows_no_tray_desktop.py",
                 "agent_tools/windows_public_updater/update_cases.py", "agent_tools/windows_public_updater/update_receipts.py",
                 "agent_tools/windows_public_updater/update_fixture_server.py", "agent_tools/windows_public_updater/native_collector.py",
                 "scripts/fixture_environment.py", "scripts/macos_packaging_jdk_preflight.py", "scripts/prepare_desktop_update_fixture.py",
@@ -2491,6 +2492,13 @@ class ProxyFamilyTests(ProxyFamilyBase):
                     for key in ("guiPath", "trafficWorkerPath", "trafficInputPath"):
                         self.assertIn(inputs["scheduled"][key], pins)
                     self.assertEqual(workspace + "\\windows_lifecycle_scheduled_cases.py", inputs["modules"]["scheduled"])
+                self.assertEqual(variant == "no-tray-close", "noTray" in inputs)
+                if "noTray" in inputs:
+                    # The lease starts the installed tree's own pinned launcher; the sampler input is the job's.
+                    self.assertEqual(INSTALLED_ROOT + "\\vpn-control.exe", inputs["noTray"]["guiPath"])
+                    for key in ("guiPath", "trafficWorkerPath", "trafficInputPath"):
+                        self.assertIn(inputs["noTray"][key], pins)
+                    self.assertEqual(workspace + "\\windows_no_tray_desktop.py", inputs["modules"]["noTray"])
                 for path in (*inputs["modules"].values(), inputs["runtime"]["fixtureWorkerPath"], inputs["runtime"]["socksSourcePath"],
                              inputs["runtime"]["httpsSourcePath"], inputs["runtime"]["certificatePath"], inputs["runtime"]["trustStorePath"]):
                     self.assertIn(path, pins, "every file the harness names is held by the worker")
@@ -2499,6 +2507,8 @@ class ProxyFamilyTests(ProxyFamilyBase):
                 self.assertNotIn(workspace + "\\proxy-localhost.key", {pin["path"] for pin in seen["bootstrap"]["filePins"]})
         self.assertEqual([], self.classify()["unresolved"])
         self.assertEqual(set(driver.PROXY_VARIANTS), set(captures))
+        # The loop takes its rows from the table, so a table without the row would leave the no-tray assertions above unrun.
+        self.assertIn("no-tray-close", sorted(captures))
         for variant, captured in captures.items():
             job.assert_closed(*captured)
             for name, change in self.mutations().items():

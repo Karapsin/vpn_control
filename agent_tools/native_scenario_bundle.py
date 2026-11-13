@@ -85,6 +85,8 @@ _SCENARIOS = {
         "agent_tools/windows_tun_direct_sampler.py",
         # The scheduled-refresh row: the owner's own scheduled refresh with no GUI, sampled by the traffic worker above.
         "agent_tools/windows_lifecycle_scheduled_cases.py",
+        # The no-tray-close row: the owned desktop with no notification area and its case, sampled by the same worker.
+        "agent_tools/windows_no_tray_desktop.py",
         # The public-update rows: the dedicated driver, its eight module roles and close hold,
         # and the SYSTEM collector the host job renders and runs; the driver, lifecycle cases and observer are above.
         "agent_tools/windows_public_updater/update_cases.py",

@@ -422,6 +422,171 @@ class Pin:
         self.native.k.CloseHandle(self.handle)
 
 
+# CreateProcessW for the one GUI child of an owned desktop lease: subprocess cannot name a desktop.
+_STARTF_USESTDHANDLES = 0x00000100
+_DESKTOP_CHILD_FLAGS = 0x00000400 | 0x00080000 | 0x08000000  # UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, NO_WINDOW
+_PROC_THREAD_ATTRIBUTE_HANDLE_LIST = 0x00020002
+
+
+# Fixed-width fields: the amd64 layout is then the same on any 64-bit host that checks it, where wintypes' DWORD is not.
+_DWORD, _WORD = ctypes.c_uint32, ctypes.c_uint16
+
+
+class _StartupInfo(ctypes.Structure):
+    _fields_ = [("cb", _DWORD), ("lpReserved", ctypes.c_wchar_p), ("lpDesktop", ctypes.c_wchar_p), ("lpTitle", ctypes.c_wchar_p),
+                ("dwX", _DWORD), ("dwY", _DWORD), ("dwXSize", _DWORD), ("dwYSize", _DWORD),
+                ("dwXCountChars", _DWORD), ("dwYCountChars", _DWORD), ("dwFillAttribute", _DWORD),
+                ("dwFlags", _DWORD), ("wShowWindow", _WORD), ("cbReserved2", _WORD), ("lpReserved2", ctypes.c_void_p),
+                ("hStdInput", ctypes.c_void_p), ("hStdOutput", ctypes.c_void_p), ("hStdError", ctypes.c_void_p)]
+
+
+class _StartupInfoEx(ctypes.Structure):
+    _fields_ = [("StartupInfo", _StartupInfo), ("lpAttributeList", ctypes.c_void_p)]
+
+
+class _ProcessInformation(ctypes.Structure):
+    _fields_ = [("hProcess", ctypes.c_void_p), ("hThread", ctypes.c_void_p), ("dwProcessId", _DWORD), ("dwThreadId", _DWORD)]
+
+
+def environment_block(environment):
+    """The CREATE_UNICODE_ENVIRONMENT block of one mapping: sorted by name without regard to case, two NULs at its end."""
+    require(type(environment) is dict and environment, "desktop-child-environment")
+    seen = set()
+    for key, value in environment.items():
+        require(type(key) is str and type(value) is str and key and "=" not in key[1:]
+                and "\0" not in key and "\0" not in value and key.upper() not in seen, "desktop-child-environment-entry")
+        seen.add(key.upper())
+    block = "".join(key + "=" + environment[key] + "\0" for key in sorted(environment, key=str.upper)) + "\0"
+    require(len(block) <= 1024 * 1024, "desktop-child-environment-bound")
+    return block
+
+
+class DesktopProcessNative:
+    """The calls of DesktopProcess, on the guest: _winapi and msvcrt as Popen uses them, ctypes for CreateProcessW."""
+
+    # kernel32's result and argument types, in a table a host without Windows can hold create()'s arguments against.
+    SIGNATURES = {
+        "InitializeProcThreadAttributeList": (W.BOOL, (W.LPVOID, W.DWORD, W.DWORD, ctypes.POINTER(ctypes.c_size_t))),
+        "UpdateProcThreadAttribute": (W.BOOL, (W.LPVOID, W.DWORD, ctypes.c_size_t, W.LPVOID, ctypes.c_size_t, W.LPVOID,
+                                               ctypes.POINTER(ctypes.c_size_t))),
+        "DeleteProcThreadAttributeList": (None, (W.LPVOID,)),
+        "CreateProcessW": (W.BOOL, (W.LPCWSTR, W.LPWSTR, W.LPVOID, W.LPVOID, W.BOOL, W.DWORD, W.LPVOID, W.LPCWSTR,
+                                    ctypes.POINTER(_StartupInfoEx), ctypes.POINTER(_ProcessInformation))),
+    }
+
+    def __init__(self):
+        require(os.name == "nt", "windows-desktop-child-required")
+        import _winapi
+        import msvcrt
+        self.winapi, self.msvcrt = _winapi, msvcrt
+        self.k = ctypes.WinDLL("kernel32", use_last_error=True)
+        for name, (result, arguments) in self.SIGNATURES.items():
+            function = getattr(self.k, name)
+            function.restype, function.argtypes = result, arguments
+
+    def pipe(self):
+        return self.winapi.CreatePipe(None, 0)
+
+    def null(self):
+        """DEVNULL as Popen opens it: a CRT descriptor and its handle, both the parent's."""
+        descriptor = os.open(os.devnull, os.O_RDWR)
+        return descriptor, self.msvcrt.get_osfhandle(descriptor)
+
+    def inheritable(self, handle):
+        current = self.winapi.GetCurrentProcess()
+        return self.winapi.DuplicateHandle(current, handle, current, 0, 1, self.winapi.DUPLICATE_SAME_ACCESS)
+
+    def close(self, handle):
+        self.winapi.CloseHandle(handle)
+
+    def close_descriptor(self, descriptor):
+        os.close(descriptor)
+
+    def reader(self, handle):
+        return open(self.msvcrt.open_osfhandle(handle, 0), "rb", buffering=0)
+
+    def create(self, application, command_line, environment, cwd, desktop, handles):
+        """CreateProcessW: the desktop named, these three handles the only ones inherited, standard handles set."""
+        size = ctypes.c_size_t()
+        self.k.InitializeProcThreadAttributeList(None, 1, 0, ctypes.byref(size))
+        require(0 < size.value <= 4096, "desktop-child-attribute-list-size")
+        attributes = ctypes.create_string_buffer(size.value)
+        require(bool(self.k.InitializeProcThreadAttributeList(attributes, 1, 0, ctypes.byref(size))),
+                "desktop-child-attribute-list")
+        try:
+            listed = (W.HANDLE * len(handles))(*handles)
+            require(bool(self.k.UpdateProcThreadAttribute(attributes, 0, _PROC_THREAD_ATTRIBUTE_HANDLE_LIST, listed,
+                                                          ctypes.sizeof(listed), None, None)), "desktop-child-handle-list")
+            startup = _StartupInfoEx()
+            startup.StartupInfo.cb = ctypes.sizeof(_StartupInfoEx)
+            startup.StartupInfo.lpDesktop = desktop
+            startup.StartupInfo.dwFlags = _STARTF_USESTDHANDLES
+            startup.StartupInfo.hStdInput, startup.StartupInfo.hStdOutput, startup.StartupInfo.hStdError = handles
+            startup.lpAttributeList = ctypes.cast(attributes, ctypes.c_void_p)
+            command = ctypes.create_unicode_buffer(command_line)  # CreateProcessW may write into its command line.
+            block = ctypes.create_string_buffer(environment.encode("utf-16-le"))
+            information = _ProcessInformation()
+            if not self.k.CreateProcessW(application, command, None, None, True, _DESKTOP_CHILD_FLAGS, block, cwd,
+                                         ctypes.byref(startup), ctypes.byref(information)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            return int(information.hProcess), int(information.hThread), int(information.dwProcessId)
+        finally:
+            self.k.DeleteProcThreadAttributeList(attributes)
+
+    def wait(self, handle):
+        return self.winapi.WaitForSingleObject(handle, 0)
+
+    def exit_code(self, handle):
+        return self.winapi.GetExitCodeProcess(handle)
+
+
+class DesktopProcess:
+    """A Popen-like child started on a named desktop, for Child's owned desktop path only.
+
+    The rest is Popen's own Windows route with close_fds: DEVNULL input, two pipes, exactly those three
+    inheritable handles in PROC_THREAD_ATTRIBUTE_HANDLE_LIST, STARTF_USESTDHANDLES, CREATE_NO_WINDOW, the owner's
+    environment and root. The process handle is retained like Popen's _handle, the thread handle and the child's
+    ends are closed like Popen closes them, and poll() is Popen's: a signalled handle and its exit code.
+    """
+
+    def __init__(self, argv, *, cwd, env, desktop, native):
+        self.args, self._native = tuple(argv), native
+        self._handle = self.pid = self.returncode = self.stdout = self.stderr = None
+        require(type(desktop) is str and desktop.startswith("WinSta0\\") and "\0" not in desktop, "desktop-child-desktop-name")
+        command_line, environment = subprocess.list2cmdline(self.args), environment_block(env)
+        made, descriptor = [], None
+        try:
+            stdout_read, stdout_write = native.pipe()
+            made += [stdout_read, stdout_write]
+            stderr_read, stderr_write = native.pipe()
+            made += [stderr_read, stderr_write]
+            descriptor, null = native.null()
+            inherited = []
+            for handle in (null, stdout_write, stderr_write):
+                inherited.append(native.inheritable(handle))
+                made.append(inherited[-1])
+            process, thread, pid = native.create(self.args[0], command_line, environment, str(cwd), desktop, inherited)
+        except BaseException:
+            # No process exists: CreateProcessW failed or never ran. Close only what this constructor made.
+            for handle in made:
+                native.close(handle)
+            if descriptor is not None:
+                native.close_descriptor(descriptor)
+            raise
+        self._handle, self.pid = process, pid  # Retained first: from here the child runs.
+        self._pipes = {"stdout": stdout_read, "stderr": stderr_read}
+        for handle in (thread, *inherited, stdout_write, stderr_write):
+            native.close(handle)
+        native.close_descriptor(descriptor)
+        self.stdout = native.reader(stdout_read)
+        self.stderr = native.reader(stderr_read)
+
+    def poll(self):
+        if self.returncode is None and self._native.wait(self._handle) == 0:
+            self.returncode = self._native.exit_code(self._handle)
+        return self.returncode
+
+
 class Child:
     def __init__(self, owner, label, argv, *, new_console=False, owned_desktop=None):
         require(type(new_console) is bool, "explicit-child-console-mode")
@@ -452,19 +617,24 @@ class Child:
             path = owner.root / f"child-{self.ordinal:04d}.{name}.raw"
             self.streams[name] = path.open("xb", buffering=0)
         try:
-            startup_info = None
+            desktop = None
             if owned_desktop is not None:
-                startup_info = owned_desktop.startup_info(owner, label, self.argv)
-                require(type(startup_info) is subprocess.STARTUPINFO
-                        and startup_info.lpAttributeList == {"handle_list": [int(owned_desktop.handle)]},
-                        "owned-desktop-exact-startup-info")
-            # Retain the Popen object BEFORE its constructor can obtain a native
-            # child handle, including an exception after CreateProcess succeeds.
-            self.process = subprocess.Popen.__new__(subprocess.Popen)
-            subprocess.Popen.__init__(self.process, self.argv, stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=owner.root,
-                env=owner.environment, creationflags=(subprocess.CREATE_NEW_CONSOLE if new_console
-                    else subprocess.CREATE_NO_WINDOW), close_fds=True, startupinfo=startup_info)
+                # subprocess cannot name a desktop: the lease's one GUI child starts through CreateProcessW.
+                desktop = owned_desktop.desktop_for_child(owner, label, self.argv)
+                require(type(desktop) is str and desktop == "WinSta0\\" + owned_desktop.name,
+                        "owned-desktop-exact-startup-desktop")
+                native = DesktopProcessNative()  # Its declarations start no process, so a failure here is known.
+                self.process = DesktopProcess.__new__(DesktopProcess)
+                DesktopProcess.__init__(self.process, self.argv, cwd=owner.root, env=owner.environment,
+                                        desktop=desktop, native=native)
+            else:
+                # Retain the Popen object BEFORE its constructor can obtain a native
+                # child handle, including an exception after CreateProcess succeeds.
+                self.process = subprocess.Popen.__new__(subprocess.Popen)
+                subprocess.Popen.__init__(self.process, self.argv, stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=owner.root,
+                    env=owner.environment, creationflags=(subprocess.CREATE_NEW_CONSOLE if new_console
+                        else subprocess.CREATE_NO_WINDOW), close_fds=True)
             self.pid = self.process.pid
             for name in self.eof:
                 thread = threading.Thread(target=self._pump, args=(name,),
@@ -474,7 +644,8 @@ class Child:
             self.birth = owner.native.birth(int(self.process._handle))
             owner.event("child-started", {"child": self.ordinal, "pid": self.pid,
                          "birthFileTimeUtc": self.birth, "originalHandleRetained": True,
-                         "consoleCreation": "new" if new_console else "none"})
+                         "consoleCreation": "new" if new_console else "none",
+                         **({"startupDesktop": desktop} if desktop is not None else {})})
             if owned_desktop is not None:
                 owned_desktop.child_started(self)
         except BaseException as error:
@@ -837,7 +1008,7 @@ class Owner:
         if action in {"windows-public-update", "windows-proxy-lifecycle"}:
             driver_path = str(Path(__file__).with_name("windows_ordinary_dedicated_driver.py"))
             pin = self.by_path[str(absolute(driver_path)).casefold()]
-            require(pin.record["sha256"] == "0d6863fa7d6ada26916ba12e6e77425cb091e75b75c8c0680000f69208d7aea7",
+            require(pin.record["sha256"] == "1c56beaaba4db5674faa5ad01ccdd8c5c51602bc335a7a03104fd99730676677",
                     "held-fixed-dedicated-driver-source")
             driver = self.module(driver_path, "_owned_fixed_dedicated_driver")
             return driver.run(self, action)

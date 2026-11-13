@@ -1,4 +1,4 @@
-"""Closed DIRECT updater and five proxy-lifecycle dispatchers.
+"""Closed DIRECT updater and six proxy-lifecycle dispatchers.
 
 Reviewed bodies keep their own original serve and cleanup. No callable, source
 selector, physical input or SYSTEM launcher is accepted from a caller.
@@ -56,6 +56,10 @@ SCHEDULED_VARIANTS = frozenset({"scheduled-refresh"})
 SCHEDULED_SHA = "25aa7f14fdf5928006bf95a3f3fc8cd07e6c6d460ebbe2b44ac7b84fbb3877c2"
 SCHEDULED_FIELDS = frozenset({"schemaVersion", "guiPath", "trafficWorkerPath", "trafficInputPath", "installedAdmissionArtifactId",
                               "fixtureAdmissionArtifactId"})
+# The GUI attached on an owned desktop with no notification area and closed once (windows_no_tray_desktop, DESKTOP-002),
+# sampled by the same traffic worker; its inputs are the scheduled row's fields.
+NO_TRAY_VARIANTS = frozenset({"no-tray-close"})
+NO_TRAY_SHA = "89b560bd8be11c4098a627fce00bf9a9f2ecb7a8298c80b2ddcc90bf1970b030"
 
 
 def require(value, reason):
@@ -181,17 +185,35 @@ def run_update(owner, cases, harness):
     return result
 
 
+def gui_sibling_inputs(owner, inputs, runtime_inputs, tag):
+    """A scheduled or no-tray row's own inputs: the installed GUI beside the CLI, the held traffic worker and its input."""
+    require(type(inputs) is dict and set(inputs) == SCHEDULED_FIELDS and type(inputs["schemaVersion"]) is int
+            and inputs["schemaVersion"] == 1 and all(type(inputs[name]) is str and inputs[name] for name in SCHEDULED_FIELDS - {"schemaVersion"}),
+            "dedicated-" + tag + "-input-fields")
+    require(inputs["installedAdmissionArtifactId"] == runtime_inputs["installedAdmissionArtifactId"],
+            "dedicated-" + tag + "-same-admission-references")
+    held_source(owner, inputs["trafficWorkerPath"], TRAFFIC_SHA)
+    # The GUI is the installed launcher's own sibling, held like the rest of the tree.
+    gui_path = PureWindowsPath(inputs["guiPath"])
+    require(gui_path.name.casefold() == "vpn-control.exe" and gui_path.parent == PureWindowsPath(owner.request["cliPath"]).parent,
+            "dedicated-" + tag + "-installed-gui-role")
+    for name in ("guiPath", "trafficInputPath"):
+        key = str(PureWindowsPath(inputs[name])).casefold()
+        require(key in owner.by_path and not owner.by_path[key].directory, "dedicated-" + tag + "-pinned-input")
+
+
 def lifecycle_inputs(owner, value):
     fields = {"schemaVersion", "variant", "sourceSha", "modules", "runtime", "gui"}
     require(type(value) is dict and type(value.get("variant")) is str
-            and (value["variant"] in PROXY_VARIANTS | BRANCH_VARIANTS | SCHEDULED_VARIANTS
+            and (value["variant"] in PROXY_VARIANTS | BRANCH_VARIANTS | SCHEDULED_VARIANTS | NO_TRAY_VARIANTS
                  or value["variant"] in TUN_VARIANTS and "tun" in value),
             "dedicated-finite-proxy-variants-only")
     branch = value["variant"] in BRANCH_VARIANTS
     tun = value["variant"] in TUN_VARIANTS
     scheduled = value["variant"] in SCHEDULED_VARIANTS
-    require(set(value) == fields | ({"branch"} if branch else {"tun"} if tun else {"scheduled"} if scheduled else set())
-            and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1,
+    no_tray = value["variant"] in NO_TRAY_VARIANTS
+    extra = {"branch"} if branch else {"tun"} if tun else {"scheduled"} if scheduled else {"noTray"} if no_tray else set()
+    require(set(value) == fields | extra and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1,
             "dedicated-proxy-input-schema")
     # The stages pick restart or find-best, deny or grant, from their own inputs: they must name this variant.
     require(not tun or type(value["tun"]) is dict and value["tun"].get("variant") == value["variant"],
@@ -205,6 +227,8 @@ def lifecycle_inputs(owner, value):
         roles["tun"] = TUN_SHA
     if scheduled:
         roles["scheduled"] = SCHEDULED_SHA
+    if no_tray:
+        roles["noTray"] = NO_TRAY_SHA
     module_roles(owner, value["modules"], roles)
     runtime_inputs = value["runtime"]
     require(type(runtime_inputs) is dict and type(runtime_inputs.get("schemaVersion")) is int
@@ -244,20 +268,9 @@ def lifecycle_inputs(owner, value):
     else:
         require(gui is None, "dedicated-find-best-has-no-gui-input")
     if scheduled:
-        inputs = value["scheduled"]
-        require(type(inputs) is dict and set(inputs) == SCHEDULED_FIELDS and type(inputs["schemaVersion"]) is int
-                and inputs["schemaVersion"] == 1 and all(type(inputs[name]) is str and inputs[name] for name in SCHEDULED_FIELDS - {"schemaVersion"}),
-                "dedicated-scheduled-input-fields")
-        require(inputs["installedAdmissionArtifactId"] == runtime_inputs["installedAdmissionArtifactId"],
-                "dedicated-scheduled-same-admission-references")
-        held_source(owner, inputs["trafficWorkerPath"], TRAFFIC_SHA)
-        # The GUI the census looks for is the installed launcher's own sibling, held like the rest of the tree.
-        gui_path = PureWindowsPath(inputs["guiPath"])
-        require(gui_path.name.casefold() == "vpn-control.exe" and gui_path.parent == PureWindowsPath(owner.request["cliPath"]).parent,
-                "dedicated-scheduled-installed-gui-role")
-        for name in ("guiPath", "trafficInputPath"):
-            key = str(PureWindowsPath(inputs[name])).casefold()
-            require(key in owner.by_path and not owner.by_path[key].directory, "dedicated-scheduled-pinned-input")
+        gui_sibling_inputs(owner, value["scheduled"], runtime_inputs, "scheduled")
+    if no_tray:
+        gui_sibling_inputs(owner, value["noTray"], runtime_inputs, "no-tray")
     if branch:
         inputs = value["branch"]
         names = {"schemaVersion", "fixtureRuntimeToolPath", "runtimeSha256", "listenerScriptPath",
@@ -367,6 +380,10 @@ def known_failure(owner, cases, runtime, branches, observer, state, inputs, erro
         require(terminal["exitCode"] == expected and terminal["eof"] == {"stdout": True, "stderr": True},
                 "dedicated-known-failure-terminal-and-eof")
     require(all(type(child.terminal) is dict for child in owner.children), "dedicated-known-failure-all-children-terminal")
+    # An owned desktop closes once its GUI is terminal; the row never switches the input desktop to it.
+    for lease in reversed(getattr(owner, "no_tray_desktop_leases", [])):
+        if lease.handle is not None:
+            lease.close()
     require(not (workspace / "activation.port").exists(), "dedicated-known-failure-endpoint-released")
     owner.event("dedicated-proxy-lifecycle-known-failure", {"variant": inputs["variant"], "reason": reason,
         "controllerId": identity, "sourceSha": inputs["sourceSha"], "fixtureExitCode": fixture_terminal["exitCode"],
@@ -419,6 +436,11 @@ def run_lifecycle(owner, cases, harness):
             # with no GUI; the runtime it leaves is the one this row's own explicit off below stops.
             scheduled = owner.module(inputs["modules"]["scheduled"], "_owned_dedicated_scheduled_cases")
             actors = scheduled.run(owner, state, inputs["scheduled"], runtime, cases, observer)["actors"]
+        elif inputs["variant"] in NO_TRAY_VARIANTS:
+            # The GUI attaches on an owned desktop with no notification area and one WM_CLOSE must detach it (DESKTOP-002);
+            # the runtime that keeps serving is the one this row's own explicit off below stops.
+            desktop = owner.module(inputs["modules"]["noTray"], "_owned_dedicated_no_tray_desktop")
+            actors = desktop.no_tray_close_case(owner, state, inputs["noTray"], runtime, cases, observer)["actors"]
         elif inputs["variant"] in BRANCH_VARIANTS:
             if inputs["variant"] in CONFIG_VARIANTS:
                 branches.config_case(owner, state, inputs["branch"], runtime, cases, observer, inputs["variant"])

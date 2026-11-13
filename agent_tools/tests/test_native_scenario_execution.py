@@ -365,14 +365,15 @@ class NativeScenarioExecutionTest(unittest.TestCase):
                                     "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect",
                                     *("windows-proxy-lifecycle." + variant for variant in (
                                         "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated",
-                                        "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh")),
+                                        "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh",
+                                        "no-tray-close")),
                                     *("windows-scoped-tun." + variant for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")),
                                     *updates,
                                     "windows-document-acceptance", *("windows-document-cold." + variant for variant in (
                                         "cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")),
                                     "windows-document-responsive"}),
                          execution.WINDOWS_SCENARIOS)
-        for name in ("windows-proxy-lifecycle", "windows-proxy-lifecycle.no-tray-close", "windows-proxy-lifecycle.scheduled",
+        for name in ("windows-proxy-lifecycle", "windows-proxy-lifecycle.no-tray", "windows-proxy-lifecycle.scheduled",
                      "windows-disconnected-cli-config.other", "windows-streaming-client-interrupt.ssh-import-routing",
                      "windows-proxy-lifecycle.restart-deny", "windows-public-update.transport-loss", "windows-public-update",
                      "windows-public-update.public-ready.extra", "windows-document-cold", "windows-document-cold.cache",

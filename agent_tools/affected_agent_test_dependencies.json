@@ -5251,7 +5251,8 @@
       ],
       "sourceSha256": [
         "897638264d70518a412fb822301e885c5d271e6a472ef625db69ca43e9190054",
-        "4ea1924d893057b548f2b2825e101d6a5934b1fb767ef297e57b8c282212a932"
+        "4ea1924d893057b548f2b2825e101d6a5934b1fb767ef297e57b8c282212a932",
+        "3b16df2d6ba2bd727d381596f948f394a54091d0acd6830a7ebeeaa6e15bf6d4"
       ]
     },
     "agent_tools/tests/fixtures/windows_main_input_bridge/boundary.py": {
@@ -8679,7 +8680,8 @@
         "1abcc54c49db744cc1a1224a26dcb355689163f61620652bb4c9a24eda4066dc",
         "d20ab61268f24ab3a761597a7936b44abc6fc130cac0bc7e559dff14331db533",
         "b73dde19ac16f046ecf06a141ad27f26f23edda1673e58a5fcc50a26aa76473c",
-        "5c632f56f416b54673ab6a4f4208e4c6d95d17ec1edebc8a78b40bb91b46c487"
+        "5c632f56f416b54673ab6a4f4208e4c6d95d17ec1edebc8a78b40bb91b46c487",
+        "ddf0f7b8224cd52ebec0f0ff0b1f7eecc6bbc035cfb4d7c4fbe8a79722f43117"
       ]
     },
     "agent_tools/tests/test_native_scenario_ssh.py": {
@@ -12709,17 +12711,20 @@
       ]
     },
     "agent_tools/tests/test_windows_owned_desktop.py": {
-      "reason": "Finite exact owned-desktop lease/Child custody and actual temporary raw files. Native Popen/thread/user32 peers are declared inert; no process, desktop, frame, input or network is created. Authentic whole frozen owner missing-API source and two authentic whole private observer beforeimages each run the same refusal/launch oracle RED before and GREEN current. These are framework/private-observer findings, never installed-product/native failure evidence. No arbitrary desktop, STARTUPINFO, handle list, installer request or executable source is admitted. Logical metrics do not qualify physical display/input/UIA. Actual GUI/context/source/artifact/frame bindings remain NULL; original native DIRECT then matching MCP acceptance remains required.",
+      "reason": "Finite exact owned-desktop lease/Child custody and actual temporary raw files. Native Popen/CreateProcessW/thread/user32 peers are declared inert, and one control runs the real raw pumps over local pipes; no process, desktop, frame, input or network is created. Authentic whole frozen owner missing-API and Popen-seam sources and two authentic whole private observer beforeimages each run the same refusal/launch oracle RED before and GREEN current. These are framework/private-observer findings, never installed-product/native failure evidence. No arbitrary desktop, STARTUPINFO, handle list beyond the three standard handles, installer request or executable source is admitted. Logical metrics do not qualify physical display/input/UIA. Actual GUI/context/source/artifact/frame bindings remain NULL; original native DIRECT then matching MCP acceptance remains required.",
       "scopes": [
         "agent_tools/windows_ordinary_process_owner.py",
         "agent_tools/windows_no_tray_desktop.py",
         "agent_tools/tests/fixtures/windows_owned_desktop/owner.before.source",
         "agent_tools/tests/fixtures/windows_owned_desktop/assignment-foreground.before.source",
         "agent_tools/tests/fixtures/windows_owned_desktop/assignment-thread.before.source",
-        "agent_tools/tests/fixtures/windows_owned_desktop/provenance.json"
+        "agent_tools/tests/fixtures/windows_owned_desktop/provenance.json",
+        "agent_tools/tests/fixtures/windows_owned_desktop/owner-popen-seam.before.source",
+        "agent_tools/tests/fixtures/windows_owned_desktop/no-tray-handle-list.before.source"
       ],
       "sourceSha256": [
-        "26320e751fd62f6d548ac2e149fc169aaeec4d9d51bd2822100ac4d8f4b89ea4"
+        "26320e751fd62f6d548ac2e149fc169aaeec4d9d51bd2822100ac4d8f4b89ea4",
+        "c8615cb5e9ff5b4ee90d54a13aac10e31478773792a59826e7a8b15ad9e52f7b"
       ]
     },
     "agent_tools/tests/test_windows_powershell_environment.py": {
@@ -13394,7 +13399,7 @@
       ]
     },
     "agent_tools/windows_ordinary_dedicated_driver.py": {
-      "reason": "Only windows-public-update and windows-proxy-lifecycle enter this fixed source-bound dispatcher. Cases have fixed sibling filenames and exact reviewed hashes; helper roles have exact byte pins. The harness is two immutable literal constants, not executable source or callbacks. Updater roles are the exact reviewed eight modules; proxy lifecycle has only four variants and exact fixture/traffic producers. Caller/hold protocol keep their exact sibling names. Protected roots, workspaces, credentials, certificates, data files, actors, request paths and admission IDs are runtime data, never source selectors. No-tray, autostart, LogonUI, arbitrary environment and generic source hooks are not exposed. One scheduled variant, scheduled-refresh, loads only the exact pinned windows_lifecycle_scheduled_cases role with its own literal inputs (the installed GUI sibling of the CLI it looks for, and the exact traffic worker and its input); it changes the product only through public CLI calls, never starts a GUI, and turns its refresh policy off before its own closing; a scheduled run still open at its deadline parks. Parent SYSTEM wrapper is not loaded here. Six additional named proxy-only configuration/failure/sibling variants use exact0b90 and listener1b62 source pins plus strict nine-field data. No no-tray/autostart/input action is added; the old four paths retain their original continuity meaning. One scoped TUN variant, restart-deny, loads only the exact pinned windows_tun_stages role with its own literal tun inputs naming that same variant; restart-grant waits for the collector stage. A proven cancelled update grant closes and exits 1; protected storage always parks. A reviewed oracle failure in a proxy row closes what the row started by its own public steps, once, and exits 1; unknown errors, open children and TUN rows still park. The same closing also takes an oracle failure inside start_runtime once its serve answered, TUN rows included, since no prompt or broker exists before their stages begin; a failure before that still parks. On the scenario route the restart-deny inputs are the job's own and name the runtime's installed admission, context and product config, which the driver joins; the stages are passed the observer for their closing census, and a census that finds anything scoped left behind parks. A TUN refusal before the stages ask for the restart, a final refusal of the request itself, or an oracle failure once the stages show the operation settled (the denial's own code, a known end such as a refused preparation or a cancelled grant, or a grant's exact off) closes the proxy like any known failure, with the census after its off, and exits 1; any other failure after the request still parks. A grant's direct sampler is the reviewed sibling windows_tun_direct_sampler.py, held at its exact digest.",
+      "reason": "Only windows-public-update and windows-proxy-lifecycle enter this fixed source-bound dispatcher. Cases have fixed sibling filenames and exact reviewed hashes; helper roles have exact byte pins. The harness is two immutable literal constants, not executable source or callbacks. Updater roles are the exact reviewed eight modules; proxy lifecycle has only four variants and exact fixture/traffic producers. Caller/hold protocol keep their exact sibling names. Protected roots, workspaces, credentials, certificates, data files, actors, request paths and admission IDs are runtime data, never source selectors. Autostart, LogonUI, arbitrary environment and generic source hooks are not exposed. One scheduled variant, scheduled-refresh, loads only the exact pinned windows_lifecycle_scheduled_cases role with its own literal inputs (the installed GUI sibling of the CLI it looks for, and the exact traffic worker and its input); it changes the product only through public CLI calls, never starts a GUI, and turns its refresh policy off before its own closing; a scheduled run still open at its deadline parks. One no-tray variant, no-tray-close, loads only the exact pinned windows_no_tray_desktop role with the same six literal input fields; it creates one owned private desktop, starts only the installed GUI with --state-dir there through the owner's CreateProcessW path, posts one WM_CLOSE from a thread of that desktop and closes the desktop once the GUI is terminal; a known failure's closing quits the GUI first, and a window still unresolved at its bound parks. Parent SYSTEM wrapper is not loaded here. Six additional named proxy-only configuration/failure/sibling variants use exact0b90 and listener1b62 source pins plus strict nine-field data. They add no no-tray, autostart or input action; the old four paths retain their original continuity meaning. One scoped TUN variant, restart-deny, loads only the exact pinned windows_tun_stages role with its own literal tun inputs naming that same variant; restart-grant waits for the collector stage. A proven cancelled update grant closes and exits 1; protected storage always parks. A reviewed oracle failure in a proxy row closes what the row started by its own public steps, once, and exits 1; unknown errors, open children and TUN rows still park. The same closing also takes an oracle failure inside start_runtime once its serve answered, TUN rows included, since no prompt or broker exists before their stages begin; a failure before that still parks. On the scenario route the restart-deny inputs are the job's own and name the runtime's installed admission, context and product config, which the driver joins; the stages are passed the observer for their closing census, and a census that finds anything scoped left behind parks. A TUN refusal before the stages ask for the restart, a final refusal of the request itself, or an oracle failure once the stages show the operation settled (the denial's own code, a known end such as a refused preparation or a cancelled grant, or a grant's exact off) closes the proxy like any known failure, with the census after its off, and exits 1; any other failure after the request still parks. A grant's direct sampler is the reviewed sibling windows_tun_direct_sampler.py, held at its exact digest.",
       "scopes": [
         "agent_tools/windows_public_updater/update_cases.py",
         "agent_tools/windows_public_updater/update_receipts.py",
@@ -13416,7 +13421,8 @@
         "agent_tools/windows_runtime_tcp_listeners.ps1",
         "agent_tools/windows_tun_stages.py",
         "agent_tools/windows_tun_direct_sampler.py",
-        "agent_tools/windows_lifecycle_scheduled_cases.py"
+        "agent_tools/windows_lifecycle_scheduled_cases.py",
+        "agent_tools/windows_no_tray_desktop.py"
       ],
       "sourceSha256": [
         "ea432e878b863c5d28165d010f974dd03cfc11574e2948c2234171a1af74dbb8",
@@ -13428,7 +13434,8 @@
         "d73a489cb050c0a0977a3957d77df59f94bcb4dee3ef39fa5d0e06441d5875e3",
         "f83e477d29a176d620eb6db4c60d72e3ff4f1d2c8152ad4fc241d6f3c63f276b",
         "24a2ae0562be6a009ad621e0c9ff2e6507f97dfa5d3233d042ea15f50da8a3c9",
-        "0d6863fa7d6ada26916ba12e6e77425cb091e75b75c8c0680000f69208d7aea7"
+        "0d6863fa7d6ada26916ba12e6e77425cb091e75b75c8c0680000f69208d7aea7",
+        "1c56beaaba4db5674faa5ad01ccdd8c5c51602bc335a7a03104fd99730676677"
       ]
     },
     "agent_tools/windows_public_updater/update_cases.py": {
@@ -13531,7 +13538,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "1f54453782ecc31fe3a2f1ba33247df2a5f7cbd2a0ea5fe2a6ab634ae5410dcc",
+    "agent_tools/readiness_vm_dispatch.json": "ae28cf75a23339084deda2d98c7a52c8472acc60f71e1429c89db9fb4c3f7127",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",

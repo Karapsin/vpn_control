@@ -41,7 +41,7 @@ SCENARIO_ARTIFACT_KEYS = {
         "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect")},
     **{"windows-proxy-lifecycle." + variant: frozenset({"bundleManifest", "scenarioInput", "targetPackage"}) for variant in (
         "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated", "custom", "large",
-        "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh")},
+        "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh", "no-tray-close")},
     **{"windows-scoped-tun." + variant: frozenset({"bundleManifest", "scenarioInput", "targetPackage"})
        for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")},
     **{"windows-public-update." + variant: frozenset({"bundleManifest", "scenarioInput", "targetPackage", "fixtureReceipt"})
