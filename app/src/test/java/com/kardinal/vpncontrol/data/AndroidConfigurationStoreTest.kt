@@ -259,30 +259,53 @@ class AndroidConfigurationStoreTest {
     }
 
     /**
-     * Differs from the desktop workspace store on purpose of record: the production DataStore has no
-     * corruption handler, so an undecodable file fails every committed read and write and is never
-     * replaced with defaults. Pins that no Android write path silently resets it (PRODUCT-002/003).
+     * Differs from the desktop workspace store on purpose of record: the DataStore that ProfileStorage
+     * builds in production (AndroidPreferencesStore) has no corruption handler, so an undecodable file
+     * fails every committed read and write and is never replaced with defaults. The store is built by
+     * that production code, not by this test, so a corruption handler or a rewriting migration added
+     * there fails this pin (PRODUCT-002/003).
      */
     @Test fun undecodableProductionStoreFailsReadsAndWritesAndKeepsItsBytes() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val root = temporary.newFolder()
+        val context = object : android.content.ContextWrapper(null) {
+            private val files = File(root, "files").also { check(it.mkdirs()) }
+            private val cache = File(root, "cache").also { check(it.mkdirs()) }
+            override fun getApplicationContext(): android.content.Context = this
+            override fun getFilesDir(): File = files
+            override fun getCacheDir(): File = cache
+            override fun getPackageName(): String = "com.kardinal.vpncontrol.corrupt.fixture"
+        }
+        val file = File(context.filesDir, "datastore/vpn_control.preferences_pb").also { check(it.parentFile.mkdirs()) }
+        val corrupt = byteArrayOf(-1, -1, -1)
+        file.writeBytes(corrupt)
+        // ProfileStorage builds the application singleton on first use; start it empty and restore it after.
+        val singleton = Class.forName("com.kardinal.vpncontrol.data.AndroidPreferencesStore")
+        val singletonObject = singleton.getDeclaredField("INSTANCE").also { it.isAccessible = true }.get(null)
+        val instance = singleton.getDeclaredField("instance").also { it.isAccessible = true }
+        val previous = instance.get(singletonObject)
+        instance.set(singletonObject, null)
         try {
-            val file = File(temporary.newFolder(), "vpn_control.preferences_pb")
-            val corrupt = byteArrayOf(-1, -1, -1)
-            file.writeBytes(corrupt)
-            val store = androidx.datastore.core.DataStoreFactory.create(
-                serializer = AndroidPreferencesSerializer(file.parentFile.toPath()), scope = scope) { file }
-            val owner = wrapper(store)
+            val storage = ProfileStorage(context)
             val corruption = androidx.datastore.core.CorruptionException::class
-            assertEquals(corruption, runCatching { owner.snapshot() }.exceptionOrNull()?.let { it::class })
-            assertEquals(corruption, runCatching { owner.state.first() }.exceptionOrNull()?.let { it::class })
-            assertEquals(corruption, runCatching { owner.edit { it[status] = "written" } }.exceptionOrNull()?.let { it::class })
+            assertEquals(corruption, runCatching { storage.configurationSnapshot() }.exceptionOrNull()?.let { it::class })
+            assertEquals(corruption, runCatching { storage.committedConfiguration.first() }.exceptionOrNull()?.let { it::class })
+            assertEquals(corruption, runCatching { storage.ensureSubscriptionHwid() }.exceptionOrNull()?.let { it::class })
+            assertEquals(corruption, runCatching { storage.updateStatus("written") }.exceptionOrNull()?.let { it::class })
+            @Suppress("UNCHECKED_CAST")
+            val production = assertNotNullValue(instance.get(singletonObject)) as DataStore<Preferences>
             assertEquals(corruption, runCatching {
-                store.updateData { androidx.datastore.preferences.core.emptyPreferences() }
+                production.updateData { androidx.datastore.preferences.core.emptyPreferences() }
             }.exceptionOrNull()?.let { it::class })
+            runCatching { storage.state.first() } // The legacy flow reads defaults instead; it must not write either.
             assertArrayEquals(corrupt, file.readBytes())
         } finally {
-            scope.cancel()
+            instance.set(singletonObject, previous)
         }
+    }
+
+    private fun assertNotNullValue(value: Any?): Any {
+        assertNotNull("ProfileStorage did not build its production DataStore", value)
+        return value!!
     }
 
     private fun wrapper(store: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>, epoch: String = "owner") =
