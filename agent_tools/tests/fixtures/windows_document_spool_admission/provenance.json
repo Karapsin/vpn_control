@@ -1,0 +1,35 @@
+{
+  "cause": "The 2.2.18 product read a sealed command spool changed after its seal and ran it: DesktopControlDocuments.consume read through ControlTransferStore.acquire/Consumer.read, which return the spool's current bytes, and DesktopControlTransferSpool.sha256() is the running digest of the appended bytes, so the seal's digest was never compared with what was read. The harness's same-length control-snapshot naming a foreign controller reached DesktopHeadlessSession, which refused it: cli-response\\terror\\t1\\tCONFLICT, the 37-byte frame (sha256 cc0f2ba7c0b358866473b781264fc7e7a02ae48be340c52204e4e51e1f4e6c5d). The harness then kept its writer, payload and spool-folder handles after that finished exchange, so the CLI cases' close_known refused and the owner parked its clone.",
+  "execution": "Only module definitions run. The owner runs with the inert guest of test_windows_cli_native_failures and test_windows_document_acceptance; mutate_sealed_spool and the client run for real over a socket pair whose far end is a logical product owner writing a real temporary spool file. No process, listener, Win32 call or VM is involved.",
+  "fixtures": {
+    "document-client-negative.before.source": {
+      "defect": "Client.negative raised document-negative-admitted without the reply it had decoded, so nothing could name what the product answered.",
+      "origin": "agent_tools/windows_document_client.py at 3e559abdf9216f61dfdd48ca626a67dde449f985, the same bytes the native row ran (family/bundle-ade9c4da-fc42-4af6-901d-910ea9ddbc2e).",
+      "sha256": "993c7833bf9933f8347509377f2a7f034facb0b4f42996b75b93561e935be41f",
+      "sizeBytes": 28678
+    },
+    "document-native-spool.before.source": {
+      "defect": "mutate_sealed_spool kept its writer, payload and spool-folder handles after the product answered the honest reference of the changed spool, a finished exchange, so the row parked instead of closing as its named known failure.",
+      "origin": "agent_tools/windows_document_native.py at 3e559abdf9216f61dfdd48ca626a67dde449f985, the same bytes the native row ran (family/bundle-ade9c4da-fc42-4af6-901d-910ea9ddbc2e).",
+      "sha256": "302b52f486df7b6f5818ebf0e8c91a4bf14f9d447c69963cf52081272aeb57eb",
+      "sizeBytes": 51528
+    }
+  },
+  "nativeFailures": [
+    {
+      "date": "2026-11-16",
+      "errorClass": "Refused",
+      "events": 2678,
+      "frames": ["windows_ordinary_process_owner.py:1336", "windows_ordinary_process_owner.py:1123", "windows_document_cli_cases.py:163", "windows_document_native.py:740", "windows_document_client.py:283"],
+      "lastEvent": "event-002678-document-exchange",
+      "operation": "ade9c4da-fc42-4af6-901d-910ea9ddbc2e",
+      "package": "2.2.18 of 60017226",
+      "reason": "scenario-failure-with-retained-child",
+      "replyFrame": {"bytes": 37, "sha256": "cc0f2ba7c0b358866473b781264fc7e7a02ae48be340c52204e4e51e1f4e6c5d"},
+      "result": "job_exit_unknown:owner-parked",
+      "retainedChild": 2,
+      "tools": "3e559abdf9216f61dfdd48ca626a67dde449f985"
+    }
+  ],
+  "schemaVersion": 1
+}

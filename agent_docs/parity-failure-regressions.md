@@ -3106,6 +3106,35 @@ approver), the faults case inputs carry update-variants' `upstreamFixture` key, 
 `test_workflow_jdk_order.GRADLE_TEXT_ONLY` reviews `scripts/windows_native_failure_msi.py` and its test, which name
 the fixture build in docstrings only.
 
+### Fourth native document row: a sealed spool changed after its seal was run, and the row parked (native, 2026-11-16)
+
+`windows-document-acceptance` (direct operation `ade9c4da`, package 2.2.18 of `60017226`, tools of
+`3e559abd`, TEST-007 discovery) ran past the folder-pin defect (2,678 events) and ended UNKNOWN,
+`job_exit_unknown:owner-parked`: `scenario-failure-with-retained-child`, `errorClass` `Refused`, frames
+`windows_ordinary_process_owner.py:1336`, `:1123`, `windows_document_cli_cases.py:163`,
+`windows_document_native.py:740`, `windows_document_client.py:283`, the serve (child 2) running. The last
+events are `document-spool-mutated` (a same-length `control-snapshot` naming `contexts[51]` written over the
+held, sealed spool) and the honest reference's `document-exchange`, which read one whole 37-byte frame and
+closed its socket. Its sha256 `cc0f2ba7c0b358866473b781264fc7e7a02ae48be340c52204e4e51e1f4e6c5d` is that of
+the JSON frame of `cli-response\terror\t1\tQ09ORkxJQ1Q`, `DesktopCliResponse.failure("CONFLICT")`: the
+owner read the changed bytes, ran the foreign controller's snapshot and `DesktopHeadlessSession` refused
+it. The original bytes would have answered the snapshot. Evidence:
+`.runtime/windows-scenarios/ade9c4da-fc42-4af6-901d-910ea9ddbc2e/evidence-1.zip`; the bundle that ran,
+`family/bundle-ade9c4da-fc42-4af6-901d-910ea9ddbc2e/`, holds the `3e559abd` tool bytes. The product source
+of `60017226` equals `3e559abd`'s for every file on this path. Before-images, RED and GREEN logs:
+`.runtime/windows-parity-20261107/evidence/doc-accept-park/`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The owner ran sealed command bytes changed after their seal (PRODUCT) | `DesktopSealedSpoolIntegrityTest` (`aSealedSpoolChangedAfterItsSealIsNeverRunAndGetsNoReply`, control `theUnchangedSealedSpoolStillRuns`) | Sealed content is immutable (cli.md, transport step 3). `DesktopControlDocuments.consume` read through `ControlTransferStore.acquire`/`Consumer.read`, which return the spool's current bytes, and `DesktopControlTransferSpool.sha256()` is the running digest of what was appended, so nothing compared the seal with what was read. `consume` now hashes the bytes as it reads them and refuses, before any parser, unless their count and digest are the seal's; the server then closes without a reply. The test runs the real `DesktopActivationServer` with the headless session's controller check, uploads the native command, rewrites the payload file in place with the same-length foreign one and sends the honest reference. RED on `3e559abd`: the reply `cli-response\terror\t1\tQ09ORkxJQ1Q`, the native frame. GREEN: no reply and no command handled. The check costs one more SHA-256 pass over the command document; `DesktopLargeExportCliProcessTest` (14 MiB import) passed on the fix (import 108 s), but on a host at load 20 to 25 it also failed on both the fixed source (the 120 s import bound, and once a client `TIMEOUT`) and the unfixed one (a later step exiting 2), so its timing there is not evidence either way. Native only: that a held Windows writer can still change the spool (the harness opens it sharing read, write and delete) and that the installed owner then closes. Android's `AndroidControlDocuments.Input` streams the same unverified consumer bytes to its parsers; its spool is app-private, and it is not changed here. |
+| A finished, answered mutated-spool negative parked the clone (TOOL) | `test_windows_document_spool_admission.AdmittedSpoolTests.test_an_answered_mutated_spool_closes_as_the_named_known_failure`; controls `test_the_fixed_product_closing_without_a_reply_passes_the_adversary`, `test_a_partial_reply_keeps_every_handle_for_the_park`, `test_a_release_that_cannot_close_its_handle_parks_unknown`, `test_the_reply_record_names_only_a_typed_code` | `mutate_sealed_spool` kept its writer, payload and spool-folder handles after `Client.negative` refused an answered exchange, so the CLI cases' `close_known` saw held fixtures and the owner parked, although the reply was a whole frame and its socket closed. Now only `document-negative-admitted:mutated-sealed-spool`, with the last exchange `response-complete`, its socket closed, no secondary error and no open socket, journals `document-spool-mutation-admitted` (the reply's status, exit code and typed code only, the reply frame's size and digest, the held bytes' digest and whether they are the replacement), closes exactly those three handles and re-raises, so the owner quits its serve once and ends 1 as that named failure. Nothing is sent again, discarded or deleted; the product erases its spool at the quit. `Client.negative` keeps the decoded reply on the refusal for this record. A partial frame, a timeout or any other error keeps every handle for the park, and a handle that cannot close parks `document-spool-admitted-release-unknown`. The test runs the real owner, function and client over a socket pair to a logical owner writing a real temporary spool. RED on the `3e559abd` bytes (`fixtures/windows_document_spool_admission/`): `(None, [("scenario-failure-with-retained-child", "Refused")], [])`, the native signature, on Python 3.14 and 3.12. GREEN: exit 1, one quit, the three handles closed and the reply recorded as `CONFLICT`, frame 37 bytes `cc0f2ba7...`. |
+
+The next native run of this row on a package built from this fix must show
+`document-negative` with `label` `mutated-sealed-spool` and `observed` `clean-frame-eof`, then
+`document-spool-adversary-state-unchanged` passing and the segment going on. On the 2.2.18 package it must
+end as the known failure `document-negative-admitted:mutated-sealed-spool` (owner exit 1, the serve quit
+once), with `document-spool-mutation-admitted` naming `CONFLICT`, never as UNKNOWN.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

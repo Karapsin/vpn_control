@@ -107,7 +107,16 @@ internal class DesktopControlDocuments(private val owner: String) : AutoCloseabl
             val consumer = store.acquire(binding, manifest.id)
             try {
                 require(consumer.manifest == manifest)
-                readText(manifest) { offset, length -> runBlocking { consumer.read(offset, length) } }
+                // Sealed content is immutable: the spool's bytes are compared with the seal's digest
+                // as they are read, and bytes changed after the seal are never handed to a parser.
+                val expected = requireNotNull(manifest.sha256)
+                val hash = MessageDigest.getInstance("SHA-256")
+                var count = 0L
+                val document = readText(manifest) { offset, length ->
+                    runBlocking { consumer.read(offset, length) }.also { require(offset == count); hash.update(it); count += it.size }
+                }
+                require(count == manifest.byteCount && digest(hash) == expected)
+                document
             } finally { consumer.close() }
         }
     }
@@ -193,6 +202,7 @@ internal class DesktopControlDocuments(private val owner: String) : AutoCloseabl
         private fun reference(owner: String, context: String, kind: String, manifest: ControlTransferManifest) =
             REFERENCE + fields(owner, context, kind, "manifest", ControlTransferCodec.encodeManifest(manifest))
         private fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        private fun digest(hash: MessageDigest) = hash.digest().joinToString("") { "%02x".format(it) }
 
         fun upload(owner: String, document: String, context: String, exchange: (String) -> String): Pair<String, () -> Unit> {
             fun send(action: ControlTransferCommand) = exchange(command(owner, context, "command", action))

@@ -280,7 +280,9 @@ class Client:
             need(not closed.part, "document-negative-partial-frame")
             self.event("document-negative", {"label": label, "observed": "clean-frame-eof"})
             return
-        raise Refused("document-negative-admitted:" + label)
+        admitted = Refused("document-negative-admitted:" + label)
+        admitted.document_admitted_reply = result  # The whole decoded frame: a finished exchange.
+        raise admitted
 
     def action(self, context, command, kind="command"):
         return self.exchange(transfer(self.owner, context, command, kind))

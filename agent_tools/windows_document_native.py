@@ -692,8 +692,9 @@ def mutate_sealed_spool(owner, client, module, fixture, original_bytes, replacem
     """Exact held-file adversary. Mutation is never submitted with a fresh ID.
 
     Caller supplies a harmless read-only serialized command, not a mutation. If
-    the server accepts changed bytes, the observation fails and resources remain
-    retained for causal evidence instead of being cleaned away.
+    the server answers the changed bytes, the observation fails as a known failure
+    once the held bytes and the reply are journaled (release_admitted_spool). Any
+    other failure keeps every handle retained for the park.
     """
     need(len(original_bytes) == len(replacement_bytes) and original_bytes != replacement_bytes,
          "document-spool-same-length-change")
@@ -737,14 +738,66 @@ def mutate_sealed_spool(owner, client, module, fixture, original_bytes, replacem
         "replacementSha256": hashlib.sha256(replacement_bytes).hexdigest(),
         "heldIdentity": payload.current(False), "sameByteCount": True})
     # The honest original manifest is retained. No forged digest is used here.
-    client.negative(module.reference(client.owner, context, sealed),
-        module.CONTEXT + module.fields(client.owner, context, "snapshot", "command", ""),
-        label="mutated-sealed-spool")
+    try:
+        client.negative(module.reference(client.owner, context, sealed),
+            module.CONTEXT + module.fields(client.owner, context, "snapshot", "command", ""),
+            label="mutated-sealed-spool")
+    except module.Refused as admitted:
+        if str(admitted) == "document-negative-admitted:mutated-sealed-spool":
+            release_admitted_spool(owner, client, module, fixture, writer, replacement_bytes, admitted)
+        raise
     writer.current(False); writer.close()
     # Caller must release only after independently preserving original/replacement
     # evidence and checking same owner/revision; no cleanup hidden in this action.
     return {"manifest": sealed, "originalSha256": original_pin["sha256"],
             "replacementSha256": hashlib.sha256(replacement_bytes).hexdigest()}
+
+
+TYPED_REPLY_CODE = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
+
+
+def admitted_reply(module, reply):
+    """What the product answered the changed spool with: its CLI status and a typed code, never a body."""
+    if type(reply) is not str:
+        return {"decoded": False}
+    try:
+        decoded = module.cli_response(reply)
+    except Exception:
+        return {"decoded": False, "characters": len(reply)}
+    body = decoded["body"].encode("utf-8")
+    return {"decoded": True, "success": decoded["success"], "exitCode": decoded["exitCode"],
+            "code": decoded["body"] if TYPED_REPLY_CODE.fullmatch(decoded["body"]) else None,
+            "bodyBytes": len(body), "bodySha256": hashlib.sha256(body).hexdigest()}
+
+
+def release_admitted_spool(owner, client, module, fixture, writer, replacement_bytes, admitted):
+    """The product answered the changed spool's honest reference: a finished exchange, a known failure.
+
+    The reply is a whole frame and the exchange closed its own socket, so nothing is in flight. The held
+    bytes and the reply are journaled while every handle still holds them; then exactly the harness's
+    own writer, payload and spool-folder handles are closed, so the CLI cases' close_known can quit the
+    serve. Nothing is sent again, discarded or deleted: the product erases its spool at that quit. A
+    closing that cannot be proved parks with every original retained.
+    """
+    try:
+        last = client.last_exchange or {}
+        need(last.get("phase") == "response-complete" and last.get("socketClosed") is True
+             and not last.get("secondary") and not client.original_sockets, "document-spool-admitted-exchange-open")
+        payload = fixture["payload"]
+        held = payload.bytes(stable_content=False)
+        frames = [frame for frame in last.get("journal", ()) if frame.get("direction") == "receive"]
+        owner.event("document-spool-mutation-admitted", {"label": "mutated-sealed-spool",
+            "reply": admitted_reply(module, getattr(admitted, "document_admitted_reply", None)),
+            "replyFrame": {k: frames[-1].get(k) for k in ("bytes", "sha256")} if frames else None,
+            "heldSha256": hashlib.sha256(held).hexdigest(), "heldIsReplacement": held == replacement_bytes,
+            "heldIdentity": payload.current(False),
+            "productClassification": "sealed-bytes-changed-after-seal-were-answered",
+            "replayAllowed": False, "discardPerformed": False, "pathDeletionPerformed": False})
+        for value in (writer, payload, fixture["root"]):
+            value.close()
+        owner.event("document-spool-admitted-released", {"handlesClosed": ["writer", "payload", "root"]})
+    except BaseException as error:
+        owner.park("document-spool-admitted-release-unknown", error)
 
 
 def resource_capacity(owner, client, module, contexts):
