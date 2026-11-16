@@ -44,23 +44,27 @@ SECURITY = b"O:S-1-5-21-1-2-3-1000D:P(A;;GA;;;SY)(A;;GA;;;S-1-5-21-1-2-3-1000)"
 AREA = r'\nprivate const val WindowsNotificationAreaClass = "Shell_TrayWnd"\n'
 PROBED = (r"internal object WindowsNotificationArea : DesktopTrayHost \{\n\s+override fun present\(\): Boolean \{\n"
           r"\s+return runCatching \{\n\s+User32\.INSTANCE\.FindWindow\(WindowsNotificationAreaClass, null\) != null\n")
-WINDOWS = (r"if \(desktopTrayPlatform\(\) == DesktopTrayPlatform\.Windows\) \{\n\s+val notificationArea = "
-           r"NotificationAreaTrayRegistration\(\n\s+target = target,\n\s+area = WindowsNotificationArea,\n")
+WINDOWS = (r"\n\s+area = desktopTrayHost\(platform\),\n[\s\S]*?DesktopTrayPlatform\.Windows -> NotificationAreaTrayRegistration\(\n"
+           r"\s+target = target,\n\s+area = area,\n[\s\S]{0,240}?onAvailable = availability::markAvailable,\n"
+           r"\s+onUnavailable = availability::markUnavailable,\n\s+onLost = availability::markLost,\n")
+HOSTED = r"\n\s+DesktopTrayPlatform\.Windows -> WindowsNotificationArea\n"
 GATED = (r"private fun awaitArea\(\) \{\n\s+if \(disposed\) return\n\s+if \(areaPresent\(\)\) \{\n\s+watch = null\n"
          r"\s+registration\.start\(\)\n\s+return\n\s+\}\n\s+readAgain \{ awaitArea\(\) \}\n")
-INSTALL = (r"fun installTrayIcon\(icon: TrayIcon\) \{\n\s+if \(disposed\) return\n\s+trayIcon = icon\n"
-           r"\s+when \(desktopTrayPlatform\(\)\) \{\n\s+DesktopTrayPlatform\.Linux -> \{\n\s+startLinuxTrayMonitor\(\)\n"
-           r"\s+checkLinuxTrayVisibility\(\)\n\s+\}\n\s+//[^\n]*\n\s+DesktopTrayPlatform\.Windows -> Unit\n")
+INSTALL = (r"fun installTrayIcon\(icon: TrayIcon\) \{\n\s+if \(disposed\) return\n\s+trayIcon = icon\n\s+//[^\n]*\n"
+           r"\s+if \(desktopTrayPlatform\(\) == DesktopTrayPlatform\.Linux\) \{\n\s+startLinuxTrayMonitor\(\)\n"
+           r"\s+checkLinuxTrayVisibility\(\)\n\s+\}\n\s+\}\n")
 FOLLOWED = (r"val present = areaPresent\(\)\n\s+if \(present != available\) \{\n\s+available = present\n"
             r"\s+runCatching \{ if \(present\) onAvailable\(\) else onLost\(\) \}\n")
 TAKEN = (r"tray\.add\(trayIcon\)\n\s+if \(tray\.trayIcons\.any \{ it === trayIcon \}\) \{\n\s+TrayInstallResult\.Installed\(trayIcon\)")
 RETRIED = (r"TrayInstallResult\.RetryableFailure -> handleRetryableFailure\(\)[\s\S]*?"
            r"if \(attempts >= retryPolicy\.maxAttempts\) \{\n\s+reportUnavailable\(\)")
-CLOSE = (r"onCloseRequest = \{\n\s+if \(trayWindowState\.canHideToTrayNow\(trayHost\.present\(\)\)\) \{\n"
-         r"\s+trayWindowState = trayWindowState\.withCloseRequestHiddenToTray\(\)\n\s+\} else \{\n\s+detachFrontend\(\)\n")
-HIDE = (r"if \(!shown && !trayWindowState\.canHideToTrayNow\(trayHost\.present\(\)\)\) "
-        r"com\.kardinal\.vpncontrol\.model\.ControlCode\.UNSUPPORTED\n")
-HOST = r"\n\s+val trayHost = remember \{ desktopTrayHost\(\) \}\n"
+CLOSE = (r"onCloseRequest = \{\n\s+if \(!trayWindow\.closeToTray\(\)\) detachFrontend\(\)\n[\s\S]*?"
+         r"fun closeToTray\(\): Boolean \{\n\s+if \(!state\.canHideToTrayNow\(trayHost\.present\(\)\)\) return false\n"
+         r"\s+state = state\.withCloseRequestHiddenToTray\(\)\n")
+HIDE = (r"if \(!trayWindow\.guiVisibility\(shown\)\) com\.kardinal\.vpncontrol\.model\.ControlCode\.UNSUPPORTED\n[\s\S]*?"
+        r"fun guiVisibility\(shown: Boolean\): Boolean \{\n"
+        r"\s+if \(!shown && !state\.canHideToTrayNow\(trayHost\.present\(\)\)\) return false\n")
+HOST = r"\n\s+val trayWindow = remember \{\n\s+DesktopTrayWindow\([\s\S]*?\n\s+trayHost = desktopTrayHost\(\),\n"
 CAN_HIDE = r"val canHideToTray: Boolean\n\s+get\(\) = traySupported && trayAvailable\n"
 CAN_HIDE_NOW = (r"fun DesktopTrayWindowState\.canHideToTrayNow\(trayHostPresent: Boolean\): Boolean \{\n"
                 r"\s+return canHideToTray && trayHostPresent\n")
@@ -79,7 +83,7 @@ def tray_rules():
     tray = kotlin("desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopTray.kt")
     attempts = re.findall(r"\nprivate const val TrayInstallMaxAttempts = ([0-9_]+)\n", tray)
     delay = re.findall(r"\nprivate const val TrayInstallRetryDelayMillis = ([0-9_]+)\n", tray)
-    rules = (AREA, PROBED, WINDOWS, GATED, INSTALL, FOLLOWED, TAKEN, RETRIED)
+    rules = (AREA, PROBED, HOSTED, WINDOWS, GATED, INSTALL, FOLLOWED, TAKEN, RETRIED)
     if len(attempts) != 1 or len(delay) != 1 or not all(re.search(rule, tray) for rule in rules):
         raise AssertionError("the tray decision is not where the fake GUI reads it")
     return int(attempts[0].replace("_", "")), int(delay[0].replace("_", "")) / 1000

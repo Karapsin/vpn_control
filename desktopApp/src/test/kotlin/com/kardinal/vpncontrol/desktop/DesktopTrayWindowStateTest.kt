@@ -2,6 +2,7 @@ package com.kardinal.vpncontrol.desktop
 
 import kotlin.test.Test
 import kotlin.test.assertFalse
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class DesktopTrayWindowStateTest {
@@ -100,5 +101,13 @@ class DesktopTrayWindowStateTest {
                 .canHideToTrayNow(trayHostPresent = true),
         )
         assertFalse(available.withTrayUnavailable().canHideToTrayNow(trayHostPresent = true))
+    }
+
+    @Test
+    fun onlyWindowsAsksTheNotificationArea() {
+        assertSame(WindowsNotificationArea, desktopTrayHost(DesktopTrayPlatform.Windows))
+        for (platform in listOf(DesktopTrayPlatform.Linux, DesktopTrayPlatform.MacOs, DesktopTrayPlatform.Other)) {
+            assertTrue(desktopTrayHost(platform).present(), "$platform keeps its backend's own confirmation")
+        }
     }
 }

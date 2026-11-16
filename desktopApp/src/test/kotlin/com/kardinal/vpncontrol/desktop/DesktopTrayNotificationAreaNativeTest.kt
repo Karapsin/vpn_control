@@ -233,13 +233,13 @@ internal object DesktopTrayNotificationAreaNativeChild {
         )
         val backend = AwtTrayBackend(
             retryPolicy = TrayRegistrationRetryPolicy(maxAttempts = 3, retryDelayMillis = 200),
-            onLost = { reports.offer("lost") },
         )
         AsyncDesktopTrayBackendInstaller(DesktopTrayBackendInstaller(listOf(backend))).install(
             appTitle = { "VPN Control" },
             menuState = { menu },
             onAvailable = { reports.offer("available") },
             onUnavailable = { reports.offer("unavailable") },
+            onLost = { reports.offer("lost") },
             onComplete = handle::set,
         )
         // Without a notification area the product waits for one and reports nothing: a bounded wait answers "none".

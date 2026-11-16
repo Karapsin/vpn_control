@@ -23,6 +23,7 @@ class DesktopTrayBackendTest {
                 menuState: () -> TrayMenuState,
                 onAvailable: () -> Unit,
                 onUnavailable: () -> Unit,
+                onLost: () -> Unit,
             ): DesktopTrayHandle? {
                 invokedOnEventThread.set(SwingUtilities.isEventDispatchThread())
                 return FakeDesktopTrayHandle()
@@ -44,6 +45,75 @@ class DesktopTrayBackendTest {
 
         assertTrue(installed.await(5, TimeUnit.SECONDS))
         assertFalse(invokedOnEventThread.get())
+    }
+
+    @Test
+    fun everyBackendReportReachesTheWindowOnTheEventThreadUntilTheTrayStops() {
+        var available: () -> Unit = {}
+        var unavailable: () -> Unit = {}
+        var lost: () -> Unit = {}
+        val backend = object : DesktopTrayBackend {
+            override fun install(
+                appTitle: () -> String,
+                menuState: () -> TrayMenuState,
+                onAvailable: () -> Unit,
+                onUnavailable: () -> Unit,
+                onLost: () -> Unit,
+            ): DesktopTrayHandle {
+                available = onAvailable
+                unavailable = onUnavailable
+                lost = onLost
+                return FakeDesktopTrayHandle()
+            }
+        }
+        val received = mutableListOf<String>()
+        val events = object : DesktopTrayEvents {
+            override fun onTrayAvailable() {
+                received += "available"
+            }
+
+            override fun onTrayUnavailable() {
+                received += "unavailable"
+            }
+
+            override fun onTrayLost() {
+                received += "lost"
+            }
+        }
+        val eventThread = mutableListOf<() -> Unit>()
+        fun runEventThread() {
+            while (eventThread.isNotEmpty()) eventThread.removeAt(0)()
+        }
+        val stop = startDesktopTray(
+            installer = AsyncDesktopTrayBackendInstaller(
+                installer = DesktopTrayBackendInstaller(listOf(backend)),
+                launchWorker = { task -> task() },
+            ),
+            holder = DesktopTrayHandleHolder(),
+            appTitle = { "VPN Control" },
+            menuState = { sampleTrayMenuState() },
+            events = events,
+            dispatch = { action -> eventThread += action },
+        )
+
+        available()
+        lost()
+        assertEquals(emptyList(), received, "nothing reaches the window off the event thread")
+        runEventThread()
+        assertEquals(listOf("available", "lost"), received)
+        available()
+        lost()
+        unavailable()
+        runEventThread()
+        assertEquals(listOf("available", "lost", "available", "lost", "unavailable"), received)
+
+        lost()
+        stop()
+        runEventThread()
+        available()
+        unavailable()
+        runEventThread()
+        assertEquals(5, received.size, "a stopped tray reaches the window no more, even with a report already queued")
     }
 
     @Test
@@ -298,6 +368,7 @@ private fun installNativeTray(
             menuState = { menuState },
             onAvailable = onAvailable,
             onUnavailable = onUnavailable,
+            onLost = {},
         ),
     )
 }
@@ -312,6 +383,7 @@ private class FakeDesktopTrayBackend(
         menuState: () -> TrayMenuState,
         onAvailable: () -> Unit,
         onUnavailable: () -> Unit,
+        onLost: () -> Unit,
     ): DesktopTrayHandle? {
         attempts += name
         if (handle != null) {

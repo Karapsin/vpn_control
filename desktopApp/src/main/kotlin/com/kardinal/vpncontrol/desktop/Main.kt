@@ -211,15 +211,16 @@ private fun DesktopApplication(
     onExitApplication: () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
-    var trayWindowState by remember {
-        mutableStateOf(
-            initialDesktopTrayWindowState(
+    val trayWindow = remember {
+        DesktopTrayWindow(
+            initial = initialDesktopTrayWindowState(
                 startInTray = startInTray,
                 traySupported = isDesktopTraySupported(),
             ),
+            trayHost = desktopTrayHost(),
         )
     }
-    val trayHost = remember { desktopTrayHost() }
+    var trayWindowState by trayWindow::state
     var exitRequested by remember { mutableStateOf(false) }
     var commandFailure by remember { mutableStateOf<com.kardinal.vpncontrol.model.ControlCode?>(null) }
     var updateJob by remember { mutableStateOf<Job?>(null) }
@@ -336,34 +337,21 @@ private fun DesktopApplication(
                 trayWindowState = trayWindowState.withHideWindowRequested()
             },
             onExit = ::quitOwner,
-            onTrayAvailable = {
-                trayWindowState = trayWindowState.withTrayAvailable()
-            },
-            onTrayUnavailable = {
-                trayWindowState = trayWindowState.withTrayUnavailable()
-            },
-            onTrayLost = {
-                trayWindowState = trayWindowState.withTrayLost()
-            },
+            events = trayWindow,
         )
     }
 
     Window(
         visible = trayWindowState.windowVisible,
         onCloseRequest = {
-            if (trayWindowState.canHideToTrayNow(trayHost.present())) {
-                trayWindowState = trayWindowState.withCloseRequestHiddenToTray()
-            } else {
-                detachFrontend()
-            }
+            if (!trayWindow.closeToTray()) detachFrontend()
         },
         title = appStrings.get(UiText.APP_TITLE),
     ) {
         DisposableEffect(window, visibility, trayWindowState.canHideToTray) {
             visibility.install { shown ->
-                if (!shown && !trayWindowState.canHideToTrayNow(trayHost.present())) com.kardinal.vpncontrol.model.ControlCode.UNSUPPORTED
+                if (!trayWindow.guiVisibility(shown)) com.kardinal.vpncontrol.model.ControlCode.UNSUPPORTED
                 else {
-                    trayWindowState = if (shown) trayWindowState.withWindowShown() else trayWindowState.withHideWindowRequested()
                     window.isVisible = shown
                     if (shown) {
                         window.extendedState = window.extendedState and java.awt.Frame.ICONIFIED.inv()
@@ -405,6 +393,43 @@ private fun DesktopApplication(
                 )
             }
         }
+    }
+}
+
+/**
+ * The window's tray state and the decisions DesktopApplication takes on it: the tray's reports ([DesktopTrayEvents]),
+ * a window close and a gui show or hide. [trayHost] is read at the moment of each close or hide (DESKTOP-002).
+ */
+internal class DesktopTrayWindow(
+    initial: DesktopTrayWindowState,
+    private val trayHost: DesktopTrayHost,
+) : DesktopTrayEvents {
+    var state by mutableStateOf(initial)
+
+    override fun onTrayAvailable() {
+        state = state.withTrayAvailable()
+    }
+
+    override fun onTrayUnavailable() {
+        state = state.withTrayUnavailable()
+    }
+
+    override fun onTrayLost() {
+        state = state.withTrayLost()
+    }
+
+    /** A window close: true when it hid the window into the tray, false when the caller detaches the frontend. */
+    fun closeToTray(): Boolean {
+        if (!state.canHideToTrayNow(trayHost.present())) return false
+        state = state.withCloseRequestHiddenToTray()
+        return true
+    }
+
+    /** gui show or hide: false when a hide is refused (UNSUPPORTED), otherwise the state follows and true. */
+    fun guiVisibility(shown: Boolean): Boolean {
+        if (!shown && !state.canHideToTrayNow(trayHost.present())) return false
+        state = if (shown) state.withWindowShown() else state.withHideWindowRequested()
+        return true
     }
 }
 

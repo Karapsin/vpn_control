@@ -72,9 +72,7 @@ internal fun DesktopTrayIcon(
     onShowWindow: () -> Unit,
     onHideWindow: () -> Unit,
     onExit: () -> Unit,
-    onTrayAvailable: () -> Unit = {},
-    onTrayUnavailable: () -> Unit = {},
-    onTrayLost: () -> Unit = {},
+    events: DesktopTrayEvents,
 ) {
     val currentAppTitle = rememberUpdatedState(appTitle)
     val currentMenuState = rememberUpdatedState(
@@ -100,39 +98,63 @@ internal fun DesktopTrayIcon(
     }
 
     DisposableEffect(Unit) {
-        val disposed = AtomicBoolean(false)
-        val installer = createDesktopTrayBackendInstaller(
-            onLost = {
-                SwingUtilities.invokeLater {
-                    if (!disposed.get()) onTrayLost()
-                }
-            },
-        )
-        AsyncDesktopTrayBackendInstaller(installer).install(
+        val stop = startDesktopTray(
+            installer = AsyncDesktopTrayBackendInstaller(createDesktopTrayBackendInstaller()),
+            holder = trayHandleHolder,
             appTitle = { currentAppTitle.value },
             menuState = { currentMenuState.value },
-            onAvailable = {
-                SwingUtilities.invokeLater {
-                    if (!disposed.get()) onTrayAvailable()
-                }
-            },
-            onUnavailable = {
-                SwingUtilities.invokeLater {
-                    if (!disposed.get()) onTrayUnavailable()
-                }
-            },
-        ) { trayHandle ->
-            val accepted = trayHandleHolder.install(trayHandle)
-            if (accepted && trayHandle == null) {
-                SwingUtilities.invokeLater {
-                    if (!disposed.get()) onTrayUnavailable()
-                }
-            }
+            events = events,
+        )
+        onDispose { stop() }
+    }
+}
+
+/** What the tray tells the window's owner (Main.kt's [DesktopTrayWindow]), each on the event thread. */
+internal interface DesktopTrayEvents {
+    /** The tray is confirmed usable: a close or a gui hide may put the window there. */
+    fun onTrayAvailable()
+
+    /** There is no tray for this GUI, and none will come. */
+    fun onTrayUnavailable()
+
+    /** The tray was available and its host went away (Windows: the notification area); it may come back. */
+    fun onTrayLost()
+}
+
+/**
+ * What [DesktopTrayIcon] starts while it is composed: [installer] installs the first backend that takes the icon
+ * off the event thread, and every report of that backend reaches [events] through [dispatch] (the event thread)
+ * until the returned stop has run, which also disposes the installed handle.
+ */
+internal fun startDesktopTray(
+    installer: AsyncDesktopTrayBackendInstaller,
+    holder: DesktopTrayHandleHolder,
+    appTitle: () -> String,
+    menuState: () -> TrayMenuState,
+    events: DesktopTrayEvents,
+    dispatch: (() -> Unit) -> Unit = { action -> SwingUtilities.invokeLater(action) },
+): () -> Unit {
+    val disposed = AtomicBoolean(false)
+    fun deliver(report: DesktopTrayEvents.() -> Unit) {
+        dispatch {
+            if (!disposed.get()) events.report()
         }
-        onDispose {
-            disposed.set(true)
-            trayHandleHolder.dispose()
+    }
+    installer.install(
+        appTitle = appTitle,
+        menuState = menuState,
+        onAvailable = { deliver { onTrayAvailable() } },
+        onUnavailable = { deliver { onTrayUnavailable() } },
+        onLost = { deliver { onTrayLost() } },
+    ) { trayHandle ->
+        val accepted = holder.install(trayHandle)
+        if (accepted && trayHandle == null) {
+            deliver { onTrayUnavailable() }
         }
+    }
+    return {
+        disposed.set(true)
+        holder.dispose()
     }
 }
 
@@ -242,11 +264,13 @@ internal interface DesktopTrayHandle {
 }
 
 internal interface DesktopTrayBackend {
+    /** [onLost]: an available tray's host went away; [onAvailable] follows if it comes back. */
     fun install(
         appTitle: () -> String,
         menuState: () -> TrayMenuState,
         onAvailable: () -> Unit,
         onUnavailable: () -> Unit,
+        onLost: () -> Unit,
     ): DesktopTrayHandle?
 }
 
@@ -258,6 +282,7 @@ internal class DesktopTrayBackendInstaller(
         menuState: () -> TrayMenuState,
         onAvailable: () -> Unit = {},
         onUnavailable: () -> Unit = {},
+        onLost: () -> Unit = {},
     ): DesktopTrayHandle? {
         for (backend in backends) {
             val handle = runCatching {
@@ -266,6 +291,7 @@ internal class DesktopTrayBackendInstaller(
                     menuState = menuState,
                     onAvailable = onAvailable,
                     onUnavailable = onUnavailable,
+                    onLost = onLost,
                 )
             }.getOrNull()
             if (handle != null) return handle
@@ -290,6 +316,7 @@ internal class AsyncDesktopTrayBackendInstaller(
         menuState: () -> TrayMenuState,
         onAvailable: () -> Unit,
         onUnavailable: () -> Unit,
+        onLost: () -> Unit = {},
         onComplete: (DesktopTrayHandle?) -> Unit,
     ) {
         launchWorker {
@@ -299,20 +326,21 @@ internal class AsyncDesktopTrayBackendInstaller(
                     menuState = menuState,
                     onAvailable = onAvailable,
                     onUnavailable = onUnavailable,
+                    onLost = onLost,
                 ),
             )
         }
     }
 }
 
-private fun createDesktopTrayBackendInstaller(onLost: () -> Unit): DesktopTrayBackendInstaller {
+private fun createDesktopTrayBackendInstaller(): DesktopTrayBackendInstaller {
     val backends = selectDesktopTrayBackendKinds(
         linuxPreference = detectLinuxTrayBackendPreference(),
     )
         .map { kind ->
             when (kind) {
                 DesktopTrayBackendKind.NativeLinux -> NativeLinuxTrayBackend()
-                DesktopTrayBackendKind.Awt -> AwtTrayBackend(onLost = onLost)
+                DesktopTrayBackendKind.Awt -> AwtTrayBackend()
             }
         }
     return DesktopTrayBackendInstaller(backends)
@@ -408,7 +436,7 @@ private fun currentUserProcessCommands(): Sequence<String> {
     }.getOrDefault(emptySequence())
 }
 
-private class DesktopTrayHandleHolder {
+internal class DesktopTrayHandleHolder {
     private var handle: DesktopTrayHandle? = null
     private var latestAppTitle: String? = null
     private var latestMenuState: TrayMenuState? = null
@@ -447,70 +475,159 @@ private class DesktopTrayHandleHolder {
 
 internal class AwtTrayBackend(
     private val retryPolicy: TrayRegistrationRetryPolicy = TrayRegistrationRetryPolicy(),
-    private val onLost: () -> Unit = {},
 ) : DesktopTrayBackend {
     override fun install(
         appTitle: () -> String,
         menuState: () -> TrayMenuState,
         onAvailable: () -> Unit,
         onUnavailable: () -> Unit,
+        onLost: () -> Unit,
     ): DesktopTrayHandle? {
         if (!isAwtDesktopTraySupported()) return null
-        val handle = AwtTrayHandle(
-            popup = TrayPopupController(),
+        val platform = desktopTrayPlatform()
+        val handle = AwtTrayHandle(popup = TrayPopupController())
+        val registration = AwtTrayRegistration(
+            platform = platform,
+            target = AwtTrayRegistrationTarget(
+                appTitle = appTitle,
+                popup = handle.popup,
+                menuState = menuState,
+            ),
+            area = desktopTrayHost(platform),
+            scheduler = SwingTrayRetryScheduler,
+            retryPolicy = retryPolicy,
             onAvailable = onAvailable,
             onUnavailable = onUnavailable,
             onLost = onLost,
+            beforeUnavailable = handle::dispose,
+            onIconInstalled = { icon ->
+                handle.installTrayIcon(icon)
+                handle.update(appTitle(), menuState())
+            },
         )
-        val target = AwtTrayRegistrationTarget(
-            appTitle = appTitle,
-            popup = handle.popup,
-            menuState = menuState,
-        )
-        val onInstalled: (TrayIcon) -> Unit = { icon ->
-            handle.installTrayIcon(icon)
-            handle.update(appTitle(), menuState())
-        }
-        if (desktopTrayPlatform() == DesktopTrayPlatform.Windows) {
-            val notificationArea = NotificationAreaTrayRegistration(
-                target = target,
-                area = WindowsNotificationArea,
-                scheduler = SwingTrayRetryScheduler,
-                retryPolicy = retryPolicy,
-                onInstalled = onInstalled,
-                onAvailable = handle::markAvailable,
-                onUnavailable = handle::markUnavailable,
-                onLost = handle::markLost,
-            )
-            handle.notificationArea = notificationArea
-            notificationArea.start()
-            return handle
-        }
-        val trayRegistration = RetryingTrayRegistration(
-            target = target,
-            scheduler = SwingTrayRetryScheduler,
-            retryPolicy = retryPolicy,
-            onInstalled = onInstalled,
-            onUnavailable = handle::markUnavailable,
-        )
-        handle.registration = trayRegistration
-        trayRegistration.start()
+        handle.registration = registration
+        registration.start()
         return handle
+    }
+}
+
+/**
+ * The tray availability one backend reports: [onAvailable] and [onLost] alternate, once per change, and
+ * [onUnavailable] ends it, after [beforeUnavailable]. Nothing is reported after [end].
+ */
+internal class DesktopTrayAvailability(
+    private val onAvailable: () -> Unit,
+    private val onUnavailable: () -> Unit,
+    private val onLost: () -> Unit,
+    private val beforeUnavailable: () -> Unit = {},
+) {
+    private var ended = false
+    private var available = false
+
+    fun markAvailable() {
+        if (ended || available) return
+        available = true
+        onAvailable()
+    }
+
+    fun markLost() {
+        if (ended || !available) return
+        available = false
+        onLost()
+    }
+
+    fun markUnavailable() {
+        if (ended) return
+        ended = true
+        beforeUnavailable()
+        onUnavailable()
+    }
+
+    fun end() {
+        ended = true
+    }
+}
+
+internal interface DesktopTrayRegistration {
+    fun start()
+
+    fun dispose()
+}
+
+/**
+ * How the AWT backend registers its icon on [platform] and when its tray is available, without AWT itself: [target]
+ * is java.awt.SystemTray in the product.
+ * - Windows: AWT lists an icon whatever the shell answered, so [NotificationAreaTrayRegistration] decides by [area].
+ * - Linux: the handle's visibility monitor, which [onIconInstalled] starts, decides (PLATFORM-006).
+ * - macOS and the rest: available once AWT takes the icon.
+ */
+internal class AwtTrayRegistration<T>(
+    platform: DesktopTrayPlatform,
+    target: TrayRegistrationTarget<T>,
+    area: DesktopTrayHost,
+    scheduler: TrayRetryScheduler,
+    retryPolicy: TrayRegistrationRetryPolicy,
+    onAvailable: () -> Unit,
+    onUnavailable: () -> Unit,
+    onLost: () -> Unit,
+    beforeUnavailable: () -> Unit,
+    onIconInstalled: (T) -> Unit,
+) : DesktopTrayRegistration {
+    val availability = DesktopTrayAvailability(
+        onAvailable = onAvailable,
+        onUnavailable = onUnavailable,
+        onLost = onLost,
+        beforeUnavailable = beforeUnavailable,
+    )
+    private val registration: DesktopTrayRegistration = when (platform) {
+        DesktopTrayPlatform.Windows -> NotificationAreaTrayRegistration(
+            target = target,
+            area = area,
+            scheduler = scheduler,
+            retryPolicy = retryPolicy,
+            onInstalled = onIconInstalled,
+            onAvailable = availability::markAvailable,
+            onUnavailable = availability::markUnavailable,
+            onLost = availability::markLost,
+        )
+        DesktopTrayPlatform.Linux -> RetryingTrayRegistration(
+            target = target,
+            scheduler = scheduler,
+            retryPolicy = retryPolicy,
+            onInstalled = onIconInstalled,
+            onUnavailable = availability::markUnavailable,
+        )
+        DesktopTrayPlatform.MacOs,
+        DesktopTrayPlatform.Other,
+        -> RetryingTrayRegistration(
+            target = target,
+            scheduler = scheduler,
+            retryPolicy = retryPolicy,
+            onInstalled = { icon ->
+                onIconInstalled(icon)
+                availability.markAvailable()
+            },
+            onUnavailable = availability::markUnavailable,
+        )
+    }
+
+    override fun start() {
+        registration.start()
+    }
+
+    override fun dispose() {
+        availability.end()
+        registration.dispose()
     }
 }
 
 private class AwtTrayHandle(
     val popup: TrayPopupController,
-    private val onAvailable: () -> Unit,
-    private val onUnavailable: () -> Unit,
-    private val onLost: () -> Unit,
 ) : DesktopTrayHandle {
-    var registration: RetryingTrayRegistration<TrayIcon>? = null
-    var notificationArea: NotificationAreaTrayRegistration<TrayIcon>? = null
+    var registration: AwtTrayRegistration<TrayIcon>? = null
     private var trayIcon: TrayIcon? = null
     private var linuxTrayMonitorTimer: Timer? = null
     private var disposed = false
-    private var available = false
     private var missingVisibilityChecks = 0
 
     override fun update(appTitle: String, menuState: TrayMenuState) {
@@ -524,35 +641,19 @@ private class AwtTrayHandle(
     fun installTrayIcon(icon: TrayIcon) {
         if (disposed) return
         trayIcon = icon
-        when (desktopTrayPlatform()) {
-            DesktopTrayPlatform.Linux -> {
-                startLinuxTrayMonitor()
-                checkLinuxTrayVisibility()
-            }
-            // AWT lists an icon on Windows whatever the shell answered: NotificationAreaTrayRegistration decides.
-            DesktopTrayPlatform.Windows -> Unit
-            DesktopTrayPlatform.MacOs,
-            DesktopTrayPlatform.Other,
-            -> markAvailable()
+        // Only Linux confirms the icon here; AwtTrayRegistration decides for the other platforms.
+        if (desktopTrayPlatform() == DesktopTrayPlatform.Linux) {
+            startLinuxTrayMonitor()
+            checkLinuxTrayVisibility()
         }
     }
 
-    fun markUnavailable() {
-        if (disposed) return
-        dispose()
-        onUnavailable()
+    private fun markUnavailable() {
+        registration?.availability?.markUnavailable()
     }
 
-    fun markAvailable() {
-        if (disposed || available) return
-        available = true
-        onAvailable()
-    }
-
-    fun markLost() {
-        if (disposed || !available) return
-        available = false
-        onLost()
+    private fun markAvailable() {
+        registration?.availability?.markAvailable()
     }
 
     private fun startLinuxTrayMonitor() {
@@ -609,8 +710,6 @@ private class AwtTrayHandle(
         linuxTrayMonitorTimer = null
         registration?.dispose()
         registration = null
-        notificationArea?.dispose()
-        notificationArea = null
         trayIcon = null
     }
 }
@@ -666,6 +765,7 @@ internal class NativeLinuxTrayBackend(
         menuState: () -> TrayMenuState,
         onAvailable: () -> Unit,
         onUnavailable: () -> Unit,
+        onLost: () -> Unit,
     ): DesktopTrayHandle? {
         if (runCatching { isHeadless() }.getOrDefault(true)) return null
         val tray = gateway.get(DefaultTrayAppName) ?: return null
@@ -965,7 +1065,7 @@ internal class RetryingTrayRegistration<T>(
     private val retryPolicy: TrayRegistrationRetryPolicy = TrayRegistrationRetryPolicy(),
     private val onInstalled: (T) -> Unit = {},
     private val onUnavailable: () -> Unit = {},
-) {
+) : DesktopTrayRegistration {
     private var attempts = 0
     private var disposed = false
     private var unavailableReported = false
@@ -974,12 +1074,12 @@ internal class RetryingTrayRegistration<T>(
     var installedIcon: T? = null
         private set
 
-    fun start() {
+    override fun start() {
         if (attempts > 0 || disposed || installedIcon != null) return
         attemptInstall()
     }
 
-    fun dispose() {
+    override fun dispose() {
         disposed = true
         pendingRetry?.cancel()
         pendingRetry = null
@@ -1044,7 +1144,7 @@ internal class NotificationAreaTrayRegistration<T>(
     private val onAvailable: () -> Unit = {},
     onUnavailable: () -> Unit = {},
     private val onLost: () -> Unit = {},
-) {
+) : DesktopTrayRegistration {
     @Volatile
     private var disposed = false
     private var available = false
@@ -1063,11 +1163,11 @@ internal class NotificationAreaTrayRegistration<T>(
     val installedIcon: T?
         get() = registration.installedIcon
 
-    fun start() {
+    override fun start() {
         awaitArea()
     }
 
-    fun dispose() {
+    override fun dispose() {
         disposed = true
         watch?.cancel()
         watch = null

@@ -472,7 +472,13 @@ class DesktopNativeVisualCaptureTest {
                             onShowWindow = {},
                             onHideWindow = {},
                             onExit = {},
-                            onTrayAvailable = available::countDown,
+                            events = object : DesktopTrayEvents {
+                                override fun onTrayAvailable() = available.countDown()
+
+                                override fun onTrayUnavailable() = Unit
+
+                                override fun onTrayLost() = Unit
+                            },
                         )
                     }
                 }
