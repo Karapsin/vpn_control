@@ -15,7 +15,12 @@ windows-raw9059be98-desktop-v1, with three other clones building on the same hos
 
 The controlled desktop charges every packet the measured time on a fake clock and proves
 a delivered wake the way the Windows backend does, from its own retained reply. The
-backend's proof itself runs through the real recover/_run packet files at the end.
+backend's proof itself runs through the real recover/_run packet files at the end, and
+once more through a registered alias's own adapter.
+
+Natively 9c93fd36 found the session locked with its display asleep: the status right
+before it (152459) shows ordinary "locked", display "sleeping" and session
+1:134386955862966249, the session of journal record 22dbf542.
 """
 from contextlib import contextmanager
 from dataclasses import replace
@@ -38,8 +43,13 @@ from agent_tools import readiness_recovery_status as recovery_status
 # Measured on clone 9059be98 (operation 5d77b355): each packet plus its admission.
 OBSERVE = 41.9 + 22.0
 WAKE = 46.5 + 20.0
+# The day's measured maxima that WAKE_BUDGET is sized by: 3 x (68.1 + 22) + (46.5 + 22) = 338.8 s.
+OBSERVE_MAX = 68.1 + 22.0
+WAKE_MAX = 46.5 + 22.0
 GUI = r.Requirements(frozenset({"interactive_desktop"}), frozenset({"reconnect", "wake_display", "login"}))
 HEADLESS = r.Requirements(frozenset({"guest_agent"}), frozenset({"reconnect"}))
+# The counter start's own readiness: guest_agent with reconnect, resume and start.
+COUNTER = r.Requirements(frozenset({"guest_agent"}), frozenset({"reconnect", "resume", "start"}))
 NATIVE_BUDGET = 180.0
 
 
@@ -72,18 +82,24 @@ class Desktop:
         self.retains_replies = True
         self.bookkeeping = []
         self.proof_digest = None
+        self.costs = (OBSERVE, WAKE)
+        self.observations = 0
 
     def observe(self, requirements, deadline):
-        self.clock.now += OBSERVE
+        self.clock.now += self.costs[0]
+        self.observations += 1
         if "interactive_desktop" in requirements.required:
             return self.observation
         return replace(self.observation, display="unknown")
 
     def recover(self, action, recovery_identity, observed, deadline):
-        if action != "wake_display":
-            raise AssertionError("only a display wake is qualified here: " + action)
-        self.clock.now += WAKE
+        if action not in {"wake_display", "login"}:
+            raise AssertionError("only a display wake and a sign-in are qualified here: " + action)
+        self.clock.now += self.costs[1]
         self.effects.append((action, recovery_identity))
+        if action == "login":
+            self.observation = replace(self.observation, ordinary_session="ready")
+            return
         if self.wake_applies:
             self.observation = replace(self.observation, display="ready")
         if self.reply_lost:
@@ -175,6 +191,26 @@ class WakeOutcomeTests(unittest.TestCase):
         self.assertLessEqual(elapsed, getattr(r, "WAKE_BUDGET", NATIVE_BUDGET))
         self.assertEqual(1, len(self.desktop.effects))
 
+    def test_04794d9d_at_the_measured_maxima_RED_wake_budget_below_338_8_s_GREEN_ready(self):
+        # The path WAKE_BUDGET is sized by: an observation, the final revalidation that finds
+        # the display asleep, the wake and the next observation, each at the day's maximum.
+        self.desktop.costs = (OBSERVE_MAX, WAKE_MAX)
+        self.desktop.bookkeeping = [self.desktop.sleep_display]
+        ended, observe = [], self.desktop.observe
+
+        def timed(requirements, deadline):
+            value = observe(requirements, deadline)
+            ended.append(round(self.clock() - 1000.0, 1))
+            return value
+        self.desktop.observe = timed
+        try:
+            self.ensure()
+        except r.ReadinessBlocked as error:
+            self.fail("the measured maxima ran out of the wake budget: " + error.reason)
+        self.assertEqual(["wake_display"], [action for action, _ in self.desktop.effects])
+        self.assertEqual([90.1, 180.2, 338.8], ended[:3])
+        self.assertLess(ended[2], r.WAKE_BUDGET)
+
     def test_5d77b355_refused_after_its_wake_RED_no_outcome_GREEN_delivery_retained(self):
         self.refused_acquire_after_its_wake()
         self.assertEqual(1, len(self.records("acknowledged-")),
@@ -201,6 +237,22 @@ class WakeOutcomeTests(unittest.TestCase):
         self.assertEqual(2, len(self.desktop.effects))
         self.assertEqual(2, len({identity for _, identity in self.desktop.effects}))
         self.assertEqual("ready", self.desktop.observation.display)
+
+    def test_9c93fd36_locked_and_asleep_in_the_wakes_session_RED_outcome_unknown_GREEN_settled_then_wake_and_sign_in(self):
+        # The native state: the same boot, account and session as the delivered wake, now locked and asleep.
+        self.refused_acquire_after_its_wake()
+        old = self.desktop.effects[0][1]
+        self.clock.now += 35 * 60
+        self.desktop.observation = replace(self.desktop.observation, ordinary_session="locked", display="sleeping")
+        try:
+            ready = self.ensure()
+        except r.ReadinessBlocked as error:
+            self.fail("the delivered wake of the locked session blocked its unlock: " + error.reason)
+        self.assertEqual(["wake_display", "wake_display", "login"], [action for action, _ in self.desktop.effects])
+        self.assertNotEqual(old, self.desktop.effects[1][1])
+        self.assertEqual("acknowledged", json.loads((self.journal / ("completed-" + old + ".json")).read_bytes())["state"])
+        self.assertEqual(("ready", "ready"), (self.desktop.observation.ordinary_session, self.desktop.observation.display))
+        self.assertEqual(self.desktop.observation.session, ready.session)
 
     def test_22dbf542_pre_fix_journal_RED_outcome_unknown_GREEN_settled_from_the_retained_reply(self):
         # The pre-fix core recorded no outcome; the backend's retained reply is still there.
@@ -250,6 +302,26 @@ class WakeOutcomeTests(unittest.TestCase):
         self.desktop.sleep_display()
         self.ensure(HEADLESS)
         self.assertEqual([], self.records("completed-"))
+        self.assertEqual(1, len(self.desktop.effects))
+
+    def test_a_recorded_unsettled_wake_RED_costs_each_counter_start_an_observation_GREEN_none(self):
+        # Every later headless ensure proves the same retained reply again. Recording it again
+        # changes nothing, so it must not cost another observation of the normal 180 s budget.
+        self.refused_acquire_after_its_wake()
+        self.assertEqual(1, len(self.records("acknowledged-")))
+        self.clock.now += 35 * 60
+        self.desktop.sleep_display()
+        self.desktop.costs = (OBSERVE_MAX, WAKE_MAX)
+        for _ in range(2):
+            self.desktop.observations = 0
+            try:
+                self.ensure(COUNTER)
+            except r.ReadinessBlocked as error:
+                self.fail("a recorded delivery spent the counter start's readiness budget: " + error.reason)
+            # The observation and the final revalidation after reconcile_ready, as with no pending wake.
+            self.assertEqual(2, self.desktop.observations)
+        self.assertEqual([], self.records("completed-"))
+        self.assertEqual(1, len(self.records("acknowledged-")))
         self.assertEqual(1, len(self.desktop.effects))
 
     def test_another_session_never_settles_the_old_sessions_wake_by_its_delivery(self):
@@ -373,6 +445,91 @@ class WindowsRetainedReplyTests(unittest.TestCase):
             body["guest"] = "stopped"
             path.write_bytes(json.dumps(body).encode())
         self.assertIsNone(self.deliver(tamper=alter)[4])
+
+
+@unittest.skipUnless(os.name == "posix", "POSIX private-file custody")
+class RegisteredAliasAdapterTests(unittest.TestCase):
+    """A registered Windows alias builds WindowsAdapter, so its wake's delivery reaches the journal.
+
+    The shared ProviderAdapter refuses the delivery proof and the core swallows that
+    refusal, so a loader that builds it instead drops every acknowledgement silently.
+    The managed (schema 2) loader is checked in test_windows_managed_admission.
+    """
+    SID = "S-1-5-21-1-2-3-1004"
+
+    def register(self):
+        from agent_tools import readiness_fixture_registry as registry
+        from agent_tools import readiness_windows_registration as registration
+        from agent_tools.tests.test_native_vm_spec import request
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name).resolve()
+        root.chmod(0o700)
+        machine = str(uuid4())
+        spec = request()
+        spec["deploymentId"] = machine
+        intent = {"spec": spec, "setup": {"imageName": "Windows 11 Pro", "locale": "en-US", "user": "fixtureuser",
+                                          "administrator": "fixtureadmin"},
+                  "context": {"hostBootId": str(uuid4()), "pending": []}, "correlationId": "a" * 32, "mode": "start",
+                  "callerSha256": "b" * 64}
+        for path in (root / ".rag_index", root / ".rag_index/windows-vm-deploy-intents", root / ".runtime"):
+            path.mkdir(mode=0o700)
+        path = root / ".rag_index/windows-vm-deploy-intents" / (machine + ".intent.json")
+        path.write_text(json.dumps(intent))
+        path.chmod(0o600)
+        proof = registration.write_qualification(root, machine, "wake_display", evidence={"operationId": str(uuid4())})
+        registration.register(root, "windows-raw-wake-v1", machine, self.SID, qualifications={"wake_display": proof})
+        return registry.registered_fixture(root, "windows-raw-wake-v1")
+
+    def test_fixed_the_registered_alias_builds_the_windows_adapter(self):
+        from agent_tools import readiness_windows as windows
+        fixture = self.register()
+        self.assertIs(windows.WindowsAdapter, type(fixture.adapter))
+        self.assertEqual(frozenset({"wake_display"}), fixture.adapter.capabilities)
+
+    def test_fixed_a_wake_through_the_registered_alias_records_its_delivery(self):
+        from agent_tools import readiness_windows as windows
+        fixture = self.register()
+        backend = fixture.adapter.backend
+        display, sent = ["sleeping"], {}
+        host = {"actor": {"pid": 123, "startTicks": 456}, "hostBoot": backend.binding["context"]["hostBootId"],
+                "controlConnection": "qmp:42"}
+
+        def observe(requirements, deadline):
+            backend.last_facts = dict(host)
+            return r.Observation(fixture.target, fixture.machine, connection="qmp:42|qmp:42", boot="2026-10-20T09:04:39.5000000Z",
+                                 account=self.SID, session="2:1234", transport="ready", guest="running", guest_agent=True,
+                                 ordinary_session="ready", display=display[0], trusted=True, owned=True, integrity=True)
+        real_run = backend._run
+
+        def run(mode, operation, deadline, **options):
+            sent["operation"] = operation
+            return real_run(mode, operation, deadline, **options)
+
+        def ssh(*args, **kwargs):
+            # The real wake packet was saved; its input moves the pointer and the display wakes.
+            display[0] = "ready"
+            reply = {**host, "state": "submitted", "guest": "running", "wakeInputSubmitted": True, "machine": backend.machine,
+                     "provider": backend.provider, "operationId": sent["operation"], "guestAgent": True,
+                     "sessionFacts": None, "displayFacts": None, "idleFacts": None, "hostWork": None}
+            return subprocess.CompletedProcess([], 0, json.dumps(reply).encode(), b"")
+
+        @contextmanager
+        def admitted(*args, **kwargs):
+            yield types.SimpleNamespace(revalidate=lambda: None, ready=None)
+
+        backend.observe, backend._run = observe, run
+        with mock.patch.object(windows.transport, "admitted_transport", admitted), \
+                mock.patch.object(windows.transport, "load_config", return_value={}), \
+                mock.patch.object(windows.transport, "build_ssh_argv", return_value=["ssh"]), \
+                mock.patch.object(windows.transport, "run_ssh", side_effect=ssh):
+            ready = r.ensure_ready(fixture.context(deadline=time.monotonic() + 120), GUI, str(uuid4()))
+        self.assertEqual("2:1234", ready.session)
+        journal = fixture.journal_directory
+        acknowledged = sorted(path.name for path in journal.glob("acknowledged-*.json"))
+        self.assertEqual(1, len(acknowledged), "the registered alias dropped its delivered wake's proof")
+        recovery = acknowledged[0][len("acknowledged-"):-len("-1.json")]
+        self.assertEqual("observed", json.loads((journal / ("completed-" + recovery + ".json")).read_bytes())["state"])
 
 
 if __name__ == "__main__":

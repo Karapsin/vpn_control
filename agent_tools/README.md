@@ -162,7 +162,8 @@ falls asleep while readiness finishes its bookkeeping, the same call wakes it
 again; another boot, account, session or connection still refuses
 `prepared_context_stale`. When the backend proves from its own retained reply that
 a wake was delivered (`submitted`, input submitted), the journal records the
-delivery at once, even if the call then runs out of budget. The next interactive
+delivery at once, even if the call then runs out of budget. Proving a recorded
+delivery again writes nothing and costs no further observation. The next interactive
 observation of the same boot, account and session settles it, by an awake display
 or by a display asleep again; a later sleep then gets a new wake. A lost or
 missing reply settles nothing and is never replayed. `recoveryStatus` shows such a
@@ -186,13 +187,15 @@ is still pending or has an unknown job, usually another clone whose start is in
 flight; its VM being live does not settle it, and the blocker clears when that start
 marks its own claim running. Missing `reservations` visibility is different: the
 proof itself failed, for example because running claims exceed the live VMs' memory.
-A setup qualification (`windows-vm-deploy-qualify`) whose reply was lost no longer
-keeps `original_guest_work_unresolved` open: the census closes it like the other
-read-only guest programs, but only when its retained `.ps1` is exactly the reviewed
-`windows_vm_guest.READ_SETUP` text for this fixture's accounts and that operation.
-A change to `READ_SETUP` therefore needs its new hash in
-`readiness_windows_remote.py`. Any other program under a `qualification-` name
-stays open.
+A setup qualification (`windows-vm-deploy-qualify`) whose reply was lost after its
+guest-exec was acknowledged no longer keeps `original_guest_work_unresolved` open:
+the census closes it like the other read-only guest programs, but only when its
+retained `.ps1` is exactly the reviewed `windows_vm_guest.READ_SETUP` text for this
+fixture's accounts and that operation. One without an acknowledgement stays open:
+the deploy packet writes its intent and source before its guest-exec and shares no
+lock with the census, so it may not have started yet. A change to `READ_SETUP`
+therefore needs its new hash in `readiness_windows_remote.py`. Any other program
+under a `qualification-` name stays open.
 
 `readiness-sleep-capability` takes the same two inputs and answers from one
 fixed read-only `powercfg /a` query on a registered Windows fixture. An S3 sleep
@@ -234,11 +237,16 @@ and `guest-program-collect` take just the first two fields. Android has the same
 four `android-program-*` actions with a fixed counter and those two fields for
 every action. These routes accept no source, executable or guest path. Status
 and collect use retained local observations; reconcile observes the original
-owner and may restore transport without powering or unlocking its VM. Once a
-Windows start has recorded its admission, a spent readiness or transport budget
-answers with the original's retained status under the caller's operation
-(`unknown`, then `reconcile_original`), not as a refusal; any other refusal names
-the caller's operation, never an internal packet identity.
+owner and may restore transport without powering or unlocking its VM. A Windows
+start that has recorded its admission never answers a refusal, because its packet
+may already have run, also when a readiness refusal comes back after its target
+returned. It answers with the original's retained status under the caller's
+operation (`unknown`, then `reconcile_original`), the same answer
+`guest-program-status` gives, and the original's reconcile reports any refusal
+that lasts. A reconcile, like a repeated start of the same operation, answers a
+spent budget, or a refusal raised after its own packet ran, with the cached
+original. Its other refusals, and every refusal before the admission, name the
+caller's operation, never an internal packet identity.
 
 The fresh client `agent_tools/ssh_program_mcp_client.py` follows a start through
 same-operation status/reconciliation/collection automatically. Use `--host` for

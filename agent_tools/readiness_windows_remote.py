@@ -280,8 +280,13 @@ def _main():
             save(closed,{'pid':pid,'state':'guest-agent-no-longer-tracks-absent-read-only-program','replayAllowed':False})
             return True
         def read_only_unacknowledged(prefix):
-            """A lost guest-exec reply: this census's own later request proves it is over."""
-            if not only_reads(prefix):return False
+            """A lost guest-exec reply: this census's own later request proves it is over.
+
+            Only for this packet's own programs, written under the root lock it holds. The
+            deploy packet saves a qualification's intent and source before its guest-exec
+            without that lock, so an unacknowledged one may not have started yet: it stays open.
+            """
+            if re.fullmatch(read_only,prefix)is None:return False
             closed=prefix+'.orphan-closed.json'
             if os.path.lexists(root/closed):return read(closed).get('pid')is None and read(closed).get('replayAllowed')is False
             rows=(result.get('idleFacts')or{}).get('processes')

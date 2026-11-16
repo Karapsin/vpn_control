@@ -11,6 +11,13 @@ could never be positively idle.
 Each case runs the actual nested host_work of this tree's readiness packet source over real
 private files. The qualification's program text comes from its real producer,
 windows_vm_guest.powershell_source; the mutating control is the real secure_source.
+
+Only an acknowledged qualification closes. qualify_instance saves its intent and .ps1
+before its guest-exec and takes no lock the census holds, and the census reads its process
+rows before it lists the receipts, so one without an acknowledgement may still be about to
+start (review of 3f3ebd75). The native evidence of dea00558 is the acknowledged case: its
+status reads failed with a ValueError and no check name, which is what guest-exec-status
+answers for a forgotten pid, while a missing acknowledgement fails that read with an OSError.
 """
 import ast, base64, hashlib, json, os, re, stat, tempfile, unittest, uuid
 from pathlib import Path
@@ -134,17 +141,23 @@ class LostQualificationTests(Case):
         self.assertEqual((1, []), self.outcome())
         self.vm.rpc.assert_not_called()
 
-    def test_lost_exec_reply_of_the_qualification_RED_unresolved_GREEN_closed_once_no_other_shell_runs(self):
+    def test_census_during_an_in_flight_qualification_RED_closed_before_its_ack_GREEN_open_until_its_own_end(self):
+        # qualify_instance has saved its intent and .ps1; its guest-exec waits for the agent
+        # socket this census holds, so no shell of it is in the census's process rows yet.
         prefix = self.vm.qualification(pid=None)
-        self.vm.processes = [{"pid": 5, "name": "powershell.exe", "self": False}, {"pid": 900, "name": "powershell.exe", "self": True}]
-        self.assertEqual((0, self.open_row(prefix)), self.outcome())
-        self.vm.processes = [{"pid": 1, "name": "System", "self": False}, {"pid": 900, "name": "powershell.exe", "self": True}]
-        count, unresolved = self.outcome()
-        self.assertEqual([], unresolved, "the unacknowledged read-only setup qualification still blocks the idle census")
-        self.assertEqual(1, count)
-        self.assertEqual({"pid": None, "state": "unacknowledged-read-only-program-not-running", "replayAllowed": False},
-                         json.loads((self.root / (prefix + ".orphan-closed.json")).read_bytes()))
+        self.assertEqual((0, self.open_row(prefix)), self.outcome(),
+                         "the census closed a qualification whose guest-exec had not started")
+        self.assertFalse((self.root / (prefix + ".orphan-closed.json")).exists())
         self.vm.rpc.assert_not_called()
+        # Its guest-exec is acknowledged and the program runs: still open.
+        self.vm.write(prefix + ".ack.json", {"operationId": NATIVE, "ack": {"pid": 7777}, "replayAllowed": False})
+        self.vm.rpc = mock.Mock(return_value={"exited": False})
+        self.assertEqual((0, self.open_row(prefix)), self.outcome())
+        # The guest rebooted before any status kept its terminal: the agent no longer knows the
+        # pid and no shell has it, so it closes by its own pid, as a lost reply of it would.
+        self.vm.rpc = mock.Mock(side_effect=ValueError())
+        self.assertEqual((1, []), self.outcome(), "the acknowledged qualification never closes after an early census")
+        self.assertEqual({"pid": 7777, **FORGOTTEN}, json.loads((self.root / (prefix + ".orphan-closed.json")).read_bytes()))
 
     def test_ended_qualification_the_agent_still_holds_RED_unresolved_GREEN_retained_as_its_owners_terminal(self):
         prefix = self.vm.qualification()
@@ -176,6 +189,16 @@ class NeverClosedTests(Case):
         before = self.names()
         self.assertEqual((0, self.open_row(prefix)), self.outcome())
         self.assertEqual(before, self.names())
+
+    def test_an_unacknowledged_qualification_stays_open_whether_or_not_another_shell_runs(self):
+        # A lost guest-exec reply and a guest-exec that has not started yet look the same here.
+        prefix = self.vm.qualification(pid=None)
+        for processes in ([{"pid": 5, "name": "powershell.exe", "self": False}, {"pid": 900, "name": "powershell.exe", "self": True}],
+                          [{"pid": 1, "name": "System", "self": False}, {"pid": 900, "name": "powershell.exe", "self": True}]):
+            with self.subTest(processes=processes):
+                self.vm.processes = processes
+                self.assert_open_and_untouched(prefix)
+                self.vm.rpc.assert_not_called()
 
     def test_a_mutating_program_under_the_qualification_name_stays_open_and_is_never_asked_about(self):
         mutating = setup_guest.secure_source(SETUP, NATIVE)

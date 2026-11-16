@@ -398,10 +398,9 @@ class RecoveryJournal:
         name = dispatch["recoveryId"] + "-" + str(dispatch["attempt"]) + ".json"
         if (dispatch.get("action") != "wake_display" or type(outcome) is not RecoveryAcknowledged or not outcome.matches(dispatch)
                 or not _same_record(self._read_named("dispatch-" + name), dispatch) or self._read_named("unsubmitted-" + name) is not None):
-            return False
-        self._publish_named("acknowledged-" + name, {"version": 2, "recoveryId": dispatch["recoveryId"], "attempt": dispatch["attempt"],
-                                                    "dispatchDigest": dispatch["dispatchDigest"], "proofSha256": outcome.proof_sha256})
-        return True
+            return None
+        return self._publish_named("acknowledged-" + name, {"version": 2, "recoveryId": dispatch["recoveryId"], "attempt": dispatch["attempt"],
+                                                           "dispatchDigest": dispatch["dispatchDigest"], "proofSha256": outcome.proof_sha256})
 
     def _acknowledgement(self, recovery_id):
         for attempt in range(MAX_DISPATCH_ATTEMPTS, 0, -1):
@@ -656,9 +655,9 @@ def _ensure_ready(context: Context, requirements: Requirements, operation_identi
                                 transport_key = None
                                 publication_changed = True
                                 continue
-                            if type(changed) is RecoveryAcknowledged and not journal.record_acknowledged(dispatch, changed):
+                            if type(changed) is RecoveryAcknowledged and (changed := journal.record_acknowledged(dispatch, changed)) is None:
                                 raise ReadinessBlocked("recovery_acknowledgement_invalid", operation_identity)
-                            if changed is True or type(changed) is RecoveryAcknowledged:
+                            if changed is True:
                                 publication_changed = True
                                 continue
                         if not callable(outcome_observer):
@@ -801,7 +800,7 @@ def _ensure_ready(context: Context, requirements: Requirements, operation_identi
                             acknowledged = reconciler(action, recovery_id, observed, deadline, dispatch["attempt"], dispatch["dispatchDigest"])
                         except Exception:
                             acknowledged = None
-                        if type(acknowledged) is RecoveryAcknowledged and not journal.record_acknowledged(dispatch, acknowledged):
+                        if type(acknowledged) is RecoveryAcknowledged and journal.record_acknowledged(dispatch, acknowledged) is None:
                             raise ReadinessBlocked("recovery_acknowledgement_invalid", operation_identity)
     except ReadinessBlocked as error:
         if pending_effect and error.reason == "readiness_deadline":

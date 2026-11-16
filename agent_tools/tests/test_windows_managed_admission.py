@@ -205,6 +205,8 @@ class ManagedOriginalTests(unittest.TestCase):
                 registered=main.load_registered_fixture(repo,descriptor['fixtureId'],descriptor,pin)
                 registered.adapter.backend._guard()
             self.assertEqual(reads,[])
+            # Only WindowsAdapter accepts a delivered wake's proof; the shared adapter drops it silently.
+            self.assertIs(main.WindowsAdapter,type(registered.adapter))
             self.assertIsNotNone(registered.adapter.backend._managed_original)
             self.assertFalse(registered.adapter.backend.capabilities)
             self.assertFalse((Path(record['namespace']['root'])/record['operationId']).exists())

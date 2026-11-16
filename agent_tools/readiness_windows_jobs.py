@@ -826,13 +826,20 @@ def _observe_original(executor, operation, spec, deadline, cached, *, readonly_f
     return {"state": "unknown", "reason": last, "identity": validated["identity"]}
 
 
-# Readiness refusals that only say the admission ran out of time, transport or
-# journal. They say nothing about an admitted original, so its retained status
-# answers instead; any other refusal still escapes, under the caller's operation.
+# Readiness refusals that only say a reconcile's admission ran out of time, transport
+# or journal. They say nothing about the admitted original, so its retained status
+# answers instead; any other refusal of a reconcile (or of a repeated start of the
+# same operation) escapes, under the caller's operation. The start that records the
+# admission never answers a refusal after that record.
 _ORIGINAL_UNSETTLED = frozenset({"readiness_deadline", "readiness_cancelled", "recovery_outcome_unknown",
                                  "transport_attempts_exhausted", "connection_generation_changed",
                                  "prepared_context_stale", "readiness_journal_unavailable",
                                  "readiness_observation_unavailable"})
+
+
+def _packet_ran(error):
+    """The transport raised this after the packet's target ran and returned."""
+    return getattr(error, "target_executable_started", False) is True
 
 
 def _caller_refusal(error, operation):
@@ -877,8 +884,8 @@ def workflow(root, action, inputs, *, deadline=None):
         except (subprocess.SubprocessError, TimeoutError, ConnectionError):
             return cached  # Nothing new was read; the same original stays the only route.
         except readiness.ReadinessBlocked as error:
-            if error.reason in _ORIGINAL_UNSETTLED:
-                return cached  # The admission ran out, not the original.
+            if error.reason in _ORIGINAL_UNSETTLED or _packet_ran(error):
+                return cached  # The admission ran out, or the packet ran: nothing against the original.
             raise _caller_refusal(error, operation) from None
         return _save_observation(path, intent, observed)
     _need(action == "start", "windows_job_original_missing")
@@ -914,24 +921,17 @@ def workflow(root, action, inputs, *, deadline=None):
     submission_unknown = _public(fixture, operation, {"state": "unknown", "reason": "windows_job_submission_unknown"}, intent["executor"]["provider"])
     try:
         observed = executor.submit(operation, count=spec["count"], interval_seconds=spec["intervalSeconds"], deadline=deadline)
-    except (subprocess.SubprocessError, TimeoutError, ConnectionError):
-        # The packet may already have reached the guest: unknown, never a refusal or a replay.
+    except (subprocess.SubprocessError, TimeoutError, ConnectionError, readiness.ReadinessBlocked):
+        # The packet may already have reached the guest, also when a readiness refusal
+        # comes back after its target ran: unknown, never a refusal or a replay. It is
+        # what status answers; a reconcile of the original reports any lasting refusal.
         return submission_unknown
-    except readiness.ReadinessBlocked as error:
-        # After the admission a spent readiness budget is no refusal of the original.
-        if error.reason in _ORIGINAL_UNSETTLED:
-            return submission_unknown
-        raise _caller_refusal(error, operation) from None
     if observed["state"] == "unknown" and observed["reason"] == "original_owner_ack_pending":
         try:
             observed = _observe_original(executor, operation, spec, deadline,
                         {"identity": observed["identity"]}, readonly_first=True)
-        except (subprocess.SubprocessError, TimeoutError, ConnectionError):
+        except (subprocess.SubprocessError, TimeoutError, ConnectionError, readiness.ReadinessBlocked):
             pass  # The submit's own admitted answer stays the original's retained status.
-        except readiness.ReadinessBlocked as error:
-            if error.reason not in _ORIGINAL_UNSETTLED:
-                _save_observation(path, intent, observed)
-                raise _caller_refusal(error, operation) from None
     return _save_observation(path, intent, observed)
 
 
