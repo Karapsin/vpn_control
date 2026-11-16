@@ -1,0 +1,6 @@
+{
+  "commit": "1ac1cc3ed709a15a8ba9db4278ba060909b2e4c6",
+  "path": "agent_tools/launchd_escape.py",
+  "sha256": "f8a2ef2a04ff681b8867182b0d8f1da3e26b0324b0f10149fbdeaa63fb43ae11",
+  "reason": "Relay before the single-start guard: `launchctl submit` restarts the job after every exit, so a command longer than launchd's 10 s throttle started again as soon as it ended, truncating its out/err before the relay read them (integration run 2026-11-16: test_agent_ci_shards CiGateTests lost its unittest summary, rc 0) and rerunning it until the label was removed."
+}

@@ -3271,6 +3271,24 @@ drift or install-changing row, exit 3 stops a queue on an unsettled row) is a pa
 the cache staging and inline submit on a fresh host, a second passing product row with `--clean-start` and its
 census, a refused clean start after a failed row, a UAC row's job wait, and the measured row times.
 
+### launchd relay restarted its finished job (integration, 2026-11-16)
+
+Found while integrating the process-speed builders on `93b7ac64`: the macOS background-priority escape
+(`agent_tools/launchd_escape.py`, used by `mcp_server._run` for managed agent commands and every command
+bounded at 30 minutes or more) submits each command with `launchctl submit`, and launchd keeps such a job
+alive: it starts `job.sh` again after every exit, immediately once a run outlasted the 10 s throttle, until the
+relay removes the label. The restart truncated `out`/`err` before the relay's last read and began the
+command again. Signature: `relay -- python -m unittest agent_tools.tests.test_agent_ci_shards` returned 0 with
+16 bytes of stderr and no unittest summary (twice); a probe job exiting 0 restarted at +10 s and +20 s. The
+same restart would have started a second SSH keeper child (`_run(..., timeout=1845)`) for a moment.
+Fix: `job.sh` starts with an atomic no-clobber `started` marker, so only the first start runs the command and a
+restart exits without touching its outputs.
+
+| Behaviour | Regression | Notes |
+| --- | --- | --- |
+| A restarted job reran its command and replaced its outputs | `test_launchd_escape.RestartedJobTests` | Preserved `fixtures/launchd_escape/launchd_escape.before.source`: two starts of its `job.sh` run the command twice (RED); the current script runs it once and keeps out/err (GREEN). Portable POSIX, routine agent suite. |
+| A relayed command longer than 10 s lost its output | `test_launchd_escape.RelayTests.test_long_command_keeps_its_complete_output_and_runs_once` | macOS only (real launchd). RED with the preserved relay installed: `(0, '', '', 2)`; GREEN: complete stdout/stderr and one run. Logs: `evidence/integrate-speed/launchd-relay-{red,green}.log`. |
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

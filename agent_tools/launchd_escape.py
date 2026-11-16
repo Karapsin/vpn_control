@@ -37,7 +37,12 @@ TERM_GRACE_SECONDS = 40.0
 def _script(argv, cwd, env, directory: Path, label: str, relay_pid: int) -> str:
     exports = "".join(f"export {k}={shlex.quote(v)}\n" for k, v in env.items()
                       if NAME_RE.match(k) and "\0" not in v)
+    # `launchctl submit` keeps the job alive: launchd starts job.sh again after every exit (immediately after
+    # a run longer than its 10 s throttle) until the relay removes the label. Only the first start may run the
+    # command; a restart must neither rerun it nor truncate its out/err before the relay has read them.
+    started = shlex.quote(str(directory / "started"))
     return f"""#!/bin/bash
+( set -C; : > {started} ) 2>/dev/null || exit 0
 {exports}export {INSIDE_VARIABLE}=1
 cd {shlex.quote(cwd)} || {{ echo 126 > {shlex.quote(str(directory / 'rc.tmp'))}; mv {shlex.quote(str(directory / 'rc.tmp'))} {shlex.quote(str(directory / 'rc'))}; exit 126; }}
 exec >{shlex.quote(str(directory / 'out'))} 2>{shlex.quote(str(directory / 'err'))} </dev/null

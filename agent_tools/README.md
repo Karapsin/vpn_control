@@ -101,7 +101,9 @@ job (launchd-parented, normal priority, no sudo, no system change), then streams
 output, returns its exit status, forwards SIGTERM and stops the job if the relay dies.
 Same cwd and environment; it is a no-op off macOS, when `launchctl` or the relay is
 missing, inside a relay, or with `VPN_CONTROL_LAUNCHD_ESCAPE=0`; a failed submission runs
-the command directly. Measured on one shared Mac: the same CPU loop took 6.3 s direct and
+the command directly. Because launchd restarts a submitted job after every exit until the relay
+removes its label, the job script runs the command only on its first start (a no-clobber marker);
+a restart exits without rerunning it or truncating its output. Measured on one shared Mac: the same CPU loop took 6.3 s direct and
 0.8 s escaped; `test_android_installer_dispatch` 11.1 s versus 3.7 s.
 
 Managed checks also compare the loaded runner, build-environment, checkout-lease
