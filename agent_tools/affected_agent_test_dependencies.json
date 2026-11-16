@@ -11372,7 +11372,8 @@
         "agent_tools/tests/fixtures/whole_observer_binary/provenance.json"
       ],
       "sourceSha256": [
-        "e4bfc59fe742ec04b904eca87d1478c8916b68cd9c33edf23d4db069a04b050c"
+        "e4bfc59fe742ec04b904eca87d1478c8916b68cd9c33edf23d4db069a04b050c",
+        "55bdb12d98403ed94e81c0842ea8a019116e24981e3a9c1a4d405645439c847f"
       ]
     },
     "agent_tools/tests/test_windows_artifact_transfer.py": {

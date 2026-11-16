@@ -56,16 +56,18 @@ def _initializer(case, source, before):
 
 
 def _foreign_executable(case):
-    for name in ('/bin/echo', '/usr/bin/true', '/bin/true'):
+    # One link only: the strict guard refuses a hard-linked file ('boot-file-shape')
+    # before its ownership check, and a multi-call coreutils links all its programs.
+    for name in ('/bin/echo', '/usr/bin/true', '/bin/true', '/bin/sh', '/bin/bash', '/usr/bin/bash', '/bin/dash'):
         path = Path(name).resolve()
         try:
             info = path.lstat()
         except FileNotFoundError:
             continue
-        if (stat.S_ISREG(info.st_mode) and info.st_uid != os.getuid()
+        if (stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_uid != os.getuid()
                 and not info.st_mode & 0o022 and os.access(path, os.X_OK)):
             return path
-    case.skipTest('Physical installed executable with a different UID required for the ownership counterfactual')
+    case.skipTest('Physical single-link installed executable with a different UID required for the ownership counterfactual')
 
 
 def _strict_boundary(case, before):
@@ -152,6 +154,28 @@ class WholeObserverBinaryFixtureTests(unittest.TestCase):
         self.assertEqual(observations[0]['phase'], 'boot-binary-trust')
         self.assertEqual(observations[0]['intentCount'], 0)
         self.assertNotEqual(observations[0]['readerGeneration'][3], observations[0]['trustedUid'])
+
+    def test_foreign_executable_has_one_link_on_a_multi_call_coreutils_image(self):
+        # On ubuntu-26.04 (Fast Checks run 43474297086) /bin/echo and /usr/bin/true
+        # are hard links of one multi-call coreutils binary (st_nlink 116). The
+        # strict guard refuses such a file as 'boot-file-shape' before it reaches
+        # the ownership check, 'boot-binary-trust', that the counterfactual isolates.
+        multi_call = {str(Path(name).resolve()) for name in ('/bin/echo', '/usr/bin/true', '/bin/true')}
+        lstat = Path.lstat
+
+        class Linked:
+            def __init__(self, info):
+                self.info, self.st_nlink = info, 116
+
+            def __getattr__(self, name):
+                return getattr(self.info, name)
+
+        def multi_call_lstat(path):
+            info = lstat(path)
+            return Linked(info) if str(path) in multi_call else info
+        with patch.object(Path, 'lstat', multi_call_lstat):
+            source = _foreign_executable(self)
+            self.assertEqual(source.lstat().st_nlink, 1, str(source))
 
     def test_owned_copy_keeps_source_bytes_generation_and_current_uid(self):
         source = _foreign_executable(self)
