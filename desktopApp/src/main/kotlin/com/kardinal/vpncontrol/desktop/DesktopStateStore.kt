@@ -15,6 +15,8 @@ import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileTrafficTotal
 import com.kardinal.vpncontrol.model.RoutingRules
 import com.kardinal.vpncontrol.model.SettingsStatusMessages
+import com.kardinal.vpncontrol.model.StatusMessageKey
+import com.kardinal.vpncontrol.model.StatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.normalizeSubscriptionRefreshCustomHours
@@ -701,6 +703,15 @@ class DesktopStateStore(
         )
     }
 }
+
+/** True for the typed notice a load gives when it kept an unreadable saved workspace aside. */
+internal fun isUnreadableWorkspaceNotice(message: String): Boolean =
+    StatusMessages.decode(message)?.key in UNREADABLE_WORKSPACE_NOTICES
+
+private val UNREADABLE_WORKSPACE_NOTICES = setOf(
+    StatusMessageKey.SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED,
+    StatusMessageKey.SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED,
+)
 
 private fun DesktopWorkspace.withUnreadableNotice(kept: List<Path>, olderCopyLoaded: Boolean): DesktopWorkspace = copy(
     persistedState = persistedState.withStatus(

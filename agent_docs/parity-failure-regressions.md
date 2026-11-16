@@ -2361,16 +2361,8 @@ in 53 store-related desktop classes with no failure. Android: with `ReplaceFileC
 production factory the new pin fails ("expected CorruptionException but was null") while the replica pin of
 `ffa03e94` passes; on the unchanged Android sources `AndroidConfigurationStoreTest` passes 14 of 14.
 
-Open, deferred for a product decision: when the older copy that loads carries a reconnect intent, the status
-line shows the pending restore and then the restore results, so the GUI status never shows the older-copy
-notice; any later status that replaces the notice before a GUI looks has the same effect. The log entry is no
-fallback in the GUI: the desktop GUI reads `logs`, whose messages pass `DiagnosticsSanitizer.redactText`, which
-turns every typed status into `KEY(args)` that `AppStrings.statusMessage` cannot decode, so the Stats screen
-shows every typed status untranslated (pre-existing, every key). Deciding needs the user: whether a load notice
-outranks the launch restore (shown again after it, held until seen, or no automatic reconnect after an older
-copy loaded), and how `logs` carries typed statuses to the GUI (the typed key with redacted arguments as an
-additive field, or decoding in the frontend), a control-protocol change shared with the CLI and Android.
-`status` keeps warning meanwhile.
+Its deferred GUI half, the notice hidden by the launch restore and the GUI log's raw typed statuses, is fixed
+under "Desktop unreadable-workspace notice in the GUI status and the GUI log" below.
 
 ### Windows in-guest desktop test, review of the offline build (2026-11-13)
 
@@ -3335,6 +3327,59 @@ two modules into the clone and restored the fix (sha256 recorded in `red/tree.tx
 | Failure type | Regression | Notes |
 | --- | --- | --- |
 | The cache row passed a product that writes its defaults over an undecodable `workspace.json` | `test_windows_document_cache.CorruptionTests` (6), `CacheFlowTests.test_the_committed_cache_is_the_recipes_bytes_and_an_independent_owner_reads_it_back_unchanged`, `test_a_cold_owner_that_reads_a_different_cache_is_a_known_failure_that_closes_it`, `RowTests`; `test_native_scenario_windows_matrix.ExactChildStopTests.test_with_the_real_table_the_cache_row_closes_cache_digest_bytes_and_only_that`, `TableTests` (2) | The inert guest's store now models `DesktopStateStore.loadWorkspace` at each serve's start: kept aside with the typed notice (`keep`), the defaults written over (`overwrite`, every build before the fix) and a decoder that ignores what follows the first value (`lenient`); defect variants keep the copy under another name or with other bytes, give no warning, the older-copy key, two entries or untyped text, a substitute subscription, or defaults without a format. Each fails with its own `document-cache-corruption-<oracle>:<kind>` and the closing quits the corruption's serve; a serve that ends on the bad bytes fails `document-cold-owner-ended-before-readiness`. RED on the `efd774b0` cold module and matrix with the new tests, on Python 3.14.3 and 3.12.13 alike: 12 tests, 19 failures (counting subtests) and 1 error (`no attribute 'CORRUPTIONS'`), e.g. `(1, [], 'document-cache-corruption-kept-aside:changed-byte') != (0, [], 'None')` for `overwrite`, `['changed-byte', 'truncated', 'trailing-byte'] != []`, `5 != 2` serves, and the matrix `('passed', 'unmapped') != ('unmapped', 'unmapped')`. GREEN: the same 12 OK on both. Native only: the installed product's keep on Windows (rename in its state folder, kept name, ACL), the `logs` text on Windows, and the file replacement while no owner runs. Expected native RED on a build before the fix: `document-cache-corruption-kept-aside:changed-byte`. |
+
+### Desktop unreadable-workspace notice in the GUI status and the GUI log (2026-11-16)
+
+Found by review of the workspace-corruption fix (its finding 6, deferred then), not by a native run. Two failure
+types, both against `PRODUCT-003` ("reports the persistence failure in the GUI status"):
+
+- Launch restore hid the notice. When the older copy that loads carries a reconnect intent, `DesktopAppService`
+  set the first status line to `PREVIOUS_CONNECTION_RESTORE_PENDING` instead of the persisted
+  `SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED` notice, and the first GUI attach's launch restore (`DESKTOP-004`)
+  then replaced the line with `RESTORING_PREVIOUS_CONNECTION` and the restore's own result. The GUI status never
+  showed that the latest saved settings had been kept aside.
+- The GUI log showed every typed status raw. The GUI reads `logs`, whose `message` passes
+  `DiagnosticsSanitizer.redactText`; that turns every typed status into `KEY(args)`, which
+  `AppStrings.statusMessage` cannot decode, so the Stats screen showed the notice (and every other typed status,
+  pre-existing) untranslated.
+
+Fix. The notice outranks the launch restore in the status line, and the restore still runs once: when the loaded
+workspace's status is a `SAVED_SETTINGS_UNREADABLE_*` notice (`isUnreadableWorkspaceNotice`), it is the first
+status instead of the pending restore, and `DesktopConnectionActionsService.resumePreviousConnectionIfNeeded`
+shows it again when the restore ends (started, failed, or previous location unavailable) without logging it a
+second time; the restore's own statuses stay in the connection log. `ControlLogCursorJournal.read` adds an
+additive `status` object (`key`, `args`) to each typed entry, with arguments redacted like the GUI presentation's
+status (failure arguments `[redacted]`, others `redactText`); `message` is unchanged and plain entries have no
+`status`. `desktopFrontendLogs` encodes that status again, so the GUI log renders it in the chosen language; an
+older owner without the field still gives the old message. The field is shared code, so Android ADB `logs`
+gains it identically (parity unchanged); human CLI output prints `message` as before. `PRODUCT-003` now states the
+reconnect-intent case; `agent_docs/cli.md` documents the field. No status key or catalog changed.
+
+RED: on the production sources of `efd774b0` with only the new tests added (beforeimages in
+`evidence/doc-cache-b/beforeimages/`), `./gradlew --offline --continue -Pcompose.desktop.packaging.checkJdkVendor=false
+:desktopApp:test --tests 'com.kardinal.vpncontrol.desktop.DesktopUnreadableWorkspaceLaunchNoticeTest'`
+(2026-11-16T22:04:45Z-22:13:16Z) gave 6 tests, 5 failures:
+`noticeIsTheFirstStatusWhenTheOlderCopyCarriesReconnectIntent` ("the GUI status did not report the kept workspace
+first expected SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED but was PREVIOUS_CONNECTION_RESTORE_PENDING"),
+`noticeReturnsAfterASuccessfulLaunchRestore` ("the restore replaced the notice: ...CONNECTION_STARTED_ON_TARGET..."),
+`noticeReturnsAfterAFailedLaunchRestore` ("the failed restore replaced the notice: ...CONNECTION_START_FAILED..."),
+`noticeReturnsWhenThePreviousLocationIsUnavailable` ("the unavailable location replaced the notice:
+...PREVIOUS_LOCATION_UNAVAILABLE"), `guiLogRendersTheNoticeAsATranslatedStatus` ("the GUI log shows the raw status
+key: SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED(workspace.json.unreadable-...)"); the guard
+`launchRestoreWithoutANoticeKeepsItsOwnStatuses` passed. With the unfixed `ControlLogCursorJournal.kt` swapped
+back alone, `:shared:core:desktopTest --tests '...ControlLogCursorJournalStatusTest'` gave 3 tests, 2 failures
+(`typedEntryCarriesItsKeyAndRedactedArgumentsBesideTheMessage`, `argumentsAreRedactedLikeThePresentation`; the
+plain-entry guard passed). GREEN on the fix (22:15:08Z, BUILD SUCCESSFUL in 3m 5s): 88 tests, 0 failures across
+`DesktopUnreadableWorkspaceLaunchNoticeTest` 6, `DesktopStateStoreUnreadableWorkspaceTest` 24,
+`DesktopAppServiceTest` 23, `DesktopPresentationSnapshotTest` 1, `DesktopFrontendClientTest` 3,
+`DesktopConnectionActionsServiceTest` 5, `DesktopLogCursorJournalTest` 5, `DesktopCliStreamTest` 7,
+`DesktopAndroidStreamTest` 5, `DesktopAndroidStreamTransportTest` 3, `ControlLogCursorJournalStatusTest` 3,
+`ControlReadLogicTest` 3. Logs and JUnit XML: `evidence/doc-cache-b/red/`, `evidence/doc-cache-b/green/`.
+
+Routine coverage: `:desktopApp:test` and `:shared:core:desktopTest` run in Fast Checks and the managed pre-push
+tier; nothing to enroll by hand. Not proven: no packaged GUI run (the Stats screen and status line were checked
+through the owner's presentation and `logs` read path, not a native window); Android `:app` tests were not run
+(no Android source changed; the journal's API is unchanged).
 
 ## Historical coverage rule
 

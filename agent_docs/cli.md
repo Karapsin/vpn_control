@@ -192,6 +192,10 @@ Desktop JSON also supports `stats`, `logs [--limit N]`, `source show`, and
 `settings languages`. Shared pure projections produce the data; the owner captures
 the read and revision metadata under its commit monitor. Logs return an `entries`
 array of timestamps and redacted messages, including an empty array for limit zero.
+An entry whose message is a typed status also carries an additive `status` object
+(`key` and `args`, each argument redacted like the GUI presentation's status, failure
+arguments as `[redacted]`), so the GUI log renders it in its own language; `message`
+is unchanged and plain entries have no `status`.
 Stats retain null for unavailable timing and do not invent traffic counters. Source
 returns `mode` and nullable `subscriptionId`; languages returns code/name records.
 Desktop `status --watch`, `stats --watch` and `logs --follow` now poll an existing

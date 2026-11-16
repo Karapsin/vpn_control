@@ -15,6 +15,8 @@ internal class DesktopConnectionActionsService(
     private val setLaunchResumeAttempted: (Boolean) -> Unit,
     private val commitState: (nextLocations: List<DesktopLocationRecord>, nextState: MainUiState) -> Result<Unit>,
     private val updateState: ((MainUiState) -> MainUiState) -> Unit,
+    /** A saved workspace kept unreadable at load (PRODUCT-003): the status line shows it again once the restore ends. */
+    private val launchNotice: () -> String? = { null },
 ) {
     fun shouldResumeConnectionOnLaunch(): Boolean = getResumeConnectionOnLaunch()
 
@@ -35,15 +37,18 @@ internal class DesktopConnectionActionsService(
                 it.copy(isBusy = false, isVpnRunning = false)
                     .withStatus(ConnectionStatusMessages.previousLocationUnavailable())
             }
-            return
+        } else {
+            updateState {
+                it.withStatus(ConnectionStatusMessages.restoringPreviousConnection(location.name))
+            }
+            start(
+                location = location,
+                benchmarkSummary = stateProvider().lastBenchmarkSummary,
+            )
         }
-        updateState {
-            it.withStatus(ConnectionStatusMessages.restoringPreviousConnection(location.name))
-        }
-        start(
-            location = location,
-            benchmarkSummary = stateProvider().lastBenchmarkSummary,
-        )
+        // The restore's own statuses stay in the connection log; the notice outranks them in the status line and
+        // is not logged a second time.
+        launchNotice()?.let { notice -> updateState { it.copy(statusMessage = notice) } }
     }
 
     suspend fun shutdownForExit(): Result<Unit> = stopRuntimeForAppExit()

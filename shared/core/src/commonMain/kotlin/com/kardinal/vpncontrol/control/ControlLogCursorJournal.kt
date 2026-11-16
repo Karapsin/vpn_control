@@ -53,10 +53,25 @@ class ControlLogCursorJournal(initial: List<ConnectionLogEntry>, private val pre
                 "id" to ControlValue.Text(cursor(row.sequence)),
                 "createdAtEpochMillis" to ControlValue.IntegerValue(row.entry.createdAtEpochMillis),
                 "message" to ControlValue.Text(DiagnosticsSanitizer.redactText(row.entry.message)),
-            )) }),
+            ) + typedStatus(row.entry.message)) }),
             "nextCursor" to ControlValue.Text(cursor(next)),
             "gap" to ControlValue.BooleanValue(gap),
         )
+    }
+
+    /**
+     * Additive `status` of a typed entry: its key and arguments, redacted per argument like the GUI presentation's
+     * status, so a client can render it in its own language. `message` stays the redacted text it always was.
+     */
+    private fun typedStatus(message: String): Map<String, ControlValue> {
+        val structured = StatusMessages.decode(message) ?: return emptyMap()
+        return mapOf("status" to ControlValue.ObjectValue(mapOf(
+            "key" to ControlValue.Text(structured.key.name),
+            // Failure arguments may be arbitrary exception text, not public presentation.
+            "args" to ControlValue.ArrayValue(structured.args.map {
+                ControlValue.Text(if ("FAILED" in structured.key.name) "[redacted]" else DiagnosticsSanitizer.redactText(it))
+            }),
+        )))
     }
 
     private fun next(): Long { check(sequence < Long.MAX_VALUE); return ++sequence }

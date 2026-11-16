@@ -53,6 +53,12 @@ class DesktopAppService internal constructor(
     private var resumeConnectionOnLaunch = initialWorkspace.resumeConnectionOnLaunch ||
         initialWorkspace.persistedState.isVpnRunning
     private var launchResumeAttempted = false
+    /**
+     * The load notice of a saved workspace kept unreadable (PRODUCT-003). It outranks the launch restore of
+     * DESKTOP-004 in the status line: it is the first status and returns when the restore ends.
+     */
+    private val launchLoadNotice: String? =
+        initialWorkspace.persistedState.statusMessage.takeIf(::isUnreadableWorkspaceNotice)
     private val restoredInitialState = restoreDesktopUiState(
         initialWorkspace.persistedState,
         initialWorkspace.locations,
@@ -71,7 +77,7 @@ class DesktopAppService internal constructor(
     private var composeState by mutableStateOf(
         syncDesktopUiStateWithLocations(restoredInitialState, normalizedInitialLocations).copy(
             isVpnRunning = false,
-            statusMessage = if (resumeConnectionOnLaunch) {
+            statusMessage = if (resumeConnectionOnLaunch && launchLoadNotice == null) {
                 ConnectionStatusMessages.previousConnectionRestorePending()
             } else {
                 initialWorkspace.persistedState.statusMessage
@@ -111,6 +117,7 @@ class DesktopAppService internal constructor(
             commitState(nextState = nextState, nextLocations = nextLocations)
         },
         updateState = { transform -> state = transform(state) },
+        launchNotice = { launchLoadNotice },
     )
     private val locationService = DesktopLocationService(
         captureRestore = ::captureMutationRestore,

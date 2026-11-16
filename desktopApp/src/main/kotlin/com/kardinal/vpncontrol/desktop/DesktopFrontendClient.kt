@@ -87,6 +87,16 @@ internal fun desktopFrontendLogs(result: ControlResult): List<ConnectionLogEntry
         val fields = (row as ControlValue.ObjectValue).values
         val timestamp = (fields.getValue("createdAtEpochMillis") as ControlValue.IntegerValue).value
         ConnectionLogEntry((fields["id"] as? ControlValue.Text)?.value ?: "${result.requestId}-$index",
-            (fields.getValue("message") as ControlValue.Text).value, timestamp)
+            typedLogStatus(fields["status"]) ?: (fields.getValue("message") as ControlValue.Text).value, timestamp)
     }
+}
+
+/** A typed entry's key and redacted arguments, encoded again so the GUI log renders it in its own language. */
+private fun typedLogStatus(value: ControlValue?): String? {
+    val fields = (value as? ControlValue.ObjectValue)?.values ?: return null
+    val key = (fields["key"] as? ControlValue.Text)?.value
+        ?.let { name -> com.kardinal.vpncontrol.model.StatusMessageKey.entries.firstOrNull { it.name == name } } ?: return null
+    val args = (fields["args"] as? ControlValue.ArrayValue)?.values?.map { (it as? ControlValue.Text)?.value ?: return null }
+        ?: return null
+    return com.kardinal.vpncontrol.model.StatusMessages.encode(key, *args.toTypedArray())
 }
