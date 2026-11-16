@@ -4,7 +4,7 @@ Authoritative release and artifact invariants are `RELEASE-001` through `RELEASE
 
 ## Branch And Release Routine
 
-Normal work follows the development exact-SHA procedure in `AGENTS.md`. `VPN Integration` remains advisory on ordinary development.
+Normal work follows the development exact-SHA procedure in `AGENTS.md`. `VPN Integration` no longer runs on `dev` pushes; dispatch its advisory `core` profile when a change needs it.
 
 For an explicitly requested release:
 
@@ -112,7 +112,9 @@ Run the full local release pass from the repository root:
 
 The script first runs `scripts/check_release_hygiene.sh` to fail fast if generated release/runtime artifacts are tracked by Git. It then runs standalone regression tests, builds Android, Linux, macOS when on macOS, and Windows through the local VM, then prints candidate artifacts and SHA-256 checksums.
 
-GitHub Actions package workflows run the same release hygiene check before packaging. Windows installs the pinned native-helper SDK first so the hygiene suite can evaluate actual MSBuild output paths.
+GitHub Actions run release hygiene exactly once per operating system and push: Fast Checks on Ubuntu (which also covers the Linux and Android package jobs on the same image), the Windows `Hygiene and Native Guards` job, and the macOS package job. CI therefore calls the package scripts with `--skip-release-hygiene` (`-SkipReleaseHygiene` on Windows); local runs without the flag keep the check. The Linux package job also passes `--skip-tests`, because Fast Checks runs the same `:desktopApp:test` on the same image. Windows splits into parallel jobs: `Build EXE and MSI` packages with `-SkipTests -SkipReleaseHygiene`, `Desktop Native Tests` and `Desktop Tests` run the complementary `*NativeTest` and remaining `:desktopApp:test` partitions (`-TestsOnly -DesktopTestPartition Native|Portable`), and `Hygiene and Native Guards` runs hygiene and the native causal guards. Each Windows job installs the pinned native-helper SDK so hygiene can evaluate actual MSBuild output paths. The workflow fails when any job fails, and the publisher only takes artifacts from a run whose overall conclusion is `success`.
+
+Gradle build cache (S7): `scripts/gradle_ci_cache.py` runs after `Set up Gradle` in each push-workflow Gradle job. It enables task-output caching only on non-release sources and never caches `Test` tasks, so every test still executes. `setup-gradle` writes its Gradle User Home cache (which holds the local build cache) only on `dev` pushes and reads it elsewhere. A source whose changelog and version pass `scripts/check_release_metadata.py --require-release-ready`, which every publishable SHA must, and any `main` run build without the build cache, so release packages never reuse cached task outputs.
 
 Every successful package set for the current `main` commit is promoted automatically to the latest GitHub Release. The publisher waits for Fast Checks plus Android, Linux, Windows, and macOS packages for that exact commit, then publishes versioned assets, checksums, and `update-manifest.json` for the in-app updater.
 

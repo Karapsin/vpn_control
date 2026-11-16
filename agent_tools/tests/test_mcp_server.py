@@ -222,10 +222,17 @@ class McpSurfaceTest(unittest.TestCase):
             self.assertEqual(entry["name"], first_name)
             self.assertEqual("push", entry["event"])
             self.assertEqual(["success"], entry["allowed_conclusions"])
-        self.assertEqual({"VPN Integration"}, mcp_server._advisory_workflow_names())
+        # VPN Integration no longer runs on dev pushes; it is an advisory dispatch.
+        self.assertEqual(set(), mcp_server._advisory_workflow_names())
         manifest = json.loads(mcp_server.REQUIRED_WORKFLOWS_PATH.read_text(encoding="utf-8"))
         release_only = manifest["branches"]["dev"]["classified_non_push_workflows"]
         self.assertIn("Visual Capture", {entry["name"] for entry in release_only})
+        integration = next(entry for entry in release_only if entry["name"] == "VPN Integration")
+        self.assertEqual("advisory_dispatch", integration["classification"])
+        workflow = (mcp_server.REPO_ROOT / integration["path"]).read_text(encoding="utf-8")
+        triggers = "\n" + workflow.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
+        self.assertNotIn("\n  push:", triggers)
+        self.assertIn("\n  workflow_dispatch:", triggers)
         self.assertEqual(
             {"vpn-control/agent-visual"},
             {entry["context"] for entry in manifest["branches"]["dev"]["release_statuses"]},

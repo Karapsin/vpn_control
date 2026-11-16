@@ -455,7 +455,7 @@ class WorkflowExecutionTests(unittest.TestCase):
         self.workflow_source=os.environ.get("AGENT_SELECTION_WORKFLOW_SOURCE")
         GitSelectionTests.setUp(self)
         tools=Path(__file__).resolve().parents[1]
-        for name in ('affected_agent_tests.py','affected_agent_test_dependencies.json','agent_test_runner.py','agent_test_session_observer.py','agent_ci_evidence.py'):
+        for name in ('affected_agent_tests.py','affected_agent_test_dependencies.json','agent_test_runner.py','agent_test_session_observer.py','agent_ci_evidence.py','agent_ci_module_seconds.json'):
             shutil.copy2(tools/name,self.root/'agent_tools'/name)
         self.write('.gitignore','.rag_index/\n__pycache__/\n')
         self.write('agent_tools/tests/test_leaf.py','import unittest\nfrom agent_tools import leaf\nclass Case(unittest.TestCase):\n def test_value(self): self.assertGreater(leaf.value,0)\n')
@@ -480,9 +480,12 @@ class WorkflowExecutionTests(unittest.TestCase):
     def test_actual_ci_product_only_never_imports_agent_suites(self):
         self.write('Feature.kt','changed product');result=self.execute_workflow()
         self.assertEqual(0,result.returncode,result.stderr);self.assertIn('"selectedModuleCount": 0',result.stdout)
-    def test_actual_ci_runs_only_tool_consumer_with_retained_report(self):
+    def test_actual_ci_gate_runs_complete_suite_with_retained_report(self):
+        # Hosted CI runs the complete agent suite when any agent input changed; this
+        # first shard owns only test_leaf, so the unrelated suite runs in another shard.
         self.write('agent_tools/leaf.py','value=3');result=self.execute_workflow()
-        self.assertEqual(0,result.returncode,result.stderr);self.assertIn('"selectedModuleCount": 1',result.stdout)
+        self.assertEqual(0,result.returncode,result.stderr);self.assertIn('"selectedModuleCount": 2',result.stdout)
+        self.assertIn('"assignedModules": ["agent_tools.tests.test_leaf"]',result.stdout)
         reports=list((self.root/'.rag_index/agent-test-runs').glob('*/report.json'))
         self.assertEqual(1,len(reports));report=json.loads(reports[0].read_text())
         self.assertEqual(1,report['counts']['testsRun']);self.assertTrue(report['successful'])

@@ -35,6 +35,11 @@ FIXTURES = Path(__file__).with_name('fixtures') / 'fast_workflow_budget'
 BEFORE = FIXTURES / 'before.yml'
 # Whole cc2873b5 workflow whose two hosted agent steps timed out in run 40187427911.
 TWO_SHARD_BEFORE = shards.FIXTURE / 'hosted-capacity.workflow.before.yml'
+# Whole a34e07cb workflow: the last one whose first agent shard ran inside the
+# Fast Checks build job, ahead of its build and validation tail.
+SHARD0_BEFORE = shards.FIXTURE / 'ci-gate.workflow.before.yml'
+# Each hosted agent shard now has its own job; the build tail runs beside them.
+AGENT_JOB = {CURRENT: 'agent-tests-shard-0'}
 MANAGED_SOURCE = ROOT / 'agent_tools/mcp_server.py'
 SCALE_SECONDS_PER_MINUTE = 0.08
 MAX_OUTPUT_BYTES = 65536
@@ -86,7 +91,7 @@ def managed_minutes():
 
 def workflow_limits(source):
     source = Path(source)
-    if source not in (CURRENT, BEFORE, TWO_SHARD_BEFORE):
+    if source not in (CURRENT, BEFORE, TWO_SHARD_BEFORE, SHARD0_BEFORE):
         raise ValueError('Unknown workflow source')
     raw = source.read_bytes()
     if source == BEFORE:
@@ -96,8 +101,10 @@ def workflow_limits(source):
             raise ValueError('Preserved actual workflow changed')
     elif source == TWO_SHARD_BEFORE and raw != shards.preserved('workflow.before.yml'):
         raise ValueError('Preserved actual workflow changed')
+    elif source == SHARD0_BEFORE and raw != shards.gate_before('workflow.before.yml'):
+        raise ValueError('Preserved actual workflow changed')
     lines = raw.decode().splitlines()
-    starts = [index for index, line in enumerate(lines) if line == '  fast-checks:']
+    starts = [index for index, line in enumerate(lines) if line == '  %s:' % AGENT_JOB.get(source, 'fast-checks')]
     if len(starts) != 1:
         raise ValueError('Expected one fixed Fast Checks job')
     body = []
@@ -361,7 +368,8 @@ class FastWorkflowBudgetTests(unittest.TestCase):
                                        records['current']['errors']), records)
 
     def test_existing_build_and_validation_tail_stays_after_agent_phase(self):
-        current = workflow_limits(CURRENT)
+        # The shape that ran the first agent shard inside the build job, up to a34e07cb.
+        current = workflow_limits(SHARD0_BEFORE)
         before = workflow_limits(BEFORE)
         # The pinned JDK moved ahead of release hygiene, the first step that can start Gradle
         # (test_workflow_jdk_order); every other tail step stays, in its order.
@@ -369,6 +377,21 @@ class FastWorkflowBudgetTests(unittest.TestCase):
                          current['tailSteps'])
         self.assertIn('Run fast unit tests', current['tailSteps'])
         self.assertIn('Verify Android instrumentation signature guard', current['tailSteps'])
+
+    def test_current_agent_job_has_no_build_tail_and_build_job_keeps_it(self):
+        current = workflow_limits(CURRENT)
+        self.assertEqual([], current['tailSteps'])
+        before = workflow_limits(SHARD0_BEFORE)
+        source = CURRENT.read_text()
+        build = source.split('\n  fast-checks:\n', 1)[1].split('\n  agent-tests-shard-0:\n', 1)[0]
+        names = [line.removeprefix('      - name: ') for line in build.splitlines() if line.startswith('      - name: ')]
+        self.assertNotIn('Test affected agent tools', names)
+        # Every retained build step still runs once, in its order, beside the shards.
+        retained = [name for name in before['tailSteps'] if name in names]
+        self.assertEqual(retained, [name for name in names if name in retained])
+        for name in ('Run fast unit tests', 'Verify Android instrumentation signature guard',
+                     'Check localization catalogs', 'Verify desktop build without Android SDK'):
+            self.assertIn(name, retained)
 
     def test_preserved_tail_reader_reproduces_the_same_assertion_then_current_passes(self):
         folder = Path(__file__).with_name('fixtures') / 'agent_ci_shards'
@@ -380,7 +403,9 @@ class FastWorkflowBudgetTests(unittest.TestCase):
         functions = [node for node in ast.parse(raw).body if isinstance(node, ast.FunctionDef)
                      and node.name == 'workflow_limits']
         self.assertEqual(1, len(functions))
-        namespace = dict(globals())
+        # The legacy reader knows only its own current workflow; that is the
+        # a34e07cb shape, the last one with the agent phase inside the build job.
+        namespace = dict(globals(), CURRENT=SHARD0_BEFORE)
         exec(compile(ast.Module(body=functions, type_ignores=[]), str(folder / 'budget.before.source'), 'exec'), namespace)
         case = type(self)('test_existing_build_and_validation_tail_stays_after_agent_phase')
         legacy = unittest.TestResult()

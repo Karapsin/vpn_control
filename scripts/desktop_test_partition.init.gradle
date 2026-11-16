@@ -1,0 +1,22 @@
+// Splits the :desktopApp:test task into two complementary CI partitions.
+// -PvpnControlDesktopTestPartition=native runs only classes matching *NativeTest;
+// =portable runs every other test. The two filters use the same pattern, so their
+// union is exactly the unfiltered task. Used by scripts/package_windows_desktop.ps1.
+def partition = gradle.startParameter.projectProperties.get("vpnControlDesktopTestPartition")
+if (!(partition in ["native", "portable"])) {
+    throw new GradleException("vpnControlDesktopTestPartition must be native or portable, not: " + partition)
+}
+
+gradle.projectsEvaluated {
+    def project = gradle.rootProject.findProject(":desktopApp")
+    if (project == null) {
+        throw new GradleException("The desktop test partition requires the :desktopApp project")
+    }
+    project.tasks.named("test", Test).configure { task ->
+        if (partition == "native") {
+            task.filter.includeTestsMatching("*NativeTest")
+        } else {
+            task.filter.excludeTestsMatching("*NativeTest")
+        }
+    }
+}

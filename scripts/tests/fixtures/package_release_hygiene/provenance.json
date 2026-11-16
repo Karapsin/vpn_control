@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "a34e07cb0e9ad925935bcc84665fd07f5e540906",
+  "failure": "Process review 2026-11-16 (Linux Desktop Package, 16 dev pushes): release hygiene ran three times per Linux package job, as the workflow step (4.4 min), inside scripts/package_linux_desktop.sh:38 (3.1 min) and inside scripts/package_arch_desktop_update.sh:16 (3.0 min), and twice per macOS job (workflow step 7.0 min, scripts/package_macos_desktop.sh:43 4.1 min). The scripts had no way to skip it.",
+  "files": [
+    {
+      "path": "package_linux_desktop.sh.before.source",
+      "sourcePath": "scripts/package_linux_desktop.sh",
+      "sourceSha256": "9b9317f0cb5cac1eb05c46c6f9ab37d92bfe0dc10225a3a3eb04d1faf1fac18a",
+      "sourceBytes": 2166
+    },
+    {
+      "path": "package_arch_desktop_update.sh.before.source",
+      "sourcePath": "scripts/package_arch_desktop_update.sh",
+      "sourceSha256": "bebaffd8c2aeee6beb80a79b69b9752c2d233f8ea4d4936b90e5e487619dd594",
+      "sourceBytes": 1607
+    },
+    {
+      "path": "package_macos_desktop.sh.before.source",
+      "sourcePath": "scripts/package_macos_desktop.sh",
+      "sourceSha256": "8a0d3eba78802806cc69b79d9194c2715c0bca6836e8a9685eb6e7fc5e60ac67",
+      "sourceBytes": 2203
+    }
+  ]
+}

@@ -2,18 +2,25 @@
 set -euo pipefail
 
 skip_build=false
-if [[ "${1:-}" == "--skip-build" ]]; then
-  skip_build=true
+skip_release_hygiene=false
+while (($#)); do
+  case "$1" in
+    --skip-build) skip_build=true ;;
+    # package_linux_desktop.sh passes this after running hygiene itself.
+    --skip-release-hygiene) skip_release_hygiene=true ;;
+    *)
+      echo "Usage: package_arch_desktop_update.sh [--skip-build] [--skip-release-hygiene]" >&2
+      exit 2
+      ;;
+  esac
   shift
-fi
-if (($#)); then
-  echo "Usage: package_arch_desktop_update.sh [--skip-build]" >&2
-  exit 2
-fi
+done
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
-./scripts/check_release_hygiene.sh
+if [[ "$skip_release_hygiene" != true ]]; then
+  ./scripts/check_release_hygiene.sh
+fi
 
 if [[ "$skip_build" != true ]]; then
   ./scripts/prepare_sing_box_desktop_runtime.sh

@@ -20,21 +20,13 @@ def workflow_command_argv(command):
 class SourceWhitespaceTest(unittest.TestCase):
     def test_actual_fast_checks_boundary_preserves_only_authenticated_archives(self):
         repository = pathlib.Path(__file__).resolve().parents[1]
-        workflow = pathlib.Path(os.environ.get(
-            "SOURCE_WHITESPACE_WORKFLOW", repository / ".github/workflows/fast-checks.yml"))
-        lines = workflow.read_text(encoding="utf-8").splitlines()
-        start = lines.index("      - name: Check whitespace")
-        run = next(i for i in range(start + 1, len(lines))
-                   if lines[i].lstrip().startswith("run:"))
-        command = lines[run].split("run:", 1)[1].strip()
-        if command == "|":
-            body = []
-            for line in lines[run + 1:]:
-                if line and not line.startswith("          "):
-                    break
-                body.append(line[10:] if line else "")
-            command = "\n".join(body)
-        argv = workflow_command_argv(command)
+        # Fast Checks runs the whitespace check once, through release hygiene.
+        hygiene = pathlib.Path(os.environ.get(
+            "SOURCE_WHITESPACE_HYGIENE", repository / "scripts/check_release_hygiene.sh"))
+        commands = [line.removeprefix("run_check ").strip() for line in hygiene.read_text(encoding="utf-8").splitlines()
+                    if line.startswith("run_check ") and "check_source_whitespace.py" in line]
+        self.assertEqual(1, len(commands))
+        argv = workflow_command_argv(commands[0])
         names = tuple(checker.HISTORICAL_BYTE_ARCHIVES)
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)

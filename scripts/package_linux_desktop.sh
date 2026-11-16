@@ -3,6 +3,7 @@ set -euo pipefail
 
 skip_tests=false
 skip_package_regression_tests=false
+skip_release_hygiene=false
 
 while (($#)); do
   case "$1" in
@@ -14,6 +15,10 @@ while (($#)); do
       skip_package_regression_tests=true
       shift
       ;;
+    --skip-release-hygiene)
+      skip_release_hygiene=true
+      shift
+      ;;
     -h|--help)
       cat <<'EOF'
 Usage: scripts/package_linux_desktop.sh [options]
@@ -21,6 +26,8 @@ Usage: scripts/package_linux_desktop.sh [options]
 Options:
   --skip-tests                       skip Gradle desktop tests
   --skip-package-regression-tests    skip extracted package smoke checks
+  --skip-release-hygiene             skip scripts/check_release_hygiene.sh (CI runs it
+                                     once per OS in another step or job)
   -h, --help                         show this help
 EOF
       exit 0
@@ -35,7 +42,9 @@ done
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-./scripts/check_release_hygiene.sh
+if [[ "$skip_release_hygiene" != true ]]; then
+  ./scripts/check_release_hygiene.sh
+fi
 
 echo "[vpn-control] checking Java runtime"
 java -version
@@ -72,7 +81,8 @@ else
 fi
 
 echo "[vpn-control] building Arch update bundle"
-./scripts/package_arch_desktop_update.sh --skip-build
+# This script already ran (or was asked to skip) release hygiene.
+./scripts/package_arch_desktop_update.sh --skip-build --skip-release-hygiene
 if [[ "$skip_package_regression_tests" != true ]]; then
   arch_bundle=$(find "$repo_root/dist/arch" -maxdepth 1 -type f -name '*.tar.gz' | sort | head -n 1)
   ./scripts/test_arch_desktop_update.sh "$arch_bundle"

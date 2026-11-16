@@ -54,6 +54,9 @@ run_check python3 scripts/test_ci_failure_discovery.py
 run_check python3 -m unittest agent_tools.tests.test_workflow_jdk_order
 run_check python3 -m unittest agent_tools.tests.test_ci_environment_pins
 run_check python3 scripts/test_release_hygiene_runner.py
+run_check python3 scripts/test_package_release_hygiene.py
+run_check python3 scripts/test_gradle_ci_cache.py
+run_check python3 scripts/test_windows_desktop_ci_split.py
 run_check bash scripts/check_docs_hygiene.sh
 run_check bash scripts/test_arch_install_hygiene.sh
 run_check python3 scripts/test_arch_update_permissions.py

@@ -185,14 +185,6 @@ jobs:
       - name: Check release hygiene
         run: ./scripts/check_release_hygiene.sh
 
-      - name: Check documentation hygiene
-        if: ${{ !cancelled() }}
-        run: ./scripts/check_docs_hygiene.sh
-
-      - name: Check whitespace
-        if: ${{ !cancelled() }}
-        run: python3 scripts/check_source_whitespace.py
-
       - name: Install qemu-img for agent fixtures
         if: ${{ !cancelled() }}
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-utils
@@ -235,43 +227,10 @@ jobs:
               raise SystemExit('Linux native creator root census must run once without skips')
           PY
 
-      - name: Test affected agent tools
-        if: ${{ !cancelled() }}
-        timeout-minutes: 50
-        env:
-          AGENT_TEST_BASELINE: ${{ github.event_name == 'workflow_dispatch' && (inputs.baseline || github.sha) || '' }}
-          AUDIT_AGENT_TESTS: ${{ inputs.audit_agent_tests && '1' || '' }}
-        run: |
-          if [[ "$AUDIT_AGENT_TESTS" == "1" ]]; then
-            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 0 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-0
-          else
-            python agent_tools/affected_agent_tests.py --run --shard-index 0 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-0
-          fi
-
-      - name: Retain public agent shard evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-0
-          path: |
-            .rag_index/agent-ci-evidence-0/plan.json
-            .rag_index/agent-ci-evidence-0/events.jsonl
-            .rag_index/agent-ci-evidence-0/summary.json
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 7
-
-      - name: Check fixed UI theme and visual comparator
+      - name: Check visual capture entry points
         if: ${{ !cancelled() }}
         run: |
-          python scripts/check_ui_theme.py
-          python scripts/test_visual_regression.py
-          python scripts/test_visual_platform.py
-          python scripts/test_visual_review.py
           python scripts/select_visual_scenes.py --manifest visual-tests/scenes.json --platform linux --kind app >/dev/null
-          bash -n scripts/bootstrap_windows_visual_vm.sh
-          bash -n scripts/start_windows_visual_vm.sh
-          bash -n scripts/mark_windows_visual_vm_ready.sh
           bash -n scripts/capture_visual_android.sh
           bash -n scripts/capture_visual_desktop.sh
           python -m py_compile scripts/capture_visual_macos_tart.py scripts/capture_visual_windows_qemu.py
@@ -284,13 +243,16 @@ jobs:
         if: ${{ !cancelled() }}
         run: python scripts/test_windows_install_admission_diagnostic.py
 
-      - name: Verify Windows PowerShell command bounds
-        if: ${{ !cancelled() }}
-        run: python scripts/test_windows_qga_powershell_size.py
-
       - name: Set up Gradle
         if: ${{ !cancelled() }}
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+        with:
+          cache-read-only: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
+          cache-disabled: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Set up Gradle build cache
+        if: ${{ !cancelled() }}
+        run: python scripts/gradle_ci_cache.py
 
       - name: Check localization catalogs
         if: ${{ !cancelled() }}
@@ -306,6 +268,8 @@ jobs:
 
       - name: Run fast unit tests
         if: ${{ !cancelled() }}
+        env:
+          GRADLE_OPTS: ${{ env.GRADLE_BUILD_CACHE_OPTS }}
         run: ./gradlew --continue :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin :app:verifyDebugAndroidTestSignatures
 
       - name: Verify desktop build without Android SDK
@@ -319,6 +283,52 @@ jobs:
       - name: Verify Android instrumentation signature guard
         if: ${{ !cancelled() }}
         run: python scripts/test_android_instrumentation_signatures.py
+
+  agent-tests-shard-0:
+    name: Agent Tools Shard 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install agent tool dependencies
+        run: python -m pip install --disable-pip-version-check --require-hashes -r agent_tools/requirements-mcp.txt
+
+      - name: Install qemu-img for agent fixtures
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-utils
+
+      - name: Test affected agent tools
+        timeout-minutes: 50
+        env:
+          AGENT_TEST_BASELINE: ${{ github.event_name == 'workflow_dispatch' && (inputs.baseline || github.sha) || '' }}
+          AUDIT_AGENT_TESTS: ${{ inputs.audit_agent_tests && '1' || '' }}
+        run: |
+          if [[ "$AUDIT_AGENT_TESTS" == "1" ]]; then
+            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 0 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-0
+          else
+            python agent_tools/affected_agent_tests.py --run --ci-gate --shard-index 0 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-0
+          fi
+
+      - name: Retain public agent shard evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-0
+          path: |
+            .rag_index/agent-ci-evidence-0/plan.json
+            .rag_index/agent-ci-evidence-0/events.jsonl
+            .rag_index/agent-ci-evidence-0/summary.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
 
   agent-tests-shard-1:
     name: Agent Tools Shard 2
@@ -348,9 +358,9 @@ jobs:
           AUDIT_AGENT_TESTS: ${{ inputs.audit_agent_tests && '1' || '' }}
         run: |
           if [[ "$AUDIT_AGENT_TESTS" == "1" ]]; then
-            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 1 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-1
+            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 1 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-1
           else
-            python agent_tools/affected_agent_tests.py --run --shard-index 1 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-1
+            python agent_tools/affected_agent_tests.py --run --ci-gate --shard-index 1 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-1
           fi
 
       - name: Retain public agent shard evidence
@@ -394,9 +404,9 @@ jobs:
           AUDIT_AGENT_TESTS: ${{ inputs.audit_agent_tests && '1' || '' }}
         run: |
           if [[ "$AUDIT_AGENT_TESTS" == "1" ]]; then
-            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 2 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-2
+            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 2 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-2
           else
-            python agent_tools/affected_agent_tests.py --run --shard-index 2 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-2
+            python agent_tools/affected_agent_tests.py --run --ci-gate --shard-index 2 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-2
           fi
 
       - name: Retain public agent shard evidence
@@ -440,9 +450,9 @@ jobs:
           AUDIT_AGENT_TESTS: ${{ inputs.audit_agent_tests && '1' || '' }}
         run: |
           if [[ "$AUDIT_AGENT_TESTS" == "1" ]]; then
-            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 3 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-3
+            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 3 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-3
           else
-            python agent_tools/affected_agent_tests.py --run --shard-index 3 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-3
+            python agent_tools/affected_agent_tests.py --run --ci-gate --shard-index 3 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-3
           fi
 
       - name: Retain public agent shard evidence
@@ -486,9 +496,9 @@ jobs:
           AUDIT_AGENT_TESTS: ${{ inputs.audit_agent_tests && '1' || '' }}
         run: |
           if [[ "$AUDIT_AGENT_TESTS" == "1" ]]; then
-            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 4 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-4
+            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 4 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-4
           else
-            python agent_tools/affected_agent_tests.py --run --shard-index 4 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-4
+            python agent_tools/affected_agent_tests.py --run --ci-gate --shard-index 4 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-4
           fi
 
       - name: Retain public agent shard evidence
@@ -532,9 +542,9 @@ jobs:
           AUDIT_AGENT_TESTS: ${{ inputs.audit_agent_tests && '1' || '' }}
         run: |
           if [[ "$AUDIT_AGENT_TESTS" == "1" ]]; then
-            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 5 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-5
+            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 5 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-5
           else
-            python agent_tools/affected_agent_tests.py --run --shard-index 5 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-5
+            python agent_tools/affected_agent_tests.py --run --ci-gate --shard-index 5 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-5
           fi
 
       - name: Retain public agent shard evidence
@@ -550,10 +560,102 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
+  agent-tests-shard-6:
+    name: Agent Tools Shard 7
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install agent tool dependencies
+        run: python -m pip install --disable-pip-version-check --require-hashes -r agent_tools/requirements-mcp.txt
+
+      - name: Install qemu-img for agent fixtures
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-utils
+
+      - name: Test affected agent tools
+        timeout-minutes: 50
+        env:
+          AGENT_TEST_BASELINE: ${{ github.event_name == 'workflow_dispatch' && (inputs.baseline || github.sha) || '' }}
+          AUDIT_AGENT_TESTS: ${{ inputs.audit_agent_tests && '1' || '' }}
+        run: |
+          if [[ "$AUDIT_AGENT_TESTS" == "1" ]]; then
+            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 6 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-6
+          else
+            python agent_tools/affected_agent_tests.py --run --ci-gate --shard-index 6 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-6
+          fi
+
+      - name: Retain public agent shard evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-6
+          path: |
+            .rag_index/agent-ci-evidence-6/plan.json
+            .rag_index/agent-ci-evidence-6/events.jsonl
+            .rag_index/agent-ci-evidence-6/summary.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
+  agent-tests-shard-7:
+    name: Agent Tools Shard 8
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install agent tool dependencies
+        run: python -m pip install --disable-pip-version-check --require-hashes -r agent_tools/requirements-mcp.txt
+
+      - name: Install qemu-img for agent fixtures
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-utils
+
+      - name: Test affected agent tools
+        timeout-minutes: 50
+        env:
+          AGENT_TEST_BASELINE: ${{ github.event_name == 'workflow_dispatch' && (inputs.baseline || github.sha) || '' }}
+          AUDIT_AGENT_TESTS: ${{ inputs.audit_agent_tests && '1' || '' }}
+        run: |
+          if [[ "$AUDIT_AGENT_TESTS" == "1" ]]; then
+            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 7 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-7
+          else
+            python agent_tools/affected_agent_tests.py --run --ci-gate --shard-index 7 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-7
+          fi
+
+      - name: Retain public agent shard evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-7
+          path: |
+            .rag_index/agent-ci-evidence-7/plan.json
+            .rag_index/agent-ci-evidence-7/events.jsonl
+            .rag_index/agent-ci-evidence-7/summary.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
   agent-test-coverage:
     name: Verify Agent Shard Coverage
     if: always()
-    needs: [fast-checks, agent-tests-shard-1, agent-tests-shard-2, agent-tests-shard-3, agent-tests-shard-4, agent-tests-shard-5]
+    needs: [agent-tests-shard-0, agent-tests-shard-1, agent-tests-shard-2, agent-tests-shard-3, agent-tests-shard-4, agent-tests-shard-5, agent-tests-shard-6, agent-tests-shard-7]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -601,12 +703,26 @@ jobs:
           name: agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-5
           path: .rag_index/agent-ci-evidence-5
 
+      - name: Fetch seventh current-attempt public receipt
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-6
+          path: .rag_index/agent-ci-evidence-6
+
+      - name: Fetch eighth current-attempt public receipt
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-7
+          path: .rag_index/agent-ci-evidence-7
+
       - name: Require actual complete disjoint shard coverage
         env:
-          FIRST_SHARD_RESULT: ${{ needs.fast-checks.result }}
+          FIRST_SHARD_RESULT: ${{ needs.agent-tests-shard-0.result }}
           SECOND_SHARD_RESULT: ${{ needs.agent-tests-shard-1.result }}
           THIRD_SHARD_RESULT: ${{ needs.agent-tests-shard-2.result }}
           FOURTH_SHARD_RESULT: ${{ needs.agent-tests-shard-3.result }}
           FIFTH_SHARD_RESULT: ${{ needs.agent-tests-shard-4.result }}
           SIXTH_SHARD_RESULT: ${{ needs.agent-tests-shard-5.result }}
-        run: python agent_tools/agent_ci_evidence.py --verify .rag_index/agent-ci-evidence-0 .rag_index/agent-ci-evidence-1 .rag_index/agent-ci-evidence-2 .rag_index/agent-ci-evidence-3 .rag_index/agent-ci-evidence-4 .rag_index/agent-ci-evidence-5 --parent-results "$FIRST_SHARD_RESULT" "$SECOND_SHARD_RESULT" "$THIRD_SHARD_RESULT" "$FOURTH_SHARD_RESULT" "$FIFTH_SHARD_RESULT" "$SIXTH_SHARD_RESULT" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --head "${{ github.sha }}"
+          SEVENTH_SHARD_RESULT: ${{ needs.agent-tests-shard-6.result }}
+          EIGHTH_SHARD_RESULT: ${{ needs.agent-tests-shard-7.result }}
+        run: python agent_tools/agent_ci_evidence.py --verify .rag_index/agent-ci-evidence-0 .rag_index/agent-ci-evidence-1 .rag_index/agent-ci-evidence-2 .rag_index/agent-ci-evidence-3 .rag_index/agent-ci-evidence-4 .rag_index/agent-ci-evidence-5 .rag_index/agent-ci-evidence-6 .rag_index/agent-ci-evidence-7 --parent-results "$FIRST_SHARD_RESULT" "$SECOND_SHARD_RESULT" "$THIRD_SHARD_RESULT" "$FOURTH_SHARD_RESULT" "$FIFTH_SHARD_RESULT" "$SIXTH_SHARD_RESULT" "$SEVENTH_SHARD_RESULT" "$EIGHTH_SHARD_RESULT" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --head "${{ github.sha }}"

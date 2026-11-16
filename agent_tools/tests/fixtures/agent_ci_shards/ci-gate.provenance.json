@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "a34e07cb0e9ad925935bcc84665fd07f5e540906",
+  "failure": "Process review 2026-11-16: Fast Checks ran agent shard 0 serially inside the hygiene job (hygiene 4.7 -> shard 0 15.9 -> Gradle 9.1 min), recomputed the affected selection in every shard (2.1 min each) and assigned modules sorted-alternating, so measured shard sums were 14.9/29.0/9.6/9.8/30.2/10.7 min in run 43877068416.",
+  "nativeFailureClaimed": false,
+  "files": [
+    {
+      "path": "ci-gate.workflow.before.yml",
+      "sourcePath": ".github/workflows/fast-checks.yml",
+      "sourceSha256": "dba4a886ee7c01bf98fc26716ec6d9fc0f35fb2c8fac2db0768cc4163f3f5df6",
+      "sourceBytes": 27022,
+      "capture": "Exact whole file at a34e07cb (origin/dev before the CI gate and duration shards)."
+    },
+    {
+      "path": "ci-gate.selector.before.source",
+      "sourcePath": "agent_tools/affected_agent_tests.py",
+      "sourceSha256": "f974d6cd856ca0c24d7b766fa0d997a1dacde68f3a634de3b7b14b9a27345bd2",
+      "sourceBytes": 45677,
+      "capture": "Exact whole file at a34e07cb (origin/dev before the CI gate and duration shards)."
+    },
+    {
+      "path": "ci-gate.evidence.before.source",
+      "sourcePath": "agent_tools/agent_ci_evidence.py",
+      "sourceSha256": "f407e1026efcc55c7794de7514f17cfd2ef74d7971a59643ad1dd5d1a8627358",
+      "sourceBytes": 19470,
+      "capture": "Exact whole file at a34e07cb (origin/dev before the CI gate and duration shards)."
+    }
+  ],
+  "durationTable": {
+    "path": "agent_tools/agent_ci_module_seconds.json",
+    "seedRun": "43877068416"
+  }
+}

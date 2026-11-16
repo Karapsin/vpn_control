@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "a34e07cb0e9ad925935bcc84665fd07f5e540906",
+  "failure": "Process review 2026-11-16 (16 dev pushes): Windows Desktop Package ran release hygiene (7.0 min), the CP117 and readiness native guards (5.8 min), :desktopApp:test (17m07s) and packaging (5.0 min) in one serial 35.4-minute job, so the MSI appeared about 35 minutes after a push and the job was the critical path in 8 of 16 pushes.",
+  "files": [
+    {
+      "path": "windows-desktop.yml.before.source",
+      "sourcePath": ".github/workflows/windows-desktop.yml",
+      "sourceSha256": "542b0faab1fdb9adf32dcfdd51afa79d5843c7157216afe62df4f99bf86fadfe",
+      "sourceBytes": 27020
+    }
+  ]
+}

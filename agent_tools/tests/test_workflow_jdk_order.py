@@ -60,10 +60,14 @@ GRADLE_TEXT_ONLY = frozenset((
     "scripts/test_desktop_update_fixture.py",
     "scripts/test_gradle_configuration_cache_evidence.py",
     "scripts/test_linux_public_install_negative.py",
+    # Fake wrappers in temporary package trees; read workflow and hygiene text only.
+    "scripts/test_package_release_hygiene.py",
     "scripts/test_release_hygiene_runner.py",
+    "scripts/test_source_whitespace.py",
     "scripts/test_version_metadata.py",
     "scripts/test_visual_platform.py",
     "scripts/test_visual_target.py",
+    "scripts/test_windows_desktop_ci_split.py",
     "scripts/test_windows_fixture_stage_acl.py",
     # The failing-MSI derivation and its tests name the fixture build only in docstrings: msi.dll's database API alone.
     "scripts/test_windows_native_failure_msi.py",

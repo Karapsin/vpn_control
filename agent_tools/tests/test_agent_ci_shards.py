@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 from agent_tools import affected_agent_tests as selector
 from agent_tools import agent_ci_evidence as public
@@ -138,7 +139,8 @@ class ShardTests(unittest.TestCase):
         tests.mkdir(parents=True)
         for path in (tools / '__init__.py', tests / '__init__.py'):
             path.write_bytes(b'')
-        for name in ('affected_agent_test_dependencies.json', 'agent_test_runner.py', 'agent_test_session_observer.py', 'agent_ci_evidence.py'):
+        for name in ('affected_agent_test_dependencies.json', 'agent_test_runner.py', 'agent_test_session_observer.py',
+                     'agent_ci_evidence.py', 'agent_ci_module_seconds.json'):
             (tools / name).write_bytes((ROOT / 'agent_tools' / name).read_bytes())
         (tools / 'affected_agent_tests.py').write_bytes(retained('selector.before.source') if before else (ROOT / 'agent_tools/affected_agent_tests.py').read_bytes())
         (root / '.gitignore').write_text('.rag_index/\n__pycache__/\n')
@@ -207,16 +209,17 @@ def run(name):
             with self.subTest(index=index, count=count), self.assertRaises(selector.SelectionError):
                 selector.shard_selection(original, index, count)
 
-    def test_managed_halves_are_exact_unions_of_same_parity_hosted_shards(self):
-        # The managed plan keeps two halves; an even hosted count makes each
-        # half run every hosted shard of its parity whole, in the same order.
-        self.assertEqual(0, selector.CI_SHARD_COUNT % 2)
+    def test_managed_halves_stay_alternating_and_hosted_shards_follow_measured_durations(self):
+        # Managed failed-first regrouping relies on the sorted alternating halves;
+        # the hosted count uses the tracked duration table instead.
         for modules in (tuple(hosted_timing()['modules']), ('agent_tools.tests.test_a',), ()):
             selection = selector.Selection('a' * 40, (), modules, len(modules))
             for half in (0, 1):
-                hosted = [name for index in range(half, selector.CI_SHARD_COUNT, 2)
-                          for name in selector.shard_selection(selection, index, selector.CI_SHARD_COUNT).modules]
-                self.assertEqual(tuple(sorted(hosted)), selector.shard_selection(selection, half, 2).modules)
+                self.assertEqual(tuple(sorted(modules))[half::2], selector.shard_selection(selection, half, 2).modules)
+            buckets = public.duration_partition(sorted(modules), selector.CI_SHARD_COUNT)
+            for index in range(selector.CI_SHARD_COUNT):
+                self.assertEqual(tuple(buckets[index]),
+                                 selector.shard_selection(selection, index, selector.CI_SHARD_COUNT).modules)
 
     def test_default_and_include_commands_keep_the_existing_dispatch(self):
         value = selector.Selection('a' * 40, (), ('agent_tools.tests.test_a',), 1)
@@ -399,6 +402,193 @@ class HostedCapacityTests(unittest.TestCase):
         self.assertEqual(1, len(records['before-selector']['errors']), records)
         self.assertIn('CI shards require index 0 or 1 and count 2', records['before-selector']['errors'][0])
         self.assertEqual(([], []), (records['current']['failures'], records['current']['errors']), records)
+
+
+GATE_PREFIX = 'ci-gate.'
+# Hosted agent shards run beside the Fast Checks hygiene and Gradle job, whose
+# measured non-agent work is about 15 minutes; no shard may extend that path.
+HOSTED_SHARD_TARGET_MINUTES = 16
+
+
+def gate_before(name):
+    """A whole a34e07cb beforeimage of the CI agent stage, authenticated by its provenance."""
+    metadata = json.loads((FIXTURE / 'ci-gate.provenance.json').read_bytes())
+    row = next(item for item in metadata['files'] if item['path'] == GATE_PREFIX + name)
+    raw = (FIXTURE / row['path']).read_bytes()
+    if len(raw) != row['sourceBytes'] or hashlib.sha256(raw).hexdigest() != row['sourceSha256']:
+        raise ValueError('Preserved CI gate source changed: ' + name)
+    return raw
+
+
+def gate_before_partition():
+    """The a34e07cb selector's own sorted alternating shard_selection."""
+    raw = gate_before('selector.before.source')
+    functions = [node for node in ast.parse(raw).body
+                 if isinstance(node, ast.FunctionDef) and node.name == 'shard_selection']
+    namespace = {'Selection': selector.Selection, 'SelectionError': selector.SelectionError, 'CI_SHARD_COUNT': 6}
+    exec(compile(ast.Module(body=functions, type_ignores=[]), str(FIXTURE / 'ci-gate.selector.before.source'), 'exec'),
+         namespace)
+    return namespace['shard_selection']
+
+
+def full_suite_minutes(raw, partition):
+    """Measured minutes of every actual hosted shard over the complete current agent suite."""
+    measured, default = public.module_seconds()
+    modules = tuple(sorted(path[:-3].replace('/', '.') for path in subprocess.check_output(
+        ['git', '-C', str(ROOT), 'ls-files', '-z', 'agent_tools/tests/test_*.py'], text=True).split('\0') if path))
+    selection = selector.Selection('a' * 40, (), modules, len(modules))
+    jobs = []
+    for job, minutes, argv in workflow_jobs(raw):
+        index, count = (int(argv[argv.index(flag) + 1]) for flag in ('--shard-index', '--shard-count'))
+        assigned = partition(selection, index, count).modules
+        jobs.append({'job': job, 'shardIndex': index, 'shardCount': count, 'modules': len(assigned),
+                     'minutes': round(sum(measured.get(name, default) for name in assigned) / 60, 2)})
+    return jobs
+
+
+class HostedDurationTests(unittest.TestCase):
+    """Duration-assigned hosted shards over the measured complete suite (run 43877068416)."""
+    maxDiff = None
+    workflow_raw = None
+    partition = staticmethod(selector.shard_selection)
+
+    def test_every_hosted_shard_fits_beside_the_fast_checks_job(self):
+        raw = self.workflow_raw if self.workflow_raw is not None else (ROOT / '.github/workflows/fast-checks.yml').read_bytes()
+        jobs = full_suite_minutes(raw, self.partition)
+        print('HOSTED_SHARD_DURATION ' + json.dumps({'targetMinutes': HOSTED_SHARD_TARGET_MINUTES, 'jobs': jobs},
+                                                     sort_keys=True), flush=True)
+        self.assertEqual(list(range(len(jobs))), sorted(job['shardIndex'] for job in jobs))
+        over = [job for job in jobs if job['minutes'] > HOSTED_SHARD_TARGET_MINUTES]
+        self.assertEqual([], over, 'hosted shard exceeds %d minutes: %s' % (HOSTED_SHARD_TARGET_MINUTES, json.dumps(jobs)))
+
+    def test_whole_a34e07cb_alternating_shards_exceed_the_target(self):
+        # RED on the whole a34e07cb workflow and selector: six sorted alternating
+        # shards put up to ~29 measured minutes in one job. GREEN now.
+        records = {}
+        for label, raw, chosen in (('before', gate_before('workflow.before.yml'), gate_before_partition()),
+                                   ('current', None, selector.shard_selection)):
+            case = type(self)('test_every_hosted_shard_fits_beside_the_fast_checks_job')
+            case.workflow_raw, case.partition = raw, chosen
+            result = unittest.TestResult()
+            case.run(result)
+            records[label] = {'testsRun': result.testsRun, 'failures': [text for unused, text in result.failures],
+                              'errors': [text for unused, text in result.errors]}
+        print('HOSTED_SHARD_DURATION_CAUSAL ' + json.dumps(records, sort_keys=True), flush=True)
+        self.assertEqual((1, 1, []), (records['before']['testsRun'], len(records['before']['failures']),
+                                      records['before']['errors']), records)
+        self.assertIn('hosted shard exceeds', records['before']['failures'][0])
+        self.assertEqual((1, [], []), (records['current']['testsRun'], records['current']['failures'],
+                                       records['current']['errors']), records)
+
+
+class CiGateTests(unittest.TestCase):
+    """The actual hosted shard commands: none, or the complete suite on any agent input."""
+    maxDiff = None
+    temporary = ShardTests.temporary
+    git = ShardTests.git
+
+    def template(self, *, before, opaque):
+        root = self.temporary()
+        tools = root / 'agent_tools'
+        (tools / 'tests').mkdir(parents=True)
+        for name in ('__init__.py', 'tests/__init__.py'):
+            (tools / name).write_bytes(b'')
+        for name in ('affected_agent_test_dependencies.json', 'agent_test_runner.py', 'agent_test_session_observer.py',
+                     'agent_ci_module_seconds.json'):
+            (tools / name).write_bytes((ROOT / 'agent_tools' / name).read_bytes())
+        (tools / 'affected_agent_tests.py').write_bytes(
+            gate_before('selector.before.source') if before else (ROOT / 'agent_tools/affected_agent_tests.py').read_bytes())
+        (tools / 'agent_ci_evidence.py').write_bytes(
+            gate_before('evidence.before.source') if before else (ROOT / 'agent_tools/agent_ci_evidence.py').read_bytes())
+        (root / '.gitignore').write_text('.rag_index/\n__pycache__/\n')
+        (root / 'Feature.kt').write_text('product')
+        (tools / 'leaf.py').write_text('VALUE=1\n')
+        for index in range(3):
+            (tools / 'tests' / ('test_ci_%02d.py' % index)).write_text(
+                'import unittest\nfrom agent_tools import leaf\nclass Case(unittest.TestCase):\n'
+                ' def test_value(self):\n  self.assertEqual(1, leaf.VALUE)\n')
+        # Not a consumer of leaf.py: affected selection omits it, the gate runs it.
+        (tools / 'tests/test_unrelated.py').write_text(
+            'import unittest\nclass Case(unittest.TestCase):\n def test_value(self):\n  self.assertTrue(True)\n')
+        if opaque:
+            (tools / 'tests/test_opaque.py').write_text(
+                'import importlib\nimport unittest\ndef load(name):\n return importlib.import_module(name)\n'
+                'class Case(unittest.TestCase):\n def test_value(self):\n  self.assertTrue(True)\n')
+        self.git(root, 'init', '-q')
+        self.git(root, 'config', 'user.email', 'fixture@example.invalid')
+        self.git(root, 'config', 'user.name', 'Fixture')
+        self.git(root, 'add', '.')
+        self.git(root, 'commit', '-qm', 'source-owned gate fixture')
+        return root, self.git(root, 'rev-parse', 'HEAD')
+
+    def run_jobs(self, raw, *, before, opaque, change):
+        template, base = self.template(before=before, opaque=opaque)
+        for path, text in change.items():
+            (template / path).write_text(text)
+        records, directories = [], []
+        for job, minutes, argv in workflow_jobs(raw):
+            root = self.temporary()
+            shutil.copytree(template, root, dirs_exist_ok=True)
+            env = {key: value for key, value in os.environ.items() if not key.startswith('GITHUB_') and key != 'DYLD_INSERT_LIBRARIES'}
+            env.update(PYTHONDONTWRITEBYTECODE='1', AGENT_TEST_BASELINE=base, AUDIT_AGENT_TESTS='')
+            result = subprocess.run([sys.executable, '-B', *argv[1:]], cwd=root, env=env, capture_output=True,
+                                    text=True, timeout=120)
+            index = int(argv[argv.index('--shard-index') + 1])
+            evidence = root / ('.rag_index/agent-ci-evidence-%d' % index)
+            plan = json.loads((evidence / 'plan.json').read_bytes()) if (evidence / 'plan.json').exists() else None
+            records.append({'job': job, 'returncode': result.returncode, 'stderr': result.stderr[-2000:],
+                            'globalModules': None if plan is None else plan['modules'],
+                            'assigned': None if plan is None else plan['assignedModules']})
+            directories.append(evidence)
+        return records, directories
+
+    def test_actual_workflow_runs_the_complete_suite_without_dependency_analysis(self):
+        raw = (ROOT / '.github/workflows/fast-checks.yml').read_bytes()
+        records, directories = self.run_jobs(raw, before=False, opaque=True, change={'agent_tools/leaf.py': 'VALUE=1\n# changed\n'})
+        everything = ['agent_tools.tests.test_ci_00', 'agent_tools.tests.test_ci_01', 'agent_tools.tests.test_ci_02',
+                      'agent_tools.tests.test_opaque', 'agent_tools.tests.test_unrelated']
+        self.assertEqual([0] * selector.CI_SHARD_COUNT, [record['returncode'] for record in records], records)
+        self.assertEqual([everything] * selector.CI_SHARD_COUNT, [record['globalModules'] for record in records])
+        result = public.verify(directories, ['success'] * selector.CI_SHARD_COUNT)
+        self.assertEqual(len(everything), result['coveredModules'])
+
+    def test_actual_workflow_product_and_prose_only_run_no_agent_test(self):
+        raw = (ROOT / '.github/workflows/fast-checks.yml').read_bytes()
+        records, directories = self.run_jobs(raw, before=False, opaque=True,
+                                             change={'Feature.kt': 'product edit', 'AGENTS.md': 'prose'})
+        self.assertEqual([0] * selector.CI_SHARD_COUNT, [record['returncode'] for record in records], records)
+        self.assertEqual([[]] * selector.CI_SHARD_COUNT, [record['globalModules'] for record in records])
+        self.assertEqual(0, public.verify(directories, ['success'] * selector.CI_SHARD_COUNT)['coveredModules'])
+
+    def test_gate_without_a_comparison_baseline_runs_the_complete_suite(self):
+        root, base = self.template(before=False, opaque=False)
+        env = {key: value for key, value in os.environ.items() if not key.startswith('GITHUB_')}
+        with mock.patch.dict(os.environ, {**env, 'GITHUB_EVENT_NAME': 'push', 'GITHUB_EVENT_PATH': str(root / 'missing.json')},
+                             clear=True):
+            value = selector.select_ci_gate(root)
+        self.assertEqual(base, value.baseline)
+        self.assertEqual(4, len(value.modules))
+        audit = selector.select_ci_gate(root, base, audit=True)
+        self.assertEqual(value.modules, audit.modules)
+
+    def test_whole_a34e07cb_stage_selects_only_consumers_or_refuses_current_runs_all(self):
+        # RED on the whole a34e07cb workflow, selector and projector: the
+        # affected selection omits the unrelated suite and an unreviewed
+        # dynamic import refuses every shard. GREEN: the gate runs everything.
+        raw = gate_before('workflow.before.yml')
+        change = {'agent_tools/leaf.py': 'VALUE=1\n# changed\n'}
+        omitted, unused = self.run_jobs(raw, before=True, opaque=False, change=change)
+        refused, unused = self.run_jobs(raw, before=True, opaque=True, change=change)
+        print('CI_GATE_CAUSAL ' + json.dumps({'beforeOmitted': omitted, 'beforeRefused': refused}, sort_keys=True), flush=True)
+        self.assertEqual(6, len(omitted))
+        self.assertEqual([0] * 6, [record['returncode'] for record in omitted], omitted)
+        self.assertNotIn('agent_tools.tests.test_unrelated', omitted[0]['globalModules'])
+        self.assertEqual([2] * 6, [record['returncode'] for record in refused], refused)
+        self.assertTrue(all('Unresolved' in record['stderr'] for record in refused), refused)
+        current, unused = self.run_jobs((ROOT / '.github/workflows/fast-checks.yml').read_bytes(), before=False, opaque=False,
+                                        change=change)
+        self.assertIn('agent_tools.tests.test_unrelated', current[0]['globalModules'])
+        self.assertEqual([0] * selector.CI_SHARD_COUNT, [record['returncode'] for record in current], current)
 
 
 if __name__ == '__main__':

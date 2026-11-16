@@ -327,15 +327,21 @@ graph is used. Changed agent files that no selected test reaches are listed as
 parallelism, output-custody and receipt rules remain in
 [the test procedure](../agent_docs/tools/lifecycle-and-api.md#tests).
 
-Fast Checks uses six fresh Ubuntu checkouts (`CI_SHARD_COUNT`) with explicit
-`--shard-index 0..5 --shard-count 6` arguments after complete global selection;
-each hosted shard's share of the last measured selection must stay within 60%
-of its 50-minute phase bound. Its optional `--ci-evidence-dir` records bounded
+Fast Checks uses eight fresh Ubuntu checkouts (`CI_SHARD_COUNT`), separate from
+its hygiene and Gradle job, with explicit `--ci-gate --shard-index 0..7
+--shard-count 8` arguments. The CI gate runs no agent tests, or the complete
+agent suite when any non-prose agent input changed; it never analyzes
+dependencies, so hosted coverage does not depend on reviewed selector pins.
+Shards take modules by measured duration from the tracked
+`agent_ci_module_seconds.json` (longest first to the least-loaded shard;
+unknown modules cost its default), and each shard's measured share must stay
+within 16 minutes. Its optional `--ci-evidence-dir` records bounded
 public progress and requires `--run`, an explicit shard and a new output
 directory. Pooled worker evidence requires POSIX; the final coverage job
 verifies every successful current-attempt receipt and their exact disjoint
-union. Private worker output stays local. Managed checks run the SSH-close gate
-alone, then the two halves of the same partition without it; Windows
+union. Private worker output stays local. Managed checks keep the precise
+affected selection: the SSH-close gate alone, then the two sorted alternating
+halves without it; Windows
 `--include` retains its existing path, and managed prepush writes its own
 content-bound receipt.
 

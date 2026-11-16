@@ -1,8 +1,10 @@
 {
   "loaders": {
     "agent_tools/agent_ci_evidence.py": {
-      "reason": "Explicit CI-only projector reads only the freshly allocated runner directory and explicit public artifact inputs. Its bounded nofollow readers and private-field filtering introduce no repository source discovery or source execution. Runtime report, timing and artifact files are owned invocation data, not additional repository authority.",
-      "scopes": []
+      "reason": "Explicit CI-only projector reads only the freshly allocated runner directory and explicit public artifact inputs. Its bounded nofollow readers and private-field filtering introduce no repository source discovery or source execution. Runtime report, timing and artifact files are owned invocation data, not additional repository authority. It also reads the tracked agent_ci_module_seconds.json duration table that assigns hosted shards.",
+      "scopes": [
+        "agent_tools/agent_ci_module_seconds.json"
+      ]
     },
     "agent_tools/agent_test_runner.py": {
       "reason": "Preserve original validated selected-test execution contract. New fixed lazy parent-session observer is the only added repository module; selected test roots remain independently selected and worker closure is unchanged. Transparent execution of selected, validated test inputs; those test modules are the selection graph roots.",
@@ -5710,7 +5712,7 @@
       ]
     },
     "agent_tools/tests/test_agent_ci_shards.py": {
-      "reason": "Physical CLI controls copy only the explicit current selector, manifest, runner and projector into fresh inert Git checkouts. The source-bound original selector and workflow are exact provenance inputs for unchanged scaled deadlines; saved producers, reports and readiness markers are owned generated data. Global unknown dependency refusal, source drift, disjoint coverage and default dispatch guards remain strict. The authenticated whole cc2873b5 workflow and selector (only its shard_selection is AST-extracted) and the derived run 40187427911 timing are capacity inputs, never allocation inputs.",
+      "reason": "Physical CLI controls copy only the explicit current selector, manifest, runner and projector into fresh inert Git checkouts. The source-bound original selector and workflow are exact provenance inputs for unchanged scaled deadlines; saved producers, reports and readiness markers are owned generated data. Global unknown dependency refusal, source drift, disjoint coverage and default dispatch guards remain strict. The authenticated whole cc2873b5 workflow and selector (only its shard_selection is AST-extracted) and the derived run 40187427911 timing are capacity inputs, never allocation inputs. The a34e07cb ci-gate beforeimages (whole workflow, selector and projector) are copied into fresh inert checkouts as the unfixed CI stage, and the tracked duration table is copied beside the current projector.",
       "scopes": [
         "agent_tools/affected_agent_tests.py",
         "agent_tools/affected_agent_test_dependencies.json",
@@ -5723,7 +5725,12 @@
         "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.provenance.json",
         "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.timing.json",
         "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.workflow.before.yml",
-        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.selector.before.source"
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.selector.before.source",
+        "agent_tools/agent_ci_module_seconds.json",
+        "agent_tools/tests/fixtures/agent_ci_shards/ci-gate.provenance.json",
+        "agent_tools/tests/fixtures/agent_ci_shards/ci-gate.workflow.before.yml",
+        "agent_tools/tests/fixtures/agent_ci_shards/ci-gate.selector.before.source",
+        "agent_tools/tests/fixtures/agent_ci_shards/ci-gate.evidence.before.source"
       ]
     },
     "agent_tools/tests/test_agent_test_runner.py": {
@@ -6375,7 +6382,7 @@
       ]
     },
     "agent_tools/tests/test_fast_agent_shards.py": {
-      "reason": "Source-bound workflow regression reads the current Fast Checks workflow, exact original workflow/provenance, its actual current test and the retained failed wiring test. Its saved isolated no-site child exercises the same positive with the authentic missing-YAML beforeimage and standard-library fix. Static controls verify both audit branches, source selection, current-attempt artifacts, parent acceptance and the entire unchanged original validation tail without CI or product dispatch. The same wiring positives also read the authenticated whole cc2873b5 workflow as their RED input.",
+      "reason": "Source-bound workflow regression reads the current Fast Checks workflow, exact original workflow/provenance, its actual current test and the retained failed wiring test. Its saved isolated no-site child exercises the same positive with the authentic missing-YAML beforeimage and standard-library fix. Static controls verify both audit branches, source selection, current-attempt artifacts, parent acceptance and the entire unchanged original validation tail without CI or product dispatch. The same wiring positives also read the authenticated whole cc2873b5 workflow as their RED input. Removed build-job duplicates are checked against the run_check commands of scripts/check_release_hygiene.sh.",
       "scopes": [
         ".github/workflows/fast-checks.yml",
         "agent_tools/tests/fixtures/agent_ci_shards/workflow.before.yml",
@@ -6383,11 +6390,12 @@
         "agent_tools/tests/test_fast_agent_shards.py",
         "agent_tools/tests/fixtures/agent_ci_shards/wiring.before.source",
         "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.provenance.json",
-        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.workflow.before.yml"
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.workflow.before.yml",
+        "scripts/check_release_hygiene.sh"
       ]
     },
     "agent_tools/tests/test_fast_workflow_budget.py": {
-      "reason": "Exact source-bound scaled deadline regression reads only the current Fast Checks workflow, current managed check owner and immutable original workflow/provenance. It AST-extracts the existing 50-minute command limit without importing MCP, parses only the fixed CI job/agent step and executes a newly saved inert producer in an owned temporary directory. Runtime marker/output readers consume only that generated fixture. No actual CI/native/SSH work, historical attempt inputs, arbitrary source roots or replay authority are introduced. The measured hosted share comes from test_agent_ci_shards over the authenticated run 40187427911 timing, current or whole cc2873b5 workflow and selector.",
+      "reason": "Exact source-bound scaled deadline regression reads only the current Fast Checks workflow, current managed check owner and immutable original workflow/provenance. It AST-extracts the existing 50-minute command limit without importing MCP, parses only the fixed CI job/agent step and executes a newly saved inert producer in an owned temporary directory. Runtime marker/output readers consume only that generated fixture. No actual CI/native/SSH work, historical attempt inputs, arbitrary source roots or replay authority are introduced. The measured hosted share comes from test_agent_ci_shards over the authenticated run 40187427911 timing, current or whole cc2873b5 workflow and selector. The whole a34e07cb workflow is the last shape with the first agent shard inside the build job.",
       "scopes": [
         ".github/workflows/fast-checks.yml",
         "agent_tools/mcp_server.py",
@@ -6398,7 +6406,9 @@
         "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.provenance.json",
         "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.timing.json",
         "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.workflow.before.yml",
-        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.selector.before.source"
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.selector.before.source",
+        "agent_tools/tests/fixtures/agent_ci_shards/ci-gate.workflow.before.yml",
+        "agent_tools/tests/fixtures/agent_ci_shards/ci-gate.provenance.json"
       ]
     },
     "agent_tools/tests/test_fast_workflow_interpreter_order.py": {

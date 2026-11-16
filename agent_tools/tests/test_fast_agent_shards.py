@@ -19,8 +19,31 @@ ORDINALS = ('FIRST', 'SECOND', 'THIRD', 'FOURTH', 'FIFTH', 'SIXTH', 'SEVENTH', '
 
 
 def hosted_job_keys():
-    """Shard 0 stays in the original Fast Checks job; each other shard has its own job."""
-    return ['fast-checks'] + ['agent-tests-shard-%d' % index for index in range(1, fixture.selector.CI_SHARD_COUNT)]
+    """Every hosted shard has its own job, beside the hygiene and Gradle job."""
+    return ['agent-tests-shard-%d' % index for index in range(fixture.selector.CI_SHARD_COUNT)]
+
+
+# Steps that left the Fast Checks build job because release hygiene, which the
+# same job runs first, already runs each of their commands.
+HYGIENE_DUPLICATES = ('Check documentation hygiene', 'Check whitespace', 'Verify Windows PowerShell command bounds')
+
+
+GRADLE_CACHE_INPUTS = {'cache-read-only': "${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev') }}",
+                       'cache-disabled': "${{ github.ref == 'refs/heads/main' }}"}
+GRADLE_CACHE_ENV = {'GRADLE_OPTS': '${{ env.GRADLE_BUILD_CACHE_OPTS }}'}
+
+
+def hygiene_commands():
+    """The commands scripts/check_release_hygiene.sh runs, one per run_check line."""
+    lines = (ROOT / 'scripts/check_release_hygiene.sh').read_text(encoding='utf-8').splitlines()
+    return {line.removeprefix('run_check ').strip() for line in lines if line.startswith('run_check ')}
+
+
+def covered_by_hygiene(command):
+    command = command.strip()
+    variants = {command, command.replace('python ', 'python3 ', 1), 'bash ' + command.removeprefix('./'),
+                command.replace('python -m py_compile ', 'python3 -m py_compile ', 1)}
+    return bool(variants & hygiene_commands())
 
 
 def workflow_jobs(raw):
@@ -160,17 +183,17 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
             self.assertEqual(2, len(commands))
             audit, affected = commands
             self.assertEqual(['python', 'agent_tools/affected_agent_tests.py', '--baseline', '$AGENT_TEST_BASELINE', '--audit', '--run'], audit[:6])
-            self.assertEqual(['python', 'agent_tools/affected_agent_tests.py', '--run'], affected[:3])
+            # Push and pull request runs use the CI gate: none, or the complete suite.
+            self.assertEqual(['python', 'agent_tools/affected_agent_tests.py', '--run', '--ci-gate'], affected[:4])
             tail = ['--shard-index', str(index), '--shard-count', str(fixture.selector.CI_SHARD_COUNT),
                     '--ci-evidence-dir', '.rag_index/agent-ci-evidence-%d' % index]
             self.assertEqual(tail, audit[6:])
-            self.assertEqual(tail, affected[3:])
+            self.assertEqual(tail, affected[4:])
             self.assertNotIn('--include', phase['run'])
-            if index:
-                self.assertEqual('Agent Tools Shard %d' % (index + 1), job['name'])
-                self.assertEqual(['Checkout', 'Set up Python 3.12', 'Install agent tool dependencies',
-                                  'Install qemu-img for agent fixtures', 'Test affected agent tools',
-                                  'Retain public agent shard evidence'], [step['name'] for step in steps])
+            self.assertEqual('Agent Tools Shard %d' % (index + 1), job['name'])
+            self.assertEqual(['Checkout', 'Set up Python 3.12', 'Install agent tool dependencies',
+                              'Install qemu-img for agent fixtures', 'Test affected agent tools',
+                              'Retain public agent shard evidence'], [step['name'] for step in steps])
         for phase in phases[1:]:
             self.assertEqual(phases[0]['env'], phase['env'])
         self.assertEqual("${{ github.event_name == 'workflow_dispatch' && (inputs.baseline || github.sha) || '' }}", phases[0]['env']['AGENT_TEST_BASELINE'])
@@ -182,7 +205,11 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
         # The pinned JDK moved ahead of release hygiene, the first step that can start Gradle
         # (test_workflow_jdk_order); it keeps its exact action, once, in this job.
         moved = [step for step in original[start + 1:] if step.get('name') == 'Set up JDK 17']
-        tail = [step for step in original[start + 1:] if step not in moved]
+        # Theme, comparator, platform and review checks run in release hygiene; the
+        # remaining visual entry-point checks keep their exact commands.
+        visual = next(step for step in original[start + 1:] if step.get('name') == 'Check fixed UI theme and visual comparator')
+        removed = [step for step in original[start + 1:] if step.get('name') in HYGIENE_DUPLICATES]
+        tail = [step for step in original[start + 1:] if step not in moved and step is not visual and step not in removed]
         jobs = self.workflow()['jobs']
         current = jobs['fast-checks']['steps']
         def without_failure_discovery(step):
@@ -196,6 +223,11 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
                 del step['if']
             if 'run' in step:
                 step['run'] = step['run'].replace('./gradlew --continue ', './gradlew ', 1)
+            # The Gradle build cache (test_gradle_ci_cache) adds only these inputs and this option.
+            if step.get('with') == GRADLE_CACHE_INPUTS and step.get('uses') == 'gradle/actions/setup-gradle@v4':
+                del step['with']
+            if step.get('env') == GRADLE_CACHE_ENV:
+                del step['env']
             return step
         self.assertEqual(tail, [without_failure_discovery(step) for step in current
                                 if any(step.get('name') == old.get('name') for old in tail)])
@@ -206,6 +238,14 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
         for old in tail + moved:
             owners = [name for name, job in jobs.items() for step in job['steps'] if step.get('name') == old.get('name')]
             self.assertEqual(['fast-checks'], owners)
+        kept = self.named(jobs['fast-checks'], 'Check visual capture entry points')['run'].splitlines()
+        for command in visual['run'].splitlines():
+            self.assertTrue(command in kept or covered_by_hygiene(command), command)
+        for step in removed:
+            self.assertNotIn(step['name'], [step.get('name') for job in jobs.values() for step in job['steps']])
+            for command in step['run'].splitlines():
+                self.assertTrue(covered_by_hygiene(command), command)
+        self.assertLess(names.index('Check release hygiene'), names.index('Check visual capture entry points'))
 
     def test_uploads_only_fixed_public_files_from_this_run_and_attempt(self):
         jobs = self.workflow()['jobs']

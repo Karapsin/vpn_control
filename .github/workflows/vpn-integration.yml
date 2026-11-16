@@ -16,9 +16,6 @@ on:
         description: Exact commit to test; required by the release routine
         required: false
         type: string
-  push:
-    branches:
-      - dev
   schedule:
     - cron: "23 3 * * 2"
 

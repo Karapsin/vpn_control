@@ -37,16 +37,16 @@
           "classification": "required_push",
           "event": "push",
           "allowed_conclusions": ["success"]
-        },
-        {
-          "name": "VPN Integration",
-          "path": ".github/workflows/vpn-integration.yml",
-          "classification": "advisory_push",
-          "event": "push",
-          "allowed_conclusions": ["success"]
         }
       ],
       "classified_non_push_workflows": [
+        {
+          "name": "VPN Integration",
+          "path": ".github/workflows/vpn-integration.yml",
+          "classification": "advisory_dispatch",
+          "events": ["workflow_dispatch", "schedule"],
+          "reason": "Advisory core profile on dispatch and a weekly schedule; the release routine dispatches the mandatory exhaustive all profile for its exact SHA."
+        },
         {
           "name": "Visual Capture",
           "path": ".github/workflows/visual-regression.yml",

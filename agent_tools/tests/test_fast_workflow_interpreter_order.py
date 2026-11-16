@@ -36,8 +36,19 @@ PROFILE_FUNCTIONS = {
     "ssh_transport.py": "_reject_duplicate_keys",
     "ssh_automatic_program.py": "command_bytes",
 }
-# Shard 0 stays in the Fast Checks job; the other hosted shards have their own jobs.
-AGENT_JOBS = ("fast-checks",) + tuple("agent-tests-shard-%d" % index for index in range(1, 6))
+# Every hosted agent shard has its own job beside the Fast Checks build job.
+AGENT_JOBS = tuple("agent-tests-shard-%d" % index for index in range(8))
+# Build-job steps removed because release hygiene, run first in the same job,
+# already runs their commands (test_fast_agent_shards checks each command), and
+# the theme/comparator step reduced to the visual entry points hygiene lacks.
+HYGIENE_DUPLICATES = ("Check documentation hygiene", "Check whitespace", "Verify Windows PowerShell command bounds")
+VISUAL_BEFORE, VISUAL_NOW = "Check fixed UI theme and visual comparator", "Check visual capture entry points"
+AGENT_STEPS = ("Test affected agent tools", "Retain public agent shard evidence")
+GRADLE_CACHE_INPUTS = ("\n        with:\n"
+                       "          cache-read-only: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev') }}\n"
+                       "          cache-disabled: ${{ github.ref == 'refs/heads/main' }}\n")
+GRADLE_CACHE_ENV = "        env:\n          GRADLE_OPTS: ${{ env.GRADLE_BUILD_CACHE_OPTS }}\n"
+GRADLE_CACHE_POLICY = "Set up Gradle build cache"
 
 
 def steps(source, job="fast-checks"):
@@ -68,7 +79,7 @@ def position(source, name, job="fast-checks"):
 
 
 def original_agent_step(body):
-    suffix = " --shard-index 0 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-0"
+    suffix = " --shard-index 0 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-0"
     original = []
     commands = 0
     for line in body.splitlines(keepends=True):
@@ -77,7 +88,11 @@ def original_agent_step(body):
             if not content.endswith(suffix):
                 raise AssertionError("Unknown first-shard command change")
             commands += 1
-            line = content[:-len(suffix)] + line[len(content):]
+            content = content[:-len(suffix)]
+            # Push and pull request shards use the CI gate (none or the complete suite).
+            if content.endswith("python agent_tools/affected_agent_tests.py --run --ci-gate"):
+                content = content[:-len(" --ci-gate")]
+            line = content + line[len(line.rstrip("\r\n")):]
         original.append(line)
     if commands != 2:
         raise AssertionError("Expected both original affected-test commands")
@@ -198,13 +213,21 @@ class WorkflowInterpreterOrderTests(unittest.TestCase):
 
     def test_reordering_retains_every_original_action_and_check(self):
         original = dict(steps(before_workflow()))
-        current = dict(steps(self.workflow.read_text()))
+        source = self.workflow.read_text()
+        current = dict(steps(source))
+        shard = dict(steps(source, "agent-tests-shard-0"))
         # The TPM and creator census bodies are pinned exactly by test_linux_tpm_native_enrollment
         # and test_linux_creator_census_native_enrollment.
-        self.assertEqual(set(original) | {"Install qemu-img for agent fixtures", "Retain public agent shard evidence",
-                                          "Test real Linux TPM ownership census",
-                                          "Test real Linux creator pre-VM root census"}, set(current))
-        admit_public_uploader(current["Retain public agent shard evidence"])
+        self.assertEqual((set(original) - set(HYGIENE_DUPLICATES) - set(AGENT_STEPS) - {VISUAL_BEFORE})
+                         | {"Install qemu-img for agent fixtures", "Test real Linux TPM ownership census",
+                            "Test real Linux creator pre-VM root census", VISUAL_NOW, GRADLE_CACHE_POLICY}, set(current))
+        admit_public_uploader(shard["Retain public agent shard evidence"])
+        visual = original.pop(VISUAL_BEFORE)
+        kept = current[VISUAL_NOW].splitlines()[3:]
+        self.assertEqual(kept, [line for line in visual.splitlines()[2:] if line in kept])
+        for name in HYGIENE_DUPLICATES:
+            original.pop(name)
+        current["Test affected agent tools"] = shard["Test affected agent tools"]
         continuation = "      - name: {}\n        if: ${{{{ !cancelled() }}}}\n"
         for name, body in original.items():
             actual = original_agent_step(current[name]) if name == "Test affected agent tools" else current[name]
@@ -213,19 +236,20 @@ class WorkflowInterpreterOrderTests(unittest.TestCase):
             if actual.startswith(continuation.format(name)):
                 actual = "      - name: " + name + "\n" + actual[len(continuation.format(name)):]
             actual = actual.replace("./gradlew --continue ", "./gradlew ", 1)
+            # The Gradle build cache (test_gradle_ci_cache) adds only its setup inputs and build option.
+            actual = actual.replace(GRADLE_CACHE_INPUTS, "\n", 1).replace(GRADLE_CACHE_ENV, "", 1)
             # Environment pinning (test_ci_environment_pins) changes only action refs and pip hash checking.
             actual = re.sub(r"@[0-9a-f]{40} # (v\d+)\.\d+\.\d+", r"@\1", actual).replace(" --require-hashes", "")
             self.assertEqual(body.strip(), actual.strip(), name)
 
     def test_prepared_runtime_and_dependencies_precede_all_python_hygiene(self):
         source = self.workflow.read_text()
+        self.assertLess(position(source, "Install agent tool dependencies"), position(source, "Check release hygiene"))
         for job in AGENT_JOBS:
             prepared = position(source, "Set up Python 3.12", job)
             installed = position(source, "Install agent tool dependencies", job)
             self.assertLess(prepared, installed)
-            names = ("Check release hygiene", "Check documentation hygiene", "Check whitespace",
-                     "Test affected agent tools") if job == "fast-checks" else ("Test affected agent tools",)
-            for name in names:
+            for name in ("Test affected agent tools",):
                 self.assertLess(installed, position(source, name, job), name)
             action = dict(steps(source, job))["Set up Python 3.12"]
             self.assertIn("uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0", action)
@@ -273,7 +297,7 @@ class WorkflowInterpreterOrderTests(unittest.TestCase):
             steps(source.replace("  agent-tests-shard-1:", "  fast-checks:", 1))
         with self.assertRaisesRegex(AssertionError, "Duplicate workflow step"):
             steps(source.replace("      - name: Check release hygiene", "      - name: Set up Python 3.12", 1))
-        current = dict(steps(source))
+        current = dict(steps(source, "agent-tests-shard-0"))
         with self.assertRaisesRegex(AssertionError, "Unknown first-shard command"):
             original_agent_step(current["Test affected agent tools"].replace("--shard-index 0", "--shard-index 1", 1))
         with self.assertRaisesRegex(AssertionError, "Unknown public evidence"):

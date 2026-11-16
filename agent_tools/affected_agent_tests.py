@@ -79,10 +79,10 @@ class Selection:
 
 
 # Hosted Fast Checks runs this many explicit agent shards, each its own job and
-# receipt. The managed local stage keeps two halves of the same sorted
-# alternating partition; with an even hosted count each half is exactly the
-# union of the hosted shards whose index has its parity.
-CI_SHARD_COUNT = 6
+# receipt, assigned by the tracked measured module durations
+# (agent_ci_evidence.duration_partition). The managed local stage keeps its two
+# sorted alternating halves; failed-first regrouping relies on their parity.
+CI_SHARD_COUNT = 8
 
 
 def shard_selection(selection, index, count):
@@ -94,7 +94,43 @@ def shard_selection(selection, index, count):
     modules = tuple(sorted(selection.modules))
     if len(modules) != len(set(modules)):
         raise SelectionError("Duplicate global test module")
-    return Selection(selection.baseline, selection.changed, modules[index::count], selection.total_modules)
+    if count == 2:
+        assigned = modules[index::count]
+    else:
+        # Only the hosted CI count needs the public projector and its table.
+        if __package__:
+            from .agent_ci_evidence import duration_partition
+        else:
+            from agent_ci_evidence import duration_partition
+        try:
+            assigned = tuple(duration_partition(modules, count)[index])
+        except (OSError, ValueError) as error:
+            raise SelectionError("Hosted shard duration table is unavailable") from error
+    return Selection(selection.baseline, selection.changed, assigned, selection.total_modules)
+
+
+def select_ci_gate(root, baseline=None, audit=False):
+    """Hosted CI gate: no agent tests, or the complete suite when any agent input changed.
+
+    It uses the same agent-input predicate as select() but never analyzes
+    dependencies, so CI coverage does not depend on reviewed selector pins.
+    A comparison baseline that cannot be established runs the complete suite.
+    """
+    root = Path(root)
+    head = git(root, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
+    current = set(git(root, "ls-files", "-z").decode().split("\0"))
+    current.update(git(root, "ls-files", "--others", "--exclude-standard", "-z").decode().split("\0"))
+    modules = tuple(sorted(p[:-3].replace("/", ".") for p in current
+                           if p.startswith("agent_tools/tests/test_") and p.endswith(".py") and (root / p).is_file()))
+    if audit:
+        return Selection(head, (), modules, len(modules))
+    try:
+        baseline = baseline_for(root, baseline)
+    except SelectionError:
+        return Selection(head, (), modules, len(modules))
+    changed = tuple(sorted(changed_paths(root, baseline)))
+    agent_input = any(not is_document(p) and potentially_agent_input(p) for p in changed)
+    return Selection(baseline, changed, modules if agent_input else (), len(modules))
 
 
 def git(root, *args):
@@ -586,8 +622,12 @@ def main(argv=None):
     parser.add_argument("--shard-index", type=int, help="Explicit hosted CI bucket, 0 to %d" % (CI_SHARD_COUNT - 1))
     parser.add_argument("--shard-count", type=int, help="Explicit hosted CI bucket count, currently %d" % CI_SHARD_COUNT)
     parser.add_argument("--ci-evidence-dir", type=Path, help="New public CI evidence directory; requires explicit shard and --run")
+    parser.add_argument("--ci-gate", action="store_true",
+                        help="Hosted CI: no agent tests, or the complete suite when any agent input changed; requires explicit shards")
     args = parser.parse_args(argv)
     sharded = args.shard_index is not None or args.shard_count is not None
+    if args.ci_gate and not sharded:
+        parser.error("The hosted CI gate requires explicit shards")
     if sharded and (args.shard_index not in range(CI_SHARD_COUNT) or args.shard_count != CI_SHARD_COUNT
                     or args.include is not None):
         parser.error("Both shard arguments require count %d, an index from 0 to %d, and no --include"
@@ -598,7 +638,7 @@ def main(argv=None):
         if hashlib.sha256(Path(__file__).read_bytes()).hexdigest() != LOADED_SELECTOR_SOURCE_SHA256 or hashlib.sha256(DEPENDENCY_MANIFEST.read_bytes()).hexdigest() != LOADED_DEPENDENCY_MANIFEST_SHA256:
             raise SelectionError("Agent test selector or dependency metadata changed after loading")
         fingerprint = snapshot(args.root) if args.run else None
-        selection = select(args.root, args.baseline, args.audit)
+        selection = (select_ci_gate if args.ci_gate else select)(args.root, args.baseline, args.audit)
     except SelectionError as error:
         print(json.dumps({"ok": False, "selectionError": str(error)}), file=sys.stderr)
         return 2

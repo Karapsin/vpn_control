@@ -28,11 +28,52 @@ MAX_JSON = 8 * 1024 * 1024
 MAX_LINE = 16384
 MAX_EVENTS = 200000
 # Hosted Fast Checks agent shard jobs; affected_agent_tests.CI_SHARD_COUNT.
-SHARD_COUNT = 6
+SHARD_COUNT = 8
+# Tracked measured seconds per test module. Hosted shards are assigned by these
+# durations; every job of one run reads the same checked-out table, and
+# validate_plan recomputes the assignment, so a different table refuses.
+DURATIONS = Path(__file__).with_name("agent_ci_module_seconds.json")
+MAX_DURATION_TABLE = 1024 * 1024
 
 
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def module_seconds(path=DURATIONS):
+    """Strict reader of the tracked duration table: (per-module seconds, default seconds)."""
+    raw = Path(path).read_bytes()
+    if len(raw) > MAX_DURATION_TABLE:
+        raise ValueError("Duration table exceeds bound")
+    value = json.loads(raw)
+    def seconds(item):
+        return type(item) in (int, float) and math.isfinite(item) and 0 <= item <= 86400
+    if (not isinstance(value, dict) or set(value) != {"schemaVersion", "source", "defaultSeconds", "modules"}
+            or type(value["schemaVersion"]) is not int or value["schemaVersion"] != 1
+            or not isinstance(value["source"], str) or not seconds(value["defaultSeconds"]) or value["defaultSeconds"] <= 0
+            or not isinstance(value["modules"], dict)
+            or any(not MODULE.fullmatch(name) or not seconds(item) for name, item in value["modules"].items())):
+        raise ValueError("Invalid duration table")
+    return value["modules"], value["defaultSeconds"]
+
+
+def duration_partition(modules, count, durations=None):
+    """Deterministic longest-first assignment to the least-loaded shard.
+
+    Unknown modules cost the table's default. Ties break by module name and
+    then by the lowest shard index, so every job derives the same buckets.
+    Each bucket keeps sorted order; the union is exactly the input.
+    """
+    if type(count) is not int or count < 1 or len(modules) != len(set(modules)):
+        raise ValueError("Invalid duration partition")
+    measured, default = module_seconds() if durations is None else durations
+    loads = [0.0] * count
+    buckets = [[] for unused in range(count)]
+    for name in sorted(modules, key=lambda item: (-measured.get(item, default), item)):
+        index = min(range(count), key=lambda item: (loads[item], item))
+        loads[index] += measured.get(name, default)
+        buckets[index].append(name)
+    return [sorted(bucket) for bucket in buckets]
 
 
 def plan_value(*, baseline, head, fingerprint, modules, index, run_id="local", attempt="1"):
@@ -46,7 +87,8 @@ def plan_value(*, baseline, head, fingerprint, modules, index, run_id="local", a
     global_plan = {"baseline": baseline, "head": head, "sourceFingerprint": fingerprint, "modules": modules,
                    "runId": run_id, "runAttempt": attempt}
     return {"schemaVersion": 1, **global_plan, "globalDigest": hashlib.sha256(canonical(global_plan)).hexdigest(),
-            "shardIndex": index, "shardCount": SHARD_COUNT, "assignedModules": modules[index::SHARD_COUNT]}
+            "shardIndex": index, "shardCount": SHARD_COUNT,
+            "assignedModules": duration_partition(modules, SHARD_COUNT)[index]}
 
 
 def validate_plan(value):

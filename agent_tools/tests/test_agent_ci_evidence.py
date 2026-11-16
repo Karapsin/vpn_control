@@ -21,9 +21,10 @@ from agent_tools.tests import test_agent_ci_shards as fixture
 
 
 GATE = "agent_tools.tests.test_ssh_connection_session_close"
+# None of these modules is in the duration table, so each costs its default.
 # The gate sorts last, so with the hosted count the first shard holds it after
 # one ordinary module and every other shard one ordinary module.
-MODULES = sorted(["agent_tools.tests.test_evidence_" + name for name in "abcdef"] + [GATE])
+MODULES = sorted(["agent_tools.tests.test_evidence_" + name for name in "abcdefgh"] + [GATE])
 COUNT = subject.SHARD_COUNT
 SUCCESS = ["success"] * COUNT
 PRIVATE = "PRIVATE_PROJECTION_SENTINEL"
@@ -129,11 +130,12 @@ class PlanTests(unittest.TestCase):
                         "runId": "987654321", "runAttempt": "4"}
         expected = hashlib.sha256(json.dumps(global_value, sort_keys=True,
                                               separators=(",", ":")).encode()).hexdigest()
-        self.assertEqual(6, COUNT)
+        self.assertEqual(8, COUNT)
+        buckets = subject.duration_partition(MODULES, COUNT)
         for index, value in enumerate(values):
             self.assertEqual(expected, value["globalDigest"])
             self.assertEqual(COUNT, value["shardCount"])
-            self.assertEqual(MODULES[index::COUNT], value["assignedModules"])
+            self.assertEqual(buckets[index], value["assignedModules"])
         self.assertEqual([MODULES[0], GATE], values[0]["assignedModules"])
         self.assertEqual(MODULES, sorted(name for value in values for name in value["assignedModules"]))
 
@@ -162,6 +164,68 @@ class PlanTests(unittest.TestCase):
                 value.update(changes)
                 with self.assertRaises(REJECTIONS):
                     subject.validate_plan(value)
+
+
+class DurationPartitionTests(unittest.TestCase):
+    """Hosted shards are assigned by the tracked measured seconds per module."""
+
+    def test_tracked_table_is_strict_and_covers_measured_modules(self):
+        measured, default = subject.module_seconds()
+        self.assertGreater(default, 0)
+        self.assertGreater(len(measured), 800)
+        self.assertTrue(all(subject.MODULE.fullmatch(name) for name in measured))
+
+    def test_partition_is_complete_disjoint_sorted_deterministic_and_longest_first(self):
+        durations = ({"agent_tools.tests.test_big": 100, "agent_tools.tests.test_mid": 60,
+                      "agent_tools.tests.test_small": 30}, 10)
+        modules = sorted(["agent_tools.tests.test_big", "agent_tools.tests.test_mid", "agent_tools.tests.test_small",
+                          "agent_tools.tests.test_unknown_a", "agent_tools.tests.test_unknown_b"])
+        buckets = subject.duration_partition(modules, 3, durations)
+        self.assertEqual(buckets, subject.duration_partition(list(reversed(modules)), 3, durations))
+        self.assertEqual(sorted(modules), sorted(name for bucket in buckets for name in bucket))
+        self.assertTrue(all(bucket == sorted(bucket) for bucket in buckets))
+        # 100 alone; 60 then the two unknown defaults beside 30.
+        self.assertEqual([["agent_tools.tests.test_big"], ["agent_tools.tests.test_mid"],
+                          ["agent_tools.tests.test_small", "agent_tools.tests.test_unknown_a",
+                           "agent_tools.tests.test_unknown_b"]], buckets)
+        self.assertEqual([[], [], []], subject.duration_partition([], 3, durations))
+        for modules, count in ((["agent_tools.tests.test_a"] * 2, 2), (["agent_tools.tests.test_a"], 0),
+                               (["agent_tools.tests.test_a"], True)):
+            with self.subTest(count=count), self.assertRaises(ValueError):
+                subject.duration_partition(modules, count, durations)
+
+    def test_measured_full_suite_balances_hosted_shards_unlike_alternating(self):
+        measured, default = subject.module_seconds()
+        modules = sorted(measured)
+        loads = [sum(measured.get(name, default) for name in bucket)
+                 for bucket in subject.duration_partition(modules, COUNT)]
+        alternating = [sum(measured.get(name, default) for name in modules[index::COUNT]) for index in range(COUNT)]
+        print(json.dumps({"event": "hosted-duration-balance", "durationMinutes": [round(x / 60, 1) for x in loads],
+                          "alternatingMinutes": [round(x / 60, 1) for x in alternating]}, sort_keys=True))
+        self.assertLess(max(loads), 1.05 * max(sum(loads) / COUNT, max(measured.values())))
+        self.assertGreater(max(alternating), 1.4 * max(loads))
+
+    def test_invalid_duration_tables_refuse(self):
+        good = {"schemaVersion": 1, "source": "x", "defaultSeconds": 1.0, "modules": {"agent_tools.tests.test_a": 1}}
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "table.json"
+            write(path, good)
+            self.assertEqual(({"agent_tools.tests.test_a": 1}, 1.0), subject.module_seconds(path))
+            for change in ({"schemaVersion": True}, {"defaultSeconds": 0}, {"defaultSeconds": math.inf},
+                           {"modules": {"os": 1}}, {"modules": {"agent_tools.tests.test_a": -1}},
+                           {"modules": {"agent_tools.tests.test_a": "1"}}, {"unexpected": 1}):
+                with self.subTest(fields=sorted(change)):
+                    write(path, dict(good, **change))
+                    with self.assertRaises(REJECTIONS):
+                        subject.module_seconds(path)
+
+    def test_plan_from_another_duration_table_refuses_validation(self):
+        value = plan(0)
+        other = subject.duration_partition(MODULES, COUNT, ({MODULES[3]: 999.0}, 1.0))
+        self.assertNotEqual(other[0], value["assignedModules"])
+        value["assignedModules"] = other[0]
+        with self.assertRaises(REJECTIONS):
+            subject.validate_plan(value)
 
 
 class EvidenceJournalTests(unittest.TestCase):

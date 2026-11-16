@@ -98,7 +98,7 @@ Never idle on CI while work remains. After a gate push, continue the remaining t
 
 The canonical expected-workflow list is `.github/required-workflows.json`; keep that manifest aligned with the names of the push workflows above.
 
-`VPN Integration` is advisory on ordinary `dev` pushes. The explicitly dispatched `all` profile is mandatory for a release. A release command follows this sequence and no other request authorizes it:
+`VPN Integration` does not run on `dev` pushes; it runs on dispatch (the advisory `core` profile), on its weekly schedule, and as the release's explicitly dispatched `all` profile, which is mandatory for a release. A release command follows this sequence and no other request authorizes it:
 
 1. Roll any remaining `Unreleased` notes with `version_bump(change_type="release", force_release=true)` and gate the result into `dev` with exact-SHA runs (`git_workflow(action="push", exact=True)`).
 2. Run `release_workflow(action="merge-dev")` to fast-forward `main` from the exact verified `origin/dev` SHA, dispatch exhaustive VPN integration, and start the exact-SHA agent visual review.

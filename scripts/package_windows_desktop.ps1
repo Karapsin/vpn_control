@@ -2,10 +2,24 @@ param(
     [switch]$SkipTests,
     [switch]$SkipPackageRegressionTests,
     [switch]$SkipInstalledPackageRegressionTests,
+    # CI runs scripts/check_release_hygiene.sh in its own Windows job; local runs keep this check.
+    [switch]$SkipReleaseHygiene,
+    # CI test jobs: run the desktop tests and package-input checks, then stop before packaging.
+    [switch]$TestsOnly,
+    # Complementary halves of :desktopApp:test by class name (*NativeTest or the rest); All runs both.
+    [ValidateSet("All", "Native", "Portable")]
+    [string]$DesktopTestPartition = "All",
     [string]$DistDir = "dist\windows"
 )
 
 $ErrorActionPreference = "Stop"
+if ($TestsOnly -and $SkipTests) {
+    throw "-TestsOnly and -SkipTests cannot be combined"
+}
+if ($DesktopTestPartition -ne "All" -and -not $TestsOnly) {
+    throw "-DesktopTestPartition requires -TestsOnly so packaging never runs on a partial test pass"
+}
+$RunsPortableChecks = $DesktopTestPartition -ne "Native"
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
@@ -62,8 +76,10 @@ function Invoke-CheckedNative {
     }
 }
 
-Assert-ReleaseHygiene
-if (-not $SkipTests) {
+if (-not $SkipReleaseHygiene) {
+    Assert-ReleaseHygiene
+}
+if (-not $SkipTests -and $RunsPortableChecks) {
     & (Join-Path $PSScriptRoot "test_windows_package_helpers.ps1")
     # Match the Windows PowerShell host used by the native producer, even when
     # packaging itself was launched from PowerShell Core.
@@ -95,10 +111,23 @@ Write-Host "[vpn-control] compiling desktop app"
 Invoke-CheckedNative ".\gradlew.bat" ":desktopApp:compileKotlin"
 
 if (-not $SkipTests) {
-    Write-Host "[vpn-control] running desktop tests"
-    Invoke-CheckedNative ".\gradlew.bat" ":desktopApp:test"
-    Write-Host "[vpn-control] checking Windows installer app-image dependencies"
-    Invoke-CheckedNative ".\gradlew.bat" "-I" "scripts/test_windows_packaging_graph.init.gradle" ":desktopApp:verifyWindowsPackageInputs"
+    if ($DesktopTestPartition -eq "All") {
+        Write-Host "[vpn-control] running desktop tests"
+        Invoke-CheckedNative ".\gradlew.bat" ":desktopApp:test"
+    } else {
+        Write-Host "[vpn-control] running $DesktopTestPartition desktop test partition"
+        Invoke-CheckedNative ".\gradlew.bat" "-I" "scripts/desktop_test_partition.init.gradle" `
+            "-PvpnControlDesktopTestPartition=$($DesktopTestPartition.ToLowerInvariant())" ":desktopApp:test"
+    }
+    if ($RunsPortableChecks) {
+        Write-Host "[vpn-control] checking Windows installer app-image dependencies"
+        Invoke-CheckedNative ".\gradlew.bat" "-I" "scripts/test_windows_packaging_graph.init.gradle" ":desktopApp:verifyWindowsPackageInputs"
+    }
+}
+
+if ($TestsOnly) {
+    Write-Host "[vpn-control] $DesktopTestPartition desktop tests passed; packaging runs in its own job"
+    return
 }
 
 Write-Host "[vpn-control] building Windows desktop packages"

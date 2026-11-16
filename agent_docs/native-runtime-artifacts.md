@@ -66,7 +66,7 @@ The consecutive large-routing regression exercises the actual helper with a
 - `.runtime/`
 - downloaded release packages
 
-Packaging entry points run `scripts/check_release_hygiene.sh` before building. The check fails if generated release/runtime paths are already tracked by Git, which prevents Windows checkout failures from long generated class/dex paths.
+Packaging entry points run `scripts/check_release_hygiene.sh` before building. The check fails if generated release/runtime paths are already tracked by Git, which prevents Windows checkout failures from long generated class/dex paths. CI passes `--skip-release-hygiene` (`-SkipReleaseHygiene`) only because each operating system already runs the same hygiene once per push in another job; see `developer-release-checklist.md`.
 
 Desktop runtime binaries are bundled into local/release packages by scripts:
 
