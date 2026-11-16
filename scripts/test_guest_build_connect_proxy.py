@@ -440,6 +440,35 @@ class RelayTest(unittest.TestCase):
         finally:
             server.server_close()
 
+    def test_rejection_consumes_arrived_request_bytes_before_closing(self):
+        # Closing with unread bytes resets the connection on Windows and can
+        # discard the 403 before the peer reads it (hosted Windows flake in
+        # test_header_limit_is_bounded).
+        class PendingRequest:
+            def __init__(self):
+                self.pending = b"A" * 100
+                self.sent = b""
+                self.shut = False
+
+            def setblocking(self, enabled): pass
+            def settimeout(self, timeout): pass
+            def recv(self, size):
+                if not self.pending:
+                    raise BlockingIOError()
+                chunk, self.pending = self.pending[:size], self.pending[size:]
+                return chunk
+            def sendall(self, value): self.sent += value
+            def shutdown(self, how):
+                if how != socket.SHUT_WR:
+                    raise AssertionError(f"expected SHUT_WR, received {how}")
+                self.shut = True
+
+        connection = PendingRequest()
+        subject.send_rejection(connection, consume_request=True)
+        self.assertIn(b"403 Forbidden", connection.sent)
+        self.assertTrue(connection.shut)
+        self.assertEqual(0, len(connection.pending))
+
     def test_capacity_rejection_drain_is_bounded_for_shutdown_responsiveness(self):
         class EndlessPendingInput:
             def __init__(self):

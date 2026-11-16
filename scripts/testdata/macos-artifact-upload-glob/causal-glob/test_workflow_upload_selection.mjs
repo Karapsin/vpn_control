@@ -13,6 +13,8 @@ const [workflowFile, scratch]=process.argv.slice(2);
 assert(workflowFile && scratch,'actual workflow and fresh owned scratch directory are required');
 assert.equal(require('@actions/glob/package.json').version,'0.5.0','matching pinned action glob engine required');
 const workflow=yaml.parse(fs.readFileSync(workflowFile,'utf8'));
+// The workflows pin actions to a full commit SHA (the v4.6.2 release); YAML parsing drops the trailing `# v4.6.2` comment.
+const UPLOAD_ARTIFACT_PINNED_USES='actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02';
 const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const action=yaml.parse(fs.readFileSync(path.join(root,'resolved-action.yml'),'utf8'));
 assert.equal(action.inputs['include-hidden-files'].default,'false');
@@ -50,7 +52,7 @@ function clonedWorkflow(flag) {
 function uploadStep(document) {
   const candidates=Object.values(document.jobs).flatMap(job=>job.steps||[])
     .filter(step=>step.name==='Upload immutable fixture pair and provenance');
-  if (candidates.length!==1 || candidates[0].uses!=='actions/upload-artifact@v4')
+  if (candidates.length!==1 || candidates[0].uses!==UPLOAD_ARTIFACT_PINNED_USES)
     throw Error('exact success-upload step required');
   return candidates[0];
 }
@@ -113,6 +115,12 @@ test('portable: explicit true preserves nested hidden directory and ordinary dep
 test('portable: wrong success-upload identity refuses before selection',async()=>{
   const clone=structuredClone(workflow);uploadStep(clone).uses='actions/download-artifact@v4';
   await assert.rejects(select(clone),/exact success-upload step required/);
+});
+test('portable: mutable tag or different commit for the upload action refuses before selection',async()=>{
+  for (const uses of ['actions/upload-artifact@v4','actions/upload-artifact@'+'0'.repeat(40),'evil/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02']) {
+    const clone=structuredClone(workflow);uploadStep(clone).uses=uses;
+    await assert.rejects(select(clone),/exact success-upload step required/);
+  }
 });
 test('macOS native: signed source bundle verifies',{skip:!isMac},()=>{
   const result=command(['--verify','--deep','--strict',app]);assert.equal(result.status,0,result.stderr);

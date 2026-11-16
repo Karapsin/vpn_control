@@ -103,9 +103,35 @@ def parse_connect_header(connection: socket.socket) -> tuple[str, bytes]:
     return normalized, initial_tunnel_bytes
 
 
-def send_rejection(connection: socket.socket) -> None:
+def discard_arrived_bytes(connection: socket.socket) -> None:
+    """Consume already-arrived request bytes so closing cannot abort the peer."""
+    discarded = 0
+    try:
+        connection.setblocking(False)
+        while discarded < MAX_HEADER_BYTES:
+            try:
+                chunk = connection.recv(min(65536, MAX_HEADER_BYTES - discarded))
+            except (BlockingIOError, InterruptedError):
+                break
+            if not chunk:
+                break
+            discarded += len(chunk)
+        connection.settimeout(IDLE_SECONDS)
+    except OSError:
+        pass
+
+
+def send_rejection(connection: socket.socket, *, consume_request: bool = False) -> None:
+    # On Windows, closing with unread request bytes (for example after an
+    # oversized header) sends a reset that can discard the 403 before the peer
+    # reads it.  After the relay has already read the request, consume what
+    # arrived and close the write side gracefully.  A rejected peer is never read.
+    if consume_request:
+        discard_arrived_bytes(connection)
     try:
         connection.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        if consume_request:
+            connection.shutdown(socket.SHUT_WR)
     except OSError:
         pass
 
@@ -260,7 +286,7 @@ def handle_connection(connection: socket.socket, peer: tuple[str, int], expected
         destination, initial_tunnel_bytes = parse_connect_header(connection)
         if destination not in DEFAULT_DESTINATIONS:
             emit({"event": "rejected", "stage": "destination"})
-            send_rejection(connection)
+            send_rejection(connection, consume_request=True)
             return
         try:
             upstream = upstream_factory(destination)
@@ -281,7 +307,7 @@ def handle_connection(connection: socket.socket, peer: tuple[str, int], expected
     except (OSError, RelayError):
         emit({"event": "rejected", "stage": "header-or-tunnel"})
         if not established:
-            send_rejection(connection)
+            send_rejection(connection, consume_request=True)
     finally:
         connection.close()
 
