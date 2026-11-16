@@ -3418,6 +3418,39 @@ file name control IDs (1001 Save, 1148 Open), the GUI's own export and import th
 `PROFILE`. The ctypes structure layouts were not checked on Windows. Still open: the reviewed profile, one native run
 per step, and then the row's first full pass.
 
+### The windows-visual matrix had no producer, and a harness failure was the product's `failed` (offline, 2026-11-17)
+
+Coverage audit 2026-11-13 (`.runtime/windows-parity-20261107/audit/coverage-20261113.md`, GAP-VIS, section 7
+items 3 and 10, tracks T12 and T13). windows-visual mapped all three scenarios to `()`, nothing turned a visual
+review into an observation, and `matrix-record` accepted any hand-composed passed windows-visual record: nothing
+checked its 58 scenes, verdicts, SHA or baselines. `visual_review` stored no proof of which bytes a verdict was
+given on, the comparison report did not name the baseline it compared, and `visual_regression.py record` copied
+any capture over the baselines with no review at all. Separately, `_matrix_row` classed every owner and terminal
+exit 1 with `task_exit_code` as the product's `failed`, so DOC `83484649` (S_D), whose owner journal closed
+`document-race-fixture-refused:rename-away:32` (the harness's own export-race fixture refused by the OS before the
+product's export child started), counted as a product failure that `_settled_runs` then required to be recorded
+before any pass of its package, where it would have blocked the requirement for that source. The fixes add
+`agent_tools/windows_visual_matrix.py` (TEST-005: read-only review, `register-captures`, `observation`), the
+`_visual_rule` re-derivation in `matrix_record`, the reviewed `record` of `visual_regression.py` (VISUAL-007), the
+review's byte binding, and `failed-harness` (TEST-008, `MATRIX_HARNESS_FAILURES`). RED/GREEN logs and the patch are in
+`.runtime/windows-parity-20261107/evidence/visual-record/`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A hand-composed passed windows-visual record was accepted (TOOL) | `test_windows_visual_matrix.RecordTests.test_matrix_record_refuses_a_windows_visual_pass_its_producer_did_not_make`, `...test_matrix_record_rederives_the_document_from_current_evidence`, `...test_a_record_that_says_more_than_its_document_is_refused` | RED on `efd774b0` with the producer module added: `matrix_record` accepts a plain JSON document. GREEN: only the producer's document, re-derived from the current receipt, report, captures, baselines and registry. |
+| No producer turned an exact-SHA review into a windows-visual observation (TOOL) | `test_windows_visual_matrix.CompleteSetTests`, `RefusalTests` (missing scene, unreviewed image, verdict on other bytes, product defect, other verdicts, mixed SHAs of receipt, manifest, capture and artifact, comparison without baseline identity, evidence changed, unregistered capture), `StaleBaselineTests`, `SecureSceneTests`, `RepositoryTests` | The fixture is a real Git commit with LFS pointers, the real comparator and the real review. RED on `efd774b0`: no module; with the module alone, the base review binds no bytes, so every set is refused as unreviewed. The real manifest has 58 Windows scenes, `windows-uac` its only secure one. |
+| A verdict named no bytes and the comparison no baseline (TOOL) | `test_visual_review.test_a_verdict_binds_the_bytes_the_agent_opened_until_reingest`, `test_visual_regression.test_report_binds_the_exact_baseline_and_actual_bytes_it_compared` | RED on `efd774b0`: no `reviewed_actual_sha256`, no `baseline_sha256`. |
+| Baselines were re-recorded from any capture (TOOL) | `test_visual_regression.ReviewedBaselineRecordTest` (only `expected_change` written; unreviewed, product defect, infrastructure failure, pass over a failed comparison, another HEAD or capture SHA, an image changed after review all refuse), `test_the_record_command_needs_the_reviewed_sha` | RED on `efd774b0`: no reviewed record; the base CLI `record` copies the whole folder. The re-record stays an operator step (agent_docs/visual-regression.md, Baselines). |
+| A harness known failure was the product's `failed` (TOOL) | `test_native_scenario_windows_matrix.HarnessFailureTests` (failed-harness from the pulled copy; it blocks its scenario beside passed twins; it does not hold a later pass of its package; the other listed codes; an oracle reason, an unlisted reason such as `no-tray-close-release-unproven`, an unpulled or changed copy, two closings, a differing closed reason and an owner exit 0 stay `failed`; a product failure beside it is still recorded at once) | RED on `efd774b0`: classed `failed`, recorded as a failed observation, and `windows_matrix_unrecorded_outcome` held the later pass. The fixture copies the event shapes and reason of `83484649`'s journal, not its bytes. |
+
+Routine suite: `agent_tools/tests/test_windows_visual_matrix.py` and `test_native_scenario_windows_matrix.py`
+(affected selection of `windows_visual_matrix.py`, `native_acceptance_matrix.py`, `native_scenario_windows.py`),
+`scripts/test_visual_regression.py` and `scripts/test_visual_review.py` (Fast Checks). Native limits: no
+windows-visual record exists until a hosted Visual Capture of the final SHA, the `windows-uac` capture from a
+`windowsUacVisual` clone and a full Windows review of that SHA; the reviewed re-record has not run on real captures.
+`f56f4a4c` (a `ValueError` in the query-owner tool, no known-failure closing) stays `failed`: no reviewed code names
+it, and a bare exception class cannot tell a tool defect from a product reply the tool could not parse.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

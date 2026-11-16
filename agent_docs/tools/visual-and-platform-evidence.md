@@ -2094,9 +2094,12 @@ scenarios and the 16 Windows document scenarios. A scenario whose design rows ar
 all built, or whose only row declares procedures still to do, maps to `()` and stays
 missing: the TUN fault and config rows (no variant exists), `exact-child-stop` (no grant variant keeps a sibling
 runtime through its off, so its TUN half has no row), and `windows-visual`, which
-stays on `visual_platform` and `visual_review`. `cache-digest-bytes` names
-`windows-document-cold.cache-bytes` alone: it reads the committed cache back and
-keeps its closed-state corruption step.
+no row proves: its producer (`MATRIX_PRODUCERS`,
+`agent_tools/windows_visual_matrix.py`) makes its observation from the exact-SHA
+visual evidence ([Windows matrix record](../visual-regression.md#windows-matrix-record)),
+and `matrix-observation` refuses it as `windows_matrix_other_producer:<path>`.
+`cache-digest-bytes` names `windows-document-cold.cache-bytes` alone: it reads the
+committed cache back and keeps its closed-state corruption step.
 `ssh-import-routing` names the SSH row and the SSH relay row together. The other
 document scenarios name DOC, CLD (`cold-reopen`, `legacy-newline`) or RSP, with CFG
 where design.md step 8 adds it, and `gui-cli-transfer` names its two halves,
@@ -2151,6 +2154,20 @@ unless it comes from this evidence. The observation reads each journal without c
 - `failed`: the owner's own failure, `task_exit_code` with owner and terminal exit
   code 1, which a case oracle failure ends with; recorded at once. The receipt cannot
   tell a case oracle from the owner's own precondition, so review the events first.
+- `failed-harness` (`TEST-008`): the same exit 1 when the run's pulled evidence copy,
+  the one its receipt hashed, holds exactly one `known-failure-closing` and one
+  `known-failure-closed` record with the same reason and an `owner-terminal` of exit 1,
+  and that reason is on the reviewed list `MATRIX_HARNESS_FAILURES`: a harness fixture
+  the OS refused before the product took part (`document-<race|persistence|export|spool>-fixture-refused:<step>:<code>`,
+  as DOC `83484649` closed with `document-race-fixture-refused:rename-away:32`) or a
+  work or cache fixture not ready before the serve existed
+  (`document-<work|cache>-fixture-not-ready:<timeout|ended|refused>:...`). The review
+  names it in `harnessFailure`. It never counts and is never recorded: while one is
+  named, its scenarios are `failed-harness` (a failed or unknown run of the scenario
+  still wins) and the observation refuses as `windows_matrix_harness_failure:<scenario>`,
+  so fix the tool and rerun the row, then name only the rerun. It does not hold a later
+  pass of the package (`windows_matrix_unrecorded_outcome` skips it). Any other reason,
+  a missing or changed copy, or a second closing stays `failed`.
 - `failed-principal`: a DOC run whose owner passed (owner and terminal exit code 0)
   and whose LOCAL SERVICE probe then proved no denial of the owner-private endpoint
   (`document_principal_not_denied`): the product's verdict, recorded at once. It fails
