@@ -812,7 +812,7 @@ class PacketTests(unittest.TestCase):
                 if source is cases:
                     self.assertIn(row["value"], cases)
         self.assertEqual({"restart-deny", "restart-grant", "find-best-deny", "find-best-grant", "generated-grant", "custom-grant", "large-grant",
-                         "vpn-prepare-failure", "vpn-commit-failure"},
+                         "vpn-prepare-failure", "vpn-commit-failure", "resources-grant", "ssh-grant", "stage-squat"},
                          set(dedicated_driver.TUN_VARIANTS))
         # vpn-prepare-failure is refused by the product before any prompt (windows_tun_stages.PROMPTLESS): nothing to answer.
         self.assertEqual({"windows-scoped-tun." + variant for variant in dedicated_driver.TUN_VARIANTS - tun_stages.PROMPTLESS},

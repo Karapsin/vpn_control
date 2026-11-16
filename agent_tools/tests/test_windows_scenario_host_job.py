@@ -74,6 +74,7 @@ BUNDLE_FILES = ("agent_tools/windows_scenario_host_job.py", "agent_tools/windows
                 "agent_tools/windows_scenario_proxy.py", "agent_tools/windows_ordinary_dedicated_driver.py",
                 "agent_tools/windows_lifecycle_runtime_fixture_worker.py", "scripts/integration/https_subscription_relay_fixture.py",
                 "agent_tools/windows_tun_stages.py", "agent_tools/windows_tun_direct_sampler.py", "agent_tools/windows_tun_native_observer.py",
+                "agent_tools/windows_tun_reserved_cases.py",
                 "agent_tools/windows_lifecycle_scheduled_cases.py", "agent_tools/windows_no_tray_desktop.py",
                 "agent_tools/windows_public_updater/update_cases.py", "agent_tools/windows_public_updater/update_receipts.py",
                 "agent_tools/windows_public_updater/update_fixture_server.py", "agent_tools/windows_public_updater/native_collector.py",

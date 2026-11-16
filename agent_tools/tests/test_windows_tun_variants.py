@@ -515,9 +515,9 @@ class DriverVariantTests(unittest.TestCase):
 
     def test_the_variant_sets_name_each_route(self):
         self.assertEqual(set(CONFIG_VARIANTS) | set(FAULT_VARIANTS), set(dedicated_driver.TUN_VARIANTS) - {"restart-deny", "restart-grant"}
-                         - {"find-best-deny", "find-best-grant"})
-        self.assertEqual(set(CONFIG_VARIANTS), set(dedicated_driver.TUN_GRANT_VARIANTS) - {"restart-grant", "find-best-grant"})
-        self.assertEqual({"restart-grant", "generated-grant"}, set(dedicated_driver.TUN_SAMPLED_VARIANTS) - {"find-best-grant"})
+                         - {"find-best-deny", "find-best-grant"} - dedicated_driver.RESERVED_VARIANTS)
+        self.assertEqual(set(CONFIG_VARIANTS), set(dedicated_driver.TUN_GRANT_VARIANTS) - {"restart-grant", "find-best-grant", "resources-grant", "ssh-grant"})
+        self.assertEqual({"restart-grant", "generated-grant"}, set(dedicated_driver.TUN_SAMPLED_VARIANTS) - {"find-best-grant", "resources-grant", "ssh-grant"})
 
 
 class PlannerVariantTests(unittest.TestCase):

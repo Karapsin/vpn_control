@@ -949,7 +949,8 @@ class GeneratedInputTests(unittest.TestCase):
                 self.assertEqual(WORKSPACE + "\\runtime-config.json", value["tun"]["runtimeConfigPath"])
                 self.assertEqual(self.PATHS["file:tun"], value["modules"]["tun"])
                 # A configuration or fault variant adds its location from the proxy rows' branch documents, nothing else of them.
-                self.assertEqual({"runtime", "observer", "tun", *(("branches",) if variant in proxy.TUN_PENDING else ())}, set(value["modules"]))
+                self.assertEqual({"runtime", "observer", "tun", *(("branches",) if variant in proxy.TUN_PENDING else ()),
+                          *(("reserved",) if variant in proxy.TUN_RESERVED_VARIANTS else ()), *(("relay",) if variant == "ssh-grant" else ())}, set(value["modules"]))
                 self.assertNotIn("branch", value)
                 self.assertIsNone(value["gui"])
                 roles = proxy.generated_roles(variant)

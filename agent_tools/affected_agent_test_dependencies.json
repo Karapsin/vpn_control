@@ -8697,7 +8697,8 @@
         "ddf0f7b8224cd52ebec0f0ff0b1f7eecc6bbc035cfb4d7c4fbe8a79722f43117",
         "c2ea34ab71939558eb0056d668e597027ed331067d785c58b9b62bae177680e1",
         "c4fed8c5582308021e4ed0a081a851499f7c1fc698266ce3d64819c1af9fb4da",
-        "69452ace6ad63f4b174c0671ebeac82a6a6303658a99cfcde07606aa9ff2c07c"
+        "69452ace6ad63f4b174c0671ebeac82a6a6303658a99cfcde07606aa9ff2c07c",
+        "c5b962231af37cfacedf009f62bee823ddbec2691560b74f4751b4b9bbfda8ad"
       ]
     },
     "agent_tools/tests/test_native_scenario_ssh.py": {

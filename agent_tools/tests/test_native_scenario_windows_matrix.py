@@ -1006,7 +1006,7 @@ class TableTests(unittest.TestCase):
                          - set(MATRIX_REAL["document-persistence-transfer"]))
         unmapped = sorted(name + ":" + scenario for name, table in MATRIX_REAL.items() for scenario, rows in table.items() if not rows)
         self.assertEqual(sorted(["windows-visual:" + item for item in ("scene-capture", "geometry-contrast", "agent-verdict")]
-                                + ["windows-scoped-vpn:" + item for item in ("exact-child-stop", "dns-ws-ssh-cache-resources", "pipe-storage-races")]
+                                + ["windows-scoped-vpn:" + item for item in ("exact-child-stop",)]
                                 + ["document-persistence-transfer:" + item for item in ("gui-cli-transfer", "cache-digest-bytes")]),
                          unmapped)
         # The SSH row declares a relayed transfer and a stdin key import still to do, which the relay row does: they prove
@@ -1079,7 +1079,11 @@ class TableTests(unittest.TestCase):
                           "windows-scoped-tun.custom-grant": ["windows-scoped-vpn:generated-custom-config"],
                           "windows-scoped-tun.large-grant": ["windows-scoped-vpn:large-config"],
                           "windows-scoped-tun.vpn-prepare-failure": ["windows-scoped-vpn:prepare-commit-recovery"],
-                          "windows-scoped-tun.vpn-commit-failure": ["windows-scoped-vpn:prepare-commit-recovery"]},
+                          "windows-scoped-tun.vpn-commit-failure": ["windows-scoped-vpn:prepare-commit-recovery"],
+                          # windows_tun_reserved_cases: the two reserved scenarios, each from both of its rows' evidence.
+                          "windows-scoped-tun.resources-grant": ["windows-scoped-vpn:dns-ws-ssh-cache-resources", "windows-scoped-vpn:pipe-storage-races"],
+                          "windows-scoped-tun.ssh-grant": ["windows-scoped-vpn:dns-ws-ssh-cache-resources"],
+                          "windows-scoped-tun.stage-squat": ["windows-scoped-vpn:pipe-storage-races"]},
                          {row: scenarios for row, scenarios in named.items() if row.startswith("windows-scoped-tun.") and scenarios})
         self.assertEqual((), MATRIX_REAL["windows-scoped-vpn"]["exact-child-stop"])
         self.assertEqual(("windows-scoped-tun.restart-grant", "windows-public-update.success-off"), MATRIX_REAL["windows-native-cli"]["scoped-elevation"])

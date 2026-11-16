@@ -51,7 +51,12 @@ DOCUMENT_ROWS = ("windows-document-acceptance", *("windows-document-cold." + var
 RESPONSIVE_ROW = "windows-document-responsive"
 ADMITTED_DOCUMENT_ROWS = (*DOCUMENT_ROWS, RESPONSIVE_ROW)
 TUN_ROWS = tuple("windows-scoped-tun." + variant for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant",
-                                                          "generated-grant", "custom-grant", "large-grant", "vpn-prepare-failure", "vpn-commit-failure"))
+                                                          "generated-grant", "custom-grant", "large-grant", "vpn-prepare-failure", "vpn-commit-failure", "resources-grant", "ssh-grant", "stage-squat"))
+# windows_tun_reserved_cases' rows: its case module (and ssh-grant's relay) beside the stages; stage-squat is approved
+# but has no collector, sampler or hold.
+TUN_RESERVED = {"resources-grant": {"agent_tools/windows_tun_reserved_cases.py": "reserved"},
+                "ssh-grant": {"agent_tools/windows_tun_reserved_cases.py": "reserved", "agent_tools/windows_ssh_relay_fixture.py": "relay"},
+                "stage-squat": {"agent_tools/windows_tun_reserved_cases.py": "reserved"}}
 HOME = "/home/fixture-owner"
 TARGET = {"kind": "ssh", "uid": 1000, "principal": "fixture-owner", "home": HOME, "bootId": "22222222-3333-4444-8555-666666666666"}
 OWNER = {"pid": 4242, "birth": "linux:987654"}
@@ -1416,7 +1421,7 @@ class ScopedTunTableTests(unittest.TestCase):
                 files = {relative: role for relative, role, _ in row["guestFiles"]}
                 proxy_files = {relative: role for relative, role, _ in windows._PROXY_FILES}
                 collector = {relative: role for relative, role, _ in (*windows._TUN_COLLECTOR, *windows._COLLECTOR_FILES)}
-                self.assertEqual({**proxy_files, "agent_tools/windows_tun_stages.py": "tun",
+                self.assertEqual({**proxy_files, "agent_tools/windows_tun_stages.py": "tun", **TUN_RESERVED.get(variant, {}),
                                   **({"agent_tools/windows_tun_direct_sampler.py": "sampler"} if sampled else {}), **(collector if grant else {}),
                                   **({"agent_tools/windows_runtime_branch_cases.py": "branches"} if variant in proxy.TUN_PENDING else {}),
                                   "agent_tools/windows_ordinary_task_owner.ps1": "owner", "agent_tools/windows_ordinary_process_owner.py": "worker"}, files)
@@ -1431,7 +1436,8 @@ class ScopedTunTableTests(unittest.TestCase):
         from agent_tools import windows_uac_decision as uac
         refusals = {variant: windows.RECIPES["windows-scoped-tun." + variant]["refusal"] for variant in windows.TUN_VARIANTS}
         self.assertEqual({variant: None for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant", "generated-grant",
-                                                         "custom-grant", "large-grant", "vpn-prepare-failure", "vpn-commit-failure")}, refusals)
+                                                         "custom-grant", "large-grant", "vpn-prepare-failure", "vpn-commit-failure",
+                                                         "resources-grant", "ssh-grant", "stage-squat")}, refusals)
         # vpn-prepare-failure is refused by the product before any prompt: it has no decision row.
         self.assertEqual({"windows-scoped-tun." + variant for variant in windows.TUN_VARIANTS if variant != "vpn-prepare-failure"},
                          {name for name in uac.ROWS if name.startswith("windows-scoped-tun.")})
@@ -1462,6 +1468,7 @@ class ScopedTunTableTests(unittest.TestCase):
                     self.assertEqual(("vpn-broker", table["decision"], table["event"]), (row["uac"]["prompt"], row["uac"]["decision"], row["uac"]["event"]))
                     self.assertEqual("deny" if variant.endswith("-deny") else "approve", row["uac"]["decision"])
                     self.assertEqual(variant.endswith("-deny"), row["denyJoin"])
+                    # A grant joins its approval too, as do the commit fault and stage-squat, approved with no collector.
                     self.assertEqual(not variant.endswith("-deny"), row.get("approveJoin") is True, "a grant and the commit fault join their approval too")
                 else:
                     # Only a row with no prompt at all, or one refused at admission, has no decision.
