@@ -21,6 +21,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
@@ -242,7 +243,14 @@ class DesktopBootstrapCleanupTest {
                     while (true) { try { socket.accept().close() } catch (_: SocketException) { break } }
                 }
                 child
-            }, cleanup = DesktopBootstrapCleanup(sleep = { recorder.sleeps += it }, report = { recorder.reports += it }))
+            }, cleanup = DesktopBootstrapCleanup(sleep = { recorder.sleeps += it }, report = { recorder.reports += it }),
+                // FakeChild is no operating-system process (Process.pid() throws UnsupportedOperationException), so
+                // the platform tie would only fail on it on Windows: record the tie instead, on every platform.
+                tie = { process ->
+                    assertSame(child, process)
+                    child.events += "tied"
+                    AutoCloseable { child.events += "untied" }
+                })
             val settings = HomeSshRouteSettings(enabled = true, host = "ssh.example.test", user = "fixture",
                 hostKeys = listOf("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBootstrapCleanupFixtureHostKey0000000000"))
             val during = runBlocking {
@@ -253,6 +261,9 @@ class DesktopBootstrapCleanupTest {
             assertEquals(emptyList(), during, "bootstrap files while the download ran")
             assertEquals("run", launched.single()[1])
             assertTrue(child.events.containsAll(listOf("destroy", "released")))
+            assertEquals(listOf("tied", "destroy", "released", "untied"),
+                child.events.filter { it in setOf("tied", "destroy", "released", "untied") },
+                "the child was not tied once at its start and untied after it ended")
             assertEquals(emptyList(), recorder.reports)
             assertEquals(emptyList(), Files.list(runtime).use { paths ->
                 paths.map { it.fileName.toString() }.filter { it.startsWith("home-ssh-bootstrap-") }.toList() })
