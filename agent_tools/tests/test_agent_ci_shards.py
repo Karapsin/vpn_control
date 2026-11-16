@@ -422,6 +422,25 @@ def gate_before(name):
     return raw
 
 
+def gate_before_manifest(tools):
+    """The schema 1 manifest entries the a34e07cb stage needs, pinned to the copied runner and projector.
+
+    At a34e07cb the tracked manifest declared these two loaders (same scopes) with digests of the
+    sources in that tree; that selector cannot read the schema 2 manifest, which has no digests.
+    """
+    digest = lambda name: hashlib.sha256((tools / name).read_bytes()).hexdigest()
+    return {'schemaVersion': 1, 'nonPythonResources': {}, 'loaders': {
+        'agent_tools/agent_test_runner.py': {
+            'reason': 'Transparent execution of selected, validated test inputs; those test modules are the '
+                      'selection graph roots.',
+            'scopes': ['agent_tools/agent_test_session_observer.py'],
+            'sourceSha256': [digest('agent_test_runner.py')]},
+        'agent_tools/agent_ci_evidence.py': {
+            'reason': 'Explicit CI-only projector reads only the freshly allocated runner directory and explicit '
+                      'public artifact inputs.',
+            'scopes': [], 'sourceSha256': [digest('agent_ci_evidence.py')]}}}
+
+
 def gate_before_partition():
     """The a34e07cb selector's own sorted alternating shard_selection."""
     raw = gate_before('selector.before.source')
@@ -502,6 +521,10 @@ class CiGateTests(unittest.TestCase):
             gate_before('selector.before.source') if before else (ROOT / 'agent_tools/affected_agent_tests.py').read_bytes())
         (tools / 'agent_ci_evidence.py').write_bytes(
             gate_before('evidence.before.source') if before else (ROOT / 'agent_tools/agent_ci_evidence.py').read_bytes())
+        if before:
+            # The a34e07cb selector reads only its schema 1 manifest, whose reviewed loaders pinned the
+            # exact runner and projector sources it ran with. Rebuild that shape for the copied files.
+            (tools / 'affected_agent_test_dependencies.json').write_text(json.dumps(gate_before_manifest(tools)))
         (root / '.gitignore').write_text('.rag_index/\n__pycache__/\n')
         (root / 'Feature.kt').write_text('product')
         (tools / 'leaf.py').write_text('VALUE=1\n')

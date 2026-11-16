@@ -52,13 +52,18 @@ elif seam=='managed':
     value={'ok':outcome.completed.returncode==0,'returncode':outcome.completed.returncode}
 else:
     sys.path.insert(0,repository)
-    from agent_tools import check_output_retention,local_build_environment
+    from agent_tools import check_output_retention,local_build_environment,managed_agent_check
     names={'_run','_display','_bounded','_failure_log_excerpt'}
-    chosen=[node for node in ast.parse(source.read_bytes()).body if isinstance(node,ast.FunctionDef) and node.name in names
-            or isinstance(node,ast.Assign) and [getattr(t,'id',None) for t in node.targets]==['MAX_OUTPUT_CHARS']]
-    assert len(chosen)==len(names)+1,'exact MCP launcher source required'
+    # HEAVY_COMMAND_SECONDS (the launchd escape bound) exists only in the current launcher.
+    constants={'MAX_OUTPUT_CHARS','HEAVY_COMMAND_SECONDS'}
+    body=ast.parse(source.read_bytes()).body
+    chosen=[node for node in body if isinstance(node,ast.FunctionDef) and node.name in names
+            or isinstance(node,ast.Assign) and len(node.targets)==1 and getattr(node.targets[0],'id',None) in constants]
+    found=[getattr(node,'name',None) or node.targets[0].id for node in chosen]
+    assert sorted(set(found))==sorted(found) and names|{'MAX_OUTPUT_CHARS'}<=set(found),'exact MCP launcher source required'
     ns={'os':os,'re':re,'shlex':shlex,'subprocess':subprocess,'Any':Any,'REPO_ROOT':root,
-        'local_build_environment':local_build_environment,'check_output_retention':check_output_retention}
+        'local_build_environment':local_build_environment,'check_output_retention':check_output_retention,
+        'managed_agent_check':managed_agent_check}
     exec(compile(ast.Module(chosen,[]),str(source),'exec'),ns)
     result=ns['_run']([sys.executable,'-B','-m','unittest',gate],timeout=60)
     value={'ok':result['ok'],'returncode':result['returncode']}
