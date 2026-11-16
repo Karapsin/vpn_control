@@ -343,5 +343,70 @@ class ExecutedInputScopeTest(EquivalenceRepository, unittest.TestCase):
         self.assertIn("agent_tools/native_package_release_report.py", source.executed_paths())
 
 
+# The MCP route of review finding 2: the server loads adapters by name and executes sibling sources by with_name, and
+# the dispatch adapter reads its catalog by with_suffix. None of them is a static import of the host closure.
+BY_NAME_LAYOUT = {
+    **LAYOUT,
+    "agent_tools/mcp_server.py": 'SELECTOR = "affected_agent_test_dependencies.json"\nPOLICY = "tool_action_policy.json"\n'
+                                 '_VM_NATIVE_ADAPTERS = ("readiness_vm_dispatch",)\n'
+                                 'def _agent_module(name):\n    return name\n'
+                                 'def route():\n    return _agent_module("ssh_program_execution")\n'
+                                 'import importlib\n'
+                                 'def lazy():\n    return importlib.import_module("agent_tools.windows_relay_helper")\n',
+    "agent_tools/readiness_vm_dispatch.py": 'from pathlib import Path\nMANIFEST = Path(__file__).with_suffix(".json")\n'
+                                            'GATEWAY = Path(__file__).with_name("gateway.source")\n',
+    "agent_tools/gateway.source": "GATEWAY = 1\n",
+    "agent_tools/ssh_program_execution.py": 'from pathlib import Path\nREMOTE = Path(__file__).with_name("ssh_program_execution_remote.py")\n',
+    "agent_tools/ssh_program_execution_remote.py": "REMOTE = 1\n",
+    "agent_tools/windows_relay_helper.py": "HELPER = 1\n",
+}
+BY_NAME_ENDED = {
+    "agent_tools/readiness_vm_dispatch.py": 'from pathlib import Path\nMANIFEST = Path(__file__).with_suffix(".json")\n'
+                                            'GATEWAY = Path(__file__).with_name("gateway.source")\nX = 2\n',
+    "agent_tools/readiness_vm_dispatch.json": '{"changed": true}\n',
+    "agent_tools/gateway.source": "GATEWAY = 2\n",
+    "agent_tools/ssh_program_execution.py": 'from pathlib import Path\nREMOTE = Path(__file__).with_name("ssh_program_execution_remote.py")\nX = 2\n',
+    "agent_tools/ssh_program_execution_remote.py": "REMOTE = 2\n",
+    "agent_tools/windows_relay_helper.py": "HELPER = 2\n",
+}
+
+
+@unittest.skipIf(os.name == "nt", "private acceptance evidence requires POSIX ownership")
+class StringLoadedInputScopeTest(EquivalenceRepository, unittest.TestCase):
+    """Review finding 2: a commit to a string-loaded MCP adapter or its resources ends the link."""
+    layout = BY_NAME_LAYOUT
+    link = ExecutedInputScopeTest.link
+
+    def before(self):
+        fixture = Path(__file__).parent / "fixtures" / "native_artifact_reuse_by_name"
+        source = fixture / "native_artifact_reuse.before.source"
+        provenance = json.loads((fixture / "provenance.json").read_bytes())
+        self.assertEqual(provenance["sha256"], hashlib.sha256(source.read_bytes()).hexdigest())
+        return source
+
+    def test_each_string_loaded_adapter_or_resource_ends_the_link_RED_kept_GREEN(self):
+        from agent_tools.tests import red_gate
+        source = self.before()
+        if red_gate.red_required(self, source):
+            namespace = {"__name__": "agent_tools.native_artifact_reuse_before", "__package__": "agent_tools",
+                         "__file__": str(source)}
+            exec(compile(source.read_bytes(), str(source), "exec"), namespace)
+            head = self.head()
+            old = namespace["_ScopedInputs"](self.root, head, head)
+            # RED: the bf8d2da2 scope treated every one of them as an unrelated tool, so its commit kept the link.
+            self.assertEqual({path: "agent-tool" for path in BY_NAME_ENDED}, {path: old.classify(path) for path in BY_NAME_ENDED})
+        for path, text in BY_NAME_ENDED.items():
+            with self.subTest(path=path):
+                with self.assertRaises(matrix.NativeAcceptanceMatrixError):
+                    self.link(path, text)
+                self.assertEqual("historical", self.row(self.head())["status"])
+                self.assertEqual("host-tool", reuse._ScopedInputs(self.root, self.original, self.head()).classify(path))
+
+    def test_an_unrelated_tool_still_keeps_the_link(self):
+        link = self.link("agent_tools/native_package_release_report.py")
+        self.assertEqual(["agent-tool"], [entry["class"] for entry in link["changedPaths"]])
+        self.assertEqual("passed", self.row(self.head())["status"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -17,8 +17,10 @@ from typing import Any, Callable, Mapping
 
 try:
     from . import native_artifact_registry as registry
+    from . import dispatch_source_closure as closures
 except ImportError:  # MCP server script-style import
     import native_artifact_registry as registry  # type: ignore[no-redef]
+    import dispatch_source_closure as closures  # type: ignore[no-redef]
 
 
 class ArtifactReuseError(ValueError):
@@ -479,21 +481,21 @@ class _ExecutedInputs:
                 return {item for files in table.values() for item in files}
         raise ArtifactReuseError("scenario bundle manifest is unavailable")
 
-    def _summary(self, path: str) -> tuple[tuple[tuple[int, str, tuple[str, ...]], ...], frozenset[str]]:
-        """One walk of a module: its import statements (level, module, names; level -1 a plain import) and string literals."""
+    def _summary(self, path: str) -> tuple[Any, ...]:
+        """One walk of a module (dispatch_source_closure.Scan): its import statements (level, module, names; level -1 a
+        plain import), string literals, modules it loads by name, and with_name / with_suffix arguments."""
         summaries = self.cache.setdefault("summaries", {})
         oid = self.tree[path][2]
         if oid not in summaries:
-            imports, strings = [], set()
-            for node in ast.walk(self._parsed(path)):
-                if isinstance(node, ast.Constant):
-                    if isinstance(node.value, str) and 0 < len(node.value) <= 256:
-                        strings.add(node.value)
-                elif isinstance(node, ast.Import):
+            scan = closures.Scan(self._parsed(path))
+            imports = []
+            for node in scan.imports:
+                if isinstance(node, ast.Import):
                     imports.extend((-1, alias.name, ()) for alias in node.names)
-                elif isinstance(node, ast.ImportFrom):
+                else:
                     imports.append((node.level, node.module or "", tuple(alias.name for alias in node.names)))
-            summaries[oid] = (tuple(imports), frozenset(strings))
+            summaries[oid] = (tuple(imports), frozenset(scan.strings), frozenset(scan.loaded), frozenset(scan.with_name),
+                              frozenset(scan.with_suffix))
         return summaries[oid]
 
     def _imports(self, path: str) -> set[str]:
@@ -512,6 +514,12 @@ class _ExecutedInputs:
             for prefix in prefixes:
                 names.add(".".join(prefix))
                 names.update(".".join([*prefix, alias]) for alias in aliases)
+        # A module loaded by name (the MCP server's _VM_NATIVE_ADAPTERS and _agent_module, import_module, a source
+        # session's load) runs exactly like an imported one, and so does a sibling source named by with_name.
+        names.update(self._summary(path)[2])
+        directory = path.rsplit("/", 1)[0] + "/"
+        names.update(self._dotted(directory + value) for value in self._summary(path)[3]
+                     if value.endswith(".py") and directory + value in self.tree)
         resolved = set()
         for name in names:
             name = name[len("agent_tools."):] if name.startswith("agent_tools.") else name
@@ -522,7 +530,9 @@ class _ExecutedInputs:
     def _sibling_names(self, path: str) -> set[str]:
         """Tracked non-Python files a module names by literal: a sibling's file name or an agent_tools path."""
         directory = path.rsplit("/", 1)[0] + "/"
-        found = set()
+        # The module's own resource by suffix (readiness_vm_dispatch.json beside readiness_vm_dispatch.py).
+        found = {path[:-len(".py")] + suffix for suffix in self._summary(path)[4]
+                 if path[:-len(".py")] + suffix in self.tree and not (path[:-len(".py")] + suffix).endswith((".py", ".md"))}
         for value in self._summary(path)[1]:
             for candidate in (directory + value, value):
                 if (candidate.startswith(_TOOLS) and not candidate.startswith(_TOOL_TESTS) and candidate in self.tree

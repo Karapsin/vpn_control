@@ -1,0 +1,6 @@
+{
+  "commit": "bf8d2da243cd39a40a88dae0b060d709e13d6a0c",
+  "path": "agent_tools/native_artifact_reuse.py",
+  "sha256": "c3b86cde372c0cf5f446ad67a1bd60350aecfcc6637e80ddbea473d7f8577c57",
+  "reason": "Executed-input scope before review finding 2: the host closure followed static imports only, so the MCP server's string-loaded adapters (_VM_NATIVE_ADAPTERS, _agent_module, import_module), the sources it executes by with_name and readiness_vm_dispatch.json (read by with_suffix) were outside it, and committed edits to readiness_vm_dispatch.py, readiness_vm_dispatch.json and ssh_program_execution.py kept the equivalence digest equal."
+}

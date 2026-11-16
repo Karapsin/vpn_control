@@ -53,8 +53,13 @@ class NativeArtifactEquivalencePolicyTest(unittest.TestCase):
             "agent_tools/tests/test_native_artifact_reuse.py": "test", "desktopApp/src/test/java/com/kardinal/vpncontrol/desktop/NativeExecutionJUnitGate.java": "test",
             "shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/AppUpdateLogicTest.kt": "test", "visual-tests/scenes.json": "test",
             "agent_tools/tests/fixtures/x/before.source": "fixture",
-            "agent_tools/affected_agent_test_dependencies.json": "metadata", "agent_tools/readiness_vm_dispatch.json": "agent-tool",
-            "agent_tools/affected_agent_tests.py": "agent-tool",
+            "agent_tools/affected_agent_test_dependencies.json": "metadata",
+            # The MCP route's string-loaded adapters and resources (review finding 2): the dispatch catalog beside the
+            # adapter that reads it by with_suffix, an adapter loaded only by name, and the selector source the server
+            # executes by with_name.
+            "agent_tools/readiness_vm_dispatch.json": "host-tool", "agent_tools/readiness_vm_dispatch.py": "host-tool",
+            "agent_tools/ssh_program_execution.py": "host-tool", "agent_tools/affected_agent_tests.py": "host-tool",
+            "agent_tools/native_package_release_report.py": "agent-tool",
             "docs/CHANGELOG.md": "docs", "agent_docs/contracts.md": "docs", "agent_tools/README.md": "docs", "README.md": "docs",
         }
         self.assertEqual(expected, {path: self.scoped.classify(path) for path in expected})
