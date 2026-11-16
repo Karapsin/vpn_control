@@ -9,15 +9,17 @@ had not changed since the green 529cc610; the image's default JDK had. The macOS
 package job ran its hygiene the same way and passed only because Gradle 8.10.2
 still runs on the default JDK of its image.
 
-A step starts Gradle when its command (its `run`, or an action input such as the
-emulator runner's `script`) calls the wrapper or names a repository program that
-starts Gradle. A shell or PowerShell program does when it calls the wrapper or
-names such a program outside a syntax check, a conservative reading. A Python
-program does only when reviewed in GRADLE_PYTHON: every Python program under
-scripts/ that names the wrapper is reviewed there or in WRAPPER_TEXT_ONLY, so a
-new one is classified before this check relies on it. A step runs Gradle on the
-JDK of the job's latest setup-java step, which must install the pin whenever the
-step can run.
+A step starts Gradle when it uses an action that runs the wrapper itself, or when
+its command (its `run`, or an action input such as the emulator runner's `script`)
+calls the wrapper or names a repository program that starts Gradle. A program
+does when it calls the wrapper or names such a program outside a syntax check, a
+conservative reading. Only a Python program reviewed in GRADLE_TEXT_ONLY is
+exempt: every Python program under scripts/ that names the wrapper or a program
+that starts Gradle is reviewed there or in GRADLE_PYTHON, so a new one is
+classified before this check relies on it. A step runs Gradle on the JDK of the
+job's latest setup-java step, which must install the pin whenever the step can
+run. Workflows are read from *.yml and *.yaml; a layout the reader does not know,
+such as a flow collection, is refused rather than read as no step.
 """
 import argparse
 import functools
@@ -26,6 +28,7 @@ import json
 from pathlib import Path
 import re
 import sys
+import tempfile
 import unittest
 
 
@@ -45,20 +48,32 @@ GRADLE_PYTHON = frozenset((
     "scripts/test_gradle_configuration_cache.py",
     "scripts/test_windows_packaging_graph.py",
 ))
-# Python programs that name the wrapper and start no Gradle: a checker's pattern and its tests,
-# fake wrappers in temporary trees, an asserted command, an instruction to the user.
-WRAPPER_TEXT_ONLY = frozenset((
+# Python programs that name the wrapper or a program that starts Gradle, and start no Gradle on
+# the runner: a checker's pattern and its tests, fake wrappers and drivers in temporary trees,
+# asserted commands and read sources, helpers imported without a build, an instruction to the
+# user, and commands sent to a guest VM that sets its own JAVA_HOME.
+GRADLE_TEXT_ONLY = frozenset((
     "scripts/add_language.py",
+    "scripts/capture_visual_macos_tart.py",
     "scripts/check_ci_failure_discovery.py",
     "scripts/test_ci_failure_discovery.py",
     "scripts/test_desktop_update_fixture.py",
     "scripts/test_gradle_configuration_cache_evidence.py",
+    "scripts/test_linux_public_install_negative.py",
+    "scripts/test_release_hygiene_runner.py",
+    "scripts/test_version_metadata.py",
     "scripts/test_visual_platform.py",
+    "scripts/test_visual_target.py",
+    "scripts/test_windows_fixture_stage_acl.py",
+    "scripts/test_windows_update_fixture_workflow.py",
 ))
+# Actions that run the project's Gradle wrapper themselves.
+GRADLE_ACTIONS = frozenset(("gradle/actions/dependency-submission", "gradle/gradle-build-action",
+                            "github/codeql-action/autobuild"))
 WRAPPER = re.compile(r"(?<![\w.-])gradlew(?:\.bat)?(?![\w-])")
 TOKEN = re.compile(r"[\w./-]+")
-# A syntax check reads a program without running it.
-SYNTAX_CHECK = re.compile(r"^[ \t]*(?:run_check[ \t]+)?(?:bash[ \t]+-n|python3?[ \t]+-m[ \t]+py_compile)\b.*$",
+# A syntax check reads a program without running it; a command chained after it on its line still runs.
+SYNTAX_CHECK = re.compile(r"^[ \t]*(?:run_check[ \t]+)?(?:bash[ \t]+-n|python3?[ \t]+-m[ \t]+py_compile)\b[^\n;&|]*",
                           re.MULTILINE)
 # The jobs of the failed workflows whose hygiene ran first, and the macOS job whose image had not moved yet.
 FAILED_JOBS = ("android-release.yml:build-release-apk", "fast-checks.yml:fast-checks",
@@ -77,6 +92,8 @@ def _skip(line):
 
 def _scalar(value):
     value = value.strip()
+    if value[:1] in ("{", "["):
+        raise ValueError("Unknown workflow flow collection: " + value)
     if len(value) > 1 and value[0] == value[-1] and value[0] in "\"'":
         return value[1:-1]
     return value
@@ -156,6 +173,8 @@ def workflow_jobs(text):
                 raise ValueError("Unknown workflow step layout: " + line.strip())
             key, _, value = line.strip().partition(":")
             in_steps = key == "steps"
+            if in_steps and value.strip() and not value.strip().startswith("#"):
+                raise ValueError("Unknown workflow step layout: " + line.strip())
             if key == "uses":
                 job["uses"] = _scalar(value)
         elif in_steps:
@@ -172,6 +191,12 @@ def workflow_jobs(text):
 
 def step_label(step, index):
     return step.get("name") or step.get("uses") or "step %d" % (index + 1)
+
+
+def gradle_action(step):
+    """The action a step uses when that action runs the Gradle wrapper itself, else None."""
+    action = str(step.get("uses", "")).partition("@")[0]
+    return action if action in GRADLE_ACTIONS else None
 
 
 def step_command(step):
@@ -209,9 +234,9 @@ class Programs:
                 keys.add(name[:-3].replace("/", "."))
             for key in keys:
                 self.names.setdefault(key, set()).add(name)
-        self.wrapper_python = {name for name, text in self.texts.items()
-                               if name.endswith(".py") and WRAPPER.search(text)}
         self.starts = self._starts()
+        self.gradle_naming_python = {name for name, text in self.texts.items() if name.endswith(".py") and (
+            WRAPPER.search(text) or (self.references(text) - {name}) & set(self.starts))}
 
     def references(self, text):
         """Programs a command or shell program names, by path, path suffix or module name."""
@@ -225,13 +250,14 @@ class Programs:
     def _starts(self):
         """Each program that starts Gradle, with its shortest chain to the program that calls the wrapper."""
         starts = {name: (name,) for name in GRADLE_PYTHON if name in self.texts}
-        shells = {name: SYNTAX_CHECK.sub("", text) for name, text in self.texts.items() if not name.endswith(".py")}
-        starts.update((name, (name,)) for name, text in shells.items() if WRAPPER.search(text))
-        named = {name: self.references(text) - {name} for name, text in shells.items()}
+        programs = {name: SYNTAX_CHECK.sub("", text) for name, text in self.texts.items()
+                    if name not in GRADLE_TEXT_ONLY}
+        starts.update((name, (name,)) for name, text in programs.items() if name not in starts and WRAPPER.search(text))
+        named = {name: self.references(text) - {name} for name, text in programs.items()}
         changed = True
         while changed:
             changed = False
-            for name in sorted(shells):
+            for name in sorted(programs):
                 found = min(((len(starts[other]), other) for other in named[name] if other in starts), default=None)
                 if found is not None and (name not in starts or len(starts[name]) > found[0] + 1):
                     starts[name] = (name,) + starts[found[1]]
@@ -263,7 +289,8 @@ def gradle_steps(workflows, programs):
                 if setup is not None:
                     pinned = setup
                     continue
-                chain = programs.gradle_start(step_command(step))
+                action = gradle_action(step)
+                chain = (action,) if action else programs.gradle_start(step_command(step))
                 if chain is not None:
                     found.append((workflow + ":" + job, step_label(step, index), " -> ".join(chain), pinned))
     return found
@@ -275,8 +302,9 @@ def violations(workflows, programs):
 
 
 def current_workflows(root=ROOT):
+    directory = Path(root) / ".github/workflows"
     return {path.name: path.read_bytes().decode("utf-8")
-            for path in sorted((Path(root) / ".github/workflows").glob("*.yml"))}
+            for path in sorted((*directory.glob("*.yml"), *directory.glob("*.yaml")))}
 
 
 def preserved_workflows():
@@ -342,9 +370,9 @@ class WorkflowJdkOrderTests(unittest.TestCase):
         hygiene = ROOT.joinpath("scripts/check_release_hygiene.sh").read_bytes().decode("utf-8").splitlines()
         self.assertTrue(enrollment in hygiene, "Release hygiene does not run: " + enrollment)
 
-    def test_every_python_program_naming_the_wrapper_is_reviewed(self):
-        self.assertFalse(GRADLE_PYTHON & WRAPPER_TEXT_ONLY)
-        self.assertEqual(sorted(GRADLE_PYTHON | WRAPPER_TEXT_ONLY), sorted(repository_programs().wrapper_python))
+    def test_every_python_program_naming_the_wrapper_or_a_gradle_program_is_reviewed(self):
+        self.assertFalse(GRADLE_PYTHON & GRADLE_TEXT_ONLY)
+        self.assertEqual(sorted(GRADLE_PYTHON | GRADLE_TEXT_ONLY), sorted(repository_programs().gradle_naming_python))
 
     def test_controls_for_jdk_setups_commands_and_programs(self):
         programs = repository_programs()
@@ -373,10 +401,61 @@ class WorkflowJdkOrderTests(unittest.TestCase):
              [("s.yml:sample", "step 1", "scripts/test_gradle_configuration_cache.py")]),
             ("text-only python", sample("      - run: python3 scripts/test_visual_platform.py\n"), []),
             ("reusable call", "jobs:\n  call:\n    uses: ./.github/workflows/s.yml\n", []),
+            ("program after syntax check", sample("      - run: bash -n scripts/package_linux_desktop.sh"
+                                                  " && bash scripts/package_linux_desktop.sh\n"),
+             [("s.yml:sample", "step 1", "scripts/package_linux_desktop.sh")]),
+            ("wrapper after syntax check", sample("      - run: python -m py_compile scripts/version_metadata.py;"
+                                                  " ./gradlew :app:assembleRelease\n"),
+             [("s.yml:sample", "step 1", "gradlew")]),
+            ("dependency submission", sample("      - uses: gradle/actions/dependency-submission@v4\n"),
+             [("s.yml:sample", "gradle/actions/dependency-submission@v4", "gradle/actions/dependency-submission")]),
+            ("build action", sample("      - uses: gradle/gradle-build-action@v3\n        with:\n"
+                                    "          arguments: :app:assembleRelease\n"),
+             [("s.yml:sample", "gradle/gradle-build-action@v3", "gradle/gradle-build-action")]),
+            ("codeql autobuild", sample("      - uses: github/codeql-action/autobuild@v3\n"),
+             [("s.yml:sample", "github/codeql-action/autobuild@v3", "github/codeql-action/autobuild")]),
         )
         for label, text, expected in cases:
             with self.subTest(label):
                 self.assertEqual(expected, violations({"s.yml": text}, programs))
+
+    def test_python_programs_that_run_a_gradle_program_start_gradle(self):
+        programs = {
+            "scripts/package_linux_desktop.sh": "./gradlew :desktopApp:packageDeb\n",
+            "scripts/test_gradle_configuration_cache.py": "subprocess.run(['./gradlew', 'help'])\n",
+            "scripts/build_fixture_now.py": "subprocess.run(['bash', 'scripts/package_linux_desktop.sh'], check=True)\n",
+            "scripts/probe_cache.py": "subprocess.run([sys.executable, '-m', 'scripts.test_gradle_configuration_cache'])\n",
+            "scripts/drive_fixture.py": "subprocess.run([sys.executable, 'scripts/build_fixture_now.py'])\n",
+            "scripts/test_visual_platform.py": "self.assertIn('scripts/package_linux_desktop.sh', text)\n",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, text in programs.items():
+                root.joinpath(name).parent.mkdir(parents=True, exist_ok=True)
+                root.joinpath(name).write_text(text)
+            scanned = Programs(root)
+        cases = (
+            ("build_fixture_now.py", "scripts/build_fixture_now.py -> scripts/package_linux_desktop.sh"),
+            ("probe_cache.py", "scripts/probe_cache.py -> scripts/test_gradle_configuration_cache.py"),
+            ("drive_fixture.py",
+             "scripts/drive_fixture.py -> scripts/build_fixture_now.py -> scripts/package_linux_desktop.sh"),
+        )
+        for program, chain in cases:
+            with self.subTest(program):
+                workflow = sample("      - run: python3 scripts/%s\n" % program, JDK)
+                self.assertEqual([("s.yml:sample", "step 1", chain)], violations({"s.yml": workflow}, scanned))
+        self.assertEqual([], violations({"s.yml": sample("      - run: python3 scripts/test_visual_platform.py\n")},
+                                        scanned))
+
+    def test_yaml_workflows_are_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / ".github/workflows"
+            root.mkdir(parents=True)
+            root.joinpath("nightly.yaml").write_text(sample("      - run: ./gradlew build\n"))
+            root.joinpath("package.yml").write_text(sample(JDK, "      - run: ./gradlew build\n"))
+            workflows = current_workflows(directory)
+        self.assertEqual(["nightly.yaml", "package.yml"], sorted(workflows))
+        self.assertEqual([("nightly.yaml:sample", "step 1", "gradlew")], violations(workflows, repository_programs()))
 
     def test_reader_refuses_unknown_layouts(self):
         for text in ("name: missing jobs\n",
@@ -385,7 +464,12 @@ class WorkflowJdkOrderTests(unittest.TestCase):
                      sample("    - run: unindented\n"),
                      sample(JDK) + "  sample:\n    runs-on: ubuntu-latest\n",
                      sample("      - uses: actions/setup-java@v4\n        with:\n          distribution: temurin\n"
-                            "          distribution: zulu\n")):
+                            "          distribution: zulu\n"),
+                     sample().replace("    steps:\n", "    steps: [{uses: actions/checkout@v4}, {run: ./gradlew build}]\n"),
+                     sample("      - uses: reactivecircus/android-emulator-runner@v2\n"
+                            "        with: {script: ./gradlew :app:installDebug}\n"),
+                     sample("      - uses: reactivecircus/android-emulator-runner@v2\n        with:\n"
+                            "          script: [./gradlew :app:installDebug]\n")):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 workflow_jobs(text)
 

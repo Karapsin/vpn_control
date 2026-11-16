@@ -13350,14 +13350,15 @@
       ]
     },
     "agent_tools/tests/test_workflow_jdk_order.py": {
-      "reason": "Text-only workflow-order regression: reads every current .github/workflows/*.yml file, every program under scripts/ (only for wrapper calls and the program names it contains) and the four preserved 450b8764 workflows bound by their provenance digests. No program, workflow, Gradle, CI, native or SSH action runs; a finite reviewed list decides which Python programs start Gradle.",
+      "reason": "Text-only workflow-order regression: reads every current .github/workflows/*.yml and *.yaml file, every program under scripts/ (only for wrapper calls and the program names it contains) and the four preserved 450b8764 workflows bound by their provenance digests. Synthetic workflows and programs are written only to temporary directories. No program, workflow, Gradle, CI, native or SSH action runs; finite reviewed lists classify each Python program that names the wrapper or a program that starts Gradle.",
       "scopes": [
         ".github/workflows/",
         "agent_tools/tests/fixtures/workflow_jdk_order/",
         "scripts/"
       ],
       "sourceSha256": [
-        "9518f24b5d0190adefd22c6aa31646e7f86769c18a81224b129d3fabde9f0abc"
+        "9518f24b5d0190adefd22c6aa31646e7f86769c18a81224b129d3fabde9f0abc",
+        "ca032d25826bca067ffd85dcc40e198162e0e4ce8e04229b3eb07c020e79fc30"
       ]
     },
     "agent_tools/windows_document_cli_cases.py": {
