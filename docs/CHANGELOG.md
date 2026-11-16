@@ -8,6 +8,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Desktop transfers refuse a sealed document whose bytes changed after it was sealed, checking its size and digest before anything is parsed.
 - CI: the Compose Gradle plugin marker is trusted under both its Maven Central and Plugin Portal checksums, and two hosted-runner test races (macOS VM monitor child, SSH argument-size fixture) are closed.
 - Windows test harness: an undecodable SYSTEM run reply names its exact reason and, when the run's own durable result shows it finished, ends as a named failure instead of blocking the test clone.
+- Windows test clones: the guest agent installs only after a real user has signed in past first-boot setup, and qualification names a clone stuck in first-boot setup within about 15 minutes so it is replaced instead of watched.
 
 ## 2.2.19 - 2026-11-16
 
