@@ -65,7 +65,10 @@ GRADLE_TEXT_ONLY = frozenset((
     "scripts/test_visual_platform.py",
     "scripts/test_visual_target.py",
     "scripts/test_windows_fixture_stage_acl.py",
+    # The failing-MSI derivation and its tests name the fixture build only in docstrings: msi.dll's database API alone.
+    "scripts/test_windows_native_failure_msi.py",
     "scripts/test_windows_update_fixture_workflow.py",
+    "scripts/windows_native_failure_msi.py",
 ))
 # Actions that run the project's Gradle wrapper themselves.
 GRADLE_ACTIONS = frozenset(("gradle/actions/dependency-submission", "gradle/gradle-build-action",

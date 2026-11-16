@@ -2486,12 +2486,15 @@ class CancelledGrantUpdateTests(unittest.TestCase):
         self.assertTrue(all(child.terminal is not None for child in owner.children))
 
     def test_a_cancelled_protected_storage_install_still_parks(self):
-        # Its counterfeit storage root stays on the clone, so it never ends known, however the prompt ended.
+        # The counterfeit-root row never takes the grant's CANCELLED path: it ends known only through settle_counterfeit,
+        # once its counterfeit is proven unchanged and removed (test_windows_update_faults.CounterfeitCaseTests). A binding
+        # the job did not make, as here, is refused before any child, fixture or counterfeit exists.
         owner, fixture = self.harness("protected-storage-rejected")
         owner.harness["UPDATE_INPUTS"]["faultInputs"] = {"kind": "protected-storage-rejected"}
-        with mock.patch.object(update_cases.time, "sleep"), self.assertRaises(UpdateParked):
+        with mock.patch.object(update_cases.time, "sleep"), self.assertRaisesRegex(AssertionError, "^counterfeit-root-binding$"):
             update_cases.run_update(owner, owner.harness)
-        self.assertEqual("update-scenario-failed-with-retained-owned-resources", owner.parked[0])
+        self.assertIsNone(owner.parked)
+        self.assertEqual([], owner.children)
         self.assertFalse(fixture.closed)
         self.assertFalse(hasattr(owner, "update_cancelled_grant"))
 
@@ -2570,12 +2573,12 @@ class CancelledGrantDriverTests(unittest.TestCase):
                     dedicated_driver.run(owner, "windows-public-update")
 
     def test_a_cancelled_protected_storage_grant_still_parks(self):
-        # Its counterfeit storage root stays on the clone: whatever the case says, the dispatcher parks it.
+        # A grant's cancellation proof is not the counterfeit's: without its own settlement the dispatcher parks it.
         self.owner.update("protected-storage-rejected", hold=False)
         self.owner.result = 1
         self.owner.update_cancelled_grant = {"variant": "protected-storage-rejected", "operationId": "x"}
         from agent_tools.tests.test_windows_ordinary_task import DedicatedParked
-        with self.assertRaisesRegex(DedicatedParked, "^protected-storage-scenario-cannot-return-known-success$"):
+        with self.assertRaisesRegex(DedicatedParked, "^dedicated-counterfeit-settlement-unproven$"):
             dedicated_driver.run(self.owner, "windows-public-update")
         self.assertNotIn("dedicated-update-grant-cancelled-known", [call[0] for call in self.owner.calls if isinstance(call, tuple)])
 

@@ -30,6 +30,8 @@ on:
       - "scripts/test_setup_macos_signing.py"
       - ".github/workflows/windows-desktop.yml"
       - "scripts/test_windows_update_fixture_workflow.py"
+      - "scripts/windows_native_failure_msi.py"
+      - "scripts/test_windows_native_failure_msi.py"
       - ".github/required-workflows.json"
       - ".codex/config.toml"
       - ".mcp.json"

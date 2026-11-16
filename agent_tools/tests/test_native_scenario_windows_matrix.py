@@ -613,7 +613,7 @@ ORDINARY_SID, FIXTURE_ADMIN_SID, SECOND_ADMIN_SID = "S-1-5-21-1-2-3-1001", "S-1-
 # The grant rows: each collector has an authorization stage, so its installer job's coordinator and worker are observed
 # (TableTests holds RECIPES to this set). A run of one names who approved it.
 GRANTS = frozenset({"success-off", "different-admin", "success-reconnect", "success-explicit-off", "participating-copy-lock", "wait-client-loss",
-                     "installer-wait-client-loss"})
+                     "installer-wait-client-loss", "native-install-failed"})
 
 
 def grant(variant):
@@ -694,8 +694,8 @@ class UpdateRowTests(UpdateBase):
 
     def test_the_update_scenarios_pass_matrix_status_once_their_rows_are_proven(self):
         """Every installer-lifecycle scenario, and the four native-cli scenarios naming update rows, pass once each named
-        row has a proven direct and an MCP run on one package. Natively protected-storage-rejected always parks and the
-        fault, copy-lock, reconnect and cancel rows are refused at admission: only the matrix's own rule is proven here."""
+        row has a proven direct and an MCP run on one package. No update row is refused at admission any more, and none
+        has run natively: only the matrix's own rule is proven here."""
         lifecycle = MATRIX_REAL["windows-installer-lifecycle"]
         rows = []
         for name in sorted({name for names in lifecycle.values() for name in names}):
@@ -1031,13 +1031,13 @@ class TableTests(unittest.TestCase):
         # A grant row observes its installer's coordinator and worker: only those runs name who approved them.
         self.assertEqual(GRANTS, {variant for variant in windows.UPDATE_VARIANTS
                                   if "authorization" in windows.RECIPES[UPDATE + variant]["update"]["collectorStages"]})
-        # The installer lifecycle maps every scenario. The deny row and the grant rows whose stages are all tooled are
-        # admitted, the others are refused at admission with what they lack.
+        # The installer lifecycle maps every scenario. The deny row, the grant rows whose stages are all tooled and the
+        # counterfeit-root row (T5) are admitted; no row it names is refused at admission any more.
         lifecycle = MATRIX_REAL["windows-installer-lifecycle"]
         self.assertTrue(all(lifecycle.values()))
         self.assertEqual({"windows-public-update." + variant for variant in ("uac-denied", "success-off", "different-admin", "wait-client-loss", "installer-wait-client-loss",
                                                                               "install-cancelled", "participating-copy-lock", "success-reconnect",
-                                                                              "success-explicit-off")},
+                                                                              "success-explicit-off", "protected-storage-rejected")},
                          {row for rows in lifecycle.values() for row in rows
                           if row.startswith("windows-public-update.") and windows.RECIPES[row]["refusal"] is None})
 

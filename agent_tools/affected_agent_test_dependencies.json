@@ -12711,7 +12711,8 @@
         "f55a1e83af2b9929c930091ae1ad4e7f93408498305a3429bcc292958eac70af",
         "d383082bf08362720eb9d76550d75988e7e24981b4670d6505efc5e1280d9dfe",
         "3ccfe04666250177ff19a31d4bb2b77f6d5cda5cb16f66240404d4e092b0217b",
-        "09cb92d866cdcc2647b864cf58a11bc14842837916db7605a13d4bd4145d23d2"
+        "09cb92d866cdcc2647b864cf58a11bc14842837916db7605a13d4bd4145d23d2",
+        "4f4f229e26486acecf6198e52061a3d4107ebe5facff83800fd972b2ee55dc6b"
       ]
     },
     "agent_tools/tests/test_windows_original_vm_selector.py": {
@@ -12874,7 +12875,8 @@
         "fa53088f2a094b31d8adfa0f82f0644e19fd34d30ba1386b93331cc1def25578",
         "139624624a4a9499c59b857191a591ff8d0917e22762c560f15982a0a7ef84de",
         "5a4b6d7a08b5fd09fbd23d7663f22b8ef1a288af9e3d937bd84cd9ab4a967e62",
-        "ea84bdb3295a99a24ee4a79e92f0192cdf8d5da4ac0879306477c9f7bfa92dd0"
+        "ea84bdb3295a99a24ee4a79e92f0192cdf8d5da4ac0879306477c9f7bfa92dd0",
+        "08648aef713cef135b42f3cff79e533d719a39d457c09525ab3d9d6641871308"
       ]
     },
     "agent_tools/tests/test_windows_python_fixture_io.py": {
@@ -13393,7 +13395,8 @@
       ],
       "sourceSha256": [
         "9518f24b5d0190adefd22c6aa31646e7f86769c18a81224b129d3fabde9f0abc",
-        "ca032d25826bca067ffd85dcc40e198162e0e4ce8e04229b3eb07c020e79fc30"
+        "ca032d25826bca067ffd85dcc40e198162e0e4ce8e04229b3eb07c020e79fc30",
+        "4ec9196bf642ad43c151031e8e98fba1097b22c51ffc6a298e33afd4f4c7c10f"
       ]
     },
     "agent_tools/windows_document_cli_cases.py": {
@@ -13497,7 +13500,8 @@
         "4390fb0971ef6976ebcbcf882332f274c20cb1a21a306c916a22546a6cd69640",
         "1e441b21f07661bda80774b0efb94e965e7b72a2a95e9e37a40634e971638df1",
         "1aaa67b8e444cbc554fb57869bd4285b62ce83b1983a81d429cea25dbe9aacfb",
-        "b2a26154b052048bf78e825acc4b6a0a0a419d26c1a966beef96442204c0adc1"
+        "b2a26154b052048bf78e825acc4b6a0a0a419d26c1a966beef96442204c0adc1",
+        "900bf2e293d803dd74748e492d4117a34c3c26011ed0539a50fb6ac61a9a3174"
       ]
     },
     "agent_tools/windows_public_updater/update_cases.py": {
@@ -13516,7 +13520,8 @@
         "939f33f84c3c35c404e65dfb887107354e086710aa1c7ba077b7082f8d1b17b1",
         "c80ac9d0fda143f052672fcfbd7c9cba98c96f6d8e1a6b088732486494d7ae78",
         "17ecb2f41b42a3988f6905fe6a426935564a48e17e776efe7c3a9dbf4f668f5c",
-        "44ae2f9e3f6c9f988168ea0009b273c5abe259e056cc4d829bd9285b54e2a4b0"
+        "44ae2f9e3f6c9f988168ea0009b273c5abe259e056cc4d829bd9285b54e2a4b0",
+        "6925c8b423751370daec6c193abb0bb3381d89acb6cbff094f16c49cbad65737"
       ]
     },
     "agent_tools/windows_system_collector/caller_hold.py": {
@@ -13603,7 +13608,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "3f3b519f5e3b7e9c4a42d35b63f4a93a6233960f4563c490a5ed542e26d6fb65",
+    "agent_tools/readiness_vm_dispatch.json": "78be6b53e49ae6886a5efa6c78f623c051f713c954bd478ae8a0b11c15b4d43d",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",

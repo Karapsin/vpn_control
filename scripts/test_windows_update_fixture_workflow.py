@@ -84,6 +84,27 @@ class WindowsUpdateFixtureWorkflowTest(unittest.TestCase):
         self.assertNotIn("fixture-receipt.json", failure)
         self.assertNotIn("packages/", failure)
 
+    def test_the_failing_msi_is_derived_from_the_verified_pair_and_uploaded_beside_it(self):
+        """windows-public-update.native-install-failed serves a copy of the pair's target that Windows Installer refuses
+        at LaunchConditions. The builder derives it once the pair is built and verified, reads its tables back, and the
+        upload carries it with its derivation receipt; it was never produced before this step existed."""
+        self.assertIn("- name: Derive and verify the deliberately failing MSI", self.reusable)
+        build = self.reusable.index("- name: Build and verify immutable MSI pair")
+        derive = self.reusable.index("- name: Derive and verify the deliberately failing MSI")
+        upload = self.reusable.index("- name: Upload immutable fixture pair and provenance")
+        failure = self.reusable.index("- name: Preserve failed build diagnostics")
+        self.assertLess(build, derive)
+        self.assertLess(derive, upload)
+        step = self.reusable[derive:upload]
+        for value in ("python scripts/windows_native_failure_msi.py derive", "--directory $env:FIXTURE_ROOT",
+                      "--confirm-owned-native-host-build", "if ($LASTEXITCODE -ne 0)"):
+            self.assertIn(value, step)
+        uploaded = self.reusable[upload:failure]
+        for value in ("native-install-failure.json", "native-install-failure-before.json", "native-install-failure-after.json",
+                      "packages/fault/**"):
+            self.assertIn(value, uploaded)
+        self.assertNotIn("packages/fault", self.reusable[failure:], "a failed run never uploads a package as if it were complete")
+
     def test_upload_is_limited_to_pair_and_hash_provenance(self):
         for value in (
             "actions/upload-artifact@v4",

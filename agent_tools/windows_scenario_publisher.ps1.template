@@ -109,7 +109,9 @@ function New-ReadPin([string]$path) {
  return $pin.record
 }
 function Assert-ProfileTree([string]$path) {
- # Read-only listings stay inside the ordinary profile: the Python runtime and the installed product.
+ # Read-only listings stay inside the ordinary profile: the Python runtime and the installed product. One machine
+ # folder joins them by its exact name: the product's installer storage root, which the counterfeit-root row lists.
+ if($path -ceq ([Environment]::GetFolderPath('CommonApplicationData')+'\vpn-control-install-jobs')){return}
  if($path -cnotlike ($m.localAppData+'\*') -or $path.Contains('\..') -or $path.EndsWith('\')){throw 'PUB_TREE_ROOT'}
 }
 function Get-TreeListing([string]$root) {

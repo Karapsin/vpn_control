@@ -240,10 +240,8 @@ UPDATE_VARIANTS = ("public-ready", "download-cancelled", "checksum-rejected", "u
 _NO_SYSTEM = ("public-ready", "download-cancelled", "checksum-rejected")
 # Refused before any journal, each with exactly what is still missing.
 _UPDATE_REFUSED = {
-    # No producer: the product's MSIs carry no LaunchCondition table for the failing-MSI derivation, and nothing
-    # creates or removes a counterfeit protected-storage root.
-    "native-install-failed": "windows_scenario_update_fault_unavailable",
-    "protected-storage-rejected": "windows_scenario_update_fault_unavailable",
+    # None: every update variant has a producer and its stages (native-install-failed's failing MSI from the fixture
+    # workflow, protected-storage-rejected's counterfeit root from the ordinary user).
 }
 # The stages each variant's owner asks a SYSTEM collector for, the last one behind the caller's close hold. A grant's
 # before-install also finds the controller the helper will name, authorization the live coordinator and worker,
@@ -253,6 +251,11 @@ _UPDATE_REFUSED = {
 # installed helper image, which records every process naming that controller, live, and their exits, and publishes
 # cancel-actors (native_collector.watch_cancelled_installer); terminal-actors then asks for exactly those two.
 # participating-copy-lock adds fault-ready between before-install and authorization: the running copy the case started.
+# native-install-failed is a grant that serves the pair's deliberately failing MSI (FAULT_KIND below): fault-ready binds
+# its derivation receipt, and terminal-actors also reads the worker's own MSI result. protected-storage-rejected plants
+# a counterfeit storage root as the ordinary user: fault-ready proves it as SYSTEM, and terminal-actors, once no process
+# of the installed helper image is left, proves it unchanged beside the product's answer (Job._counterfeit_settled).
+# Both bind their fault through the job's one fault-input value (Job._fault_inputs), as participating-copy-lock does.
 _GRANT_STAGES = ("before-install", "authorization", "terminal-actors", "returned-cleanup")
 _UPDATE_COLLECTORS = {"uac-denied": (("before-install", "terminal-actors"), "terminal-actors"),
                       "install-cancelled": (("before-install", "terminal-actors"), "terminal-actors"),
@@ -260,7 +263,13 @@ _UPDATE_COLLECTORS = {"uac-denied": (("before-install", "terminal-actors"), "ter
                                                   "returned-cleanup"),
                       **{variant: (_GRANT_STAGES, "returned-cleanup")
                          for variant in ("success-off", "different-admin", "success-reconnect", "success-explicit-off", "wait-client-loss",
-                                         "installer-wait-client-loss")}}
+                                         "installer-wait-client-loss")},
+                      "native-install-failed": (("before-install", "fault-ready", "authorization", "terminal-actors", "returned-cleanup"),
+                                                "returned-cleanup"),
+                      # No close hold: a hold releases only a driver result of 0, and this row may end a known failure.
+                      "protected-storage-rejected": (("before-install", "fault-ready", "terminal-actors"), None)}
+# native-install-failed also takes the pair's failing MSI and its derivation receipt: both from the same frozen set.
+_UPDATE_FAULT_KEYS = {"native-install-failed": ("faultPackage", "faultReceipt")}
 # A connected row's own in-guest SOCKS upstream on its fixed loopback port and the sampler the case runs through the
 # product's mixed listener before the update and, where the returned owner reconnects, after it; the job writes the
 # loopback profile the location is added from and the sampler's input, both naming that port and body
@@ -288,7 +297,7 @@ _UPDATE_ENDS_WITH_TARGET = frozenset({"success-off", "success-reconnect", "succe
 def _update_row(variant: str) -> dict[str, Any]:
     stages, final = _UPDATE_COLLECTORS.get(variant, ((), None))
     connected = variant in _UPDATE_CONNECTED
-    row = _worker_row("product", "windows-public-update", ("targetPackage", "fixtureReceipt"),
+    row = _worker_row("product", "windows-public-update", ("targetPackage", "fixtureReceipt", *_UPDATE_FAULT_KEYS.get(variant, ())),
                       (*_UPDATE_FILES, *(_COLLECTOR_FILES if stages else ()), *(_UPDATE_CONNECTION_FILES if connected else ())),
                       prior=True, deadline=3600)
     row["update"] = {"variant": variant, "collectorStages": stages, "finalStage": final,
@@ -462,11 +471,30 @@ _INPUT_FIELDS = frozenset({"schema", "schemaVersion", "scenarioId", "correlation
 _UPDATE_INPUT_FIELDS = frozenset({"baseVersion", "targetInstall"})
 _MAX_INPUT_BYTES = 4096
 # Fixed admission per package role: the registry kind, and for desktop packages the frozen-set source.
+# A frozen set holds one package per platform and kind (native_artifact_reuse._mixed), so the pair's failing MSI has a
+# kind of its own beside its target's desktop-package.
 PACKAGE_KINDS = {"pythonInstaller": "test-toolchain-installer", "basePackage": "desktop-package", "targetPackage": "desktop-package",
-                 "fixtureReceipt": "desktop-update-fixture-receipt"}
+                 "fixtureReceipt": "desktop-update-fixture-receipt", "faultPackage": "desktop-update-fault-package",
+                 "faultReceipt": "desktop-update-fault-receipt"}
 _MAX_PACKAGE_BYTES = 1024 * 1024 * 1024
 _MAX_RECEIPT_BYTES = 1024 * 1024
 _FIXTURE_URL = "https://github.com/Karapsin/vpn_control/releases/download/disposable-desktop-fixture/"
+# The deliberately failing MSI the Windows fixture workflow derives from the pair's own target
+# (scripts/windows_native_failure_msi.py, DELTA and SEQUENCE there): one LaunchCondition "0" in a new table, its
+# LaunchConditions action at InstallExecuteSequence 100, after FindRelatedProducts and AppSearch and before
+# RemoveExistingProducts and InstallInitialize, and a new package code. Windows Installer ends it with 1603 before any
+# change to the machine, so the base stays installed. Its receipt names the target it came from and the failing package.
+FAULT_KIND = "windows-native-install-failed-msi"
+FAULT_DELTA = {"launchCondition": ["0", "VPN_CONTROL_NATIVE_ACCEPTANCE_DELIBERATE_FAILURE"],
+               "executeSequence": ["LaunchConditions", None, 100],
+               "table": {"name": "LaunchCondition", "columns": [["Condition", "s255"], ["Description", "l255"]]}}
+FAULT_SUFFIX = "-native-install-failed.msi"
+FAULT_INSTALLER_RESULT = 1603
+_GUID = re.compile(r"\{[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}\}\Z")
+_FAULT_RECEIPT_FIELDS = frozenset({"schemaVersion", "kind", "testOnly", "productionTrustChanged", "sourceFingerprint", "recipeSha256",
+                                   "parent", "output", "delta", "expectedInstallerResult", "beforeSnapshotSha256",
+                                   "afterSnapshotSha256", "nativeInstallationExecuted", "nativeAcceptance"})
+_ASSET_FIELDS = frozenset({"platform", "architecture", "packageType", "displayVersion", "fileName", "downloadUrl", "sha256", "sizeBytes"})
 
 
 class NativeScenarioWindowsError(ValueError):
@@ -608,6 +636,50 @@ def fixture_receipt(path: Path, artifact: Mapping[str, Any], value: Mapping[str,
     return {"fileName": asset["fileName"], "sourceFingerprint": receipt["sourceFingerprint"]}
 
 
+def _fault_asset(asset: Any, version: str, sha256: str, size: int, name: str) -> bool:
+    return (type(asset) is dict and set(asset) == _ASSET_FIELDS and asset["platform"] == "windows" and asset["architecture"] == "x86_64"
+            and asset["packageType"] == "msi" and asset["displayVersion"] == version and asset["fileName"] == name
+            and host_job._FIXTURE_FILE.fullmatch(name) is not None and asset["downloadUrl"] == _FIXTURE_URL + name
+            and asset["sha256"] == sha256 and asset["sizeBytes"] == size)
+
+
+def fault_receipt(path: Path, artifact: Mapping[str, Any], value: Mapping[str, Any], target: Mapping[str, Any],
+                  fault: Mapping[str, Any], fixture: Mapping[str, Any]) -> dict[str, Any]:
+    """The fixture workflow's receipt of the failing MSI it derived from this pair's target: the target it came from,
+    the failing package by digest and size, and exactly the declared change set. Read only; the MSI tables themselves
+    were read back on the builder, which refuses any other change."""
+    try:
+        raw = path.read_bytes()
+        receipt = json.loads(raw)
+        version = value["productVersion"]
+        _need(hashlib.sha256(raw).hexdigest() == artifact["sha256"] and type(receipt) is dict and set(receipt) == _FAULT_RECEIPT_FIELDS
+              and receipt["schemaVersion"] == 1 and receipt["kind"] == FAULT_KIND and receipt["testOnly"] is True
+              and receipt["productionTrustChanged"] is False and receipt["nativeInstallationExecuted"] is False
+              and receipt["nativeAcceptance"] is None and receipt["sourceFingerprint"] == fixture["sourceFingerprint"]
+              and receipt["expectedInstallerResult"] == FAULT_INSTALLER_RESULT
+              and all(isinstance(receipt[key], str) and re.fullmatch(r"[0-9a-f]{64}", receipt[key]) is not None
+                      for key in ("recipeSha256", "beforeSnapshotSha256", "afterSnapshotSha256"))
+              and receipt["beforeSnapshotSha256"] != receipt["afterSnapshotSha256"], "windows_scenario_fault_receipt")
+        parent, output = receipt["parent"], receipt["output"]
+        name = fixture["fileName"]
+        _need(type(parent) is dict and set(parent) == {"asset", "productCode", "upgradeCode", "productVersion", "packageCode"}
+              and _fault_asset(parent["asset"], version, target["sha256"], target["bytes"], name)
+              and parent["productVersion"] == version and parent["upgradeCode"] == host_job.UPGRADE_CODE
+              and all(isinstance(parent[key], str) and _GUID.fullmatch(parent[key]) is not None for key in ("productCode", "packageCode")),
+              "windows_scenario_fault_receipt_parent")
+        _need(type(output) is dict and set(output) == {"asset", "packageCode"}
+              and _fault_asset(output["asset"], version, fault["sha256"], fault["bytes"], name[:-len(".msi")] + FAULT_SUFFIX)
+              and isinstance(output["packageCode"], str) and _GUID.fullmatch(output["packageCode"]) is not None
+              and output["packageCode"] != parent["packageCode"], "windows_scenario_fault_receipt_output")
+        _need(receipt["delta"] == {**FAULT_DELTA, "packageCode": {"before": parent["packageCode"], "after": output["packageCode"]}},
+              "windows_scenario_fault_receipt_delta")
+    except NativeScenarioWindowsError:
+        raise
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError):
+        raise NativeScenarioWindowsError("windows_scenario_fault_receipt") from None
+    return {"fileName": output["asset"]["fileName"], "packageCode": output["packageCode"], "parentPackageCode": parent["packageCode"]}
+
+
 def admitted_packages(root: Path | str, plan: native_scenario_execution.ScenarioPlan, row: Mapping[str, Any],
                       value: Mapping[str, Any] | None) -> dict[str, dict[str, Any]]:
     """Package IDs a caller names: platform windows, the role's fixed kind, the input's source, a frozen set's member.
@@ -615,7 +687,7 @@ def admitted_packages(root: Path | str, plan: native_scenario_execution.Scenario
     The set's own product version must be the one the input names. That catches a mislabelled input, not a
     substituted package: the set records whatever its caller registered.
     """
-    packages = {}
+    packages, fixture = {}, None
     for role in [key for key in row["artifactKeys"] if key in PACKAGE_KINDS]:
         artifact, path = _verified_artifact(root, plan.artifact_ids[role], "windows_scenario_package")
         _need(artifact.get("platform") == "windows" and artifact.get("artifactKind") == PACKAGE_KINDS[role]
@@ -628,7 +700,12 @@ def admitted_packages(root: Path | str, plan: native_scenario_execution.Scenario
             _need(value is not None and artifact.get("sourceSha") == value["sourceSha"], "windows_scenario_package_source")
             if role == "fixtureReceipt":
                 _need(path.suffix.lower() == ".json" and artifact["size"] <= _MAX_RECEIPT_BYTES, "windows_scenario_package_kind")
-                fixture_receipt(path, artifact, value, packages["targetPackage"])
+                fixture = fixture_receipt(path, artifact, value, packages["targetPackage"])
+            elif role == "faultReceipt":
+                # Its failing MSI was admitted just before it, from the same frozen set (row artifactKeys order).
+                _need(path.suffix.lower() == ".json" and artifact["size"] <= _MAX_RECEIPT_BYTES and fixture is not None
+                      and "faultPackage" in packages, "windows_scenario_package_kind")
+                fault_receipt(path, artifact, value, packages["targetPackage"], packages["faultPackage"], fixture)
             else:
                 _need(path.suffix.lower() == ".msi", "windows_scenario_package_kind")
             try:
@@ -644,9 +721,13 @@ def admitted_packages(root: Path | str, plan: native_scenario_execution.Scenario
 
 
 def staged_roles(row: Mapping[str, Any]) -> tuple[str, ...]:
-    """The admitted packages a row pushes into the guest, staged on the host before its job exists."""
+    """The admitted packages a row pushes into the guest, staged on the host before its job exists.
+
+    native-install-failed serves its failing MSI in place of the target, so the target's own bytes stay on the host.
+    """
     if row.get("update"):
-        return ("targetPackage", "fixtureReceipt")
+        faults = _UPDATE_FAULT_KEYS.get(row["update"]["variant"], ())
+        return (*(() if faults else ("targetPackage",)), "fixtureReceipt", *faults)
     return (row["package"]["role"],) if row["package"] else ()
 
 
@@ -1641,8 +1722,11 @@ def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
         value = scenario_input(root, plan, row)
     except NativeScenarioWindowsError:
         raise NativeScenarioWindowsError("windows_matrix_input_unavailable:" + correlation) from None
+    # A native-install-failed run's failing MSI and its derivation receipt are artifacts of the same frozen set and
+    # source, so the record binds them beside the target and the fixture receipt.
     facts.update(sourceSha=value["sourceSha"], productVersion=value["productVersion"], artifactSetId=value["artifactSetId"],
-                 packages=sorted(plan.artifact_ids[key] for key in ("targetPackage", "fixtureReceipt") if key in plan.artifact_ids),
+                 packages=sorted(plan.artifact_ids[key] for key in ("targetPackage", "fixtureReceipt", "faultPackage", "faultReceipt")
+                                 if key in plan.artifact_ids),
                  targetPackage=plan.artifact_ids["targetPackage"])
     update = _update_facts(root, plan, row, value, None) if row.get("update") else None
     approval = _approval_facts(row, None) if row.get("update") and "authorization" in row["update"]["collectorStages"] else None

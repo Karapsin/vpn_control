@@ -324,7 +324,9 @@ class TableTests(unittest.TestCase):
         for name, row in windows.RECIPES.items():
             with self.subTest(name=name):
                 packages = [key for key in row["artifactKeys"] if key in windows.PACKAGE_KINDS]
-                expected = ["targetPackage", "fixtureReceipt"] if row.get("update") else ["targetPackage"]
+                # native-install-failed also names the pair's failing MSI and its derivation receipt.
+                expected = (["targetPackage", "fixtureReceipt", *(["faultPackage", "faultReceipt"] if name.endswith(".native-install-failed") else [])]
+                            if row.get("update") else ["targetPackage"])
                 self.assertEqual(row["evidenceClass"] == "product", packages == expected and row["priorInstall"] is True)
                 self.assertEqual(row["package"] is not None, row["evidenceClass"] == "setup")
                 # An update row reads back what its task left installed, as an installer row reads what it installed.
@@ -1588,9 +1590,10 @@ class UpdateTableTests(unittest.TestCase):
         refusals = {variant: windows.RECIPES[UPDATE + variant]["refusal"] for variant in windows.UPDATE_VARIANTS}
         self.assertEqual({**dict.fromkeys(("public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "success-off",
                                            "different-admin", "wait-client-loss", "installer-wait-client-loss", "install-cancelled",
-                                           "participating-copy-lock", "success-reconnect", "success-explicit-off")),
-                          "native-install-failed": "windows_scenario_update_fault_unavailable",
-                          "protected-storage-rejected": "windows_scenario_update_fault_unavailable"}, refusals)
+                                           "participating-copy-lock", "success-reconnect", "success-explicit-off",
+                                           # T5: the fixture workflow derives the failing MSI; the case plants and settles the
+                                           # counterfeit root.
+                                           "native-install-failed", "protected-storage-rejected"))}, refusals)
 
     def test_the_rows_agree_with_the_dedicated_driver_and_the_decision_table(self):
         from agent_tools import windows_ordinary_dedicated_driver as dedicated

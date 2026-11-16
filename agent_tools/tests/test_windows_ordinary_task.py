@@ -1523,8 +1523,9 @@ class DedicatedDriverControls(unittest.TestCase):
                 self.assertNotIn("wait-release", owner.calls)
 
     def test_protected_unknown_cannot_be_accepted_as_normal_return(self):
+        # A return of the counterfeit-root row ends known only with its case's settlement proof (test_windows_update_faults).
         self.owner.update("protected-storage-rejected", hold=False)
-        with self.assertRaisesRegex(DedicatedParked, "cannot-return-known-success"):
+        with self.assertRaisesRegex(DedicatedParked, "^dedicated-counterfeit-settlement-unproven$"):
             dedicated_driver.run(self.owner, "windows-public-update")
         self.assertNotIn("arm", self.owner.calls)
 

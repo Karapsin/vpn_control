@@ -117,6 +117,16 @@ jobs:
             --confirm-owned-native-host-build
           if ($LASTEXITCODE -ne 0) { throw "Windows fixture pair build failed" }
 
+      # Test only: a copy of the verified target MSI whose one declared change makes Windows Installer refuse it at
+      # LaunchConditions, before any machine change. Database API only; nothing here installs, signs or publishes.
+      - name: Derive and verify the deliberately failing MSI
+        shell: pwsh
+        run: |
+          python scripts/windows_native_failure_msi.py derive `
+            --directory $env:FIXTURE_ROOT `
+            --confirm-owned-native-host-build
+          if ($LASTEXITCODE -ne 0) { throw "Deliberately failing MSI derivation failed" }
+
       - name: Upload immutable fixture pair and provenance
         uses: actions/upload-artifact@v4
         with:
@@ -129,6 +139,10 @@ jobs:
             ${{ runner.temp }}/vpn-control-windows-update-fixture/target-build.log
             ${{ runner.temp }}/vpn-control-windows-update-fixture/packages/base/**
             ${{ runner.temp }}/vpn-control-windows-update-fixture/packages/target/**
+            ${{ runner.temp }}/vpn-control-windows-update-fixture/native-install-failure.json
+            ${{ runner.temp }}/vpn-control-windows-update-fixture/native-install-failure-before.json
+            ${{ runner.temp }}/vpn-control-windows-update-fixture/native-install-failure-after.json
+            ${{ runner.temp }}/vpn-control-windows-update-fixture/packages/fault/**
           if-no-files-found: error
 
       - name: Preserve failed build diagnostics
@@ -141,4 +155,6 @@ jobs:
             ${{ runner.temp }}/vpn-control-windows-update-fixture/build-plan.json
             ${{ runner.temp }}/vpn-control-windows-update-fixture/base-build.log
             ${{ runner.temp }}/vpn-control-windows-update-fixture/target-build.log
+            ${{ runner.temp }}/vpn-control-windows-update-fixture/native-install-failure-before.json
+            ${{ runner.temp }}/vpn-control-windows-update-fixture/native-install-failure-after.json
           if-no-files-found: warn

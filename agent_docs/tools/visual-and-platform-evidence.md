@@ -1320,11 +1320,11 @@ base's MSI registration with the reader the first native installs proved (one
 enumeration of every user and context, by `InstalledProductName`), which also
 reports each row's package code. Admitted: `public-ready`, `download-cancelled` and
 `checksum-rejected`, which raise no prompt and need no SYSTEM collector;
-`uac-denied`, whose collector serves `before-install` and `terminal-actors`; and
+`uac-denied`, whose collector serves `before-install` and `terminal-actors`;
 the grant rows `success-off`, `different-admin`, `success-reconnect`, `success-explicit-off`,
 `wait-client-loss` and `installer-wait-client-loss`, whose collector serves
-`before-install`, `authorization`, `terminal-actors` and `returned-cleanup`. Also
-admitted:
+`before-install`, `authorization`, `terminal-actors` and `returned-cleanup`; and the
+two fault rows further below. Also admitted:
 
 - `install-cancelled`, whose collector serves `before-install` and
   `terminal-actors`. The case cancels its install while the prompt is up, and the
@@ -1395,12 +1395,86 @@ approver and those three facts. So `different-approving-admin` needs the
 `different-admin` pair, and `original-user-worker` needs it and the `success-off`
 pair.
 
-Refused before any journal, each with what it still lacks:
+No update row is refused before any journal any more. The two fault rows, like
+`participating-copy-lock`, take their fault through the job's one fault-input value
+(`Job._fault_inputs`): the case's `faultInputs` and the `fault-ready` collector's
+`faultBinding` are that same value, which the case checks.
 
-- `native-install-failed` and `protected-storage-rejected` with
-  `windows_scenario_update_fault_unavailable`. Nothing produces their faults: the
-  product's MSIs carry no LaunchCondition table to fault, and nothing creates or
-  removes a counterfeit protected-storage root.
+`native-install-failed` serves a deliberately failing MSI in the target's place. The
+product's MSIs carry no LaunchCondition table, so the Windows fixture workflow derives
+one after it has built and verified the pair (`scripts/windows_native_failure_msi.py`,
+msi.dll's database API only). It copies the target MSI and adds exactly one change
+set:
+
+- a new LaunchCondition table whose one row has the condition `0`;
+- that action in InstallExecuteSequence at 100, after FindRelatedProducts and
+  AppSearch and before every other action, so before RemoveExistingProducts (798 in
+  the product's schedule, outside the install transaction) and InstallInitialize;
+- a new package code.
+
+It reads every table, user stream and summary property back and refuses any other
+difference. Windows Installer then ends the install with 1603 before the machine
+changes, so the base stays installed. The product's helper admits a package by its
+ProductName and UpgradeCode, and the updater by the manifest's digest and size, and
+none of these change. The workflow uploads the MSI
+(`packages/fault/<target>-native-install-failed.msi`) with its derivation receipt
+(`native-install-failure.json`) and both snapshots. The row takes them as artifacts
+`faultPackage` (kind `desktop-update-fault-package`, since a frozen set holds one
+package per kind) and `faultReceipt` (`desktop-update-fault-receipt`) of the pair's
+own frozen set. Admission checks the receipt against the target, the failing MSI and
+the declared delta. The job serves the pair's receipt with that one asset in the
+target's place, and the target's bytes are never staged. Its collectors serve
+`before-install`, `fault-ready` (SYSTEM reads the derivation receipt the owner holds
+pinned), `authorization`, `terminal-actors` (also the worker's own
+`worker-result.json`) and `returned-cleanup`. That last stage checks the next owner,
+which the case starts from the base's CLI, against the base's files. The case then
+needs the protected terminal FAILED, the worker's MSI result neither 0 nor 3010, the
+base registration and every base file in place, `--version` of the base, and the next
+owner's `operations status` answering the same RUNTIME_FAILED. The row ends with the
+base, and claims it.
+
+`protected-storage-rejected` plants a counterfeit of the product's machine storage
+root. Before its approved install the ordinary user creates
+`ProgramData\vpn-control-install-jobs`, which the elevated coordinator would otherwise
+make itself:
+
+- the root is owned by that user, with the full control a squatter keeps
+  (`O:<user>G:<user>D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;<user>)`);
+- it holds one canary file, each object create-only (`update_cases.plant_counterfeit_root`);
+- the job names the bytes and both SDDLs, and the case refuses any other binding with
+  its inputs;
+- a clone whose own grant once made the real root stops at publish, before any task,
+  with `protected_root_present`, from a SYSTEM listing.
+
+`fault-ready` proves the root and canary as SYSTEM: user-owned, refused by the
+machine policy, the canary's bytes. The product must refuse the root: OUTCOME_UNKNOWN,
+since its only store of the job is the root it refused, or a definite RUNTIME_FAILED
+or PERMISSION_DENIED. `terminal-actors` is served only once a SYSTEM census finds no
+process of the installed helper image. The coordinator that refused the root exits
+at once, but its original-user worker polls until its own ten-minute authorization
+deadline; past 900 s the job ends UNKNOWN with
+`counterfeit_installer_actors_live`. That stage then proves as SYSTEM the root and
+canary exactly as at `fault-ready`, and the job lists the root again.
+
+The case settles the run (`settle_counterfeit`):
+
+- Passed: the answer is one of the refusals; the root and canary are unchanged in
+  SYSTEM's view and in the case's own, the root holding the canary alone; owner,
+  configuration and disconnected runtime are the same; the base registration and every
+  pinned base file are in place; then the serve has quit, the fixture is closed and the
+  counterfeit is removed through handles whose volume and file index match what the case
+  made.
+- Failed (known): any other definite answer, an expired prompt's CANCELLED among them,
+  after the same proof and closing.
+- Parked, nothing replayed: an accepted install (OK or ACCEPTED), an unreadable reply,
+  a changed root or canary, or any failing step.
+
+The dispatcher accepts 0 or 1 only beside the case's own settlement proof. The job
+then needs, for a pass, the root listed as SYSTEM at `terminal-actors` to hold the
+canary alone and to be absent after the task (`counterfeit_root_changed`,
+`counterfeit_root_left` otherwise). The row takes no close hold, which only a driver
+result of 0 can release. Run it on a clone where no grant ever ran, or before any
+grant row there.
 
 The publisher writes each collector request and then protects it with
 `SetAccessControl`, so it reads back

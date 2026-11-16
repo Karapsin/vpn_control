@@ -26,7 +26,7 @@ INSTALL_VARIANTS = VARIANTS - {"public-ready", "download-cancelled", "checksum-r
 SUCCESS_VARIANTS = frozenset(("success-off", "success-reconnect", "success-explicit-off", "different-admin", "wait-client-loss",
                               "installer-wait-client-loss", "transport-loss"))
 # A returned CANCELLED ends these known. The async installer wait needs a native terminal to rule out a
-# running helper, and protected storage leaves its counterfeit root behind, so both keep parking.
+# running helper, so it keeps parking; protected storage settles every answer through settle_counterfeit.
 GRANT_VARIANTS = INSTALL_VARIANTS - {"uac-denied", "install-cancelled", "installer-wait-client-loss", "protected-storage-rejected"}
 # Connected before the update: a loopback location through the case's own in-guest SOCKS upstream on its fixed port.
 # success-reconnect is updated connected, so its remembered intent is on. success-explicit-off turns that connected owner
@@ -51,6 +51,16 @@ CANCEL_WAIT_SECONDS = 420
 # out its exit deadline and publishes FAILED RUNTIME_FAILED beside this protected diagnostic
 # (VpnInstallHelperRoles.RunCoordinator, PublishProtectedPreinstallDiagnostic). It never stops the copy.
 COPY_LOCK_DIAGNOSTIC = {"version": 1, "stage": "INVENTORY", "kind": "OTHER"}
+# protected-storage-rejected: before its approved install the ordinary user plants the product's machine storage root,
+# which the product's elevated coordinator would make itself (ProgramData\vpn-control-install-jobs), owned by that user
+# with the full control a squatter keeps, and one canary file in it. The job names the bytes and both SDDLs. The product
+# must refuse that root. It may answer OUTCOME_UNKNOWN, since its only store of the job is the root it refused, or a
+# definite RUNTIME_FAILED or PERMISSION_DENIED; any other definite answer is this row's known failure.
+COUNTERFEIT_REFUSALS = ("OUTCOME_UNKNOWN", "RUNTIME_FAILED", "PERMISSION_DENIED")
+COUNTERFEIT_FIELDS = frozenset(("kind", "path", "canary", "canaryText", "rootSddl", "canarySddl"))
+COUNTERFEIT_CANARY = "counterfeit-canary.json"
+COUNTERFEIT_ROOT_SDDL = "O:{sid}G:{sid}D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;{sid})"
+COUNTERFEIT_CANARY_SDDL = "O:{sid}G:{sid}D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;{sid})"
 
 
 def require(condition, code):
@@ -153,6 +163,8 @@ def validate_inputs(owner, value):
             "actual-collector-source-pin")
     require(type(value["faultInputs"]) is dict, "finite-fault-inputs")
     require(value["variant"] != "transport-loss", "outer-transport-loss-semantic-producer-not-yet-prepared")
+    if value["variant"] == "protected-storage-rejected":
+        counterfeit_binding(value)  # A counterfeit the job did not bind is never planted: refused before any effect.
     return value
 
 
@@ -441,6 +453,220 @@ def cancelled_installer_actors(watched, inputs, job):
     return {"coordinator": coordinator, "worker": worker, "others": len(others)}
 
 
+class _FileInformation(ctypes.Structure):
+    _fields_ = [("attributes", W.DWORD), ("creation", W.FILETIME), ("access", W.FILETIME), ("write", W.FILETIME),
+                ("volume", W.DWORD), ("sizeHigh", W.DWORD), ("sizeLow", W.DWORD), ("links", W.DWORD),
+                ("indexHigh", W.DWORD), ("indexLow", W.DWORD)]
+
+
+class _SecurityAttributes(ctypes.Structure):
+    _fields_ = [("length", W.DWORD), ("descriptor", W.LPVOID), ("inherit", W.BOOL)]
+
+
+class CounterfeitNative:
+    """The ordinary user's few Win32 calls for its counterfeit root: create one directory and one file, each create-only
+    with an exact security descriptor; list the directory; and delete one object only through a handle whose volume
+    and file index are first checked against the identity recorded when it was made. Its own library instances."""
+
+    def __init__(self):
+        require(os.name == "nt", "counterfeit-root-windows-only")
+        self.k = ctypes.WinDLL("kernel32", use_last_error=True)
+        self.a = ctypes.WinDLL("advapi32", use_last_error=True)
+        for name, arguments, result in (
+                ("CreateDirectoryW", (W.LPCWSTR, ctypes.POINTER(_SecurityAttributes)), W.BOOL),
+                ("CreateFileW", (W.LPCWSTR, W.DWORD, W.DWORD, ctypes.POINTER(_SecurityAttributes), W.DWORD, W.DWORD, W.HANDLE), W.HANDLE),
+                ("WriteFile", (W.HANDLE, ctypes.c_char_p, W.DWORD, ctypes.POINTER(W.DWORD), W.LPVOID), W.BOOL),
+                ("FlushFileBuffers", (W.HANDLE,), W.BOOL), ("CloseHandle", (W.HANDLE,), W.BOOL),
+                ("LocalFree", (W.HLOCAL,), W.HLOCAL), ("GetFileAttributesW", (W.LPCWSTR,), W.DWORD),
+                ("GetFileInformationByHandle", (W.HANDLE, ctypes.POINTER(_FileInformation)), W.BOOL),
+                ("SetFileInformationByHandle", (W.HANDLE, ctypes.c_int, ctypes.c_void_p, W.DWORD), W.BOOL)):
+            function = getattr(self.k, name)
+            function.argtypes, function.restype = arguments, result
+        convert = self.a.ConvertStringSecurityDescriptorToSecurityDescriptorW
+        convert.argtypes, convert.restype = (W.LPCWSTR, W.DWORD, ctypes.POINTER(W.LPVOID), ctypes.POINTER(W.DWORD)), W.BOOL
+
+    def _attributes(self, sddl):
+        descriptor = W.LPVOID()
+        require(self.a.ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, ctypes.byref(descriptor), None)
+                and descriptor.value, "counterfeit-security-descriptor")
+        return _SecurityAttributes(ctypes.sizeof(_SecurityAttributes), descriptor, False), descriptor
+
+    def create_directory(self, path, sddl):
+        attributes, descriptor = self._attributes(sddl)
+        try:
+            if not self.k.CreateDirectoryW(path, ctypes.byref(attributes)):
+                error = ctypes.get_last_error()
+                require(error != 183, "counterfeit-root-present")  # ERROR_ALREADY_EXISTS: never this case's own.
+                raise ctypes.WinError(error)
+        finally:
+            self.k.LocalFree(descriptor)
+
+    def create_file(self, path, sddl, raw):
+        attributes, descriptor = self._attributes(sddl)
+        try:
+            handle = self.k.CreateFileW(path, 0x40000000, 0, ctypes.byref(attributes), 1, 0x80, None)  # GENERIC_WRITE, CREATE_NEW
+            if handle in (None, ctypes.c_void_p(-1).value):
+                raise ctypes.WinError(ctypes.get_last_error())
+        finally:
+            self.k.LocalFree(descriptor)
+        try:
+            written = W.DWORD()
+            require(self.k.WriteFile(handle, raw, len(raw), ctypes.byref(written), None) and written.value == len(raw)
+                    and self.k.FlushFileBuffers(handle), "counterfeit-canary-write")
+        finally:
+            require(self.k.CloseHandle(handle), "counterfeit-canary-close")
+
+    def names(self, path):
+        return sorted(os.listdir(path))
+
+    def remove(self, path, directory, identity):
+        # DELETE|FILE_READ_ATTRIBUTES|SYNCHRONIZE, all sharing, the object itself even were it a link.
+        flags = 0x00200000 | (0x02000000 if directory else 0)
+        handle = self.k.CreateFileW(path, 0x00110080, 7, None, 3, flags, None)
+        if handle in (None, ctypes.c_void_p(-1).value):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            info = _FileInformation()
+            require(self.k.GetFileInformationByHandle(handle, ctypes.byref(info)), "counterfeit-identity-read")
+            require(not info.attributes & 0x400 and bool(info.attributes & 0x10) == directory
+                    and {"volumeSerial": info.volume, "fileIndex": info.indexHigh << 32 | info.indexLow}
+                    == {key: identity[key] for key in ("volumeSerial", "fileIndex")}, "counterfeit-identity-changed")
+            delete = ctypes.c_ubyte(1)  # FILE_DISPOSITION_INFO.DeleteFile
+            require(self.k.SetFileInformationByHandle(handle, 4, ctypes.byref(delete), 1), "counterfeit-delete")
+        finally:
+            require(self.k.CloseHandle(handle), "counterfeit-delete-close")
+
+    def absent(self, path):
+        if self.k.GetFileAttributesW(path) != 0xFFFFFFFF:
+            return False
+        return ctypes.get_last_error() in (2, 3)
+
+
+def counterfeit_binding(inputs):
+    """The job's binding of this row's counterfeit, checked against the fixed forms; returns it and the canary bytes."""
+    value, sid = inputs["faultInputs"], inputs["ordinarySid"]
+    root = PureWindowsPath(inputs["programData"]) / "vpn-control-install-jobs"
+    require(type(value) is dict and set(value) == COUNTERFEIT_FIELDS and value["kind"] == "protected-storage-rejected"
+            and type(value["canaryText"]) is str and 0 < len(value["canaryText"]) <= 4096, "counterfeit-root-binding")
+    raw = value["canaryText"].encode("ascii")
+    require(value["path"] == str(root) and value["canary"] == {"path": str(root / COUNTERFEIT_CANARY),
+                                                                "sha256": hashlib.sha256(raw).hexdigest(), "sizeBytes": len(raw)}
+            and value["rootSddl"] == COUNTERFEIT_ROOT_SDDL.format(sid=sid)
+            and value["canarySddl"] == COUNTERFEIT_CANARY_SDDL.format(sid=sid), "counterfeit-root-binding")
+    return value, raw
+
+
+def counterfeit_view(owner, receipts, counterfeit, native):
+    """This case's own read-only view of its counterfeit: the root's and the canary's identity and security, the
+    canary's bytes and the root's entries. Each handle closes before it returns."""
+    binding = counterfeit["binding"]
+    root = receipts.FileObservation(owner, binding["path"], directory=True)
+    try:
+        root_opening = root.opening
+    finally:
+        root.close()
+    canary = receipts.FileObservation(owner, binding["canary"]["path"])
+    try:
+        raw = canary.read(4096)
+        canary_opening = canary.opening
+    finally:
+        canary.close()
+    return {"root": root_opening, "canary": canary_opening, "canarySha256": hashlib.sha256(raw).hexdigest(),
+            "names": native.names(binding["path"])}
+
+
+def plant_counterfeit_root(owner, inputs, receipts, native):
+    """Create the counterfeit root and its canary as the ordinary user, each create-only, before the install.
+
+    A root that already exists is never this case's: the plant refuses, and nothing of it is removed. The custody
+    record exists before the first effect, so any failure from here on parks with the counterfeit in place.
+    """
+    binding, raw = counterfeit_binding(inputs)
+    counterfeit = {"binding": binding, "root": None, "canary": None, "created": [], "removed": False}
+    owner.update_counterfeit = counterfeit
+    owner.event("update-counterfeit-root-intent", {"path": binding["path"], "canary": binding["canary"],
+        "rootSddl": binding["rootSddl"], "canarySddl": binding["canarySddl"], "replayAllowed": False})
+    native.create_directory(binding["path"], binding["rootSddl"])
+    counterfeit["created"].append("root")
+    native.create_file(binding["canary"]["path"], binding["canarySddl"], raw)
+    counterfeit["created"].append("canary")
+    view = counterfeit_view(owner, receipts, counterfeit, native)
+    sid = inputs["ordinarySid"]
+    require(view["root"]["security"]["ownerSid"] == sid and view["canary"]["security"]["ownerSid"] == sid
+            and view["canarySha256"] == binding["canary"]["sha256"] and view["names"] == [COUNTERFEIT_CANARY],
+            "counterfeit-root-planted")
+    counterfeit.update(root=view["root"], canary=view["canary"])
+    owner.event("update-counterfeit-root-planted", {"root": view["root"], "canary": view["canary"], "names": view["names"]})
+    return counterfeit
+
+
+def remove_counterfeit(owner, counterfeit, native):
+    """Delete the canary, then the empty root, each through a handle that is the object this case created."""
+    binding = counterfeit["binding"]
+    native.remove(binding["canary"]["path"], False, counterfeit["canary"]["nativeIdentity"])
+    noticed = time.monotonic()
+    while not native.absent(binding["canary"]["path"]):
+        # Another program's open handle defers the delete; the root stays until its canary is gone.
+        require(time.monotonic() - noticed < 30, "counterfeit-canary-delete-deferred")
+        time.sleep(0.2)
+    native.remove(binding["path"], True, counterfeit["root"]["nativeIdentity"])
+    require(native.absent(binding["path"]), "counterfeit-root-left")
+    counterfeit["removed"] = True
+    owner.event("update-counterfeit-root-removed", {"path": binding["path"], "canary": binding["canary"]["path"],
+        "absent": True})
+
+
+def _reply_code(result):
+    """The product's own code from a completed public call; the envelope checks follow in json_result."""
+    try:
+        value = json.loads(result.stdout)
+    except ValueError:
+        return None
+    code = value.get("code") if type(value) is dict else None
+    return code if type(code) is str and re.fullmatch(r"[A-Z][A-Z_]{1,63}", code) else None
+
+
+def settle_counterfeit(owner, inputs, modules, counterfeit, fault, result, *, before, serve, gui, lease, fixture, native):
+    """protected-storage-rejected once its approved install returned: end known with proof, or park.
+
+    Passed (0): the product refused (COUNTERFEIT_REFUSALS). Failed (1): the product gave any other definite answer, an
+    expired prompt's CANCELLED among them. Either needs all of: the reply from the original controller; SYSTEM's
+    terminal-actors, which the job serves only once no process of the installed helper image is left, seeing the root
+    and canary exactly as at fault-ready; this case's own view of them unchanged, the root holding the canary alone;
+    the same owner, configuration and disconnected runtime; the base registration in place and every base file the
+    owner pinned unchanged; then the serve quit, the fixture closed and the counterfeit removed by its own handles. An
+    accepted install (OK or ACCEPTED: an installer job exists somewhere), an unreadable reply, a changed root or canary
+    and any failing step park, the counterfeit kept, and nothing is retried.
+    """
+    receipts, workspace, identity = modules["receipts"], Path(owner.request["workspace"]), before["controllerId"]
+    code = _reply_code(result)
+    require(code is not None, "counterfeit-install-reply")
+    reply = json_result(result, codes=(code,), final=None)  # Envelope, empty stderr and exit code agree, whatever the code.
+    require(reply.get("controllerId") == identity, "counterfeit-original-controller")
+    owner.event("update-counterfeit-install-answered", {"code": code, "operationId": reply.get("operationId"),
+        "refusal": code in COUNTERFEIT_REFUSALS, "replayAllowed": False})
+    if code in ("OK", "ACCEPTED"):
+        owner.park("counterfeit-root-install-accepted-open", reply)
+    observed = native_evidence(owner, inputs, modules, "terminal-actors", operation=reply.get("operationId"))
+    require(observed.get("protectedStorageRefusal") == fault, "counterfeit-root-system-changed")
+    view = counterfeit_view(owner, receipts, counterfeit, native)
+    require(view == {"root": counterfeit["root"], "canary": counterfeit["canary"], "canarySha256": counterfeit["binding"]["canary"]["sha256"],
+                     "names": [COUNTERFEIT_CANARY]}, "counterfeit-root-changed")
+    invariant_status(before, public(owner, workspace, identity, "status"))
+    receipts.installed_registration(inputs["baseRegistration"], owner.native)
+    for pin in lease.files:
+        pin.digest()
+    close_disconnected(owner, workspace, identity, serve, gui)
+    fixture.close_known(all_update_operations_terminal=True)
+    remove_counterfeit(owner, counterfeit, native)
+    outcome = 0 if code in COUNTERFEIT_REFUSALS else 1
+    owner.update_counterfeit_settled = {"variant": "protected-storage-rejected", "result": outcome, "code": code,
+        "operationId": reply.get("operationId"), "systemUnchanged": True, "rootRemoved": True}
+    owner.event("update-counterfeit-settled", {**owner.update_counterfeit_settled, "knownFailure": outcome == 1,
+        "replayAllowed": False})
+    return outcome
+
+
 def _run_update(owner, harness):
     inputs = validate_inputs(owner, harness["UPDATE_INPUTS"])
     modules = load_modules(owner, inputs)
@@ -596,6 +822,12 @@ def _run_update(owner, harness):
         owner.event("update-participating-copy-lock-ready", {"child": blocking_copy.ordinal,
             "pid": blocking_copy.pid, "birthFileTimeUtc": blocking_copy.birth,
             "controllerId": blocking_status["controllerId"], "workspace": str(blocking_workspace)})
+    counterfeit = counterfeit_native = None
+    if variant == "protected-storage-rejected":
+        # Planted last before the install: every public call before it ran against a machine without the root. Its
+        # binding was checked with the inputs, before any effect.
+        counterfeit_native = CounterfeitNative()
+        counterfeit = plant_counterfeit_root(owner, inputs, receipts, counterfeit_native)
     if variant in {"protected-storage-rejected", "native-install-failed", "participating-copy-lock"}:
         fault = native_evidence(owner, inputs, modules, "fault-ready")
         require(fault.get("kind") == variant and fault.get("binding") == inputs["faultInputs"], "actual-finite-fault-preparation")
@@ -609,6 +841,11 @@ def _run_update(owner, harness):
                     and token.get("sessionId") == inputs["ordinarySessionId"]
                     and copy.get("sha256") == owner.by_path[owner.request["cliPath"].casefold()].record["sha256"],
                     "native-participating-copy-actor")
+        if counterfeit is not None:
+            # SYSTEM saw the very objects this case made: the user's root its machine policy refuses, and the canary.
+            require(fault.get("root") == counterfeit["root"]
+                    and fault.get("canary") == {"nativeFile": counterfeit["canary"], "sha256": counterfeit["binding"]["canary"]["sha256"]},
+                    "counterfeit-root-system-join")
     arguments = prepared.desktop_install_arguments(ready, inputs["targetVersion"],
         asynchronous=variant in {"install-cancelled", "installer-wait-client-loss"})
     install_child = owner.child("one-public-update-install", [owner.request["cliPath"], "--state-dir", str(workspace), *arguments])
@@ -622,6 +859,9 @@ def _run_update(owner, harness):
     # fixture account. This is a pending native action, never a permission prompt
     # or a fabricated successful authorization flag.
     result = install_child.completed()
+    if variant == "protected-storage-rejected":
+        return settle_counterfeit(owner, inputs, modules, counterfeit, fault, result, before=before, serve=serve, gui=gui_child,
+                                  lease=lease, fixture=fixture, native=counterfeit_native)
     if variant == "installer-wait-client-loss":
         original_pending = json_result(result, codes=("ACCEPTED",), final=False)
         require(original_pending.get("controllerId") == identity
@@ -738,13 +978,6 @@ def _run_update(owner, harness):
         owner.update_cancelled_grant = {"variant": variant, "operationId": cancelled.get("operationId")}
         owner.event("update-grant-cancelled-known", {**owner.update_cancelled_grant, "knownFailure": True, "replayAllowed": False})
         return 1
-    if variant == "protected-storage-rejected":
-        refused = json_result(result, codes=("OUTCOME_UNKNOWN", "RUNTIME_FAILED", "PERMISSION_DENIED"), final=None)
-        receipts.preserve(owner, "update-protected-storage-refusal.json", {"public": refused,
-            "native": native_evidence(owner, inputs, modules, "terminal-actors", operation=refused.get("operationId"))})
-        # A refused malicious root may leave the product's original operation
-        # UNKNOWN. Keep its controller, all pins and the fixture; no fake cleanup.
-        owner.park("protected-storage-refused-requires-exact-native-reconciliation")
     accepted = receipts.handoff(result, identity)
     handoff = time.monotonic()  # The runtime stopped before the commit this reply acknowledges.
     receipts.preserve(owner, "update-original-handoff.json", accepted)
@@ -878,4 +1111,8 @@ def run_update(owner, harness):
         lease = getattr(owner, "update_application_lease", None)
         if (fixture is not None and not fixture.closed) or (lease is not None and lease.retired and not lease.admitted):
             owner.park("update-scenario-failed-with-retained-owned-resources", error)
+        # A counterfeit storage root this case made and has not removed stays on the clone: never a known end.
+        counterfeit = getattr(owner, "update_counterfeit", None)
+        if counterfeit is not None and counterfeit["created"] and not counterfeit["removed"]:
+            owner.park("update-counterfeit-root-retained", error)
         raise

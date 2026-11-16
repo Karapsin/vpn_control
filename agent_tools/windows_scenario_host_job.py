@@ -110,6 +110,21 @@ INSTALL_ROLES = (("coordinator", "install-coordinator"), ("worker", "install-use
 INSTALL_JOBS = PROGRAM_DATA + "\\vpn-control-install-jobs"
 INSTALL_INPUTS = "vpn-control-install-inputs"
 CENSUS_LIMIT = 16
+# windows-public-update.native-install-failed serves the pair's deliberately failing MSI, which the fixture workflow
+# derived from its target (scripts/windows_native_failure_msi.py), in the target's place: its manifest names that MSI,
+# and its derivation receipt sits beside the served receipt, where fault-ready reads it as SYSTEM.
+FAULT_RECEIPT_LEAF = "native-install-failure.json"
+# windows-public-update.protected-storage-rejected: the ordinary user plants the product's machine storage root before
+# the product does, owned by that user, with the full control a squatter keeps, and one canary file in it
+# (update_cases.plant_counterfeit_root). The product must refuse it. The job lists that root as SYSTEM: absent before the
+# task, exactly the canary once no process of the installed helper image is left, and absent again after the task.
+COUNTERFEIT_CANARY = "counterfeit-canary.json"
+COUNTERFEIT_ROOT_SDDL = "O:{sid}G:{sid}D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;{sid})"
+COUNTERFEIT_CANARY_SDDL = "O:{sid}G:{sid}D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;{sid})"
+# The product's original-user worker keeps polling for its job's receipt until its own ten-minute authorization deadline
+# once its coordinator refused the root; terminal-actors is served only once no helper process is left.
+HELPER_SETTLE_SECONDS = 900
+HELPER_SETTLE_POLL_SECONDS = 15
 RETURNED_ACTORS_EVENT = "update-returned-cleanup-expected-actors"
 # The nine module roles of one SYSTEM collector request, by the guest file role that carries each.
 COLLECTOR_MODULES = {"holdProtocol": "hold_protocol", "taskGuard": "task_guard", "nativeBridge": "native_bridge",
@@ -445,9 +460,11 @@ def layout(operation, context, row):
         fixture, tls = workspace + "\\mcp-update-fixture-" + fixture_id(operation), workspace + "\\" + UPDATE_TLS
         paths.update(fixtureRoot=fixture, fixtureContent=fixture + "\\content", fixtureState=fixture + "\\server-state",
                      fixtureReceipt=fixture + "\\content\\fixture-receipt.json", fixtureTarget=fixture + "\\content\\packages\\target",
+                     faultReceipt=fixture + "\\content\\" + FAULT_RECEIPT_LEAF,
                      tls=tls, certificate=tls + "\\server-cert.pem", privateKey=tls + "\\server-key.pem",
                      trustStore=tls + "\\fixture-trust.p12", harness=workspace + "\\update-harness.py",
-                     evidenceRoot=PROGRAM_DATA + "\\update-evidence-" + operation)
+                     evidenceRoot=PROGRAM_DATA + "\\update-evidence-" + operation,
+                     counterfeitRoot=INSTALL_JOBS, counterfeitCanary=INSTALL_JOBS + "\\" + COUNTERFEIT_CANARY)
         for stage in row["update"]["collectorStages"]:
             paths["collector:" + stage] = workspace + "\\system-collector-" + collector_operation(operation, stage)
     # A TUN grant's one collector: its machine records go under ProgramData\tun-evidence-<operation> (the observer's own).
@@ -542,6 +559,34 @@ def java_truststore(certificate, salt, iterations=2048):
     mac_data = _der(0x30, _der(0x30, _der(0x30, _der_oid("2.16.840.1.101.3.4.2.1") + b"\x05\x00") + _der(0x04, mac))
                     + _der(0x04, salt) + _der_integer(iterations))
     return _der(0x30, _der_integer(3) + _der(0x30, data + _der(0xA0, _der(0x04, safe))) + mac_data)
+
+
+def served_fault_receipt(fixture_raw, fault_raw, packages):
+    """What native-install-failed serves: the pair's own fixture receipt with its failing MSI in the target's place.
+
+    The failing MSI's derivation receipt (native_scenario_windows.fault_receipt admitted it) must name this pair's
+    target as its parent and the staged failing MSI as its output, by digest and size. The served receipt is the pair's
+    receipt with that one asset in the target build and the manifest; nothing else of it changes, so the fixture server
+    serves the failing MSI under the target's version and source fingerprint. Returns the bytes and the served asset.
+    """
+    fixture, fault = json.loads(fixture_raw), json.loads(fault_raw)
+    target, parent, output = packages["targetPackage"], fault["parent"]["asset"], fault["output"]["asset"]
+    if (fault.get("kind") != "windows-native-install-failed-msi" or fault.get("sourceFingerprint") != fixture.get("sourceFingerprint")
+            or parent.get("sha256") != target["sha256"] or parent.get("sizeBytes") != target["bytes"]
+            or output.get("sha256") != packages["faultPackage"]["sha256"] or output.get("sizeBytes") != packages["faultPackage"]["bytes"]
+            or fixture["manifest"]["assets"] != [parent] or fixture["builds"][1]["assets"] != [parent]
+            or output.get("displayVersion") != parent.get("displayVersion") or _FIXTURE_FILE.fullmatch(output.get("fileName", "")) is None):
+        raise ValueError("fault_receipt_join")
+    served = json.loads(json.dumps(fixture))
+    served["builds"][1]["assets"] = [output]
+    served["manifest"]["assets"] = [output]
+    return (json.dumps(served, sort_keys=True, indent=2, ensure_ascii=False) + "\n").encode("utf-8"), output
+
+
+def counterfeit_canary(operation):
+    """The one file the ordinary user's counterfeit storage root holds: fixed bytes naming this operation."""
+    return (json.dumps({"schemaVersion": 1, "kind": "vpn-control-counterfeit-protected-storage-canary", "operationId": operation,
+                        "testOnly": True}, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
 
 
 def update_harness(inputs, hold):
@@ -1412,6 +1457,9 @@ class Job:
         # collector stage's SYSTEM census found: controller, broker, runtime and their parents.
         self.vpn_broker = self.tun_runtime_sha256 = self.tun_facts = None
         self.fixture_file = self.fixture_fingerprint = self.certificate_sha256 = None
+        # What the job read of a fault row's fault (its binding is Job._fault_inputs): the failing MSI it served, or the
+        # counterfeit root it listed before, at and after the task.
+        self.fault_facts = None
         self.document = self.row.get("document")
         self.principal = None  # The LOCAL SERVICE probe of the acceptance row: None until claimed, then its outcome.
 
@@ -1606,9 +1654,15 @@ class Job:
                 raise Refused("artifact_cache_unavailable") from None
 
     def staged(self):
-        """The admitted packages whose bytes wait in the host's artifact cache for this row."""
+        """The admitted packages whose bytes wait in the host's artifact cache for this row.
+
+        native-install-failed serves its failing MSI in the target's place: the target's bytes are never staged.
+        """
         if self.update:
-            return [self.plan["packages"]["targetPackage"], self.plan["packages"]["fixtureReceipt"]]
+            packages = self.plan["packages"]
+            if self.update["variant"] == "native-install-failed":
+                return [packages["fixtureReceipt"], packages["faultPackage"], packages["faultReceipt"]]
+            return [packages["targetPackage"], packages["fixtureReceipt"]]
         package = self.package()
         return [] if package is None else [package]
 
@@ -2130,11 +2184,13 @@ class Job:
 
     def _pin_bound(self, trees):
         """The worker request holds the most pins of a row: its fixed pins and every tree, counted before any tree pin."""
-        # An update row adds its fixture receipt and package, three TLS files and the harness; a document row the
-        # document the publisher makes in the guest, which joins self.generated only after this bound.
+        # An update row adds its fixture receipt and package, three TLS files and the harness, native-install-failed also
+        # its failing MSI's derivation receipt; a document row the document the publisher makes in the guest, which joins
+        # self.generated only after this bound.
         files = (len(self.read_pins) + sum(1 for _, role, _ in self.row["guestFiles"] if role != "owner")
                  + int("package" in self.file_pins) + len(self.generated) + int(self.prior_preboot is not None)
-                 + len(self.row.get("generated", ())) + len(self.row.get("extracted", ())) + (6 if self.update else 0)
+                 + len(self.row.get("generated", ())) + len(self.row.get("extracted", ()))
+                 + ((7 if self.update["variant"] == "native-install-failed" else 6) if self.update else 0)
                  + int(bool(self.document) and "documentInput" not in self.generated))
         directories = len(self.directory_pins) + 2 * int(self.prior_preboot is not None)
         for root, listing in trees:
@@ -2338,33 +2394,50 @@ class Job:
         # back with: O:SYD:PAI natively, which the pinned chain now takes. Any other form ends the row here, before a task.
         if self.update["collectorStages"] and self.file_pins["owner"]["security"] != {"ownerSid": "S-1-5-18", "sddl": COLLECTOR_FILE_SDDL.format(sid=sid)}:
             raise KnownFailure("collector_file_policy")
-        if self._installs():
+        variant = self.update["variant"]
+        if self._installs() or self._counterfeit():
             # A grant's coordinator and worker, and the ones a cancel watch sees, run the base install's helper: the digest
             # and size its own installed native-helpers.json declares, which must be what the installed tree pin holds.
+            # The counterfeit-root row's terminal-actors waits until no process of that image is left.
             self.install_helper = self._install_helper()
         if self.update.get("connected"):
             self._update_connection()
+        if variant == "protected-storage-rejected":
+            # The counterfeit is the ordinary user's to plant only where the product never made its own root: a clone
+            # whose grant once made it stops here, before any task, and its run never counts.
+            listing = self._listing("publish-counterfeit-root", self.paths["counterfeitRoot"])
+            if listing["present"]:
+                raise KnownFailure("protected_root_present")
+            self.fault_facts = {"rootBefore": listing}
         try:
             receipt_raw = b"".join(self._chunks(self.plan["packages"]["fixtureReceipt"]))
+            fault_raw = (b"".join(self._chunks(self.plan["packages"]["faultReceipt"])) if variant == "native-install-failed" else None)
         except (OSError, ValueError):
             raise KnownFailure("artifact_cache_changed") from None
-        target = self.package_target()
+        # The served package: the pair's target, or for native-install-failed its failing MSI, under the same receipt.
+        served = self.plan["packages"]["faultPackage" if fault_raw is not None else "targetPackage"]
         try:
             fixture = json.loads(receipt_raw)
+            if fault_raw is not None:
+                receipt_raw, failing = served_fault_receipt(receipt_raw, fault_raw, self.plan["packages"])
+                fixture = json.loads(receipt_raw)
             asset = fixture["manifest"]["assets"][0]
-            if (len(fixture["manifest"]["assets"]) != 1 or asset["sha256"] != target["sha256"] or asset["sizeBytes"] != target["bytes"]
+            if (len(fixture["manifest"]["assets"]) != 1 or asset["sha256"] != served["sha256"] or asset["sizeBytes"] != served["bytes"]
                     or asset["displayVersion"] != self.plan["product"]["productVersion"] or _FIXTURE_FILE.fullmatch(asset["fileName"]) is None
                     or _SHA256.fullmatch(fixture["sourceFingerprint"]) is None):
                 raise ValueError("fixture_receipt")
-        except (ValueError, TypeError, KeyError, IndexError):
+        except (ValueError, TypeError, KeyError, IndexError, AttributeError):
             raise KnownFailure("fixture_receipt_identity") from None
         self.fixture_file = self.paths["fixtureTarget"] + "\\" + asset["fileName"]
         self.fixture_fingerprint = fixture["sourceFingerprint"]
-        pins = self._publish_files([
-            {"role": "fixture-receipt", "path": self.paths["fixtureReceipt"], "bytes": len(receipt_raw), "sha256": _sha(receipt_raw),
-             "kind": "data", "raw": receipt_raw},
-            {"role": "fixture-target", "path": self.fixture_file, "bytes": target["bytes"], "sha256": target["sha256"], "kind": "data", "raw": target}],
-            "publish-fixture")
+        targets = [{"role": "fixture-receipt", "path": self.paths["fixtureReceipt"], "bytes": len(receipt_raw), "sha256": _sha(receipt_raw),
+                    "kind": "data", "raw": receipt_raw},
+                   {"role": "fixture-target", "path": self.fixture_file, "bytes": served["bytes"], "sha256": served["sha256"], "kind": "data",
+                    "raw": served}]
+        if fault_raw is not None:
+            targets.append({"role": "fault-receipt", "path": self.paths["faultReceipt"], "bytes": len(fault_raw), "sha256": _sha(fault_raw),
+                            "kind": "data", "raw": fault_raw})
+        pins = self._publish_files(targets, "publish-fixture")
         sealed = self._sealed(pins["fixture-target"])
         certificate, certificate_pin, key_pin = self._fixture_tls()
         store = java_truststore(certificate, os.urandom(16))
@@ -2373,6 +2446,11 @@ class Job:
         self.certificate_sha256 = _sha(certificate)
         self.update_pins = {"receipt": pins["fixture-receipt"], "target": sealed, "certificate": certificate_pin, "privateKey": key_pin,
                             "trustStore": trust}
+        if fault_raw is not None:
+            # SYSTEM reads the derivation receipt at fault-ready; the ordinary task holds it unchanged for the whole run.
+            self.update_pins["faultReceipt"] = pins["fault-receipt"]
+            self.fault_facts = {"servedPackageSha256": failing["sha256"], "servedFileName": failing["fileName"],
+                                "faultReceiptSha256": _sha(fault_raw), "packageCode": json.loads(fault_raw)["output"]["packageCode"]}
 
     def _update_connection(self):
         """A connected row's loopback profile and its sampler's input, both naming the case's upstream: its fixed port in
@@ -2798,6 +2876,15 @@ class Job:
             "collectorSourceSha256": self.file_pins["collector"]["sha256"], "receiptsPath": paths["file:receipts"]}
         return inputs, hold
 
+    def _base_inventory(self):
+        """The base install's files as this row's tree pins hold them: relative name, size and digest."""
+        root, files = self.paths["installed"], {pin["path"]: pin for pin in self.installed_tree["filePins"]}
+        base = {}
+        for name in self.installed_tree["tree"]["files"]:
+            pin = files[root + "\\" + name.replace("/", "\\")]
+            base[name] = {"sizeBytes": pin["nativeIdentity"]["sizeBytes"], "sha256": pin["sha256"]}
+        return base
+
     def _publish_harness(self):
         raw = update_harness(*self._harness_inputs())
         return self._publish_files([{"role": "update-harness", "path": self.paths["harness"], "bytes": len(raw), "sha256": _sha(raw),
@@ -2828,6 +2915,8 @@ class Job:
                 raise Unknown("collector_stage_failed:" + token(stage) + ":" + token(error if isinstance(error, KnownFailure) else self._receipt_check(error))) from None
 
     def _collector_stage(self, stage, need):
+        if stage == "terminal-actors" and self._counterfeit():
+            self._counterfeit_settled()
         observed = self._collector_observe(stage, need)
         collector = collector_operation(self.op, stage)
         root = self.paths["collector:" + stage]
@@ -2893,12 +2982,77 @@ class Job:
         return self.target_install["files"] if self.update["ends"] == "target" else self._base_inventory()
 
     def _fault_inputs(self):
-        """participating-copy-lock's fixed fault: a second serve of the installed launcher on its own workspace under this
-        operation's root, which the case starts and fault-ready names. No other row has fault inputs."""
-        if self.update["variant"] != "participating-copy-lock":
-            return {}
-        return {"kind": "participating-copy-lock", "installedCliPath": self.paths["cli"],
-                "blockingWorkspace": self.operation_root + "\\copy-lock-workspace"}
+        """A fault row's one fault-input value: the case's faultInputs and the fault-ready collector's faultBinding (and the
+        counterfeit row's terminal-actors), which update_cases checks agree. No other row has fault inputs.
+
+        participating-copy-lock: a second serve of the installed launcher on its own workspace under this operation's
+        root, which the case starts and fault-ready names. native-install-failed: the failing MSI's derivation receipt as
+        published beside the served receipt and pinned for the whole run, which SYSTEM reads at fault-ready; it exists
+        only once _publish_update served the fixture. protected-storage-rejected: the counterfeit storage root the
+        ordinary user plants, its canary's bytes and both SDDLs, every value fixed by this operation and its user.
+        """
+        variant = self.update["variant"]
+        if variant == "participating-copy-lock":
+            return {"kind": variant, "installedCliPath": self.paths["cli"],
+                    "blockingWorkspace": self.operation_root + "\\copy-lock-workspace"}
+        if variant == "native-install-failed":
+            pin = self.update_pins["faultReceipt"]  # KeyError before publication: never an unbound fault.
+            return {"kind": variant, "admittedFailingMsiMetadata": {"path": pin["path"], "sha256": pin["sha256"],
+                                                                  "sizeBytes": pin["nativeIdentity"]["sizeBytes"]}}
+        if variant == "protected-storage-rejected":
+            sid, canary = self.context["ordinarySid"], counterfeit_canary(self.op)
+            return {"kind": variant, "path": self.paths["counterfeitRoot"],
+                    "canary": {"path": self.paths["counterfeitCanary"], "sha256": _sha(canary), "sizeBytes": len(canary)},
+                    "canaryText": canary.decode("ascii"), "rootSddl": COUNTERFEIT_ROOT_SDDL.format(sid=sid),
+                    "canarySddl": COUNTERFEIT_CANARY_SDDL.format(sid=sid)}
+        return {}
+
+    def _counterfeit(self):
+        """The counterfeit-root row: an approved prompt the product must refuse, with no installer job to observe."""
+        return self.update["variant"] == "protected-storage-rejected"
+
+    def _helper_census(self, label):
+        """Every process of the installed helper image, as one SYSTEM census of the publisher sees it; read only."""
+        value, required = self._publisher(label, "collector-observe", childStdoutLabels=[], readDisposition=False,
+                                          productWorkspace=self.paths["productWorkspace"], census={"image": self.install_helper["path"]},
+                                          productPins=[], returnedActors=False)
+        observation = value.get("observation")
+        if (set(value) != required | {"observation"} or value["state"] != "ordinary-collector-observation" or type(observation) is not dict
+                or set(observation) != {"files", "dispositions", "census", "productPins"} or observation["dispositions"] not in (None, [])
+                or observation["productPins"] not in (None, [])):
+            raise ValueError("collector_observation")
+        return census_rows(observation["census"])
+
+    def _counterfeit_settled(self):
+        """Before the counterfeit row's terminal-actors: wait until no process of the installed helper image is left.
+
+        A coordinator that refused the counterfeit root exits at once; its original-user worker keeps polling for the
+        job's receipt until its own ten-minute authorization deadline. While any helper process lives, an installer
+        actor's outcome is open, so the stage waits; past HELPER_SETTLE_SECONDS the owner keeps waiting and the job ends
+        UNKNOWN with its fence open. Then the root is listed as SYSTEM for the receipt. Read only throughout.
+        """
+        deadline, polls, seen = self.rt.monotonic() + HELPER_SETTLE_SECONDS, 0, 0
+        while True:
+            polls += 1
+            live = [row for row in self._helper_census("counterfeit-settle-" + str(polls)) if row["live"]]
+            seen = max(seen, len(live))
+            if not live:
+                break
+            if self.rt.monotonic() >= deadline:
+                raise Unknown("counterfeit_installer_actors_live:" + str(min(len(live), 9)))
+            self.rt.sleep(HELPER_SETTLE_POLL_SECONDS)
+        self.fault_facts.update(helperPolls=polls, helperProcessesSeen=seen,
+                                rootAtTerminal=self._listing("counterfeit-terminal", self.paths["counterfeitRoot"]))
+
+    def _counterfeit_after(self):
+        """A passed counterfeit row: the root as SYSTEM listed it at terminal-actors held the canary alone, and after the
+        task it is gone. Read only; anything else is this row's known failure."""
+        canary_only = {"present": True, "files": [COUNTERFEIT_CANARY], "directories": []}
+        if self.fault_facts.get("rootAtTerminal") != canary_only:
+            raise KnownFailure("counterfeit_root_changed")
+        self.fault_facts["rootAfter"] = self._listing("counterfeit-after", self.paths["counterfeitRoot"])
+        if self.fault_facts["rootAfter"]["present"]:
+            raise KnownFailure("counterfeit_root_left")
 
     def _install_job(self, need):
         """The installer job a grant's stages observe: named by the authorization need, the same in every later one."""
@@ -2921,21 +3075,31 @@ class Job:
         and of the scoped broker with every process it started, and the product's runtime config in its workspace.
         """
         tun = stage == TUN_STAGE
-        installs, deny = (False, False) if tun else (self._installs(), stage == "terminal-actors" and not self._installs())
-        fields = {"childStdoutLabels": ["one-public-update-install"] if deny else [], "readDisposition": deny,
+        installs = False if tun else self._installs()
+        counterfeit = not tun and stage == "terminal-actors" and self._counterfeit()
+        deny = not tun and stage == "terminal-actors" and not installs and not counterfeit
+        fields = {"childStdoutLabels": ["one-public-update-install"] if deny or counterfeit else [], "readDisposition": deny,
                   "productWorkspace": self.paths["productWorkspace"], "census": None, "productPins": [],
                   "returnedActors": stage == "returned-cleanup"}
         if tun:
             fields.update(census=[{"image": self.paths["cli"]}, {"image": self.vpn_broker["path"], "children": True}],
                           productPins=[self.paths["productWorkspace"] + "\\runtime-config.json"], tunNeed=True)
-        elif stage in ("before-install", "fault-ready") and (installs or stage == "fault-ready"):
-            # The CLI image: the serve and the controller it relaunched into, or the participating copy the case started.
+        elif stage == "before-install" and installs or stage == "fault-ready" and self.update["variant"] == "participating-copy-lock":
+            # The CLI image: the serve and the controller it relaunched into, or the participating copy the case started. The
+            # other fault rows' fault-ready reads only what their fault input names.
             fields["census"] = {"image": self.paths["cli"]}
         elif stage == "authorization":
             fields["census"] = {"image": self.install_helper["path"]}
             fields["productPins"] = [self.context["localAppData"] + "\\" + INSTALL_INPUTS + "\\" + self._install_job(need) + "\\worker-ready.json"]
         elif stage == "terminal-actors" and installs:
             fields["productPins"] = [INSTALL_JOBS + "\\" + self._install_job(need) + "\\status.json"]
+            if self.update["variant"] == "native-install-failed":
+                # The worker's own record of what MsiInstallProductW returned, beside the protected terminal.
+                fields["productPins"].append(self.context["localAppData"] + "\\" + INSTALL_INPUTS + "\\" + self._install_job(need)
+                                             + "\\worker-result.json")
+        elif counterfeit:
+            # The install child's own reply, and one more census: the stage waited until no helper process was left.
+            fields["census"] = {"image": self.install_helper["path"]}
         value, required = self._publisher("collector-observe-" + stage, "collector-observe", **fields)
         observation = value.get("observation")
         if (set(value) != required | {"observation"} or value["state"] != "ordinary-collector-observation" or type(observation) is not dict
@@ -3046,15 +3210,21 @@ class Job:
                 inputs["cancelWatchHelper"] = dict(self.install_helper)
                 helper = self.install_helper["sha256"]
         elif stage == "fault-ready":
-            # The participating copy: the second serve of the installed launcher the case started, live and unelevated as
-            # the ordinary user, named by the owner's own child record and found so in the census.
-            copy = observed["children"].get("participating-installed-copy")
-            cli = next(pin for pin in self.installed_tree["filePins"] if pin["path"] == self.paths["cli"])
-            if copy is None:
-                raise ValueError("collector_copy_unobserved")
-            actors["participatingCopy"] = actor(copy.get("pid"), copy.get("birthFileTimeUtc"), self.paths["cli"], cli["sha256"])
-            participating_copy(observed["census"], actors["participatingCopy"], self.paths["cli"], cli["sha256"], sid, session)
+            # The fault this row prepared before the install, bound by the row's one fault-input value: the participating
+            # copy, the failing MSI's derivation receipt, or the counterfeit root and its canary the owner planted.
             fault = self._fault_inputs()
+            if not fault:
+                raise ValueError("collector_fault_unbound")
+            if self.update["variant"] == "participating-copy-lock":
+                # The second serve of the installed launcher the case started, live and unelevated as the ordinary user,
+                # named by the owner's own child record and found so in the census.
+                copy = observed["children"].get("participating-installed-copy")
+                cli = next(pin for pin in self.installed_tree["filePins"] if pin["path"] == self.paths["cli"])
+                if copy is None:
+                    raise ValueError("collector_copy_unobserved")
+                actors["participatingCopy"] = actor(copy.get("pid"), copy.get("birthFileTimeUtc"), self.paths["cli"], cli["sha256"])
+                participating_copy(observed["census"], actors["participatingCopy"], self.paths["cli"], cli["sha256"], sid, session)
+            # The other fault rows name no actor and no product file: the binding names what SYSTEM reads.
         elif stage == "authorization":
             if self.update_owner is None:
                 raise ValueError("collector_owner_unknown")
@@ -3072,6 +3242,17 @@ class Job:
             self._install_job(need)
             actors = json.loads(json.dumps(self.install_actors))
             inputs["protectedReceipt"] = product_file(observed["productPins"][0])
+            if self.update["variant"] == "native-install-failed":
+                inputs["workerResult"] = product_file(observed["productPins"][1])
+        elif stage == "terminal-actors" and self._counterfeit():
+            # No installer job to observe: the product's reply to the approved install, no helper process left (the census
+            # the stage waited for, taken again here), and the counterfeit root and canary SYSTEM reads beside them.
+            reply = json.loads(observed["stdout"]["one-public-update-install"], object_pairs_hook=_unique)
+            if (type(reply) is not dict or not isinstance(reply.get("controllerId"), str) or reply.get("operationId") != need.get("productOperationId")
+                    or need.get("jobId") is not None or any(row["live"] for row in observed["census"])):
+                raise ValueError("collector_counterfeit_terminal")
+            self._keep("collectors/terminal-actors/census.json", (json.dumps(observed["census"], sort_keys=True) + "\n").encode())
+            fault = self._fault_inputs()
         elif stage == "terminal-actors":
             # A denied prompt starts no installer: the product's own not-started record joins its public reply.
             reply = json.loads(observed["stdout"]["one-public-update-install"], object_pairs_hook=_unique)
@@ -3118,7 +3299,7 @@ class Job:
         if stage == "before-install" and self._installs():
             self.update_owner = owner
             self._keep("collectors/before-install/census.json", (json.dumps(observed["census"], sort_keys=True) + "\n").encode())
-        if stage == "fault-ready":
+        if stage == "fault-ready" and observed["census"] is not None:
             self._keep("collectors/fault-ready/census.json", (json.dumps(observed["census"], sort_keys=True) + "\n").encode())
         if stage == "authorization":
             self.install_actors, self.install_facts = actors, facts
@@ -3413,6 +3594,8 @@ class Job:
             found = self._update_after()
             if found["role"] != self.update["ends"]:
                 raise KnownFailure("update_installed_differs:" + (found["role"] or found["check"]))
+            if self._counterfeit():
+                self._counterfeit_after()
             return
         if self.row["bootstrapMode"] == "python-install":
             listing = self._listing("after-python", self.paths["python"])
@@ -3558,6 +3741,9 @@ class Job:
                                                          "administratorSid": self.fixture_administrator_sid}
                     if self.backup_reads:
                         receipt["update"]["backupReads"] = len(self.backup_reads)
+                    # A fault row's own facts: the failing MSI it served, or the counterfeit root as SYSTEM listed it.
+                    if self.fault_facts is not None:
+                        receipt["update"]["fault"] = self.fault_facts
                 if self._tun_grant() or self._tun_approved():
                     # What the first native runs must show: the controller, the approved broker and its runtime as the
                     # SYSTEM census found them, elevated as the approving administrator, and their parents as recorded.
@@ -3614,6 +3800,9 @@ class Job:
             # lost reply of that read leaves the outcome unknown.
             try:
                 self._update_after()
+                if self._counterfeit() and self.fault_facts is not None:
+                    # A counterfeit row ends known only once its case removed the root: SYSTEM's listing stands beside it.
+                    self.fault_facts["rootAfter"] = self._listing("counterfeit-after", self.paths["counterfeitRoot"])
             except KnownFailure:
                 pass  # Its own check is kept in update_after.
             except Exception as error:

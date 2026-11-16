@@ -75,6 +75,8 @@ on:
       - "scripts/windows_native_fixture.py"
       - "scripts/test_windows_native_fixture.py"
       - "scripts/prepare_desktop_update_fixture.py"
+      - "scripts/windows_native_failure_msi.py"
+      - "scripts/test_windows_native_failure_msi.py"
       - "scripts/test_windows_fixture_stage_acl.py"
       - "scripts/version_metadata.py"
       - "scripts/check_release_metadata.py"

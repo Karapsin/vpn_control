@@ -49,8 +49,11 @@ SCENARIO_ARTIFACT_KEYS = {
                         "resources-grant", "ssh-grant", "stage-squat")},
     **{"windows-public-update." + variant: frozenset({"bundleManifest", "scenarioInput", "targetPackage", "fixtureReceipt"})
        for variant in ("public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "install-cancelled", "participating-copy-lock",
-                       "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect",
+                       "protected-storage-rejected", "success-off", "success-reconnect",
                        "success-explicit-off", "different-admin", "wait-client-loss", "installer-wait-client-loss")},
+    # Its failing MSI and that MSI's derivation receipt come from the same frozen set as the pair.
+    "windows-public-update.native-install-failed": frozenset({"bundleManifest", "scenarioInput", "targetPackage", "fixtureReceipt",
+                                                              "faultPackage", "faultReceipt"}),
     **{name: frozenset({"bundleManifest", "scenarioInput", "targetPackage"}) for name in (
         "windows-document-acceptance", "windows-document-cold.cold-reopen", "windows-document-cold.legacy-newline",
         "windows-document-cold.gui-owner", "windows-document-cold.cache-bytes", "windows-document-responsive")},

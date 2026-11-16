@@ -120,6 +120,7 @@ run_check python3 scripts/test_macos_install_enospc.py
 run_check python3 scripts/test_macos_package_cleanup.py
 run_check python3 scripts/test_macos_aqua_authorization_correlation.py
 run_check python3 scripts/test_windows_update_fixture_workflow.py
+run_check python3 scripts/test_windows_native_failure_msi.py
 run_check python3 scripts/test_macos_update_fixture_workflow.py
 run_check python3 scripts/test_macos_artifact_upload_selection.py
 run_check python3 scripts/test_linux_update_fixture_workflow.py

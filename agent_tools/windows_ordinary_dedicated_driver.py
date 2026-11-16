@@ -13,7 +13,7 @@ import time
 
 
 CASE_SHA = {
-    "windows-public-update": "44ae2f9e3f6c9f988168ea0009b273c5abe259e056cc4d829bd9285b54e2a4b0",
+    "windows-public-update": "6925c8b423751370daec6c193abb0bb3381d89acb6cbff094f16c49cbad65737",
     "windows-proxy-lifecycle": "9a965b3db065ca98bdfa8c63cccaa059e676cf53a49c6705cf648e0989a3f987",
 }
 CASE_NAME = {"windows-public-update": "windows_public_updater/update_cases.py",
@@ -140,6 +140,8 @@ def literal_harness(owner, action):
 
 def update_hold(owner, inputs, hold_inputs):
     variant = inputs["variant"]
+    # protected-storage-rejected's collectors take no close hold: its terminal-actors may stand beside a known failure,
+    # which a hold (driverKnownResult 0 only) could never release, and nothing of an installer job outlives its case.
     if variant in NO_SYSTEM or variant == "protected-storage-rejected":
         require(hold_inputs is None, "dedicated-no-final-system-collector")
         return None
@@ -195,9 +197,17 @@ def run_update(owner, cases, harness):
         if hold is not None:
             owner.park("dedicated-case-failure-with-original-collector-hold", error)
         raise
-    # The counterfeit storage root stays on the clone, so this variant parks however its prompt ended.
     if inputs["variant"] == "protected-storage-rejected":
-        owner.park("protected-storage-scenario-cannot-return-known-success")
+        # The case settles the counterfeit storage root it planted: SYSTEM saw it unchanged beside the product's answer
+        # once no helper process was left, and the case removed it through its own handles. Only that proof, naming this
+        # result, ends the row known: 0 for a refusal, 1 for any other definite answer. Anything else parks.
+        settled = getattr(owner, "update_counterfeit_settled", None)
+        if (hold is not None or type(result) is not int or result not in (0, 1) or type(settled) is not dict
+                or settled.get("variant") != inputs["variant"] or settled.get("result") != result
+                or settled.get("systemUnchanged") is not True or settled.get("rootRemoved") is not True):
+            owner.park("dedicated-counterfeit-settlement-unproven")
+        owner.event("dedicated-update-counterfeit-settled", {**settled, "replayAllowed": False})
+        return result
     cancelled = getattr(owner, "update_cancelled_grant", None)
     if type(result) is int and result == 1 and cancelled is not None and cancelled.get("variant") == inputs["variant"]:
         # The case closed everything it started and proved no handoff. No collector was asked to hold this
