@@ -44,7 +44,8 @@ WRAPPER = ("distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\n"
            "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.10.2-bin.zip\n"
            "networkTimeout=10000\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\n")
 # The SDK pin of this checkout, which a source must carry: CI reads the lock, its tests copy the global.json.
-DOTNET_LOCK, DOTNET_GLOBAL_JSON = "desktopApp/native/windows/toolchain.lock.json", "desktopApp/native/windows/global.json"
+DOTNET_LOCK = "desktopApp/native/windows/toolchain.lock.json"
+DOTNET_GLOBAL_JSON = "desktopApp/native/windows/global.json"
 SOURCE = {"settings.gradle.kts": 'rootProject.name = "fixture"\ninclude(":desktopApp")\n',
           "build.gradle.kts": "plugins {}\n",
           "gradle.properties": "vpnControlVersion=2.2.15\norg.gradle.jvmargs=-Xmx2g\n",
@@ -52,7 +53,8 @@ SOURCE = {"settings.gradle.kts": 'rootProject.name = "fixture"\ninclude(":deskto
           "gradle/wrapper/gradle-wrapper.properties": WRAPPER,
           "desktopApp/build.gradle.kts": "plugins {}\n",
           "desktopApp/src/main/kotlin/Main.kt": "fun main() {}\n",
-          **{path: (ROOT / path).read_text(encoding="utf-8") for path in (DOTNET_LOCK, DOTNET_GLOBAL_JSON)},
+          DOTNET_LOCK: (ROOT / DOTNET_LOCK).read_text(encoding="utf-8"),
+          DOTNET_GLOBAL_JSON: (ROOT / DOTNET_GLOBAL_JSON).read_text(encoding="utf-8"),
           "README.md": "readme\n"}
 GIT_ENVIRONMENT = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_AUTHOR_NAME": "fixture",
                    "GIT_AUTHOR_EMAIL": "fixture@example.invalid", "GIT_COMMITTER_NAME": "fixture",
