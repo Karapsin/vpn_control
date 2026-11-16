@@ -320,8 +320,8 @@
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
     "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
-    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Tetapan yang disimpan tidak dapat dibaca dan telah digantikan dengan tetapan lalai. Data yang tidak boleh dibaca disimpan dalam folder tetapan dengan nama {0}",
-    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Tetapan terkini yang disimpan tidak dapat dibaca, jadi salinan simpanan yang lebih lama dimuatkan. Data yang tidak boleh dibaca disimpan dalam folder tetapan dengan nama {0}"
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Tetapan yang disimpan tidak dapat dibaca dan telah digantikan dengan tetapan lalai. Data yang tidak boleh dibaca dikekalkan dalam folder tetapan dengan nama {0}",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Tetapan terkini yang disimpan tidak dapat dibaca, jadi salinan simpanan yang lebih lama dimuatkan. Data yang tidak boleh dibaca dikekalkan dalam folder tetapan dengan nama {0}"
   },
   "freeformReplacements": [
     {

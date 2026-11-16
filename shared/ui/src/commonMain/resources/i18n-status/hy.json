@@ -320,8 +320,8 @@
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
     "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
-    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Պահված կարգավորումները հնարավոր չեղավ կարդալ, ուստի դրանք փոխարինվեցին լռելյայն կարգավորումներով։ Չընթերցվող տվյալները պահպանվեցին կարգավորումների թղթապանակում {0} անունով",
-    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Վերջին պահված կարգավորումները հնարավոր չեղավ կարդալ, ուստի բեռնվեց ավելի հին պահված պատճենը։ Չընթերցվող տվյալները պահպանվեցին կարգավորումների թղթապանակում {0} անունով"
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Պահված կարգավորումները հնարավոր չեղավ կարդալ, ուստի դրանք փոխարինվեցին լռելյայն կարգավորումներով։ Անընթեռնելի տվյալները պահպանվեցին կարգավորումների թղթապանակում {0} անունով",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Վերջին պահված կարգավորումները հնարավոր չեղավ կարդալ, ուստի բեռնվեց ավելի հին պահված պատճեն։ Անընթեռնելի տվյալները պահպանվեցին կարգավորումների թղթապանակում {0} անունով"
   },
   "freeformReplacements": [
     {

@@ -320,8 +320,8 @@
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
     "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
-    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Saklanan sazlamalary okap bolmady, şonuň üçin olar deslapky sazlamalar bilen çalşyryldy. Okalmaýan maglumatlar sazlamalar bukjasynda {0} ady bilen saklandy",
-    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Iň soňky saklanan sazlamalary okap bolmady, şonuň üçin has köne saklanan nusga ýüklendi. Okalmaýan maglumatlar sazlamalar bukjasynda {0} ady bilen saklandy"
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Saklanan sazlamalary okap bolmady, şonuň üçin olar adaty sazlamalar bilen çalşyryldy. Okap bolmaýan maglumatlar sazlamalar bukjasynda {0} ady bilen saklandy",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Iň soňky saklanan sazlamalary okap bolmady, şonuň üçin has köne saklanan nusga ýüklendi. Okap bolmaýan maglumatlar sazlamalar bukjasynda {0} ady bilen saklandy"
   },
   "freeformReplacements": [
     {

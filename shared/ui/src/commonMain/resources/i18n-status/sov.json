@@ -321,7 +321,7 @@
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
     "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
     "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Сохранённые директивы прочитать не удалось, они заменены директивами по умолчанию. Нечитаемые данные оставлены на хранение в папке директив под именем {0}",
-    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Последние сохранённые директивы прочитать не удалось, поэтому поднята более ранняя сохранённая копия. Нечитаемые данные оставлены на хранение в папке директив под именем {0}"
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Последние сохранённые директивы прочитать не удалось, поэтому загружена более ранняя сохранённая копия. Нечитаемые данные оставлены на хранение в папке директив под именем {0}"
   },
   "freeformReplacements": [
     {

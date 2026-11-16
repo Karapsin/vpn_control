@@ -320,8 +320,8 @@
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
     "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
-    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Сохранённые уставы не удалось прочесть, посему они замещены изначальными. Нечитаемые данные оставлены въ папке уставовъ подъ именемъ {0}",
-    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Последние сохранённые уставы не удалось прочесть, посему загружена прежняя сохранённая копия. Нечитаемые данные оставлены въ папке уставовъ подъ именемъ {0}"
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Сохраненные уставы не удалось прочесть, посему они замещены изначальными. Нечитаемые данные оставлены въ папке уставовъ подъ именемъ {0}",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Последние сохраненные уставы не удалось прочесть, посему загружена прежняя сохраненная копия. Нечитаемые данные оставлены въ папке уставовъ подъ именемъ {0}"
   },
   "freeformReplacements": [
     {

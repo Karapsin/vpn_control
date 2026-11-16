@@ -320,8 +320,8 @@
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
     "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
-    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Saglabātos iestatījumus neizdevās nolasīt, tāpēc tie tika aizstāti ar noklusējuma iestatījumiem. Nenolasāmie dati tika saglabāti iestatījumu mapē ar nosaukumu {0}",
-    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Jaunākos saglabātos iestatījumus neizdevās nolasīt, tāpēc tika ielādēta vecāka saglabātā kopija. Nenolasāmie dati tika saglabāti iestatījumu mapē ar nosaukumu {0}"
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Saglabātos iestatījumus neizdevās nolasīt, tāpēc tie tika aizstāti ar noklusējuma iestatījumiem. Nenolasāmie dati tika paturēti iestatījumu mapē ar nosaukumu {0}",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Jaunākos saglabātos iestatījumus neizdevās nolasīt, tāpēc tika ielādēta vecāka saglabātā kopija. Nenolasāmie dati tika paturēti iestatījumu mapē ar nosaukumu {0}"
   },
   "freeformReplacements": [
     {

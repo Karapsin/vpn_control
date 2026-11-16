@@ -320,7 +320,7 @@
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
     "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
-    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Mîhengên tomarkirî nehatin xwendin û bi mîhengên standard hatin guhertin. Daneyên nexwendbar di peldanka mîhengan de bi navê {0} hatin parastin",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Mîhengên tomarkirî nehatin xwendin û bi mîhengên xwerû hatin guhertin. Daneyên nexwendbar di peldanka mîhengan de bi navê {0} hatin parastin",
     "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Mîhengên herî dawî yên tomarkirî nehatin xwendin, ji ber vê yekê kopiyeke tomarkirî ya kevntir hate barkirin. Daneyên nexwendbar di peldanka mîhengan de bi navê {0} hatin parastin"
   },
   "freeformReplacements": [
