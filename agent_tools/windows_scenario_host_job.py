@@ -11,6 +11,7 @@ The fence terminal closes a known exit and never an UNKNOWN one, because any int
 exit closes the fence and would let readiness-reboot through.
 """
 import base64
+import binascii
 import datetime
 import gzip
 import hashlib
@@ -177,6 +178,14 @@ _PUBLISHER_REFUSAL = re.compile(r"\b(PUB_[A-Z0-9_]{1,80})(?::([A-Za-z]{1,40})(?:
 _RECEIPT_CHECK = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
 _SETUP_WORD = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 _OPEN_RUN_STATES = frozenset({"owner-parked", "deadline", "post-launch-unknown"})
+# What unreadable_reason may name of a reply that did not decode: a code the program's source holds, or a cmdlet it calls.
+_THROWN_CODE = re.compile(r"(?<![A-Za-z0-9])([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)(?![A-Z0-9])")
+_FAILED_CMDLET = re.compile(r"\b([A-Z][a-z]{1,20})([A-Z][A-Za-z]{1,60})Command\b")
+_DECODE_WORDS = {"guest_output_bound": "output_bound", "guest_output_gzip": "gzip", "guest_output_shape": "shape",
+                 "guest_output_duplicate_key": "duplicate_key"}
+# The system-run program's own result, written create-only into the workspace before its closing and its reply.
+RUN_RESULT_LEAF = "system-run-result.json"
+RUN_RESULT_BYTES = 262144
 # Reboot rows: one preboot operation, readiness-reboot, then its postboot operation naming it.
 PRODUCT_GUI = "vpn-control.exe"
 RUNTIME_LEAF = "sing-box.exe"
@@ -428,6 +437,46 @@ def refused_before_effects(terminal):
     except ValueError:
         return False
     return type(value) is dict and value.get("state") == "refused-before-file-effects" and value.get("fileEffects") is False
+
+
+def thrown_code(stderr, source):
+    """The first code an ended program's stderr names that its own source holds as a literal, else the first cmdlet its
+    error record names that the source calls, else nothing. No other guest text crosses."""
+    text = stderr[:MAX_TERMINAL_BYTES]
+    for found in _THROWN_CODE.finditer(text):
+        if "'" + found[1] + "'" in source:
+            return ":" + found[1]
+    for found in _FAILED_CMDLET.finditer(text):
+        if found[1] + "-" + found[2] in source:
+            return ":" + found[1] + "-" + found[2]
+    return ""
+
+
+def unreadable_reason(terminal, error, source):
+    """Why an ended program's reply did not decode, in finite words a receipt may carry.
+
+    Natively (906a0bb7, 2026-11-16) one code, system_run_unreadable, stood for a nonzero exit, a signal, a truncated
+    stream, stderr, and every stdout or custody check, while the terminal that told them apart stayed on the host.
+    """
+    if type(terminal.get("exitcode")) is not int:
+        return "signal"
+    if terminal.get("out-truncated", False) or terminal.get("err-truncated", False):
+        return "truncated"
+    try:
+        stderr = base64.b64decode(terminal.get("err-data", ""), validate=True).decode("utf-8", "replace")
+    except (ValueError, TypeError):
+        return "stderr_encoding"
+    if terminal["exitcode"] != 0 or stderr:
+        return ("exit_%d" % terminal["exitcode"] if terminal["exitcode"] != 0 else "stderr") + thrown_code(stderr, source)
+    word = str(error) if type(error) is ValueError else ""
+    if word in _DECODE_WORDS:
+        return _DECODE_WORDS[word]
+    if word.startswith("transfer_") and _SETUP_WORD.fullmatch(word):
+        return "custody:" + word  # windows_artifact_transfer's own check of the program's actor and boot.
+    for kind, name in ((UnicodeDecodeError, "utf8"), (json.JSONDecodeError, "json"), (binascii.Error, "base64")):
+        if isinstance(error, kind):
+            return name
+    return "decode:" + type(error).__name__
 
 
 def layout(operation, context, row):
@@ -3542,8 +3591,8 @@ class Job:
              # A BSTR is UTF-16: the planner's UTF-8 declaration describes bytes COM never sees.
              "taskXml": re.sub(r"\A<\?xml[^>]*\?>\s*", "", task["xmlUtf8"]),
              "uacKinds": [self.row["uac"]["event"]] if self.row.get("uac") else [], "nativeNeeds": bool(self.update) or self._tun_grant()}
-        terminal, pid = self.guest_program("system-run", self._rendered(lambda: self._system_run_source(m)),
-                                           budget=self.row["deadlineSeconds"] + RUN_MARGIN_SECONDS,
+        source = self._rendered(lambda: self._system_run_source(m))
+        terminal, pid = self.guest_program("system-run", source, budget=self.row["deadlineSeconds"] + RUN_MARGIN_SECONDS,
                                            poll=STATUS_POLL_SECONDS, on_poll=self._on_status)
         self._on_status(serve=False)  # The final copy for observers; the run has returned, so no need is served.
         if refused_before_effects(terminal):
@@ -3551,8 +3600,8 @@ class Job:
         emitter = self._load("windows_artifact_transfer")
         try:
             value = emitter.decode_guest_result({"transport": "inline"}, decode_stdout(terminal), self.raw_context, pid)
-        except (ValueError, TypeError, KeyError):
-            raise Unknown("system_run_unreadable") from None
+        except (ValueError, TypeError, KeyError) as error:
+            self._unreadable_run(pid, unreadable_reason(terminal, error, source))
         state = value.get("state")
         self.task = value
         self._keep("system-run-index.json", (json.dumps(value, sort_keys=True) + "\n").encode())
@@ -3568,6 +3617,31 @@ class Job:
             state = (self.principal or {}).get("state")
             if state != "observed":
                 raise KnownFailure("document_principal_" + ("unserved" if state is None else state if state != "failed" else self.principal["reason"]))
+
+    def _unreadable_run(self, pid, reason):
+        """An ended run whose reply did not decode: its own durable result, read back. It never runs again.
+
+        The run writes its result create-only into the SYSTEM workspace before its boot-bound closing and its reply, so a
+        closing or an output step that fails leaves it. The guest agent's file read takes it: no program and no boot
+        binding. It counts only when it names this operation and the run's own process. A finished run that deleted its
+        task left nothing running, so the row ends as this known failure, never a pass: the run's closing is unproven.
+        Any other result, or none, stays UNKNOWN; reason says what the reply was either way.
+        """
+        try:
+            raw = self.read_guest_file(self.workspace + "\\" + RUN_RESULT_LEAF, RUN_RESULT_BYTES)
+            record = json.loads(raw.decode("utf-8-sig"), object_pairs_hook=_unique)
+            value = record["run"] if type(record) is dict else None
+            if (set(record) != {"schemaVersion", "operationId", "runPid", "run"} or record["schemaVersion"] != 1
+                    or record["operationId"] != self.op or type(record["runPid"]) is not int or record["runPid"] != pid
+                    or type(value) is not dict or value.get("operationId") != self.op or value.get("productOperation") is not False):
+                raise ValueError("run_result_identity")
+        except Exception:
+            raise Unknown("system_run_unreadable:" + reason) from None
+        self._keep("system-run-result.json", raw)
+        self.task = value
+        if value.get("state") == "task-finished" and value.get("taskDeleted") is True and value.get("sourceClosing") is True:
+            raise KnownFailure("system_run_unreadable_settled:" + reason)
+        raise Unknown("system_run_unreadable:" + reason)
 
     def _check_task(self, value):
         def need(condition, code):

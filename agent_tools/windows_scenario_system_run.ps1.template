@@ -181,4 +181,7 @@ try{
  $r=[ordered]@{schemaVersion=1;state=$(if($unknown){'post-launch-unknown'}else{'refused-before-launch'});operationId=$m.operationId;code=$code;taskDeleted=$false;sourceClosing=$false;productOperation=$false}
 }
 foreach($p in $script:P.pins){try{if($p.directory){$p.handle.Dispose()}elseif($null -ne $p.stream){$p.stream.Dispose()}}catch{}}
+# The result, durable before the boot-bound closing and the reply: a reply the job cannot decode is read back
+# from this create-only file, never by a second run. A failed write leaves the reply as it is.
+try{$runBytes=[Text.UTF8Encoding]::new($false).GetBytes(([ordered]@{schemaVersion=1;operationId=$m.operationId;runPid=$PID;run=$r}|ConvertTo-Json -Depth 8 -Compress));$runFile=[IO.File]::Open((Join-Path $m.workspace 'system-run-result.json'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);try{$runFile.Write($runBytes,0,$runBytes.Length);$runFile.Flush($true)}finally{$runFile.Dispose()}}catch{}
 [Console]::WriteLine(($r|ConvertTo-Json -Depth 8 -Compress))

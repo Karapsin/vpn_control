@@ -10489,7 +10489,8 @@
       "sourceSha256": [
         "d7b537f57165b53c8978f005fed7af3e3b8f09cc690f4bdf28b9063064068893",
         "c4d4d1400e6237cd51e70cbfa03233f230c1f810bf317920e5cd218fcb89ea21",
-        "6705a8697bed6a3b843feece69853f5c28b0c23ab28d80512c17f41809aa3656"
+        "6705a8697bed6a3b843feece69853f5c28b0c23ab28d80512c17f41809aa3656",
+        "4069fab94f36366dae4b9c779cec4c996782411c31a348608994ddeb5c8beced"
       ]
     },
     "agent_tools/tests/test_ssh_program_durable.py": {
@@ -13582,7 +13583,8 @@
       ],
       "sourceSha256": [
         "da7097d70f08f5f9dc2b233c366549600b09ecbdb11bd9e3fee19c4a9b5fe638",
-        "9a1eda56c1360f3672c21fa2ce1a2b52a66e92f5bc2fffaa940f21b311b8386c"
+        "9a1eda56c1360f3672c21fa2ce1a2b52a66e92f5bc2fffaa940f21b311b8386c",
+        "fd26391deedc26bf77b2f7b948e7bb9d6d587c6024e09d4f4741c59f690c1376"
       ]
     },
     "scripts/test_native_fixture_storage.py": {
@@ -13612,7 +13614,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "c44f8ab55b87ba1924c4dc3dec1143bd2f6131a2a40d12c793d2e80a4ec5b50d",
+    "agent_tools/readiness_vm_dispatch.json": "1288d5b7bd5898d9f326eda60be8471b2f88c74ff95f833764e3bca1d842e26c",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",

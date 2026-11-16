@@ -98,6 +98,17 @@ NEW_CODE = "{66666666-7777-4888-8999-AAAAAAAAAAAA}"
 PACKAGE_CODE = "{77777777-8888-4999-8AAA-BBBBBBBBBBBB}"
 VERSION = "2.2.15"
 
+# The system-run template's create-only result file in the workspace (windows_scenario_host_job.RUN_RESULT_LEAF).
+RUN_RESULT_LEAF = "system-run-result.json"
+# How powershell.exe -Command writes an uncaught throw and a failed CIM call to a redirected stderr: a model of the
+# record's shape for the reason words, not a native capture (906a0bb7's own terminal stayed on the VM host).
+CLOSING_THROW = ("BOOTSTRAP_ACTOR_OR_BOOT_CLOSING\r\nAt line:1 char:34\r\n+ $s=[Console]::In.ReadToEnd(); & ([ScriptBlock]::Create($s))\r\n"
+                 "    + CategoryInfo          : OperationStopped: (BOOTSTRAP_ACTOR_OR_BOOT_CLOSING:String) [], RuntimeException\r\n"
+                 "    + FullyQualifiedErrorId : BOOTSTRAP_ACTOR_OR_BOOT_CLOSING\r\n")
+CIM_FAILURE = ("Get-CimInstance : Quota violation\r\nAt line:3 char:6\r\n"
+               "    + CategoryInfo          : NotSpecified: (:) [Get-CimInstance], CimException\r\n"
+               "    + FullyQualifiedErrorId : HRESULT 0x8004106c,Microsoft.Management.Infrastructure.CimCmdlets.GetCimInstanceCommand\r\n")
+
 
 def out_data(value):
     return base64.b64encode(base64.b64encode(gzip.compress(json.dumps(value).encode(), mtime=0))).decode()
@@ -234,6 +245,7 @@ class FakeQga:
         self.run_code = "RUN_SYNTHETIC_CODE"
         self.program_exit = {}
         self.program_stderr = {}
+        self.run_result = True  # Whether the system-run program leaves its durable result file, as the template does.
         self.status_file = None
         self.write_sizes = []
         # The guest's trees and MSI state: what list-tree, read-pins and msi-registration report.
@@ -509,6 +521,12 @@ class FakeQga:
                           "rawStreams": ([stream("stdout", "stdout|scenario-ok"), stream("stderr", "stderr|scenario-ok")] if m["mode"] == "qualification"
                                          else [stream("stdout", ""), stream("stderr", "")])})
             reply.update(self.run_changes)
+        if self.run_result:
+            # The template's create-only result file: its $r, written before the boot-bound closing adds the actor pair.
+            run = {key: value for key, value in reply.items()
+                   if key not in {"bootstrapOpening", "bootstrapClosing", "guestBootClosing", "bootstrapActorClosing"}}
+            self.files[m["workspace"] + "\\" + RUN_RESULT_LEAF] = json.dumps(
+                {"schemaVersion": 1, "operationId": m["operationId"], "runPid": pid, "run": run}).encode()
         return {"exited": True, "exitcode": 0, "out-data": out_data(reply)}
 
 
@@ -816,9 +834,89 @@ class JournalRuleTests(Base):
 
     def test_nonzero_system_run_exit_is_unknown_not_a_refusal(self):
         self.qga.program_exit["system-run"] = 1
+        self.qga.run_result = False  # No durable result: nothing tells what the run left.
         plan, code, receipt = self.run_job()
-        self.assertEqual((3, "system_run_unreadable"), (code, receipt["failure"]))
+        self.assertEqual((3, "system_run_unreadable:exit_1"), (code, receipt["failure"]))
         self.assertFalse(self.fence(plan, ".terminal.json").exists())
+
+    def test_an_unreadable_run_reply_names_why_in_finite_words(self):
+        # Natively (906a0bb7) every one of these was the same system_run_unreadable, and the terminal stayed on the host.
+        def terminal(**fields):
+            return lambda value: {"exited": True, "exitcode": 0, "out-data": out_data(value), **fields}
+
+        def stderr(text):
+            return base64.b64encode(text.encode()).decode()
+        closing = {**self.qga._actor(1), "pid": 1}
+        cases = (
+            ("closing", terminal(exitcode=1, **{"err-data": stderr(CLOSING_THROW)}), "exit_1:BOOTSTRAP_ACTOR_OR_BOOT_CLOSING"),
+            ("wmi", terminal(exitcode=1, **{"err-data": stderr(CIM_FAILURE)}), "exit_1:Get-CimInstance"),
+            ("private-text", terminal(exitcode=1, **{"err-data": stderr("C:\\Users\\private-account\\x NOT_A_SOURCE_CODE")}), "exit_1"),
+            ("stderr", terminal(**{"err-data": stderr("WARNING: something")}), "stderr"),
+            ("signal", lambda value: {"exited": True, "signal": 9}, "signal"),
+            ("truncated", terminal(**{"out-truncated": True}), "truncated"),
+            ("gzip", lambda value: {"exited": True, "exitcode": 0, "out-data": base64.b64encode(b"bm90LWd6aXA=").decode()}, "gzip"),
+            ("empty", lambda value: {"exited": True, "exitcode": 0, "out-data": ""}, "output_bound"),
+            ("custody", lambda value: {"exited": True, "exitcode": 0, "out-data": out_data({**value, "bootstrapClosing": closing})},
+             "custody:transfer_actor_pid"),
+        )
+        for name, change, reason in cases:
+            with self.subTest(name=name):
+                self.setUp()
+                self.qga.run_result = False
+                original = self.qga._system_run
+
+                def changed(m, pid, original=original, change=change):
+                    return change(json.loads(gzip.decompress(base64.b64decode(base64.b64decode(original(m, pid)["out-data"])))))
+                self.qga._system_run = changed
+                plan, code, receipt = self.run_job()
+                self.assertEqual((3, "system_run_unreadable:" + reason), (code, receipt["failure"]))
+                self.assertEqual(1, self.qga.kinds().count("system-run"), "never a second run")
+                self.assertNotIn("private-account", json.dumps(receipt))
+
+    def test_an_unreadable_finished_run_is_read_back_from_its_own_result_and_ends_known(self):
+        self.qga.program_exit["system-run"] = 1
+        self.qga.program_stderr["system-run"] = CLOSING_THROW.encode()
+        plan, code, receipt = self.run_job()
+        self.assertEqual((1, "system_run_unreadable_settled:exit_1:BOOTSTRAP_ACTOR_OR_BOOT_CLOSING", "run", "failed"),
+                         (code, receipt["failure"], receipt["stage"], receipt["result"]))
+        self.assertEqual((True, "task-finished", 3), (receipt["task"]["taskDeleted"], receipt["task"]["state"], receipt["task"]["events"]))
+        self.assertEqual(False, receipt["windows"]["installedPackage"])
+        self.assertEqual(1, self.qga.kinds().count("system-run"), "read back, never run again")
+        self.assertEqual(["system-run", "evidence-zip"], self.qga.kinds()[-2:])
+        self.assertEqual(1, json.loads((Path(plan["dataDirectory"]) / "job-exit.json").read_bytes())["exitCode"])
+        self.assertTrue(self.fence(plan, ".terminal.json").exists(), "a known exit closes the fence")
+        kept = json.loads((Path(plan["dataDirectory"]) / "system-run-result.json").read_bytes())
+        self.assertEqual(("task-finished", plan["operationId"]), (kept["run"]["state"], kept["operationId"]))
+        self.qga.program_exit.clear()
+        _, after, admitted = self.run_job()
+        self.assertEqual((0, None), (after, admitted["failure"]), "the clone admits its next job")
+        self.assertEqual(RUN_RESULT_LEAF, job.RUN_RESULT_LEAF)
+
+    def test_a_durable_result_that_is_open_or_not_this_runs_own_stays_unknown(self):
+        def rewrite(change):
+            def apply(m, pid, original=self.qga._system_run):
+                terminal = original(m, pid)
+                path = m["workspace"] + "\\" + RUN_RESULT_LEAF
+                record = json.loads(self.qga.files[path])
+                change(record, pid)
+                self.qga.files[path] = json.dumps(record).encode()
+                return terminal
+            return apply
+        cases = (("deadline", lambda record, pid: record["run"].update(state="deadline", taskDeleted=False)),
+                 ("not-deleted", lambda record, pid: record["run"].update(taskDeleted=False)),
+                 ("other-pid", lambda record, pid: record.update(runPid=pid + 1)),
+                 ("other-operation", lambda record, pid: record.update(operationId=str(uuid.uuid4()))),
+                 ("product", lambda record, pid: record["run"].update(productOperation=True)),
+                 ("extra-key", lambda record, pid: record.update(note="x")))
+        for name, change in cases:
+            with self.subTest(name=name):
+                self.setUp()
+                self.qga.program_exit["system-run"] = 1
+                self.qga._system_run = rewrite(change)
+                plan, code, receipt = self.run_job()
+                self.assertEqual((3, "system_run_unreadable:exit_1"), (code, receipt["failure"]))
+                self.assertFalse(self.fence(plan, ".terminal.json").exists())
+                self.assertEqual(1, self.qga.kinds().count("system-run"))
 
     def test_a_host_error_before_the_fence_is_a_refusal_and_blocks_nothing(self):
         original = self.rt.open_wires
@@ -1321,6 +1419,19 @@ class ClosedDoorTests(unittest.TestCase):
     def run_template():
         return (ROOT / "agent_tools/windows_scenario_system_run.ps1.template").read_text(encoding="ascii")
 
+    def test_the_run_leaves_its_result_create_only_before_its_closing_and_reply(self):
+        # Natively (906a0bb7) the run's reply did not decode and nothing in the guest held what the run had found.
+        run = self.run_template()
+        write = run.index("'" + RUN_RESULT_LEAF + "'")
+        self.assertLess(run.index("foreach($p in $script:P.pins){try{"), write, "after the body's try and catch: $r is final")
+        self.assertLess(write, run.index("[Console]::WriteLine(($r|ConvertTo-Json -Depth 8 -Compress))"), "before the closing and the reply")
+        line = run[run.rindex("\n", 0, write) + 1:run.index("\n", write)]
+        self.assertTrue(line.startswith("try{") and line.endswith("}catch{}"), "a failed write never changes the reply")
+        for part in ("[IO.FileMode]::CreateNew", "runPid=$PID", "run=$r", "schemaVersion=1;operationId=$m.operationId",
+                     "(Join-Path $m.workspace ", "$runFile.Flush($true)", "-Depth 8 -Compress"):
+            self.assertIn(part, line)
+        self.assertEqual(1, run.count(RUN_RESULT_LEAF))
+
     def test_the_status_file_passes_a_real_null_as_the_replace_backup(self):
         # PowerShell turns $null into '' for a .NET string parameter, and File.Replace refuses ''.
         run = self.run_template()
@@ -1495,6 +1606,9 @@ class SourceTests(Base):
         self.assertIn("-gt 65536", sources["list-tree"])
         self.assertIn("-gt 24576", sources["msi-registration"])
         self.assertIn("-gt 24576", sources["runtime-extract"])
+        run = sources["run"]
+        self.assertLess(run.index("'" + RUN_RESULT_LEAF + "'"), run.index("$bootstrapClosing=Read-ProgramBootstrap"),
+                        "the result is durable before the boot-bound closing can throw")
 
     @unittest.skipUnless(POWERSHELL, "PowerShell parser unavailable; hosted Windows and Linux runners have one")
     def test_every_rendered_source_parses(self):
@@ -2344,6 +2458,20 @@ class RebootFamilyTests(FamilyBase):
         plan, code, failed, kinds = self.run_reboot("windows-reboot-explicit-off.post", preboot=pre["operationId"])
         self.assertEqual((1, "preboot_checkpoint_changed"), (code, failed["failure"]))
         self.assertNotIn("system-run", kinds)
+
+    def test_the_query_row_whose_run_reply_did_not_decode_ends_known_from_its_durable_result(self):
+        # 906a0bb7 natively: windows-query-owner-gui-reconnect ended UNKNOWN system_run_unreadable, and every later job on
+        # the clone refused prior_job_exit_unknown. The run had ended; what it found stayed in the guest unread.
+        self.qga.program_exit["system-run"] = 1
+        self.qga.program_stderr["system-run"] = CLOSING_THROW.encode()
+        plan, code, receipt, kinds = self.run_reboot("windows-query-owner-gui-reconnect")
+        self.assertEqual((1, "system_run_unreadable_settled:exit_1:BOOTSTRAP_ACTOR_OR_BOOT_CLOSING"), (code, receipt["failure"]))
+        self.assertEqual(["system-run", "evidence-zip"], kinds[-2:])
+        self.assertEqual(1, kinds.count("system-run"))
+        self.assertEqual((True, False), (receipt["task"]["taskDeleted"], receipt["windows"]["installedPackage"]))
+        self.qga.program_exit.clear()
+        _, again, passed, _ = self.run_reboot("windows-query-owner-gui-reconnect")
+        self.assertEqual((0, None), (again, passed["failure"]), "no prior_job_exit_unknown")
 
     def test_the_query_row_runs_the_preboot_action_and_declares_nothing(self):
         plan, code, receipt, kinds = self.run_reboot("windows-query-owner-gui-reconnect")

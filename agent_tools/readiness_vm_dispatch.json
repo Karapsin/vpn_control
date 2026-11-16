@@ -22781,7 +22781,7 @@
     "windows_parallel_vm_prepare_transport": "d9e4ee3a6376a8d158fd61aecc577382a90d9434dff0d3a16fcec2f6e284f8bc",
     "windows_parallel_vm_source_inventory": "5d3a087ce2f14f4199948fe6e28715a52ca67ee964e98fe400b598bd2b539110",
     "windows_ps_bootstrap": "16e75497abe7cd6da3367b620143cdd9209a61e078a6e02a94879f281fa9ea79",
-    "windows_scenario_host_job": "3f56df5aea5ac431d320c58b45326c8ea385d322f8c9e0762cdc2cd3b1a4c48f",
+    "windows_scenario_host_job": "466b287697ee435474c5947dff985dc42ccb019ed49f07d014984ef79fd1c827",
     "windows_secure_recovery": "4fd63c18fe3c7fd1a2ac59e32216e63a744d90e089e2468c67529cb6fd081966",
     "windows_uac_decision": "50e0d160fad16a0a321b55094ad0cf3ac1f7fd18d838e84ffa1df12d91a37cd7",
     "windows_uac_visual": "fbe6de0c51935c3dae518d316d4991caaca5aa79176f36b8004f9bcb1d0349d2",

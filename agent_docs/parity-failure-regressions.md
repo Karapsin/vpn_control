@@ -3135,6 +3135,81 @@ The next native run of this row on a package built from this fix must show
 end as the known failure `document-negative-admitted:mutated-sealed-spool` (owner exit 1, the serve quit
 once), with `document-spool-mutation-admitted` naming `CONFLICT`, never as UNKNOWN.
 
+### A run reply that did not decode left the clone UNKNOWN (harness, from 906a0bb7, 2026-11-16)
+
+`windows-query-owner-gui-reconnect` DIRECT `906a0bb7-4879-4b91-8d53-24612b097c92` on clone NC `42d96689`,
+package 2.2.18 of `60017226` (`sha256-14e0c51c...`), after reset `b6e4bf24`, tools of `93b7ac64` (bundle
+`faa5e62a`). Submitted 18:45:51Z, it ended at 18:51:32Z as `job_exit_unknown:system_run_unreadable`: driver
+exit 3 at stage `run`, the run's reply never decoded (task `events` 0, no state), not parked, no evidence.
+Exit 3 is outside `KNOWN_EXITS`, so every later job on NC refuses `prior_job_exit_unknown` and the clone was
+stopped with its disk kept. The same row passed as `30975bc9` (tools of `450b8764`).
+
+What was unreadable is not known. `stage_run` mapped a nonzero exit, a signal, a truncated stream, any
+stderr, a stdout that was not base64, gzip or one JSON object, and every actor or boot custody check of
+`windows_artifact_transfer.decode_guest_result` to the one code, and the terminal that tells them apart
+stayed in the VM root on the VM host (`direct-guest-249e13e6-b9d4-5b6a-a365-c204301710eb.terminal.json`, the
+uuid5 of the operation and `system-run`, beside `qga.wire` in the job's data directory); it was not read
+for this entry. What the evidence does rule out: an oversized reply (a finished run's result holds about
+six event rows, far under the 64 KiB bound), a timeout mid-read (that ends `guest_program_deadline` or
+`guest_exec_status_lost`) and a mix of bundle generations. Not a regression either: the run template,
+`windows_ordinary_task_owner.ps1`, `windows_artifact_transfer.py` and `windows_postboot_action.py` of
+bundle `faa5e62a` equal those of `30975bc9`'s bundle byte for byte, `git diff 60017226 93b7ac64` touches
+none of them nor `stage_run`, `guest_program` or `decode_stdout`, and `faa5e62a` differs from `f0cb6a1c`
+(no-tray-close `8f813bb8` passed through the same run path at 18:11Z) only in the document and SSH relay
+modules and the manifest; document-acceptance `2f9fdc96` and ssh-relay-transfer `c63a36c3` then passed on
+`faa5e62a`. The receipt's `guestPrograms` 23 equals `30975bc9`'s count through `system-run` and the read-only
+`evidence-zip` copy, so that copy ran too and also failed (its known failure is dropped once the code is
+UNKNOWN): two consecutive SYSTEM programs failed at about 18:51Z. The VM host was congested then: the NE2
+create was refused `host memory pressure is not normal` at 18:45Z and NE2 booted on the same host from
+about 18:49Z to 18:50:51Z. Two causes fit both failures and stay unconfirmed: a move of
+`Win32_OperatingSystem.LastBootUpTime`, which Windows shifts when it corrects its clock (the run's closing
+then throws `BOOTSTRAP_ACTOR_OR_BOOT_CLOSING`, and the next program's opening refuses
+`GUEST_BOOT_OR_ACTOR_MISMATCH`), or a failing CIM call in `Read-ProgramBootstrap`. Original output,
+journal, before-images and logs: `.runtime/windows-parity-20261107/evidence/query-unreadable/` of the
+recovery checkout.
+
+Why it stayed UNKNOWN: the run deletes its task and then reaches its boot-bound closing and its reply, and
+nothing in the guest kept what it had found; the owner's journal and the status file do not prove the task
+was deleted. Built offline on `9f5b1995`; nothing below has run natively. RED in an archive of `9f5b1995`
+holding only the changed test module: `Ran 7 tests`, `FAILED (failures=18, errors=2)` on Python 3.14 and 3.12,
+the query row ending `(3, 'system_run_unreadable')`, the native signature. GREEN: the same 7 OK on both.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| An ended program's undecodable reply named nothing | `test_windows_scenario_host_job.JournalRuleTests.test_an_unreadable_run_reply_names_why_in_finite_words`; `test_nonzero_system_run_exit_is_unknown_not_a_refusal` | `unreadable_reason` names the reply in finite words: `exit_<n>` or `stderr`, followed by the first code its stderr names that the rendered program holds as a literal (`RUN_*`, `BOOTSTRAP_ACTOR_OR_BOOT_CLOSING`, `GUEST_OUTPUT_BOUND`) or else the first cmdlet its error record names that the program calls (`Get-CimInstance`); `signal`; `truncated`; `output_bound`, `gzip`, `base64`, `utf8`, `json`, `shape`, `duplicate_key`; `custody:transfer_*`. No other guest text crosses (a private path in stderr stays out). The failure is `system_run_unreadable:<reason>`. RED: all nine cases and the no-result case end with the bare code. |
+| A finished run whose reply did not decode blocked the clone | `RebootFamilyTests.test_the_query_row_whose_run_reply_did_not_decode_ends_known_from_its_durable_result`, `JournalRuleTests.test_an_unreadable_finished_run_is_read_back_from_its_own_result_and_ends_known`, `ClosedDoorTests.test_the_run_leaves_its_result_create_only_before_its_closing_and_reply`, `SourceTests.test_sources_are_ascii_and_within_the_largest_proven_bound`; controls `test_a_durable_result_that_is_open_or_not_this_runs_own_stays_unknown` | The run template now writes `{schemaVersion, operationId, runPid=$PID, run=$r}` create-only to `system-run-result.json` in the SYSTEM workspace (the ordinary user may only read it) after its body and before the boot-bound closing and the reply, inside its own try, so a failed write leaves the reply as it was. On an undecodable reply `Job._unreadable_run` reads that file with the guest agent's file read (no program, no boot binding), keeps it, and accepts it only when it names this operation and the run's own pid with exactly those keys and `productOperation` false. A `task-finished` result whose task was deleted and whose `sourceClosing` holds is the known failure `system_run_unreadable_settled:<reason>` (exit 1), never a pass: the closing custody is unproven, `installedPackage` stays false, the read-only evidence copy follows and the next job is admitted. Nothing is run again. An open state (`deadline`, `owner-parked`, `post-launch-unknown`), a task not deleted, another pid or operation, an extra key or no file stays UNKNOWN `system_run_unreadable:<reason>`. RED: `(3, 'system_run_unreadable')` and no write in the template. |
+
+Pins renewed: `readiness_vm_dispatch.json` `sourcePins.windows_scenario_host_job`, and the selector's
+`nonPythonResources` entry for that manifest. `affected_agent_test_dependencies.json` also takes the current
+digests of `test_ssh_privileged_program.py` and `test_macos_vm_resource_monitor.py`, which `3d8dac11` changed
+without renewing their loader rows (neither changed what it loads). No file of `readiness_windows._source_pins()`
+changed. `906a0bb7` itself stays UNKNOWN: its run wrote no result file, and its job exit is not rewritten.
+
+The next native run of this row (a new operation on a fresh or reset clone; never a replay of `906a0bb7`)
+must show either the pass or, if a reply is again undecodable, the failure word with its reason, for example
+`system_run_unreadable_settled:exit_1:BOOTSTRAP_ACTOR_OR_BOOT_CLOSING`, `system-run-result.json` kept in the
+job's data directory, exit 1 and the next job on that clone admitted. A reason naming the boot closing or
+`Get-CimInstance` decides between the two causes above; for the former, the evidence-zip terminal of the same
+job should show `GUEST_BOOT_OR_ACTOR_MISMATCH` with a moved `lastBootUpTimeFileTimeUtc`.
+
+### A deny decision call refused `uac_transport_unsubmitted` under host congestion (native, 2026-11-16)
+
+`windows-scoped-tun.restart-deny` DIRECT `9be1f7a6-4b8f-4b44-802e-c8f3078b1102` on clone ND `192e5a3d`,
+package 2.2.18 of `60017226`, tools of bundle `f0cb6a1c`, reset `fa1bbc48`. The token
+`uac-pending:vpn-broker:deny` was seen at 18:01:40Z; decision call 1 (decision `10ce297e`) refused
+`uac_transport_unsubmitted` after 159.5 s: its gates took 0.7 s and the packet reached the transport at 19.6 s,
+which never submitted it by its 112 s deadline. No key was sent. The refusal is typed and permits another
+submit (`submitAgain` true), but the prompt expired first; the guest job ended exit 0 with its task deleted and
+not parked, and collection stayed `collector_unavailable` with no decision terminal to join: unsettled, not a
+pass. The Mac was at load about 24 (qualify calls 140 to 200 s) with the NE OOBE watch and an NC row in flight.
+The retry `63c2290f-62d9-4a83-b82d-1412f81cd860` (new reset `4f4496e0`, no other guest submission in flight)
+had its decision call 1 answered `input-ack-only`, attempt 1, prompt closed, in 16.94 s and PASSED. Output:
+`.runtime/windows-parity-20261107/family/d6D3-deny.out`, `d7D3-deny.out`, copied to `evidence/query-unreadable/failure/`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A UAC decision packet was not submitted within its deadline under host congestion (ENVIRONMENT) | existing `test_windows_uac_decision.ExecuteInputTests.test_a_typed_unsubmitted_transport_refusal_permits_another_submit` | No defect: the decision refused before any effect, sent no key, and allowed another submit, as designed. Recorded so a second occurrence is recognised. Run a UAC decision row with no other guest submission, clone bring-up or qualify loop in flight on the same hosts. |
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals
