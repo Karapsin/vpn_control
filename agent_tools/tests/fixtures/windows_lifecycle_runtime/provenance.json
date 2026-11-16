@@ -196,20 +196,20 @@
       "sha256": "1b62f857e627770be43057749f527128f573b89885590310ad51d95443c0b928"
     },
     "agent_tools/windows_tun_native_observer.py": {
-      "bytes": 12819,
+      "bytes": 19423,
       "currentRoleAdjustment": "Remove exactly one extra EOF newline from the canonical current observer role; complete AST unchanged. originalPath/originalSourceSha256 retain the source-exact historical origin.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/tun_native_observer.py",
       "originalSourceBytes": 12820,
       "originalSourceSha256": "ec5256d42208585695e1566df5697c8c4c010631258876e08a1ea61874172de1",
-      "sha256": "e8510e0d2fe42a73e7c8a1c5550a18c6292293681fb10472abf2a668f3721135"
+      "sha256": "5b64377c177bad09bbb1becf66a7b907797267111afe95534c1a465ca1a95828"
     },
     "agent_tools/windows_tun_stages.py": {
-      "bytes": 38413,
+      "bytes": 43476,
       "currentRoleAdjustment": "Finish waits 300 s, past the prompt's lifetime, and a known CANCELLED on a grant is a known failure. On the scenario route every input is the job's own: the frame handoff is gone, uacDecisionId is windows-uac-decision's one decision for this operation, and a closing census and a direct sampler are added. A final refusal of the request, a final code the variant does not expect or a cancelled grant is a known end that settles the lease for its closing census, and a denial must keep pending B selected. A grant asks the driver's handoff for its collector's ready record only after the product's own OK, and its machine records join the row's source, which the driver keeps on the lease. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v3/tun_stages.py",
       "originalSourceBytes": 15407,
       "originalSourceSha256": "aca0ca635e813b57b3c1047ad32dc619bf059c5909b50145078d379b32c93a9a",
-      "sha256": "77e34257823047ccd3bfe6fdd0b3106484d355e6fd716ce9a32ce0e8e675211b"
+      "sha256": "b230ae385502c4e793943a5b44d39ef9e8e0fd5782b2c2c63ac45021f9e1b9c3"
     }
   },
   "schemaVersion": 1,

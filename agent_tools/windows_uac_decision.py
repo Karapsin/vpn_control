@@ -147,6 +147,12 @@ ROWS = {
                                          "field": "variant", "value": variant, "variant": None,
                                          "sidEvent": "scoped-tun-awaiting-current-input", "sidField": "expectedApprovingAdminSid"}
        for variant in ("generated-grant", "custom-grant", "large-grant", "vpn-commit-failure")},
+    # windows_tun_reserved_cases: two grants on the collector route and the squat row, approved with no collector. Each
+    # publishes its one awaiting event only after its correlation journal (and the squat folder) exists.
+    **{"windows-scoped-tun." + variant: {"prompt": "vpn-broker", "decision": "approve", "event": "scoped-tun-awaiting-current-input",
+                                         "field": "variant", "value": variant, "variant": None,
+                                         "sidEvent": "scoped-tun-awaiting-current-input", "sidField": "expectedApprovingAdminSid"}
+       for variant in ("resources-grant", "ssh-grant", "stage-squat")},
 }
 # Reached only through execute(direct=True), never through MCP: the first rung of a direct proof, one name per answer.
 DIRECT_ROWS = {

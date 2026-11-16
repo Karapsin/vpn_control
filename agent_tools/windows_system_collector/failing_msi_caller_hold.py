@@ -13,7 +13,7 @@ from pathlib import PureWindowsPath
 import sys
 import time
 
-PROTOCOL_SHA = 'ab4e9d11d03d58f4f7400f7488fd6c18d7c10f3738c7d4af52a4dd0950998d4d'
+PROTOCOL_SHA = 'd755cba69a6b31ac4e8829c12c6fbc02d445d9c412a5dc4b095bf11c4c4b315e'
 RECEIPTS_SHA = '5e2e406b82d4a446ab971f27918b3b0f110e67e3eb8cae971b0bfe4256aa71ec'
 INVALID_HANDLE = ctypes.c_void_p(-1).value
 

@@ -2907,6 +2907,36 @@ still read the file past that deny, which is as strong a proof as before.
 | --- | --- | --- |
 | A census test over the interpreter's image named the test runner, whose argv is over the bound | `test_windows_update_grant_collectors.WindowsHarnessPremiseTests.test_no_census_runs_over_a_shared_image` (offline; RED on the `89b2e9c6` sources: 2 of 3 subtests); native: `WindowsCensusTests`, `WindowsReaderTests.test_the_publisher_backup_open_and_census` | Test premise. Only the next Windows CI run confirms the native tests. |
 | An icacls edit left a grant that let the elevated runner read a file meant to be SYSTEM's alone | `WindowsHarnessPremiseTests.test_the_system_alone_file_is_set_whole_and_read_back` (offline; RED on `89b2e9c6`); native: `WindowsReaderTests` `setUp` | Test premise. The surviving grant was not observed. Only CI confirms. |
+### Windows scoped-TUN reserved cases, offline build (2026-11-16)
+
+`dns-ws-ssh-cache-resources` and `pipe-storage-races` had no row (`()` reserved) and no
+case module. Five failure types close here, each with RED on an archive of `786cfda9` plus
+the final test modules and GREEN on the fix, identical on Python 3.14 and 3.12
+(`test_windows_tun_reserved`, with the two touched `test_windows_tun_grant` tests):
+
+- Rows unbuilt (`TableTests`, 5 tests): RED failures=1, errors=10 (no row, decision row or
+  driver role). The scenario table now maps `dns-ws-ssh-cache-resources` to
+  `windows-scoped-tun.resources-grant` and `.ssh-grant`, and `pipe-storage-races` to
+  `.stage-squat` and `.resources-grant`; each has its one `vpn-broker` approve decision row.
+- Stages hooks (`StagesHookTests`, 6 tests): RED errors=16 (`begin` takes no case). A
+  resources row's refused capture before its request, the case's journal step before the
+  decision's one event, and the squat's own `CONFLICT` terminal, which alone passes.
+- Case module (`Case*`, `BeforeDecision`, `Window`, `SshWindow`, `AfterOff`, 17 tests):
+  RED failures=17 (no `windows_tun_reserved_cases`).
+- Stage observation (`StageObservationTests` and the real-observer grant test, 5 tests): RED
+  errors=13. The TUN collector's ready record now carries `observations.stage` (the runtime's
+  stage, its entries, every `path` with its context, the cache, local rule-set digests, and
+  each ssh outbound's key form with only the public fingerprint of an inline key) and
+  `helperInvocation.pipeName` from the broker's own argv, joined to the owner and runtime.
+- Driver route (`DriverReservedTests` and the variant-set test, 4 tests): RED failures=2,
+  errors=3 (`dedicated-finite-proxy-variants-only`).
+
+The collector source changed, so its contract pin and the whole SYSTEM collector chain's
+pins were re-derived to a fixpoint. Nothing has run natively: the stage's ACL reads by
+SYSTEM, the broker's command line through `NtQueryInformationProcess`, the product's
+terminal codes for the refused capture (`UNSUPPORTED`) and the squat (`CONFLICT`), sing-box's
+acceptance of the custom config (h3, `clash_api`), the cache publication, and the SSH chain
+under the TUN are all for the first direct discovery run (TEST-007).
 
 ## Historical coverage rule
 

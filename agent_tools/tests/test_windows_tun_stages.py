@@ -901,7 +901,8 @@ class GeneratedInputTests(unittest.TestCase):
              "file:fixture": "C:\\w\\fixture.py", "file:socks": "C:\\w\\socks.py", "file:https": "C:\\w\\https.py",
              "file:certificate": "C:\\w\\c.pem", "file:privateKey": "C:\\w\\c.key", "file:trustStore": "C:\\w\\t.jks",
              "file:tun": "C:\\w\\windows_tun_stages.py", "file:sampler": SAMPLER, "file:samplerInput": SAMPLER_INPUT,
-             "file:branches": "C:\\w\\windows_runtime_branch_cases.py"}
+             "file:branches": "C:\\w\\windows_runtime_branch_cases.py",
+             "file:reserved": "C:\\w\\windows_tun_reserved_cases.py", "file:relay": "C:\\w\\windows_ssh_relay_fixture.py"}
     ADMISSIONS = {"installed": "sha256-" + "a" * 64, "material": "m", "context": "windows-context-" + "b" * 64, "fixture": "f", "source": "s"}
     TUN = {"administratorSid": ADMIN, "decisionId": str(uuid.uuid4()), "collectorSourceSha256": "c" * 64}
     # The close hold the host job builds for a grant's one TUN collector (hold_protocol.validate_inputs' fields).

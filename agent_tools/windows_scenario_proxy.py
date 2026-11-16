@@ -30,11 +30,15 @@ TRAFFIC_VARIANTS = frozenset({"gui-pending", *BRANCH_VARIANTS, *SCHEDULED_VARIAN
 # where its runtime config has the generated TUN, the direct sampler. The configuration and fault variants add their own
 # location from the proxy rows' branch cases (windows_tun_stages.PENDING names it).
 TUN_VARIANTS = ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant", "generated-grant", "custom-grant", "large-grant",
-                "vpn-prepare-failure", "vpn-commit-failure")
-TUN_GRANT_VARIANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant", "custom-grant", "large-grant"})
-TUN_SAMPLED_VARIANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant"})
+                "vpn-prepare-failure", "vpn-commit-failure", "resources-grant", "ssh-grant", "stage-squat")
+TUN_GRANT_VARIANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant", "custom-grant", "large-grant", "resources-grant",
+                                "ssh-grant"})
+TUN_SAMPLED_VARIANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant", "resources-grant", "ssh-grant"})
 TUN_PENDING = {"generated-grant": "Owned generated", "custom-grant": "Owned CUSTOM", "large-grant": "Owned large CUSTOM",
                "vpn-prepare-failure": "Owned prepare failure", "vpn-commit-failure": "Owned commit failure"}
+# windows_tun_reserved_cases' rows: their pinned case module (and ssh-grant's relay) and their own pending location.
+TUN_RESERVED_VARIANTS = frozenset({"resources-grant", "ssh-grant", "stage-squat"})
+TUN_RESERVED_PENDING = {"resources-grant": "Owned resources", "stage-squat": "Owned resources"}
 PROGRAM_DATA = "C:\\ProgramData"
 # Role -> workspace leaf of every file this module writes; the trafficInput role only where a sampler runs.
 GENERATED = {"harness": "proxy-harness.py", "certificate": "proxy-localhost.pem", "privateKey": "proxy-localhost.key",
@@ -209,7 +213,7 @@ def tun_inputs(variant, *, paths, admissions, tun):
     operation and the pinned TUN collector source, beside the paths and admissions of this same row."""
     if type(tun) is not dict or set(tun) != {"administratorSid", "decisionId", "collectorSourceSha256"}:
         raise ValueError("tun_inputs")
-    value = {"schemaVersion": 1, "variant": variant, "pendingLocation": TUN_PENDING.get(variant, "Owned B"),
+    value = {"schemaVersion": 1, "variant": variant, "pendingLocation": {**TUN_PENDING, **TUN_RESERVED_PENDING}.get(variant, "Owned B"),
              "runtimeConfigPath": paths["productWorkspace"] + "\\runtime-config.json", "guiPath": paths["installed"] + "\\vpn-control.exe",
              "installedAdmissionArtifactId": admissions["installed"], "ordinaryContextArtifactId": admissions["context"],
              "expectedApprovingAdminSid": tun["administratorSid"], "uacDecisionId": tun["decisionId"], "programData": PROGRAM_DATA,
@@ -267,6 +271,10 @@ def harness(variant, *, operation, paths, runtime_sha256, source_sha, admissions
         value["modules"]["tun"] = paths["file:tun"]
         if variant in TUN_PENDING:
             value["modules"]["branches"] = paths["file:branches"]
+        if variant in TUN_RESERVED_VARIANTS:
+            value["modules"]["reserved"] = paths["file:reserved"]
+        if variant == "ssh-grant":
+            value["modules"]["relay"] = paths["file:relay"]
         value["tun"] = tun_inputs(variant, paths=paths, admissions=admissions, tun=tun)
     family = "windows-scoped-tun." if variant in TUN_VARIANTS else "windows-proxy-lifecycle."
     text = ('"""Literal inputs of ' + family + variant + ' for one operation; no other statement runs."""\n'

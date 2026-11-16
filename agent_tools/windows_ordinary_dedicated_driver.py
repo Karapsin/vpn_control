@@ -33,10 +33,10 @@ FIXTURE_WORKER_SHA = "cc30090de39143e260ad1b5e33aea4c5da0de8557118ec1c3b323ccf14
 SOCKS_SHA = "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210"
 HTTPS_SHA = "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4"
 TRAFFIC_SHA = "c37423c7627e6972eff2b7d717904f9b07fdaeb5b1d880d1606559b58d2e2e2d"
-CALLER_SHA = "492ea5c97d8fdbff0c0cda68fed4ad35d8402ed6257b7c0107abc32f436a18b8"
-PROTOCOL_SHA = "a0fa7bd75f89062a7eb928afa64d5715b101811182a9e4a66a3d11a4013d7a77"
-CONTRACT_SHA = "e585148559a47731e0864e28d7a1b5ea99f997ca4f26a502782d5d9e81d365bd"
-SYSTEM_WORKER_SHA = "0d47eead9a733d7c98fc57e845836785497bc3be91a2b0f6cb61d7bef853cf9e"
+CALLER_SHA = "d55f932c3e247737b24ededf9c7ab1e5cbe39d43d83f59385b757b1c51d53125"
+PROTOCOL_SHA = "8c3a0b5958bf5360fa0f926e4cc0797bc262a9a43a5caf6d869985b6949e620f"
+CONTRACT_SHA = "4dfe9888c752a7df04965101ec6946a5b2a81c8bc1050a4a69b92bbb249ef0d4"
+SYSTEM_WORKER_SHA = "e6b7e726e31744c3fe0e3dfd96b547244c03980525f63804f3cab5855dbd4967"
 NO_SYSTEM = frozenset({"public-ready", "download-cancelled", "checksum-rejected"})
 FINAL_TERMINAL = frozenset({"uac-denied", "install-cancelled"})
 FINAL_RETURNED = frozenset({"participating-copy-lock", "native-install-failed", "success-off",
@@ -53,15 +53,22 @@ BRANCH_VARIANTS = CONFIG_VARIANTS | FAILURE_VARIANTS | {"sibling-off"}
 # direct sampler. The fault variants are the TUN halves of the proxy rows' preparation and commit-readiness failures: no
 # TUN comes up, so they have no hold and never ask a collector. These five add their location from the proxy rows'
 # branch cases.
+# The reserved cases (windows_tun_reserved_cases, one pinned role) add resources-grant and ssh-grant, two more grants on
+# the same collector route that also run the direct sampler, and stage-squat, approved with no collector: its broker
+# refuses, so no TUN comes up.
+RESERVED_VARIANTS = frozenset({"resources-grant", "ssh-grant", "stage-squat"})
 TUN_VARIANTS = frozenset({"restart-deny", "restart-grant", "find-best-deny", "find-best-grant", "generated-grant", "custom-grant",
-                          "large-grant", "vpn-prepare-failure", "vpn-commit-failure"})
-TUN_GRANT_VARIANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant", "custom-grant", "large-grant"})
-TUN_SAMPLED_VARIANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant"})
+                          "large-grant", "vpn-prepare-failure", "vpn-commit-failure"}) | RESERVED_VARIANTS
+TUN_GRANT_VARIANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant", "custom-grant", "large-grant", "resources-grant",
+                                "ssh-grant"})
+TUN_SAMPLED_VARIANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant", "resources-grant", "ssh-grant"})
 TUN_CONFIG_VARIANTS = frozenset({"generated-grant", "custom-grant", "large-grant"})
 TUN_BRANCH_VARIANTS = TUN_CONFIG_VARIANTS | {"vpn-prepare-failure", "vpn-commit-failure"}
-TUN_SHA = "77e34257823047ccd3bfe6fdd0b3106484d355e6fd716ce9a32ce0e8e675211b"
+RESERVED_SHA = "913bfe4a03ac124154cff14089cb931ca357c16094107af37434e81964f764c7"
+RELAY_SHA = "b903710460bf8d5ff28dcccdc9a39eaf0756a3ce0a62a62c474b3b6af1d7c753"  # ssh-grant's in-guest SSH relay
+TUN_SHA = "b230ae385502c4e793943a5b44d39ef9e8e0fd5782b2c2c63ac45021f9e1b9c3"
 SAMPLER_SHA = "e2915de32a47f46251e1af807f181950ceb120d2e3d998c8b3c679645553a697"  # A grant's direct TUN sampler
-TUN_COLLECTOR_SHA = "e8510e0d2fe42a73e7c8a1c5550a18c6292293681fb10472abf2a668f3721135"  # windows_tun_native_observer: COLLECTORS["tun"]
+TUN_COLLECTOR_SHA = "5b64377c177bad09bbb1becf66a7b907797267111afe95534c1a465ca1a95828"  # windows_tun_native_observer: COLLECTORS["tun"]
 NATIVE_NEED = "update-native-observation-needed"  # The one native-need kind the SYSTEM run reports (windows_scenario_system_run).
 TUN_EVIDENCE = "tun-evidence-"  # windows_tun_native_observer.publish: its machine records under ProgramData
 TUN_RECORD_BYTES = 262144
@@ -255,6 +262,10 @@ def lifecycle_inputs(owner, value):
         roles["tun"] = TUN_SHA
     if value["variant"] in TUN_BRANCH_VARIANTS:
         roles["branches"] = BRANCH_SHA  # The location documents of the proxy rows' branch cases, nothing else of them.
+    if value["variant"] in RESERVED_VARIANTS:
+        roles["reserved"] = RESERVED_SHA
+        if value["variant"] == "ssh-grant":
+            roles["relay"] = RELAY_SHA
     if scheduled:
         roles["scheduled"] = SCHEDULED_SHA
     if no_tray:
@@ -541,7 +552,7 @@ def run_lifecycle(owner, cases, harness):
             raise
         return known_failure(owner, cases, runtime, branches, observer, started, inputs, error)
     workspace, identity = state["workspace"], state["identity"]
-    tun = lease = hold = None
+    tun = lease = hold = reserved = None
     outcome = {}
     try:
         if inputs["variant"] in TUN_VARIANTS:
@@ -551,8 +562,14 @@ def run_lifecycle(owner, cases, harness):
                 # Armed before the request. Until the TUN came up and its collector was asked, nothing waits on it.
                 caller = owner.module(grant["callerPath"], "_owned_dedicated_caller_hold")
                 hold = caller.CallerCollectionHold(owner, grant["inputs"])
-            lease = tun.begin(owner, state, inputs["tun"], runtime, cases, observer,
-                              **({"branches": branches} if inputs["variant"] in TUN_BRANCH_VARIANTS else {}))
+            if inputs["variant"] in RESERVED_VARIANTS:
+                module = owner.module(inputs["modules"]["reserved"], "_owned_dedicated_tun_reserved")
+                relay = owner.module(inputs["modules"]["relay"], "_owned_dedicated_tun_relay") if "relay" in inputs["modules"] else None
+                reserved = module.Case(owner, inputs["variant"], relay=relay)
+                lease = tun.begin(owner, state, inputs["tun"], runtime, cases, observer, reserved=reserved)
+            else:
+                lease = tun.begin(owner, state, inputs["tun"], runtime, cases, observer,
+                                  **({"branches": branches} if inputs["variant"] in TUN_BRANCH_VARIANTS else {}))
             if grant is None:
                 outcome = tun.finish(owner, lease, runtime, cases, observer)
             else:
@@ -569,8 +586,12 @@ def run_lifecycle(owner, cases, harness):
                     tun.configuration(owner, lease, branches)
                 if inputs["variant"] in TUN_SAMPLED_VARIANTS:
                     tun.traffic(owner, lease)
+                if reserved is not None:
+                    reserved.window(lease, tun)  # The reserved case inside the same ready-to-off window.
                 tun.begin_off(owner, lease, runtime)
                 tun.finish_off(owner, lease, tun_record(owner, lease, receipts, "off"), receipts)
+                if reserved is not None:
+                    reserved.after_off(lease)
         elif inputs["variant"] == "gui-pending":
             gui = dict(inputs["gui"], stateDir=str(workspace), controllerId=identity,
                 observerPath=inputs["modules"]["observer"], runtimeConfigPath=str(workspace / "runtime-config.json"),
@@ -618,6 +639,8 @@ def run_lifecycle(owner, cases, harness):
             tun_census(owner, tun, lease, observer)  # No broker, scoped runtime, private stage or TUN route is left.
         if inputs["variant"] in TUN_BRANCH_VARIANTS:
             branches.close_fixture_files_after_off(owner, state, runtime)  # The location document, kept on disk.
+        if reserved is not None:
+            reserved.close()
         runtime.stop_fixture(owner, state)
         cases.read(owner, workspace, identity, "quit")
     except AssertionError as error:
@@ -631,7 +654,12 @@ def run_lifecycle(owner, cases, harness):
             # A grant's collector was asked: it waits on this owner's hold, which only a passed driver releases.
             owner.park("dedicated-tun-failure-with-original-collector-hold", error)
         census = None if lease is None or lease.get("closed") else lambda: tun_census(owner, tun, lease, observer)
-        return close_hold(owner, hold, known_failure(owner, cases, runtime, branches, observer, state, inputs, error, census))
+        try:
+            result = known_failure(owner, cases, runtime, branches, observer, state, inputs, error, census)
+        finally:
+            if reserved is not None:
+                reserved.close()  # The in-guest relay's threads, once the product's off no longer needs them.
+        return close_hold(owner, hold, result)
     originals = [state["serve"], *(child for child in owner.children if child.label == "lifecycle-gui")]
     for child in originals:
         terminal = child.wait()

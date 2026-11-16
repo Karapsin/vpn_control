@@ -160,16 +160,23 @@ def _proxy_row(variant: str) -> dict[str, Any]:
 # windows-scoped-tun.<variant>: windows_tun_stages through the same action and runtime as the proxy rows. Active proxy A,
 # pending VPN B, then an async restart or find-best raises the vpn-broker prompt, which only windows-uac-decision answers.
 TUN_VARIANTS = ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant", "generated-grant", "custom-grant", "large-grant",
-                "vpn-prepare-failure", "vpn-commit-failure")
+                "vpn-prepare-failure", "vpn-commit-failure", "resources-grant", "ssh-grant", "stage-squat")
 _TUN_FILES = (("agent_tools/windows_tun_stages.py", "tun", "data"),)
 # A grant has the TUN SYSTEM collector; only a grant whose runtime config has the generated TUN runs the direct sampler.
-_TUN_GRANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant", "custom-grant", "large-grant"})
-_TUN_SAMPLED = frozenset({"restart-grant", "find-best-grant", "generated-grant"})
+_TUN_GRANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant", "custom-grant", "large-grant", "resources-grant",
+                         "ssh-grant"})
+_TUN_SAMPLED = frozenset({"restart-grant", "find-best-grant", "generated-grant", "resources-grant", "ssh-grant"})
 # The configuration and fault variants add their location from the proxy rows' branch cases (its documents only).
 _TUN_BRANCH = frozenset({"generated-grant", "custom-grant", "large-grant", "vpn-prepare-failure", "vpn-commit-failure"})
 _TUN_BRANCH_FILES = (("agent_tools/windows_runtime_branch_cases.py", "branches", "data"),)
 # The product refuses a preparation failure before it asks for the broker: no prompt, so no decision row and no join.
 _TUN_PROMPTLESS = frozenset({"vpn-prepare-failure"})
+# The reserved cases of dns-ws-ssh-cache-resources and pipe-storage-races (windows_tun_reserved_cases): resources-grant and
+# ssh-grant are grants on the restart grant's collector route; ssh-grant adds the in-guest SSH relay. stage-squat is
+# approved but has no collector: its broker refuses the stage the ordinary user made first, so no TUN comes up.
+_TUN_RESERVED = (("agent_tools/windows_tun_reserved_cases.py", "reserved", "data"),)
+_TUN_RESERVED_VARIANTS = frozenset({"resources-grant", "ssh-grant", "stage-squat"})
+_TUN_RELAY = (("agent_tools/windows_ssh_relay_fixture.py", "relay", "data"),)
 _TUN_SAMPLER = (("agent_tools/windows_tun_direct_sampler.py", "sampler", "data"),)
 # A grant's TUN SYSTEM collector: the read-only observer the pinned contract names for scope tun and the receipts module
 # it and the driver's record handoff read machine records with, beside the collector chain and the caller's close hold.
@@ -188,7 +195,8 @@ def _tun_row(variant: str) -> dict[str, Any]:
     grant, sampled = variant in _TUN_GRANTS, variant in _TUN_SAMPLED
     row = _worker_row("product", "windows-proxy-lifecycle", ("targetPackage",),
                       _PROXY_FILES + _TUN_FILES + (_TUN_SAMPLER if sampled else ()) + ((*_TUN_COLLECTOR, *_COLLECTOR_FILES) if grant else ())
-                      + (_TUN_BRANCH_FILES if variant in _TUN_BRANCH else ()), prior=True, deadline=3600)
+                      + (_TUN_BRANCH_FILES if variant in _TUN_BRANCH else ())
+                      + (_TUN_RESERVED + (_TUN_RELAY if variant == "ssh-grant" else ()) if variant in _TUN_RESERVED_VARIANTS else ()), prior=True, deadline=3600)
     row.update(proxy={"variant": variant},
                tun={"variant": variant, **({"collectorStages": ("tun",), "finalStage": "tun"} if grant else {})},
                generated=(("harness", "proxy-harness.py"), ("certificate", "proxy-localhost.pem"), ("privateKey", "proxy-localhost.key"),
@@ -1408,8 +1416,14 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
         # one's TUN carries the direct sampler, a CUSTOM document defines no TUN and its traffic half is the proxy row's.
         "generated-custom-config": (_P + "generated", _P + "custom", _T + "generated-grant", _T + "custom-grant"),
         "large-config": (_P + "large", _T + "large-grant"),  # PRX(large) and TUN(config), the document beyond the inline limit.
-        "dns-ws-ssh-cache-resources": (),  # Reserved: no case module.
-        "pipe-storage-races": (),  # Reserved: no case module.
+        # windows_tun_reserved_cases, each inside an approved broker's own row: resources-grant (the capture refused before any
+        # prompt, the correlation journal before the decision, URL-context paths, the staged cache and rule set, the cache
+        # published back after off, the stage removed) and ssh-grant (the managed key inline in the stage only, the TUN
+        # traffic over the SSH chain of the imported key).
+        "dns-ws-ssh-cache-resources": (_T + "resources-grant", _T + "ssh-grant"),
+        # stage-squat (the stage the ordinary user made first refused with CONFLICT, untouched, A and pending B kept) and
+        # resources-grant's window (the broker's pipe refuses a second client and a same-name instance).
+        "pipe-storage-races": (_T + "stage-squat", _T + "resources-grant"),
         "ordinary-autostart-migration": ("windows-autostart-migration.pre", "windows-autostart-migration.post"),
     },
     "windows-owner-lifecycle": {

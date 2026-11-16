@@ -11,7 +11,7 @@ EMPTY_SHA256 = hashlib.sha256(b'').hexdigest()
 RECEIPTS_SHA = '5e2e406b82d4a446ab971f27918b3b0f110e67e3eb8cae971b0bfe4256aa71ec'
 COLLECTORS = {
     'update': '7c23f177a701b7e553cccc1fc4ec9de1fadde8991e451050e64e94539da36a8b',
-    'tun': 'e8510e0d2fe42a73e7c8a1c5550a18c6292293681fb10472abf2a668f3721135',
+    'tun': '5b64377c177bad09bbb1becf66a7b907797267111afe95534c1a465ca1a95828',
 }
 INPUT_FIELDS = frozenset(('schemaVersion', 'collectorOperationId', 'collectorRoot', 'scope', 'stage',
     'sourceSha', 'systemContractSourceSha256', 'systemWorkerSourceSha256', 'collectorSourceSha256', 'receiptsPath'))

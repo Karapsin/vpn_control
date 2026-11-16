@@ -41,7 +41,8 @@ WINDOWS_SCENARIOS = frozenset({  # Rows live in native_scenario_windows; a varia
         "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated", "custom", "large",
         "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh", "no-tray-close")),
     *("windows-scoped-tun." + variant for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant",
-                                    "generated-grant", "custom-grant", "large-grant", "vpn-prepare-failure", "vpn-commit-failure")),
+                                    "generated-grant", "custom-grant", "large-grant", "vpn-prepare-failure", "vpn-commit-failure",
+                                    "resources-grant", "ssh-grant", "stage-squat")),
     *("windows-public-update." + variant for variant in (
         "public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "install-cancelled", "participating-copy-lock",
         "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect", "success-explicit-off",

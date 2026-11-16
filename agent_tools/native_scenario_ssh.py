@@ -45,7 +45,8 @@ SCENARIO_ARTIFACT_KEYS = {
         "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh", "no-tray-close")},
     **{"windows-scoped-tun." + variant: frozenset({"bundleManifest", "scenarioInput", "targetPackage"})
        for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant",
-                        "generated-grant", "custom-grant", "large-grant", "vpn-prepare-failure", "vpn-commit-failure")},
+                        "generated-grant", "custom-grant", "large-grant", "vpn-prepare-failure", "vpn-commit-failure",
+                        "resources-grant", "ssh-grant", "stage-squat")},
     **{"windows-public-update." + variant: frozenset({"bundleManifest", "scenarioInput", "targetPackage", "fixtureReceipt"})
        for variant in ("public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "install-cancelled", "participating-copy-lock",
                        "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect",

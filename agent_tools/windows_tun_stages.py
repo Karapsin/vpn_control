@@ -26,18 +26,22 @@ from pathlib import Path
 import socket
 import uuid
 
+# The reserved cases (windows_tun_reserved_cases) restart into their own pending location: resources-grant and ssh-grant
+# are grants with the collector and sampler; stage-squat is approved but its broker refuses, so no TUN comes up.
+RESERVED_VARIANTS = frozenset({'resources-grant','ssh-grant','stage-squat'})
 VARIANTS = frozenset({'restart-grant','restart-deny','find-best-grant','find-best-deny',
-    'generated-grant','custom-grant','large-grant','vpn-prepare-failure','vpn-commit-failure'})
+    'generated-grant','custom-grant','large-grant','vpn-prepare-failure','vpn-commit-failure'})|RESERVED_VARIANTS
 # Approved variants whose TUN SYSTEM collector proves the broker and its runtime from the ready record to the off record.
-GRANTS = frozenset({'restart-grant','find-best-grant','generated-grant','custom-grant','large-grant'})
+GRANTS = frozenset({'restart-grant','find-best-grant','generated-grant','custom-grant','large-grant','resources-grant','ssh-grant'})
 # Grants whose runtime config is the product's generated VPN config, with its TUN inbound: only through that TUN may the
 # direct sampler run. A CUSTOM document in VPN mode keeps its own inbounds and these define no TUN, so the sampler's
 # benchmark address would leave the guest: custom-grant and large-grant never sample.
-SAMPLED = frozenset({'restart-grant','find-best-grant','generated-grant'})
+SAMPLED = frozenset({'restart-grant','find-best-grant','generated-grant','resources-grant','ssh-grant'})
 # Each configuration or fault variant's own location, added from a document before it is selected.
 CONFIGS = {'generated-grant':'Owned generated','custom-grant':'Owned CUSTOM','large-grant':'Owned large CUSTOM'}
 FAULTS = {'vpn-prepare-failure':'Owned prepare failure','vpn-commit-failure':'Owned commit failure'}
-PENDING = {**dict.fromkeys(('restart-grant','restart-deny','find-best-grant','find-best-deny'),'Owned B'),**CONFIGS,**FAULTS}
+PENDING = {**dict.fromkeys(('restart-grant','restart-deny','find-best-grant','find-best-deny','ssh-grant'),'Owned B'),
+    **dict.fromkeys(('resources-grant','stage-squat'),'Owned resources'),**CONFIGS,**FAULTS}
 # windows_runtime_branch_cases.custom_config's kind for each CUSTOM document.
 DOCUMENT_KIND = {'custom-grant':'custom','large-grant':'large','vpn-prepare-failure':'prepare-failure',
     'vpn-commit-failure':'commit-readiness-failure'}
@@ -73,7 +77,7 @@ def settled(lease):
     """The row's own operation is final and nothing of it can still run elevated: a denial, a known end, or a grant
     after its exact off. Until then any failure parks the owner; once settled, a failure closes as a known one."""
     return lease['finished'] is True and (lease['inputs']['variant'].endswith('deny') or 'knownEnd' in lease
-                                          or 'faultRecovered' in lease or lease.get('offFinished') is True)
+                                          or 'faultRecovered' in lease or 'conflictEnd' in lease or lease.get('offFinished') is True)
 
 
 def guest_filetime():
@@ -179,7 +183,32 @@ def document(owner, state, variant, branches):
     return {'name':name,'path':str(path),'original':original,'sizeBytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
 
 
-def begin(owner, state, inputs, runtime, cases, observer, branches=None):
+def capture_refused(owner, state, inputs, runtime, cases, observer, reserved, known):
+    """resources-grant, before its own request: a config the ordinary capture refuses ends in the product's UNSUPPORTED
+    with A as before, the refused location pending, and no broker, stage, route or correlation journal: before any prompt.
+
+    From this request until that is shown a failure parks, as for the row's own request; then nothing is open."""
+    for tail in (('locations','select',reserved.REFUSED),('settings','set','mode','vpn')):
+        status=runtime.result(owner,state['workspace'],state['identity'],'status')
+        runtime.result(owner,state['workspace'],state['identity'],'--if-revision',str(status['configurationRevision']),*tail)
+    pending=runtime.result(owner,state['workspace'],state['identity'],'status')
+    require(pending['restartRequired'] is True and pending['data']['configuredMode']=='vpn'
+            and pending['data']['selectedLocationId']!=known['before']['data']['activeLocationId'],
+            'scoped-tun-refused-pending-not-established')
+    owner.tun_operation_requested=True
+    accepted=runtime.result(owner,state['workspace'],state['identity'],'--async','restart',final=False,codes=('ACCEPTED',))
+    body=reserved.terminal(state,accepted,{'UNSUPPORTED'})
+    status=runtime.result(owner,state['workspace'],state['identity'],'status')
+    kept(state,inputs,known['before'],pending,known['initial'],status,cases,observer)
+    found=unscoped(inputs,observer,state,known['baseline'])
+    require(reserved.journals(state['workspace'])=={},'scoped-tun-refused-capture-left-a-journal')
+    owner.tun_operation_requested=False  # Nothing is open: the refusal ended before any prompt or broker.
+    owner.event('scoped-tun-capture-refused-before-prompt',{'variant':inputs['variant'],'terminal':body,'status':status,
+        'census':found,'journals':0,'replayAllowed':False})
+    return body
+
+
+def begin(owner, state, inputs, runtime, cases, observer, branches=None, reserved=None):
     variant=inputs.get('variant') if type(inputs) is dict else None
     sampled=variant in SAMPLED
     require(type(inputs) is dict and set(inputs)==FIELDS|(SAMPLER_FIELDS if sampled else set()) and inputs['schemaVersion']==1
@@ -192,6 +221,9 @@ def begin(owner, state, inputs, runtime, cases, observer, branches=None):
             and inputs['expectedApprovingAdminSid']!=owner.request['context']['ordinarySid'],
             'scoped-tun-fixed-pending-location-admin-role')
     require(inputs['uacDecisionId']==decision_id(owner.request['operationId']),'scoped-tun-route-decision')
+    require((reserved is not None)==(inputs['variant'] in RESERVED_VARIANTS)
+            and (reserved is None or reserved.variant==inputs['variant'] and reserved.pending==inputs['pendingLocation']),
+            'scoped-tun-reserved-case-binding')
     require(os.name=='nt' and Path(inputs['programData'])==Path(os.environ['ProgramData']),
             'scoped-tun-current-programdata-context')
     # Before any change: no broker and no TUN route exist, and these are the stages and runtimes not of this row.
@@ -202,6 +234,13 @@ def begin(owner, state, inputs, runtime, cases, observer, branches=None):
             and before['restartRequired'] is False, 'scoped-tun-active-proxy-a')
     config=cases.LiveConfig(owner,state['workspace'],inputs['runtimeConfigPath'])
     actual={k:before['data'][k] for k in ('activeLocationId','activeMode','runtimeId','runtimeStartedAt')}
+    if reserved is not None:
+        # The reserved case's own pending location (and SSH route); nothing restarts here.
+        require(reserved.prepare(state,runtime)==inputs['pendingLocation'],'scoped-tun-reserved-pending-location')
+        require(config.snapshot()==config.initial,'pending-b-mutated-active-a')
+        if inputs['variant']=='resources-grant':
+            capture_refused(owner,state,inputs,runtime,cases,observer,reserved,
+                            {'before':before,'initial':config.initial,'baseline':baseline})
     added=None if branches is None else document(owner,state,variant,branches)
     tails=(('locations','select',PENDING[variant]),('settings','set','mode','vpn'))
     if added is not None:
@@ -251,6 +290,10 @@ def begin(owner, state, inputs, runtime, cases, observer, branches=None):
         owner.event('scoped-tun-request-accepted',{'accepted':accepted,'variant':variant,'document':added,
             'promptExpected':False,'replayAllowed':False})
         return lease
+    if reserved is not None:
+        # Before the decision may answer: a mutable job's correlation journal, and a squat row's folder at its stage.
+        lease['reserved']=reserved
+        lease['beforeDecision']=reserved.before_prompt(state)
     # windows-uac-decision's census reads this event's variant and expectedApprovingAdminSid; it is published once.
     owner.event('scoped-tun-awaiting-current-input', {'accepted':accepted,'variant':inputs['variant'],
         'ordinarySid':owner.request['context']['ordinarySid'],
@@ -333,6 +376,8 @@ def finish(owner, lease, runtime, cases, observer, handoff=None, receipts=None):
     SYSTEM collector's ready record only now: the collector finds the broker and its runtime only once they run."""
     require(lease in owner.tun_operation_leases and not lease['finished'],'scoped-tun-finish-once')
     state=lease['state'];variant=lease['inputs']['variant'];denied=variant.endswith('deny');native_record=None
+    if variant=='stage-squat':
+        return squat_finish(owner,lease,runtime,cases,observer)
     # The default wait parks at 120 s, about as long as a prompt lives, so it must outlast the prompt.
     # Every final code the stages know is read; one this variant does not expect is known only as checked below.
     terminal=runtime.finish_operation(owner,state,lease['accepted'],
@@ -460,6 +505,27 @@ def configuration(owner, lease, branches):
         'runtimeConfig':{'sizeBytes':len(raw),'sha256':observed['sha256']},'tunInbound':bool(tun),
         'directSamplerAllowed':variant in SAMPLED,'replayAllowed':False})
     return actual
+
+
+def squat_finish(owner, lease, runtime, cases, observer):
+    """stage-squat: the approved broker finds its stage already there and refuses with CONFLICT. A and pending B stay,
+    the squat folder is exactly as created, and nothing scoped is left once the case removed its own folder. An expired
+    prompt is the grant's own known CANCELLED, with the same checks."""
+    state,reserved=lease['state'],lease['reserved']
+    terminal=reserved.terminal(state,lease['accepted'],{'CONFLICT','CANCELLED'})
+    status=runtime.result(owner,state['workspace'],state['identity'],'status')
+    kept(state,lease['inputs'],lease['before'],lease['pending'],lease['activeConfig'].initial,status,cases,observer)
+    reserved.squat_kept_and_removed()
+    found=unscoped(lease['inputs'],observer,state,lease['baseline'])
+    if terminal['code']=='CANCELLED':
+        lease.update(finished=True,knownEnd='CANCELLED')
+        owner.event('scoped-tun-grant-cancelled-known',{'variant':'stage-squat','terminal':terminal,'status':status,
+            'census':found,'knownFailure':True,'replayAllowed':False})
+        return {'terminal':terminal,'status':status,'nativeRecord':None,'cancelled':True}
+    lease.update(finished=True,conflictEnd='CONFLICT')
+    owner.event('scoped-tun-stage-squat-refused',{'terminal':terminal,'status':status,'census':found,
+        'jobId':reserved.job,'activeAKept':True,'pendingBKept':True,'replayAllowed':False})
+    return {'terminal':terminal,'status':status,'nativeRecord':None}
 
 
 def begin_off(owner,lease,runtime):

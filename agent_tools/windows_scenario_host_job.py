@@ -2869,6 +2869,10 @@ class Job:
         """A TUN row whose approved broker and runtime its one SYSTEM collector observes from ready to off."""
         return not self.update and TUN_STAGE in self._collector_stages()
 
+    def _tun_approved(self):
+        """A TUN row whose prompt the decision approves: a grant on the collector route, or stage-squat, which has none."""
+        return not self.update and bool(self.row.get("tun")) and (self.row.get("uac") or {}).get("decision") == "approve"
+
     def _grant(self):
         """A row whose owner hands a committed install to the helper: its collectors observe that installer job."""
         return "authorization" in self.update["collectorStages"]
@@ -3554,9 +3558,10 @@ class Job:
                                                          "administratorSid": self.fixture_administrator_sid}
                     if self.backup_reads:
                         receipt["update"]["backupReads"] = len(self.backup_reads)
-                if self._tun_grant():
+                if self._tun_grant() or self._tun_approved():
                     # What the first native runs must show: the controller, the approved broker and its runtime as the
                     # SYSTEM census found them, elevated as the approving administrator, and their parents as recorded.
+                    # An approved row with no collector (stage-squat) names only its known end, which collect joins.
                     receipt["tun"] = {"variant": self.row["tun"]["variant"],
                                       "collectors": {stage: (None if record is None else {"requestSha256": record["requestSha256"],
                                                                                            "released": record["release"] is not None})

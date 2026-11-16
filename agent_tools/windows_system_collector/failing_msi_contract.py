@@ -11,7 +11,7 @@ import re
 import uuid
 
 FIXED = {
-    'holdProtocol': 'ab4e9d11d03d58f4f7400f7488fd6c18d7c10f3738c7d4af52a4dd0950998d4d',
+    'holdProtocol': 'd755cba69a6b31ac4e8829c12c6fbc02d445d9c412a5dc4b095bf11c4c4b315e',
     'taskGuard': '8105ad57f5140e6caef6fd21848f34d1684a00ca7c9e54ce64908211260844c1',
     'nativeBridge': '88ad6bbbf8b309bb641017d035bdf6688d37ac5d6e506bcffd4122203850a955',
     'native': 'ee28050bd0e33166956cc4f4ac68ca10cc89c30c01ae93468379895fee268a18',
@@ -20,10 +20,10 @@ FIXED = {
 }
 COLLECTORS = {
     'update': '7c23f177a701b7e553cccc1fc4ec9de1fadde8991e451050e64e94539da36a8b',
-    'tun': 'e8510e0d2fe42a73e7c8a1c5550a18c6292293681fb10472abf2a668f3721135',
+    'tun': '5b64377c177bad09bbb1becf66a7b907797267111afe95534c1a465ca1a95828',
 }
 TASK_OWNER_SHA='ba9afe8db7e35b18c380327534a884f3e284a11ff5f7bffb660685dc4dca86b6'
-CALLER_HOLD_SHA='1bcf0896dbc11c4a854f2df4a55b75225dab87479aeccb1132a060bda7cb663f'
+CALLER_HOLD_SHA='0db093948c9c439d1234e5460120cb4662fc3637a7c46ea2d7d79bcba6072c3c'
 FAULT_SOURCES={'failingMsi':'3941f950cf19c010130fb128449569402498a46e3c82fdc97a7f94783e6d7e33','faultConsumer':'ae20e4b1a268af6a222ce9a530c811171fe44e26a50f07b3aac3b3ba82f48af4'}
 PYTHON_REQUIRED = {'python.exe','python313.dll','Lib/os.py','Lib/subprocess.py',
                    'Lib/threading.py','Lib/json/__init__.py','Lib/ctypes/__init__.py','DLLs/_ctypes.pyd'}

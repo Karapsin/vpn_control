@@ -1258,27 +1258,40 @@ the TUN's own address, `172.19.250.1`, before it connects: under Windows' strong
 send a packet from that address leaves only through the interface that holds it, and
 once the TUN is gone the bind itself fails and nothing is sent.
 
-Two scoped-VPN scenarios still have no row. `dns-ws-ssh-cache-resources` must show,
-with an approved broker: the captured config keeps `path` only in URL contexts
-(`https` and `h3` DNS servers, `ws`, `http` and `httpupgrade` transports, the `http`
-outbound; anything else is refused by the ordinary capture before any prompt);
-`experimental.cache_file` runs from the broker's protected per-job stage
-(`ProgramData\vpn-control-vpn-<job>`, its correlation journal in the workspace
-before the prompt) and is published back to the user's path after off; a managed
-SSH key reaches the broker inline while the persisted runtime config keeps
-`private_key_path` and never gains `private_key`; and captured resources, such as
-a local rule set, are what the runtime reads even after the original changes, with
-every stage removed after off. The guest cannot host an SSH endpoint without a
-download or a Windows feature (OpenSSH Server is an optional feature, and Python's
-standard library has no SSH server), so SSH traffic cannot be proved there.
-`pipe-storage-races` must show, with an approved broker: a stage path the ordinary
-user creates first (predictable only for a job with a mutable resource, from its
-pre-prompt correlation journal) is refused with `CONFLICT`, never deleted,
-followed or written, with A and pending B intact; and during a session the broker's
-single-instance pipe refuses a second same-user client (`ERROR_PIPE_BUSY`) and a
-same-name instance (`ERROR_ACCESS_DENIED`). A connect-first racer before admission
-is not deterministic, so the peer-PID checks stay with the product's own tests. Both
-need case modules on the grant's collector route, so neither has a name yet.
+The two reserved scoped-VPN scenarios run `windows_tun_reserved_cases` through three rows; the
+driver loads that pinned module only for them and hands its one `Case` to the stages.
+
+- `resources-grant` restarts into the custom location `Owned resources`. Before its own request it
+  restarts into `Owned resources refused` (an `external_ui` path), and the product's own
+  `UNSUPPORTED` must end that with A and the refused location pending, no broker, stage, route or
+  correlation journal: refused before any prompt. Its own request then publishes the decision's
+  event only once the workspace holds exactly one `.runtime-resource-job-<job>.json`. In the
+  window the TUN collector's ready record (`observations.stage`) must show the stage
+  `ProgramData\vpn-control-vpn-<job>`; every `path` of its captured config in a URL context
+  (`https` and `h3` DNS servers, `ws`, `httpupgrade` and `http` transports, the `http`
+  outbound) with the original value and none elsewhere; the cache file and the local rule set
+  inside the stage; and the stage's rule-set copy with the original's bytes. The original then
+  changes to reject the sampler's address and the direct sampler must still pass. The broker's
+  pipe, which the collector reads from the broker's own argv (`helperInvocation.pipeName`, joined
+  to the owner's PID, creation time, SID and the runtime digest), must refuse a second client of
+  the same user (`ERROR_PIPE_BUSY`) and a same-name instance (`ERROR_ACCESS_DENIED`). After the off
+  the cache file must be the user's again, and the closing census shows the stage removed.
+- `ssh-grant` restarts into `Owned B` with the SSH route of CONFIG-004 through
+  `windows_ssh_relay_fixture` (key imported on stdin from the fixture folder). The stage's ssh
+  outbound must hold `private_key` inline, whose public half (the only key fact the collector
+  records) is the imported key's, and no `private_key_path`; the persisted runtime config must keep
+  `private_key_path` and no `private_key`; a sampler run must add at least one relay egress per
+  sample, all towards the selected location, over sessions of the imported key.
+- `stage-squat` is approved with no collector or hold. Once the journal names the job, the
+  ordinary user creates the stage folder with a canary before the decision's event. The approved
+  broker must end the request with `CONFLICT`, A and pending B as before, and the folder, canary
+  and their identities unchanged (not deleted, followed or written); the case then removes its own
+  folder before the census. An expired prompt is the grant's own known `CANCELLED`.
+
+`dns-ws-ssh-cache-resources` maps to resources-grant and ssh-grant, `pipe-storage-races` to
+stage-squat and resources-grant. A connect-first racer before admission is not deterministic, so
+the peer-PID checks stay with the product's own tests; a squat that is a reparse point (a
+followed link) is not built. None of the three rows has run natively.
 
 `windows-public-update.<variant>` runs one `update_cases` variant through the
 dedicated driver as the ordinary user. The update server, its CONNECT proxy and

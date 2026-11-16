@@ -88,6 +88,8 @@ _SCENARIOS = {
         "agent_tools/windows_tun_stages.py",
         "agent_tools/windows_tun_direct_sampler.py",
         "agent_tools/windows_tun_native_observer.py",
+        # The reserved TUN cases (resources-grant, ssh-grant, stage-squat); ssh-grant's relay is the SSH relay row's above.
+        "agent_tools/windows_tun_reserved_cases.py",
         # The scheduled-refresh row: the owner's own scheduled refresh with no GUI, sampled by the traffic worker above.
         "agent_tools/windows_lifecycle_scheduled_cases.py",
         # The no-tray-close row: the owned desktop with no notification area and its case, sampled by the same worker.

@@ -9,11 +9,121 @@ import ctypes
 import hashlib
 from pathlib import Path, PureWindowsPath
 from ctypes import wintypes as W
+import json
+import os
 import re
+
+STAGE=re.compile('vpn-control-vpn-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')  # windows-vpn-broker.cs
+STAGE_ENTRIES=256
 
 
 def require(value, code):
     if not value:raise ValueError(code)
+
+
+def command_line(process):
+    """The process's own command line from its PEB, through the handle the custody already holds (QUERY_LIMITED)."""
+    n=process.native.n
+    query=n.NtQueryInformationProcess
+    query.argtypes,query.restype=(W.HANDLE,ctypes.c_ulong,ctypes.c_void_p,ctypes.c_ulong,ctypes.POINTER(ctypes.c_ulong)),ctypes.c_long
+    size=ctypes.c_ulong(0);buffer=ctypes.create_string_buffer(65536+64)
+    require(query(process.handle,60,buffer,len(buffer),ctypes.byref(size))==0,'tun-helper-command-line-read')
+    class UnicodeString(ctypes.Structure):
+        _fields_=[('length',ctypes.c_ushort),('maximum',ctypes.c_ushort),('buffer',ctypes.c_void_p)]
+    text=UnicodeString.from_buffer(buffer)
+    require(0<text.length<=65534 and text.length%2==0,'tun-helper-command-line-bound')
+    return ctypes.wstring_at(text.buffer,text.length//2)
+
+
+def split(text):
+    """CommandLineToArgvW: how the broker's own Main received its arguments."""
+    shell=ctypes.WinDLL('shell32',use_last_error=True)
+    convert=shell.CommandLineToArgvW
+    convert.argtypes,convert.restype=(W.LPCWSTR,ctypes.POINTER(ctypes.c_int)),ctypes.POINTER(W.LPWSTR)
+    count=ctypes.c_int(0);values=convert(text,ctypes.byref(count))
+    require(bool(values) and 0<count.value<=16,'tun-helper-command-line-split')
+    try:return [values[index] for index in range(count.value)]
+    finally:ctypes.windll.kernel32.LocalFree(values)
+
+
+def helper_invocation(request, process):
+    """The broker's pipe, from its own argv: [image, pipe, owner pid, owner creation, owner SID, runtime digest].
+
+    The pipe exists only there (the job census reads argv too); the rest must name this row's owner and runtime."""
+    argv=split(command_line(process));owner=request['ownerActor']
+    require(len(argv)==6 and STAGE.fullmatch(argv[1]) and argv[2]==str(owner['pid'])
+            and argv[3]==str(owner['creationFileTime']) and argv[4]==request['context']['ordinarySid']
+            and argv[5]==request['runtimeImageSha256'],'tun-helper-invocation')
+    return {'pipeName':argv[1]}
+
+
+def path_rows(value, context=()):
+    """Every `path` key of a sing-box config: its context (arrays as *), its object's type and its value."""
+    rows=[]
+    if type(value) is dict:
+        for key,child in value.items():
+            if key=='path':
+                rows.append({'context':'.'.join(context),'type':value.get('type'),'value':child if type(child) is str else None})
+            else:rows+=path_rows(child,context+(key,))
+    elif type(value) is list:
+        for child in value:rows+=path_rows(child,context+('*',))
+    return rows
+
+
+def public_fingerprint(text):
+    """The public half of an inline OpenSSH private key, as OpenSSH prints its fingerprint; None for anything else.
+
+    The container's header holds the public key blob before any private field, so nothing secret is decoded."""
+    import base64,struct
+    lines=text.strip().splitlines() if type(text) is str else []
+    if len(lines)<3 or lines[0]!='-----BEGIN OPENSSH PRIVATE KEY-----' or lines[-1]!='-----END OPENSSH PRIVATE KEY-----':
+        return None
+    try:body=base64.b64decode(''.join(lines[1:-1]),validate=True)
+    except ValueError:return None
+    magic=b'openssh-key-v1\0'
+    if not body.startswith(magic):return None
+    at=len(magic)
+    for _ in range(3):  # cipher, kdf, kdf options
+        if at+4>len(body):return None
+        at+=4+struct.unpack('>I',body[at:at+4])[0]
+    if at+8>len(body) or struct.unpack('>I',body[at:at+4])[0]!=1:return None
+    size=struct.unpack('>I',body[at+4:at+8])[0];blob=body[at+8:at+8+size]
+    if len(blob)!=size:return None
+    return 'SHA256:'+base64.b64encode(hashlib.sha256(blob).digest()).decode('ascii').rstrip('=')
+
+
+def stage_observation(owner, receipts, request):
+    """The broker's protected stage as SYSTEM reads it: the runtime image's parent under ProgramData, its entries, and
+    from its captured config every `path`, the cache file, the local rule sets with their bytes' digests, and each ssh
+    outbound's key form with the public fingerprint of an inline key. Nothing here judges: the cases do."""
+    image=receipts.canonical_path(request['runtimeImagePath'])
+    stage=image.parent
+    require(image.name.casefold()=='sing-box.exe' and STAGE.fullmatch(stage.name)
+            and stage.parent==receipts.canonical_path(request['context']['programData']),'tun-runtime-private-stage')
+    names=os.listdir(str(stage))
+    require(len(names)<=STAGE_ENTRIES,'tun-stage-entry-bound')
+    observed=receipts.FileObservation(owner,str(stage/'config.json'))
+    try:config=json.loads(observed.read(32*1024*1024));security=observed.opening['security']
+    finally:observed.close()
+    require(type(config) is dict,'tun-stage-config-object')
+    cache=(config.get('experimental') or {}).get('cache_file')
+    rule_sets=[]
+    for item in (config.get('route') or {}).get('rule_set') or []:
+        if type(item) is not dict or item.get('type')!='local':continue
+        path=item.get('path')
+        # Only a copy inside the protected stage is read: SYSTEM never opens a path the user's config named elsewhere.
+        if type(path) is not str or not str(receipts.canonical_path(path)).casefold().startswith(str(stage).casefold()+'\\'):
+            rule_sets.append({'tag':item.get('tag'),'path':path,'sha256':None,'sizeBytes':None});continue
+        held=receipts.FileObservation(owner,path)
+        try:raw=held.read(32*1024*1024)
+        finally:held.close()
+        rule_sets.append({'tag':item.get('tag'),'path':path,'sha256':hashlib.sha256(raw).hexdigest(),'sizeBytes':len(raw)})
+    ssh=[{'tag':item.get('tag'),'privateKeyInline':type(item.get('private_key')) is str,'privateKeyPath':'private_key_path' in item,
+          'inlinePublicFingerprint':public_fingerprint(item.get('private_key'))}
+         for item in config.get('outbounds') or [] if type(item) is dict and item.get('type')=='ssh']
+    return {'path':str(stage),'name':stage.name,'entries':sorted(names),'configSecurity':security,'paths':path_rows(config),
+            'cache':None if type(cache) is not dict else {'enabled':cache.get('enabled'),'path':cache.get('path')},
+            'ruleSets':rule_sets,'ssh':ssh}
 
 
 def source_guard(owner, request):
@@ -94,8 +204,11 @@ class TunCustody:
             observations['configuration']={'sha256':hashlib.sha256(raw).hexdigest(),'sizeBytes':len(raw),
                 'nativeFile':config.opening}
         finally:config.close()
+        # The reserved cases read the broker's protected stage and its pipe only through this record.
+        observations['stage']=stage_observation(self.owner,self.receipts,r)
+        invocation=helper_invocation(r,helper)
         self.current_live()
-        self.ready={**self.identity('ready'),'observations':observations,'helperModules':modules,
+        self.ready={**self.identity('ready'),'observations':observations,'helperModules':modules,'helperInvocation':invocation,
             'runtimeParentPid':parents[r['runtimeActor']['pid']],'readOnly':True,
             'trafficAndPublicOperationCorrelationStillRequired':True}
 

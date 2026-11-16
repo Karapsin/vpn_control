@@ -446,11 +446,12 @@ class DriverGrantTests(unittest.TestCase):
         self.assertNotIn("start-runtime", self.owner.calls)
 
     def test_only_the_grants_reach_the_collector_route(self):
-        # The configuration grants (T8, test_windows_tun_variants) take the same route as the restart and Find Best grants.
-        self.assertEqual(frozenset({"restart-grant", "find-best-grant", "generated-grant", "custom-grant", "large-grant"}),
-                         dedicated_driver.TUN_GRANT_VARIANTS)
+        # The configuration grants (T8, test_windows_tun_variants) and the reserved cases' two grants (test_windows_tun_reserved)
+        # take the same route as the restart and Find Best grants.
+        self.assertEqual(frozenset({"restart-grant", "find-best-grant", "generated-grant", "custom-grant", "large-grant", "resources-grant",
+                                    "ssh-grant"}), dedicated_driver.TUN_GRANT_VARIANTS)
         self.assertEqual(frozenset({"restart-deny", "restart-grant", "find-best-deny", "find-best-grant", "generated-grant", "custom-grant", "large-grant",
-                         "vpn-prepare-failure", "vpn-commit-failure"}), dedicated_driver.TUN_VARIANTS)
+                         "vpn-prepare-failure", "vpn-commit-failure", "resources-grant", "ssh-grant", "stage-squat"}), dedicated_driver.TUN_VARIANTS)
         self.assertEqual(contract.COLLECTORS["tun"], getattr(dedicated_driver, "TUN_COLLECTOR_SHA", None))
         self.assertEqual(sha((ROOT / "agent_tools/windows_tun_native_observer.py").read_bytes()), contract.COLLECTORS["tun"])
         self.owner = DedicatedDispatchPeer(self.root)
@@ -765,8 +766,16 @@ class TunGrantFamilyTests(FamilyBase):
                                                                    boot_identifier=lambda: body["context"]["bootIdentifier"]),
                                       guard=lambda: None,
                                       by_path={str(Path(tun_observer.__file__)).casefold(): types.SimpleNamespace(record={"sha256": body["collectorSourceSha256"]})})
-        with mock.patch.object(update_receipts, "FileObservation", Config):
+        # The broker's stage holds the runtime it started, and its argv names the owner and runtime this job found.
+        argv = [BROKER_PATH, PIPE, str(JVM_PID), str(JVM_BIRTH), SID, sha(RUNTIME_BYTES)]
+        with mock.patch.object(update_receipts, "FileObservation", Config), \
+                mock.patch.object(tun_observer.os, "listdir", lambda path: ["config.json", "runtime.log", "sing-box.exe"]), \
+                mock.patch.object(tun_observer, "command_line", lambda process: "broker command line"), \
+                mock.patch.object(tun_observer, "split", lambda text: list(argv)):
             custody = tun_observer.collect_ready(body, owner, update_receipts, observing)
+        stage = custody.ready["observations"]["stage"]
+        self.assertEqual((STAGE, [], [], None), (stage["path"], stage["paths"], stage["ssh"], stage["cache"]))
+        self.assertEqual({"pipeName": PIPE}, custody.ready["helperInvocation"])
         self.assertEqual([JVM_PID, BROKER_PID, RUNTIME_PID], [expected["pid"] for _, expected, _ in custody.handles])
         self.assertEqual({"sha256": sha(CONFIG), "sizeBytes": len(CONFIG)}, {key: custody.ready["observations"]["configuration"][key] for key in ("sha256", "sizeBytes")})
         signaled.update({BROKER_PID, RUNTIME_PID})  # The product's own off ended exactly these two.
