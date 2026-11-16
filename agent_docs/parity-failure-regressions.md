@@ -3287,7 +3287,33 @@ restart exits without touching its outputs.
 | Behaviour | Regression | Notes |
 | --- | --- | --- |
 | A restarted job reran its command and replaced its outputs | `test_launchd_escape.RestartedJobTests` | Preserved `fixtures/launchd_escape/launchd_escape.before.source`: two starts of its `job.sh` run the command twice (RED); the current script runs it once and keeps out/err (GREEN). Portable POSIX, routine agent suite. |
-| A relayed command longer than 10 s lost its output | `test_launchd_escape.RelayTests.test_long_command_keeps_its_complete_output_and_runs_once` | macOS only (real launchd). RED with the preserved relay installed: `(0, '', '', 2)`; GREEN: complete stdout/stderr and one run. Logs: `evidence/integrate-speed/launchd-relay-{red,green}.log`. |
+| A relayed command longer than 10 s lost its output | `test_launchd_escape.RealLaunchdTests.test_long_command_keeps_its_complete_output_and_runs_once` | macOS only (real launchd). RED with the preserved relay installed: `(0, '', '', 2)`; GREEN: complete stdout/stderr and one run. Logs: `evidence/integrate-speed/launchd-relay-{red,green}.log`. |
+
+### launchd relay limits, environment, selection and cleanup (review-speed 4-8, 2026-11-17)
+
+Found by the independent review of `bf8d2da2` (`evidence/review-speed/REVIEW.md`, findings 4-8). The
+`launchctl submit` job ran with launchd's soft nofile 256 (caller 1048576) and launchd's SSH_AUTH_SOCK/XPC_*;
+that is the cause of the relay-only `test_tmux_public_intent_race` failures (`'submitted' != 'unknown'`,
+reproduced with `ulimit -n 256`). `_run` escaped every command bounded at 30 minutes or more, including
+`scripts/visual_review.py` (it posts GitHub statuses) and the SSH keeper child. A SIGKILLed relay left a job
+that launchd restarted every ~10 s until logout; a lost exit status waited for the outer timeout; a non-zero
+`submit` that had loaded the job could run the command both ways. Fix (`agent_tools/launchd_escape.py`,
+`managed_agent_check.background_escape`, the escape line in `mcp_server._run`): a `gui/<uid>` plist job
+(RunAtLoad, KeepAlive=false, ExitTimeOut, SoftResourceLimits = the caller's soft nofile/nproc/core/stack),
+`env -i` plus exactly the caller's environment, a `started` marker the direct fallback must claim first,
+137 for a job that ended without a status, self-bootout plus a watchdog for a vanished relay, a startup sweep
+of `vpncontrol.check.*` labels past their bound or relay, and argv-only opt-in selection (private agent
+runner plus a named allowlist of local pure-Python checks). Preserved unfixed sources:
+`fixtures/launchd_escape/{launchd_escape,managed_agent_check,mcp_server}.bf8d2da2.before.source`.
+
+| Behaviour | Regression | Notes |
+| --- | --- | --- |
+| `_run` escaped visual_review, the SSH keeper child and Gradle by timeout | `test_launchd_escape.RunSelectionRedGreenTests` | The exact unfixed `_run` + `background_escape` wrap all three (RED); the current ones run them directly and wrap only the allowlist (GREEN). `SelectionTests` enumerates native, guest, SSH, VM, release, remote, visual-review and keeper argv and every literal `_run` command and check-plan entry. Portable. |
+| A failed submit after the job started ran the command twice | `FakeLaunchdTests.test_failed_bootstrap_after_the_job_started_ran_twice_RED_runs_once_GREEN` | Fake `launchctl` that starts the job and then fails: unfixed runs 2, current 1. Portable. |
+| A lost exit status hung until the outer timeout | `FakeLaunchdTests.test_lost_exit_status_hung_RED_returns_137_quickly_GREEN`; `RestartedJobTests.test_restart_after_a_lost_status_left_none_RED_current_writes_137_GREEN`; `RealLaunchdTests.test_lost_exit_status_returns_137_quickly_and_leaves_no_label` | Unfixed still running after 12 s; current 137 in under 10 s (real launchd: 1.5 s). |
+| A SIGKILLed relay left its job | `FakeLaunchdTests.test_sigkilled_relay_left_its_job_RED_job_stops_and_removes_itself_GREEN`; `RealLaunchdTests.test_no_label_or_process_remains_after_exit_sigterm_or_sigkill` | Unfixed job never removed; current job stops the command and boots itself out. |
+| The job got launchd's limits and environment | `FakeLaunchdTests.test_job_gets_exactly_the_caller_environment_and_soft_limits`; `RealLaunchdTests.test_unfixed_relay_gave_launchd_limits_and_environment_RED`, `test_status_streams_cwd_exact_environment_and_limits` | Unfixed: nofile 256 and SSH_AUTH_SOCK/XPC_SERVICE_NAME (RED); current: the caller's soft limits and exact environment (GREEN). |
+| Stale labels were never swept | `FakeLaunchdTests.test_startup_sweep_removes_labels_past_their_bound_or_relay` | Labels past their bound or with a dead relay (and legacy submit labels with a dead relay) are removed; live ones are kept. |
 
 ## Historical coverage rule
 

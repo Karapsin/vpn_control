@@ -54,8 +54,7 @@ else:
     sys.path.insert(0,repository)
     from agent_tools import check_output_retention,local_build_environment,managed_agent_check
     names={'_run','_display','_bounded','_failure_log_excerpt'}
-    # HEAVY_COMMAND_SECONDS (the launchd escape bound) exists only in the current launcher.
-    constants={'MAX_OUTPUT_CHARS','HEAVY_COMMAND_SECONDS'}
+    constants={'MAX_OUTPUT_CHARS'}
     body=ast.parse(source.read_bytes()).body
     chosen=[node for node in body if isinstance(node,ast.FunctionDef) and node.name in names
             or isinstance(node,ast.Assign) and len(node.targets)==1 and getattr(node.targets[0],'id',None) in constants]

@@ -118,22 +118,50 @@ BACKGROUND_ESCAPE_DISABLE = "VPN_CONTROL_LAUNCHD_ESCAPE"
 BACKGROUND_ESCAPE_MARKER = "VPN_CONTROL_LAUNCHD_ESCAPED"
 
 
-def background_escape(command, *, platform=None, environ=None, which=None, python=None, relay=None):
-    """Prefix a heavy command with the launchd relay on macOS; unchanged elsewhere.
+# Opt-in: besides the private agent runner, only these CPU-bound local checks, each
+# pure Python with no subprocess, network, Gradle, SSH, guest, VM or release effect.
+# Native, guest, SSH, VM and release actions, scripts/visual_review.py (it posts
+# GitHub statuses), the SSH keeper child, git/gh and Gradle always run directly.
+BACKGROUND_ESCAPE_PYTHON_SCRIPTS = frozenset({
+    "scripts/check_ui_theme.py",
+    "scripts/test_visual_regression.py",
+})
+BACKGROUND_ESCAPE_COMMANDS = frozenset({
+    ("./scripts/check_localization.py",),
+    ("./scripts/status_catalog_tool.py", "check"),
+})
+
+
+def background_escape_eligible(root: Path, command, python=None) -> bool:
+    """Only the private agent-runner argv and the named local checks above."""
+    command = [str(part) for part in command]
+    if is_private_command(root, command):
+        return True
+    return ((len(command) == 2 and command[0] == (python or sys.executable)
+             and command[1] in BACKGROUND_ESCAPE_PYTHON_SCRIPTS)
+            or tuple(command) in BACKGROUND_ESCAPE_COMMANDS)
+
+
+def background_escape(command, *, root=None, bound=None, platform=None, environ=None, which=None, python=None,
+                      relay=None):
+    """Prefix an opted-in check with the launchd relay on macOS; any other command is unchanged.
 
     The agent-session tmux tree runs at Darwin background priority and children
     inherit it (agent tests ran 5-7x slower). Only a launchd-parented job escapes
-    without sudo. VPN_CONTROL_LAUNCHD_ESCAPE=0 disables it; a missing relay file or
-    launchctl keeps the command unchanged.
+    without sudo. The selection is the argv itself (background_escape_eligible),
+    never the caller's timeout. VPN_CONTROL_LAUNCHD_ESCAPE=0 disables it; a missing
+    relay file or launchctl keeps the command unchanged. `bound` (seconds) lets a
+    later relay sweep a job whose relay vanished.
     """
     import shutil
-    from pathlib import Path
     environ = os.environ if environ is None else environ
     platform = sys.platform if platform is None else platform
     which = shutil.which if which is None else which
+    root = Path(__file__).resolve().parents[1] if root is None else Path(root)
     relay = Path(__file__).resolve().with_name("launchd_escape.py") if relay is None else Path(relay)
     if (platform != "darwin" or environ.get(BACKGROUND_ESCAPE_DISABLE) == "0"
             or environ.get(BACKGROUND_ESCAPE_MARKER) or which("launchctl") is None
-            or not relay.is_file()):
+            or not background_escape_eligible(root, command, python) or not relay.is_file()):
         return list(command)
-    return [python or sys.executable, str(relay), "relay", "--", *command]
+    bounded = ["--bound", str(max(1, math.ceil(bound)))] if bound is not None else []
+    return [python or sys.executable, str(relay), "relay", *bounded, "--", *command]

@@ -1,6 +1,28 @@
 {
-  "commit": "1ac1cc3ed709a15a8ba9db4278ba060909b2e4c6",
-  "path": "agent_tools/launchd_escape.py",
-  "sha256": "f8a2ef2a04ff681b8867182b0d8f1da3e26b0324b0f10149fbdeaa63fb43ae11",
-  "reason": "Relay before the single-start guard: `launchctl submit` restarts the job after every exit, so a command longer than launchd's 10 s throttle started again as soon as it ended, truncating its out/err before the relay read them (integration run 2026-11-16: test_agent_ci_shards CiGateTests lost its unittest summary, rc 0) and rerunning it until the label was removed."
+  "files": {
+    "launchd_escape.before.source": {
+      "commit": "1ac1cc3ed709a15a8ba9db4278ba060909b2e4c6",
+      "path": "agent_tools/launchd_escape.py",
+      "reason": "Relay before the single-start guard: `launchctl submit` restarts the job after every exit, so a command longer than launchd's 10 s throttle started again as soon as it ended, truncating its out/err before the relay read them (integration run 2026-11-16: test_agent_ci_shards CiGateTests lost its unittest summary, rc 0) and rerunning it until the label was removed.",
+      "sha256": "f8a2ef2a04ff681b8867182b0d8f1da3e26b0324b0f10149fbdeaa63fb43ae11"
+    },
+    "launchd_escape.bf8d2da2.before.source": {
+      "commit": "bf8d2da243cd39a40a88dae0b060d709e13d6a0c",
+      "path": "agent_tools/launchd_escape.py",
+      "reason": "Unfixed integrate-speed launchd escape at bf8d2da2 (review-speed findings 4-8): the `launchctl submit` relay gave the job launchd's soft nofile 256 and launchd's SSH_AUTH_SOCK/XPC_* (relay-only test_tmux_public_intent_race failures), left a restarting job after a relay SIGKILL, waited for a lost exit status until the outer timeout, could run the command both as the job and directly after a failed submit, and `_run` escaped every command bounded at 30 minutes or more (run_checks, scripts/visual_review.py, the SSH keeper child).",
+      "sha256": "3d60f590922a869f7d9576da6ecb019e1256912358e2bef1cfaacd32e8c14f7e"
+    },
+    "managed_agent_check.bf8d2da2.before.source": {
+      "commit": "bf8d2da243cd39a40a88dae0b060d709e13d6a0c",
+      "path": "agent_tools/managed_agent_check.py",
+      "reason": "Unfixed integrate-speed launchd escape at bf8d2da2 (review-speed findings 4-8): the `launchctl submit` relay gave the job launchd's soft nofile 256 and launchd's SSH_AUTH_SOCK/XPC_* (relay-only test_tmux_public_intent_race failures), left a restarting job after a relay SIGKILL, waited for a lost exit status until the outer timeout, could run the command both as the job and directly after a failed submit, and `_run` escaped every command bounded at 30 minutes or more (run_checks, scripts/visual_review.py, the SSH keeper child).",
+      "sha256": "8bab30359dc54c629659870a1e6bbd1444b2f1f2b6a4f53912d75d5e5ff0d572"
+    },
+    "mcp_server.bf8d2da2.before.source": {
+      "commit": "bf8d2da243cd39a40a88dae0b060d709e13d6a0c",
+      "path": "agent_tools/mcp_server.py",
+      "reason": "Unfixed integrate-speed launchd escape at bf8d2da2 (review-speed findings 4-8): the `launchctl submit` relay gave the job launchd's soft nofile 256 and launchd's SSH_AUTH_SOCK/XPC_* (relay-only test_tmux_public_intent_race failures), left a restarting job after a relay SIGKILL, waited for a lost exit status until the outer timeout, could run the command both as the job and directly after a failed submit, and `_run` escaped every command bounded at 30 minutes or more (run_checks, scripts/visual_review.py, the SSH keeper child).",
+      "sha256": "a52d6a392bb58740180abd6fcf543fce170cdaf02a978a92d2c1013fcb21d0a4"
+    }
+  }
 }

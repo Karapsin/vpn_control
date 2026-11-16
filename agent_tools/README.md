@@ -94,17 +94,29 @@ RED half runs there. GREEN halves are never gated.
 On macOS the agent-session tmux tree runs at Darwin background priority (`ps` pri 4)
 and every child inherits it; CPU-bound agent tests ran about 6x slower there, and no
 per-process option (`taskpolicy`, `nice`, `launchctl asuser`, `setpriority`) lifts it.
-Managed agent commands and any `_run` command with a bound of 30 minutes or more are
-therefore prefixed by `managed_agent_check.background_escape`, which runs them through
-`agent_tools/launchd_escape.py`: a relay that submits the command as a `launchctl submit`
-job (launchd-parented, normal priority, no sudo, no system change), then streams its
-output, returns its exit status, forwards SIGTERM and stops the job if the relay dies.
-Same cwd and environment; it is a no-op off macOS, when `launchctl` or the relay is
-missing, inside a relay, or with `VPN_CONTROL_LAUNCHD_ESCAPE=0`; a failed submission runs
-the command directly. Because launchd restarts a submitted job after every exit until the relay
-removes its label, the job script runs the command only on its first start (a no-clobber marker);
-a restart exits without rerunning it or truncating its output. Measured on one shared Mac: the same CPU loop took 6.3 s direct and
-0.8 s escaped; `test_android_installer_dispatch` 11.1 s versus 3.7 s.
+The escape is an explicit opt-in by argv, never by timeout: `_run` passes every command
+to `managed_agent_check.background_escape`, which prefixes only the private agent-runner
+argv (`is_private_command`) and the named CPU-bound local checks in
+`BACKGROUND_ESCAPE_PYTHON_SCRIPTS`/`BACKGROUND_ESCAPE_COMMANDS` with
+`agent_tools/launchd_escape.py`. Native, guest, SSH, VM and release actions, git/gh,
+Gradle, `scripts/visual_review.py` and the SSH keeper child always run directly
+(`test_launchd_escape.SelectionTests` enumerates them). The relay bootstraps a plist job
+into `gui/<uid>` (launchd-parented, normal priority, no sudo, no system change) with
+RunAtLoad, KeepAlive=false, ExitTimeOut and SoftResourceLimits equal to the caller's
+soft nofile/nproc/core/stack, and starts the command with `env -i` plus exactly the
+caller's environment, so launchd's 256-file limit, SSH_AUTH_SOCK and XPC_* never reach
+it. It streams output, returns the exit status, forwards SIGTERM, and returns 137 within
+seconds when the job ends without writing a status. The job runs the command at most
+once: a no-clobber `started` marker, which the relay's direct fallback after a failed
+bootstrap must claim first, so a command never runs both as the job and directly. No
+label outlives its relay: the relay boots the job out, the job boots itself out when it
+finishes (its watchdog stops the command if the relay was SIGKILLed), and every relay
+start sweeps `vpncontrol.check.*` labels whose relay is gone or whose bound has passed.
+It is a no-op off macOS, when `launchctl` or the relay is missing, inside a relay, or
+with `VPN_CONTROL_LAUNCHD_ESCAPE=0`. Measured on one shared Mac: the same CPU loop took
+6.3 s direct and 0.8 s escaped; `test_android_installer_dispatch` 11.1 s versus 3.7 s; the six
+`test_tmux_public_intent_race`/`test_ssh_gateway_tmux_*` modules 277 s escaped versus 851 s direct
+(Python 3.14), with no failure that the direct run did not also have.
 
 Managed checks also compare the loaded runner, build-environment, checkout-lease
 and output-retention source digests with current files before inspection or a
