@@ -598,6 +598,7 @@ class WindowsNativeCausalEnrollmentTests(unittest.TestCase):
             'agent_tools.tests.test_windows_desktop_background.NativeWindowsDesktopBackgroundTests.test_target_parent_package_account_and_configured_mismatches_block',
             'agent_tools.tests.test_windows_console_session_roles',
             'agent_tools.tests.test_windows_tun_grant.WindowsCensusTests',
+            'agent_tools.tests.test_windows_tun_grant.WindowsCollectorObservationTests',
             'agent_tools.tests.test_windows_update_grant_collectors.WindowsReaderTests.test_the_publisher_backup_open_and_census'])
         self._assert_command_covers_unaffected(raw, name)
 
@@ -625,6 +626,7 @@ class WindowsNativeCausalEnrollmentTests(unittest.TestCase):
                             for call in ast.walk(method)):
                         found.append('.'.join(('agent_tools.tests', stem, node.name, method.name)))
         self.assertEqual(['agent_tools.tests.test_windows_tun_grant.WindowsCensusTests.test_a_census_with_children_also_names_what_the_image_started',
+                          'agent_tools.tests.test_windows_tun_grant.WindowsCollectorObservationTests.test_a_tun_observation_reads_its_need_the_brokers_child_and_its_config_pin',
                           'agent_tools.tests.test_windows_update_grant_collectors.WindowsReaderTests.test_the_publisher_backup_open_and_census'],
                          found)
         self.assertEqual([], [test for test in found if not any(test == item or test.startswith(item + '.') for item in included)],

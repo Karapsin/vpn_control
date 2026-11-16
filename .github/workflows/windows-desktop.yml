@@ -275,6 +275,7 @@ jobs:
           agent_tools.tests.test_windows_desktop_background.NativeWindowsDesktopBackgroundTests.test_target_parent_package_account_and_configured_mismatches_block
           agent_tools.tests.test_windows_console_session_roles
           agent_tools.tests.test_windows_tun_grant.WindowsCensusTests
+          agent_tools.tests.test_windows_tun_grant.WindowsCollectorObservationTests
           agent_tools.tests.test_windows_update_grant_collectors.WindowsReaderTests.test_the_publisher_backup_open_and_census
 
       - name: Verify affected CP117 PowerShell causal guards

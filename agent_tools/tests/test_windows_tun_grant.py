@@ -460,7 +460,8 @@ class TunGrantQga(UpdateQga):
     """The update rows' wire peer with a TUN grant's guest: the installed broker and its record, the owner's one native
     need once its TUN is up, a census of the controller, broker and runtime, and a TUN collector that publishes its
     ready and off records before its caller hold. The publisher template's TUN observation is followed from the rendered
-    template's own text, as the update peer follows its backup reader: a template without it refuses as that one would."""
+    template's own text, as the update peer follows its backup reader: a template without it refuses as that one would.
+    Following text proves no behaviour: WindowsCollectorObservationTests runs those template functions on Windows."""
 
     TUN_MARKERS = {"need": "|event-[0-9]{6}-update-native-observation-needed'", "broker": "-install-helper|-vpn-broker)?\\.exe",
                    "children": "[VpnScenarioObserver]::Census($image,$children)", "config": "\\workspace\\runtime-config.json')"}
@@ -926,6 +927,77 @@ class WindowsCensusTests(unittest.TestCase):
         self.assertEqual(1, len(started), "the image's own child is named with it")
         self.assertEqual((os.getpid(), True, "cmd.exe"), (started[0]["parentPid"], started[0]["live"], Path(started[0]["image"]).name.lower()))
         self.assertEqual([], [row for row in plain if row["pid"] == child.pid], "without children only the image's own processes")
+
+
+def publisher_function(name):
+    """One function of the publisher template exactly as it carries it, up to the next function or its main body."""
+    template = (ROOT / "agent_tools" / "windows_scenario_publisher.ps1.template").read_text(encoding="utf-8")
+    found = re.search(r"^function " + re.escape(name) + r"[ (]", template, re.M)
+    if found is None:
+        raise AssertionError("the publisher template has no function " + name)
+    ends = [at for at in (template.find("\nfunction ", found.start()), template.find("\n$r=$null", found.start())) if at != -1]
+    return template[found.start():min(ends)]
+
+
+@unittest.skipUnless(__import__("os").name == "nt", "Windows itself: the publisher's TUN observation, run by Windows PowerShell")
+class WindowsCollectorObservationTests(unittest.TestCase):
+    """The template's own collector-observe functions where Windows runs the tests, not the wire peer that follows their text:
+    a TUN need reads the owner's need event in place of its child events, the census of the installed broker names the
+    process it started, only that broker may ask for children, and the product workspace's runtime config is a product pin."""
+
+    def test_a_tun_observation_reads_its_need_the_brokers_child_and_its_config_pin(self):
+        import os
+        import shutil
+        import subprocess
+        import tempfile
+        from agent_tools.tests.test_windows_update_grant_collectors import observer_function
+        system = Path(os.environ["SystemRoot"]) / "System32"
+        local = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, local, True)
+        operation = local / "operation"
+        operation.mkdir()
+        events = {"task-event-000000-submission-intent.json": b'{"kind":"submission-intent"}',
+                  "task-event-000001-submitted.json": b'{"kind":"submitted"}',
+                  "event-000040-" + job.UPDATE_NEED + ".json": b'{"kind":"need","value":{"stage":"tun"}}',
+                  "event-000041-child-intent.json": b'{"kind":"child-intent","value":{"label":"lifecycle-serve","child":1}}'}
+        for name, raw in events.items():
+            (operation / name).write_bytes(raw)
+        # The installed broker's image name, which starts one child: a copy of cmd.exe that runs ping.
+        broker = local / "vpn-control" / "vpn-control-vpn-broker.exe"
+        broker.parent.mkdir()
+        shutil.copyfile(system / "cmd.exe", broker)
+        child = subprocess.Popen([str(broker), "/d", "/c", "ping -n 30 127.0.0.1 >NUL"], stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(lambda: (child.kill(), child.wait()))
+        m = {"operationRoot": str(operation), "localAppData": str(local), "tunNeed": True, "returnedActors": False,
+             "readDisposition": False, "census": [{"image": str(broker), "children": True}], "productPins": []}
+        script = "\n".join((observer_function(), *(publisher_function(name) for name in (
+            "Read-Bounded", "Get-ProcessCensus", "Assert-ProductPin", "Get-CollectorObservation")),
+            "$ErrorActionPreference='Stop'", "$m=$env:VPN_TEST_INPUT|ConvertFrom-Json", "$r=[ordered]@{}",
+            "$r.observation=Get-CollectorObservation",
+            "$r.configPin=$(try{Assert-ProductPin ($m.operationRoot+'\\workspace\\runtime-config.json');'accepted'}catch{[string]$_.Exception.Message})",
+            "$r.otherConfigPin=$(try{Assert-ProductPin ($m.localAppData+'\\workspace\\runtime-config.json');'accepted'}catch{[string]$_.Exception.Message})",
+            "$r.childrenOfAnother=$(try{[void](Get-ProcessCensus @([pscustomobject]@{image=($m.localAppData+'\\vpn-control\\vpn-control.exe');"
+            "children=$true}));'accepted'}catch{[string]$_.Exception.Message})",
+            "$r|ConvertTo-Json -Depth 8 -Compress"))
+        powershell = system / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        result = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+                                 "$s=[Console]::In.ReadToEnd(); & ([ScriptBlock]::Create($s))"], input=script.encode("utf-8"),
+                                capture_output=True, timeout=120, check=False, env={**os.environ, "VPN_TEST_INPUT": json.dumps(m)})
+        self.assertEqual(0, result.returncode, result.stderr.decode(errors="replace"))
+        value = json.loads(result.stdout)
+        files = value["observation"]["files"]
+        self.assertEqual(sorted(name for name in events if "child-intent" not in name), sorted(files),
+                         "a TUN need reads its need event and the task's two, never a child event")
+        self.assertEqual({name: events[name] for name in files}, {name: base64.b64decode(raw) for name, raw in files.items()})
+        census = job.census_rows(value["observation"]["census"])
+        self.assertEqual([True], [row["live"] for row in census if row["pid"] == child.pid], "the broker itself")
+        # Its console, if it got one, is named as well; the ping is the child this test asked for.
+        started = [row for row in census if row["parentPid"] == child.pid and row["live"]
+                   and PureWindowsPath(row["image"]).name.lower() == "ping.exe"]
+        self.assertEqual(1, len(started), "the process the broker started")
+        self.assertEqual(("accepted", "PUB_PRODUCT_PIN_PATH", "PUB_CENSUS_CHILDREN"),
+                         (value["configPin"], value["otherConfigPin"], value["childrenOfAnother"]))
 
 
 if __name__ == "__main__":

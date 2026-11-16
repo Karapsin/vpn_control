@@ -2509,13 +2509,24 @@ Deferred, with what each needs:
   is the coordinator's decision. What the product's own off does after each such failure,
   and how long it takes, needs native runs.
 - The publisher's PowerShell observation (`Get-ProcessCensus`, `Get-CollectorObservation`
-  with `tunNeed`, `Assert-ProductPin`) still runs only in the fake peer that follows the
-  template's text. Executing it needs Windows PowerShell: a Windows-only test that renders
-  the collector-observe program over a temporary operation root (two task events, one need
-  event, a child event it must skip, the workspace's `runtime-config.json`) with a copied
-  broker image that starts a child, run in the readiness native step, RED with the
-  `9a8db1e5` template and GREEN on HEAD, on a Windows host. `WindowsCensusTests` covers only
-  the C# census it calls.
+  with `tunNeed`, `Assert-ProductPin`) is no longer covered only by the fake peer that
+  follows the template's text. The follow-up commit adds
+  `test_windows_tun_grant.WindowsCollectorObservationTests`, which runs those template
+  functions, as the template carries them, in Windows PowerShell. It uses a temporary
+  operation root holding the task's two events, one need event and a child-intent event the
+  observation must skip, plus a copy of `cmd.exe` named
+  `<localAppData>\vpn-control\vpn-control-vpn-broker.exe` that starts `ping.exe`. The test
+  requires: the need event and no child event; the broker together with its live child in
+  the census; the workspace's `runtime-config.json` admitted as a product pin; and refusals
+  for any other config path (`PUB_PRODUCT_PIN_PATH`) and for children of another image
+  (`PUB_CENSUS_CHILDREN`). Every mutant the review ran (M1 to M4) changes one of those
+  results. The readiness native step runs the test, and the enrollment regression above now
+  names it. Its RED on the unfixed workflow (2 tests, both Pythons): failures=2, with the new
+  test run by no step. Offline GREEN: OK. Still native: the test has never run (this Mac has
+  no PowerShell). Its first run is the readiness step of the next Windows Desktop Package
+  run of a pushed SHA. A Windows host also has to supply its own RED, on the `9a8db1e5`
+  template and on each of M1 to M4, and its GREEN on HEAD. The product pin's `New-ReadPin`
+  needs the rendered task natives, so this test only checks that the path is admitted.
 
 ## Historical coverage rule
 
