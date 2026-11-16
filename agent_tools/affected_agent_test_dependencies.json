@@ -5262,7 +5262,8 @@
       "sourceSha256": [
         "897638264d70518a412fb822301e885c5d271e6a472ef625db69ca43e9190054",
         "4ea1924d893057b548f2b2825e101d6a5934b1fb767ef297e57b8c282212a932",
-        "3b16df2d6ba2bd727d381596f948f394a54091d0acd6830a7ebeeaa6e15bf6d4"
+        "3b16df2d6ba2bd727d381596f948f394a54091d0acd6830a7ebeeaa6e15bf6d4",
+        "ce661726a29bf24ab2de5d19c72e1856266fa5701e797f6dbf44430e9f9d3ea9"
       ]
     },
     "agent_tools/tests/fixtures/windows_main_input_bridge/boundary.py": {

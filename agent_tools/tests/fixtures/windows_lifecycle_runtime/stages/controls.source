@@ -199,9 +199,19 @@ class TunCustodyCases(unittest.TestCase):
         boot=str(uuid.uuid4());config=b'{"inbounds":[]}'
         def actor(pid,image,sid):return {'pid':pid,'creationFileTime':100+pid,'image':image,
             'sha256':'a'*64,'sid':sid,'sessionId':2}
+        # The broker writes the runtime as sing-box.exe into its private stage under ProgramData and
+        # takes its pipe, owner and runtime digest on its own argv (windows-vpn-broker.cs).
+        self.stage='C:\\ProgramData\\vpn-control-vpn-'+str(uuid.uuid4());self.pipe='vpn-control-vpn-'+str(uuid.uuid4())
         owner_actor=actor(10,'C:\\App\\cli.exe',ordinary)
         helper=actor(20,'C:\\Temp\\owned-helper.exe',admin)
-        child=actor(21,'C:\\Temp\\owned-runtime.exe',admin)
+        child=actor(21,self.stage+'\\sing-box.exe',admin)
+        argv=[helper['image'],self.pipe,str(owner_actor['pid']),str(owner_actor['creationFileTime']),ordinary,child['sha256']]
+        def listdir(path):
+            assert path==self.stage,path
+            return ['config.json','received.json','runtime.log','sing-box.exe']
+        for target,name,value in ((collector,'os',N(listdir=listdir)),(collector,'split',str.split),
+                (collector,'command_line',lambda process:process.command_line)):
+            patcher=patch.object(target,name,value);patcher.start();self.addCleanup(patcher.stop)
         context={'ordinarySid':ordinary,'ordinarySessionId':2,'approvingAdminSid':admin,
             'bootIdentifier':boot,'programData':'C:\\ProgramData','workspace':'C:\\Owned\\state'}
         request={'schemaVersion':1,'ordinaryTaskOperationId':str(uuid.uuid4()),'productOperationId':str(uuid.uuid4()),
@@ -213,7 +223,9 @@ class TunCustodyCases(unittest.TestCase):
                 'sha256':hashlib.sha256(config).hexdigest(),'sizeBytes':len(config)}}
         opens=[];processes={}
         class Process:
-            def __init__(self,expected):self.expected=expected;self.state=258;self.closed=False
+            def __init__(self,expected):
+                self.expected=expected;self.state=258;self.closed=False
+                self.command_line=' '.join(argv) if expected is helper else None
             def describe(self):return {'creationFileTime':self.expected['creationFileTime'],
                 'image':self.expected['image'],'sha256':self.expected['sha256'],
                 'token':{'sid':self.expected['sid'],'sessionId':2,'elevated':int(self.expected['sid']==admin)}}
@@ -244,6 +256,8 @@ class TunCustodyCases(unittest.TestCase):
         request,owner,receipts,observer,opens,processes=self.setup_case()
         custody=collector.collect_ready(request,owner,receipts,observer)
         self.assertEqual(opens,[10,20,21]);self.assertFalse(any(p.closed for p in processes.values()))
+        self.assertEqual(custody.ready['helperInvocation'],{'pipeName':self.pipe})
+        self.assertEqual(custody.ready['observations']['stage']['path'],self.stage)
         processes[20].state=processes[21].state=0
         after=custody.after_off()
         self.assertEqual(opens,[10,20,21]);self.assertTrue(all(p.closed for p in processes.values()))

@@ -2938,6 +2938,17 @@ terminal codes for the refused capture (`UNSUPPORTED`) and the squat (`CONFLICT`
 acceptance of the custom config (h3, `clash_api`), the cache publication, and the SSH chain
 under the TUN are all for the first direct discovery run (TEST-007).
 
+The authentic stage controls' `TunCustodyCases`
+(`windows_lifecycle_runtime/stages/controls.source`) still faked a runtime at
+`C:\Temp\owned-runtime.exe`, so the new stage observation refused them with
+`tun-runtime-private-stage` (`test_windows_lifecycle_cases`, 1 failure;
+`test_windows_lifecycle_capabilities`, 3 failures). The broker always runs the runtime as
+`sing-box.exe` in its `vpn-control-vpn-<uuid>` stage under ProgramData, so the requirement
+stands and the fake now models that layout and the broker's argv (pipe, owner, runtime
+digest), with the stage listing and the argv read as inert seams, and asserts the ready
+record's stage path and pipe. Its provenance records the adjustment and keeps the
+historical digests (fixture adjustment only, no product change, no regression).
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals
