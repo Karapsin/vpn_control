@@ -510,6 +510,9 @@ def start(root,request,setup,credential_file,*,image=None,network=None):
     if image is not None:
         from .windows_vm_image import validate_context_image
         image=validate_context_image(image)
+        # A clone starts only from the base image hash the operator deliberately recorded.
+        from .windows_vm_base_image_pin import require_pinned
+        require_pinned(root,image)
     if network is not None:
         # Only an image source uses a restricted network, never a clone.
         from .windows_vm_image import validate_context_network

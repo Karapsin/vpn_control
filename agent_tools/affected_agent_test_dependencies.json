@@ -7949,7 +7949,8 @@
         "fb5788387d21e0eff51fa965a8894cbd54295b0f5df3e36a38fe28f1d2e35c40",
         "7e8a719c3c62d501a96e06c12eb5ded6959e34cabe13766acea8dbc8ff2f16ca",
         "6b256a3ec752d8cd9b5385ea93bafe66d3e8030ea3a4b417312b1ddace77b1d5",
-        "5e7965fd6ae0fd99aa54efa50139dd03914937f1934a0562443b6a44c85b4171"
+        "5e7965fd6ae0fd99aa54efa50139dd03914937f1934a0562443b6a44c85b4171",
+        "eac451211b3bb6fea423a0d73e94d40b596d697dab7ede02a899fa02cee7e466"
       ]
     },
     "agent_tools/tests/test_fast_workflow_budget.py": {
@@ -7971,7 +7972,8 @@
         "1e7985f1c1ae168b3887eda7ad9ec348fd4c039bfe8b002711a0e508b36b7a62",
         "8867140e0c41e838e8e44a7af19684b0076d72854796f2dedbf6bece34ecb1f0",
         "625834f7469a997e821a88bc1ac4daa89529c31472add134044e842f11060574",
-        "37897f9d53d7de767df585574cd079e8b963c856b1180cdf2b0be23bd22a959c"
+        "37897f9d53d7de767df585574cd079e8b963c856b1180cdf2b0be23bd22a959c",
+        "67faae6f5b20e59fc81df66186db4f6bcd6e54596ff9510cbfdb01fc5b025be6"
       ]
     },
     "agent_tools/tests/test_fast_workflow_interpreter_order.py": {
@@ -7990,7 +7992,8 @@
         "6ed66c5a1f99afe5cf30bfddeb4c58e2cc8a919fa0f4edee9d4a32b5872bcf9d",
         "5da64c4a33e56cf38e651d9db1ca42da911caf6f59d0958124ad7c9f88781b0b",
         "c83aafcead00723b23db0a96dba6cb7a09986358e3e65b9db8efa262d89255c0",
-        "990ba43e671205b9b3a945a1402059f54d2a9fbcd72b82b641e287ea4ae849d3"
+        "990ba43e671205b9b3a945a1402059f54d2a9fbcd72b82b641e287ea4ae849d3",
+        "f65abe050ce3b27523144749b0d26ebad0a8a62aee24a714529016bb70e8dd2d"
       ]
     },
     "agent_tools/tests/test_gateway_tmux_routes.py": {
@@ -8363,7 +8366,8 @@
         "b4990b38ffa8b60772dcc9c4fbd4abce484d93a76fe41d1bd81c022f060b3ded",
         "bb9f2913530b703072e94bac9e2667b758cc62bdbf3e5838622c78ba6ef4cf41",
         "1f2e7c54ec077cfa44dd14dc4d4f093e511ecc952d81795c00da362dcea71696",
-        "782d26a9c38de293336ec864d0161c0e7aae98c9c6d6bb8ed9233b0d4d9f259d"
+        "782d26a9c38de293336ec864d0161c0e7aae98c9c6d6bb8ed9233b0d4d9f259d",
+        "c3ae6253b884f73d6db984e4d80619940b6719d0ffedd63dfe5ba006b9725e6e"
       ]
     },
     "agent_tools/tests/test_macos_machine_server_stop.py": {
@@ -13224,7 +13228,8 @@
         "0b35ba3e9df190ab11162407dfb30fa1363809b2f3c740ef3ab5582a0b677cb0",
         "090384afade55304f4cd34f7225b73d886f663a6e6680102150b965bdc461e5f",
         "48472708c99e1dc11dcc7de419528985e1e211d6bbc2a247ee9aca104c41c90d",
-        "a549da9012234b82d34b849f94cf1146ee532c260ff6b5368d22a5a7beb6193c"
+        "a549da9012234b82d34b849f94cf1146ee532c260ff6b5368d22a5a7beb6193c",
+        "a31a3b11981d945fde40c52b6848fb9feba9648094582d4a94cc8f4a3ea57493"
       ]
     },
     "agent_tools/tests/test_windows_vm_deploy_release.py": {

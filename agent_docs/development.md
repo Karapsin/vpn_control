@@ -84,6 +84,16 @@ Restrict infrastructure work to demonstrated blockers or explicitly requested
 optimizations, with preserved beforeimages and causal RED/GREEN coverage. Direct
 native proof and matching MCP retesting remain required under TEST-002.
 
+## CI And Build Environment Pins
+
+Hosted images move on their own: `ubuntu-latest` became ubuntu-26.04 (JDK 25, Rust coreutils) and broke CI with no repository change. Everything the build depends on is pinned and checked by `python3 -m unittest agent_tools.tests.test_ci_environment_pins` (release hygiene):
+
+- Runner images are exact (`ubuntu-24.04`, `windows-2025`, `macos-15`). Only `.github/workflows/environment-canary.yml` follows `-latest`; it runs weekly, is advisory, and is not in `.github/required-workflows.json`. A red canary means the next image bump needs attention, not a revert.
+- Every third-party `uses:` is a full commit SHA with a `# vX.Y.Z` comment; resolve a tag with `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` and dereference annotated tags. Dependabot (`.github/dependabot.yml`, weekly, grouped, target `dev`) proposes bumps.
+- Linux jobs run in a digest-pinned container (`image: name:tag@sha256:...`) or appear in `UBUNTU_HOST_EXCEPTIONS` in that test with a reason (`host-only`, `privileged`, or `unverified`). Containerize an excepted job only after proving it green in the container, then delete its entry.
+- Every Gradle module declares `jvmToolchain(17)`; the wrapper has `distributionSha256Sum`; `gradle/verification-metadata.xml` records sha256 checksums. After changing a dependency, regenerate with `./gradlew --no-configuration-cache --write-verification-metadata sha256 <tasks that resolve Android, desktop and native configurations>` and review the diff. Host-specific configurations (for example the Compose Desktop `skiko` runtimes of the other operating systems) must be resolved explicitly, not only for the current host.
+- Python requirements: edit `agent_tools/requirements-mcp.in`, then run `uv pip compile --universal --generate-hashes --python-version 3.12 agent_tools/requirements-mcp.in -o agent_tools/requirements-mcp.txt`. Installs use `pip --require-hashes`.
+
 ## Common Patch Workflow
 
 1. Identify the smallest behavior or documentation unit.
