@@ -2160,6 +2160,77 @@ Fast Checks and every desktop package workflow, and `test_windows_ssh_relay_case
 agent tier. Logs, JUnit reports, the mutant summary and the beforeimages are under
 `.runtime/windows-parity-20261107/evidence/ssh-bootstrap-cleanup/`.
 
+### A runtime candidate folder left after `off` (product and harness, from d71253c2, 2026-11-16)
+
+A native failure. Row `windows-disconnected-cli-config.ssh-relay-transfer`, DIRECT discovery run
+`d71253c2-2588-4735-8222-6d1dd0dd2e27` on the 2.2.18 MSI from `60017226` (whose product sources equal
+`3e559abd`'s), evidence `.runtime/windows-scenarios/d71253c2-2588-4735-8222-6d1dd0dd2e27/evidence-1.zip`
+(sha256 `63895a15...e21e2e2`, unchanged). With the bootstrap fix above the first HOME_RELAY refresh
+passed, and the row reached `ssh-relay-connected`: proxy-only `on` (exit 0, `OK`), a refresh through
+the runtime's session (`OK`), `status` running, `off` (child 80, exit 0, `OK`) and `status` with
+`runtimeRunning` false, all within ~2.2 s calls. Then `leftovers(c, False)` found a `candidate-*`
+folder in the workspace's runtime folder and raised `runtime-candidates-left`
+(`windows_ssh_relay_cases.py:561` via `:680`). The serve exited 0 and its stderr (236 bytes) held only
+the trust-store notice and the ready line. The evidence did not name the folder's entries, their
+holds or whether sing-box still ran: the check failed before the runtime census and recorded nothing.
+
+The check counts what the product must remove: `DesktopProxyRuntimeManager.retireLaunch` deletes the
+candidate's captured SSH key copy, its configuration (the location's credentials), its log and the
+folder when `off` stops the runtime, before `off` answers; nothing in the product is asynchronous
+there, no restore lease is held by `on`, a refresh that keeps the active location, or `off`, and a
+refused retirement is retried only at that owner's next start or stop (the owner-start reaper of
+the bootstrap fix deliberately skips `candidate-*`). So the folder after `off` is a PRODUCT defect,
+not a race of the check. Cause (from code and platform behaviour; the evidence cannot say which
+holder refused): `DesktopRuntimeTransition.dispose` stopped the child with the timed
+`Process.waitFor`, which on Windows answers from the exit code, set before the kernel closes the
+child's handles, and `DesktopLocalRuntimeProcess.close` waited for nothing more; the log is the
+child's output redirect, which the JVM opens without `FILE_SHARE_DELETE`; a scanner may hold a file
+just closed. `retireLaunch` then tried each deletion once, threw at the first refusal (the
+transition swallowed it and retried once at once in the same stop), and wrote nothing. The same
+failure type as the bootstrap's `bootstrap-files-left`, on the main runtime, which that fix left
+alone; it is worse here, since the key copy is key material and the configuration holds
+credentials.
+
+`DesktopLocalRuntimeProcess.close`, which the transition calls once the exit is established, now
+waits for the process object (`DesktopBootstrapCleanup.awaitEnded`: the untimed `waitFor` on a
+daemon thread, at most 5 s), and reports a child not seen to end. `retireLaunch` keeps the log as
+`runtime-sing-box.log` when it can (a failure is reported and never keeps the credential-bearing
+files), then removes the key copy, the configuration, the log and the folder with
+`DesktopBootstrapCleanup.removeAll`: each pass tries every path still present, passes follow the
+same 3.2 s backoff, so the set takes one bound; a folder refused only while it still holds a file
+goes in the same pass as its last file; still no recursive removal. What stays is one stderr line
+per leaf, `Connection runtime: <leaf> was not removed after N attempts (...)`, never a folder path
+or contents, and the retirement fails, so the transition keeps the launch for its next start or
+stop. `removeCounting` (the bootstrap's) shares the single-attempt decision and is unchanged in
+behaviour. Android (PRODUCT-002) was not changed: its file system never refuses an unlink because a
+handle is open, so this cause cannot occur there.
+
+The harness keeps the verdict at the first look after `off`, with no settle before it. After the
+verdict `candidates_left` settles for at most 10 s, like `bootstrap_left` (both now through
+`describe_left`), and records `ssh-relay-runtime-candidate-leftovers`: each left `candidate-*`
+folder and each entry one level down by relative name (`candidate-x/runtime.log`), size and age by
+`lstat`, each regular file's hold (a folder's hold is null: an open for DELETE without backup
+semantics is refused on every folder), the live runtimes at both looks, `freedAfterSeconds` and
+`goneAfterSeconds`; no byte is read. `leftover_rows` gives the bootstrap's rows the same null hold
+for a non-regular entry.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| `off` left the runtime's candidate folder (key copy, configuration, log) when a deletion was refused for a while after the runtime ended | `DesktopRuntimeRetireCleanupTest` (`:desktopApp:test`): `deletionsRefusedUntilShortlyAfterTheRuntimeEndedLeaveNoCandidateFolder` (POSIX), `theRuntimesProcessObjectIsAwaitedOnceItsExitCodeIsSet` (all platforms); controls `aRefusalThatOutlastsTheRetriesIsReportedByLeafAndRetiredAtTheNextStop` (POSIX), `aCandidateTheOsKeepsRefusingTakesOneRetryBoundAndIsReportedPerLeaf`, `aFolderRefusedOnlyUntilItsFilesAreGoneIsRemovedInTheSamePass` | The first drives the public `DesktopProxyRuntimeManager` (production preflight, launch with the log redirect, stop and retirement) with SSH Routing on and a stand-in sing-box served as the bundled resource, which makes its candidate folder read-only until 0.4 s after it is gone; the test listens on the configuration's inbound ports. The second wraps a `Process` whose exit code is set while its untimed `waitFor` blocks. RED on `3e559abd` (production sources unchanged, the first three tests added), `./gradlew --offline --continue -Pcompose.desktop.packaging.checkJdkVendor=false :desktopApp:test --tests '...DesktopRuntimeRetireCleanupTest'`: 3 of 3 fail, `runtime candidate folders left once off returned expected:<[]> but was:<[candidate-5268944738333424768]>`, `close never waited on the process object`, and no stderr line for the refusal. GREEN on the fix, the same command with 10 classes (this one, `DesktopProxyRuntimeManagerTest`, `DesktopRuntimeRestoreLeaseTest`, `DesktopRuntimeRestoreCredentialTest`, `DesktopBootstrapCleanupTest`, `DesktopHomeSshBootstrapCleanupTest`, `DesktopHomeSshBootstrapOwnerEndTest`, `DesktopValidationRuntimeCleanupTest`, `DesktopShortLivedRuntimeTest`, `DesktopHomeSshBootstrapCleanupNativeTest`): 68 tests, 0 failures, 5 skipped (the Windows-only native tests). |
+| `runtime-candidates-left` named no folder or entry and said nothing of holds or of a runtime still running | `test_windows_ssh_relay_cases.CaseTests`: `test_a_left_candidate_is_described_by_folder_and_entry_and_the_row_fails`, `test_a_left_candidate_is_described_by_metadata_only`, `test_a_candidate_entry_whose_holder_lets_go_is_told_from_the_folder_that_stays`, `test_a_runtime_left_beside_its_candidate_is_counted_at_both_looks` | RED with the preserved `3e559abd` module in place, Python 3.14 and 3.12 alike: `Ran 4 tests`, `FAILED (failures=4)`, each `one description of the runtime candidate left` (none recorded). GREEN: the whole module, 23 tests, both Pythons. The existing `candidate-left` defect keeps its reason. |
+
+Native only: Windows' refusal itself and which holder it was. The next direct discovery run on a
+package built from this fix must end with all six groups complete and no known failure, and the
+serve's stderr must hold no `Connection runtime:` and no `SSH Routing bootstrap:` line. If a
+candidate is left again, `ssh-relay-runtime-candidate-leftovers` precedes `known-failure-closing`
+and names each entry with its hold at both looks: a file `held` at the verdict (more than 2 s after
+`off`, which already waited 5 s and retried for 3.2 s) is a holder that outlasts both bounds;
+`free` at the verdict with the runtimes 0 means the product gave up before its holder let go or is
+a package before this fix; a folder alone with no entry is a refused folder deletion. Routine
+suites: `:desktopApp:test` in Fast Checks and every desktop package workflow, and
+`test_windows_ssh_relay_cases` in the affected agent tier. Logs, JUnit reports and the beforeimages
+are under `.runtime/windows-parity-20261107/evidence/ssh-relay-left/`.
+
 ### An unreadable saved workspace was replaced with defaults (product, offline, 2026-11-13)
 
 Found by reviewing `DesktopStateStore.loadWorkspace` on `00d1e64b`, not by a native run. The load read
