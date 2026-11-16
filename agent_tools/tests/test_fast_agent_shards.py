@@ -28,8 +28,10 @@ def hosted_job_keys():
 HYGIENE_DUPLICATES = ('Check documentation hygiene', 'Check whitespace', 'Verify Windows PowerShell command bounds')
 
 
-GRADLE_CACHE_INPUTS = {'cache-read-only': "${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev') }}",
-                       'cache-disabled': "${{ github.ref == 'refs/heads/main' }}"}
+# Only Gradle Cache Warm writes the hosted Gradle cache (test_gradle_ci_cache).
+GRADLE_CACHE_INPUTS = {'cache-read-only': True}
+# A dev push skips every job when its exact SHA already passed on a ci/* branch (test_ci_run_reuse).
+REUSE_GATE = "needs.reuse.outputs.skip != 'true'"
 GRADLE_CACHE_ENV = {'GRADLE_OPTS': '${{ env.GRADLE_BUILD_CACHE_OPTS }}'}
 
 
@@ -193,9 +195,21 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
             self.assertEqual('Agent Tools Shard %d' % (index + 1), job['name'])
             self.assertEqual(['Checkout', 'Set up Python 3.12', 'Install agent tool dependencies',
                               'Install qemu-img for agent fixtures', 'Test affected agent tools',
-                              'Retain public agent shard evidence'], [step['name'] for step in steps])
+                              'Retain agent test footprints', 'Retain public agent shard evidence'],
+                             [step['name'] for step in steps])
+            self.assertEqual(('reuse', REUSE_GATE), (job.get('needs'), job.get('if')))
+            # Selector footprints: a fixed per-shard directory, uploaded only when present.
+            footprints = '${{ runner.temp }}/agent-test-footprints-%d' % index
+            self.assertEqual(footprints, phase['env']['AGENT_TEST_FOOTPRINT_DIR'])
+            upload = self.named(job, 'Retain agent test footprints')
+            self.assertEqual({'name': 'Retain agent test footprints', 'if': 'always()',
+                              'uses': 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2',
+                              'with': {'name': 'agent-test-footprints-%d' % index, 'path': footprints,
+                                       'if-no-files-found': 'ignore', 'overwrite': True, 'retention-days': 30}}, upload)
+        def shared(phase):
+            return {key: value for key, value in phase['env'].items() if key != 'AGENT_TEST_FOOTPRINT_DIR'}
         for phase in phases[1:]:
-            self.assertEqual(phases[0]['env'], phase['env'])
+            self.assertEqual(shared(phases[0]), shared(phase))
         self.assertEqual("${{ github.event_name == 'workflow_dispatch' && (inputs.baseline || github.sha) || '' }}", phases[0]['env']['AGENT_TEST_BASELINE'])
         self.assertEqual("${{ inputs.audit_agent_tests && '1' || '' }}", phases[0]['env']['AUDIT_AGENT_TESTS'])
 
@@ -269,8 +283,8 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
             self.assertIs(True, options['include-hidden-files'])
             self.assertEqual(7, options['retention-days'])
         coverage = jobs['agent-test-coverage']
-        self.assertEqual('always()', coverage['if'])
-        self.assertEqual(hosted_job_keys(), coverage['needs'])
+        self.assertEqual('always() && ' + REUSE_GATE, coverage['if'])
+        self.assertEqual(['reuse'] + hosted_job_keys(), coverage['needs'])
         downloads = [step for step in coverage['steps'] if step.get('uses') == 'actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0']
         self.assertEqual(names, [step['with']['name'] for step in downloads])
         self.assertEqual(['.rag_index/agent-ci-evidence-%d' % index for index in range(len(names))],

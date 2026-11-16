@@ -2,15 +2,16 @@
 """Hosted Gradle build-cache policy for one CI job; run it right after `Set up Gradle`.
 
 `setup-gradle` saves the Gradle User Home, which holds the local build cache,
-only on `dev` pushes and only reads it elsewhere (its `cache-read-only` input);
-`main` runs disable that cache entirely (`cache-disabled`).
+only in the `Gradle Cache Warm` workflow (.github/workflows/gradle-cache-warm.yml),
+which runs on the default branch so that every branch can restore its entries.
+Every other workflow sets `cache-read-only: true`.
 
-This script decides whether the job's product Gradle steps reuse task outputs:
+This script decides whether the job's Gradle product steps reuse task outputs:
 
-- disabled on `refs/heads/main` and for every release-ready source, that is one
-  passing `scripts/check_release_metadata.py --require-release-ready`, which
-  the stable publisher requires of the SHA it publishes, so release packages
-  never contain cached task outputs;
+- disabled for every release-ready source, that is one passing
+  `scripts/check_release_metadata.py --require-release-ready`, which the stable
+  publisher requires of the SHA it publishes, so release packages never contain
+  cached task outputs;
 - enabled otherwise.
 
 It appends `GRADLE_BUILD_CACHE_OPTS` to `$GITHUB_ENV` (`-Dorg.gradle.caching=true`
@@ -55,9 +56,6 @@ def release_ready(root: Path) -> bool:
 
 
 def decide(environment: dict[str, str], root: Path = ROOT) -> dict[str, str]:
-    reference = environment.get("GITHUB_REF", "")
-    if reference == "refs/heads/main":
-        return {"mode": "disabled", "reason": "main run"}
     if release_ready(root):
         return {"mode": "disabled", "reason": "release-ready source"}
     return {"mode": "enabled", "reason": "development source"}

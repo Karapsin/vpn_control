@@ -54,13 +54,21 @@ jobs:
           artifacts=("" vpn-control-android-release-apk vpn-control-linux-packages vpn-control-windows-installers vpn-control-macos-package)
           for index in "${!workflows[@]}"; do
             workflow=${workflows[$index]}
-            run_id=$(gh api "repos/$REPOSITORY/actions/workflows/$workflow/runs?event=push&status=completed&per_page=100" \
-              --jq ".workflow_runs | map(select(.head_sha == \"$TARGET_SHA\" and .conclusion == \"success\")) | sort_by(.id) | last | .id")
-            [[ -n "$run_id" && "$run_id" != "null" ]] || { echo "Missing exact-SHA success for $workflow" >&2; exit 1; }
             artifact=${artifacts[$index]}
-            if [[ -n "$artifact" ]]; then
-              gh run download "$run_id" --repo "$REPOSITORY" --name "$artifact" --dir "$RUNNER_TEMP/incoming/$artifact"
-            fi
+            # Newest first. A dev push that reused a ci/* result is green but has no
+            # artifacts, so a package comes from the newest successful run that has it.
+            run_ids=$(gh api "repos/$REPOSITORY/actions/workflows/$workflow/runs?event=push&status=completed&head_sha=$TARGET_SHA&per_page=100" \
+              --jq ".workflow_runs | map(select(.head_sha == \"$TARGET_SHA\" and .conclusion == \"success\")) | sort_by(.id) | reverse | .[].id")
+            [[ -n "$run_ids" ]] || { echo "Missing exact-SHA success for $workflow" >&2; exit 1; }
+            [[ -n "$artifact" ]] || continue
+            run_id=""
+            for candidate in $run_ids; do
+              count=$(gh api "repos/$REPOSITORY/actions/runs/$candidate/artifacts?name=$artifact" \
+                --jq '[.artifacts[] | select(.expired == false)] | length')
+              if [[ "$count" == "1" ]]; then run_id=$candidate; break; fi
+            done
+            [[ -n "$run_id" ]] || { echo "No exact-SHA successful $workflow run has $artifact" >&2; exit 1; }
+            gh run download "$run_id" --repo "$REPOSITORY" --name "$artifact" --dir "$RUNNER_TEMP/incoming/$artifact"
           done
           integration_id=$(gh api "repos/$REPOSITORY/actions/workflows/vpn-integration.yml/runs?event=workflow_dispatch&status=completed&per_page=100" \
             --jq ".workflow_runs | map(select(.head_sha == \"$TARGET_SHA\" and .conclusion == \"success\" and (.display_title | contains(\"VPN Integration / all /\")))) | sort_by(.id) | last | .id")

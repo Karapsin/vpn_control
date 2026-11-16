@@ -24,6 +24,12 @@ JOB_KEY = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
 # in a container image yet, so it keeps the pinned host image rather than risk
 # red CI. Remove an entry when the job is containerized.
 UBUNTU_HOST_EXCEPTIONS = {
+    "android-release.yml::reuse": "unverified: queries the Actions API with python3 on the host image",
+    "fast-checks.yml::reuse": "unverified: queries the Actions API with python3 on the host image",
+    "linux-desktop.yml::reuse": "unverified: queries the Actions API with python3 on the host image",
+    "macos-desktop.yml::reuse": "unverified: queries the Actions API with python3 on the host image",
+    "windows-desktop.yml::reuse": "unverified: queries the Actions API with python3 on the host image",
+    "gradle-cache-warm.yml::resolve": "unverified: needs the gh CLI and the Actions token",
     "android-release.yml::build-release-apk": "unverified: relies on the Android SDK and NDK preinstalled on the host image",
     "fast-checks.yml::fast-checks": "privileged: sudo kernel/TPM ownership census, qemu apt installs, xvfb display",
     "fast-checks.yml::agent-tests-shard-0": "unverified: sudo apt-get qemu-utils for agent fixtures",

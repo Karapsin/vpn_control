@@ -24,7 +24,33 @@ on:
       - "scripts/check_release_metadata.py"
 
 jobs:
+  reuse:
+    name: Reuse ci/* result
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      skip: ${{ steps.reuse.outputs.skip }}
+    steps:
+      - name: Checkout reuse policy
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: scripts/ci_run_reuse.py
+          sparse-checkout-cone-mode: false
+
+      - name: Find a successful ci/* run of this workflow for this SHA
+        id: reuse
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci_run_reuse.py
+
   build-release-apk:
+    needs: reuse
+    if: needs.reuse.outputs.skip != 'true'
     name: Build Release APK
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -50,8 +76,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
         with:
-          cache-read-only: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
-          cache-disabled: ${{ github.ref == 'refs/heads/main' }}
+          cache-read-only: true
 
       - name: Prepare stable Android signing
         if: ${{ !cancelled() && github.event_name != 'pull_request' }}

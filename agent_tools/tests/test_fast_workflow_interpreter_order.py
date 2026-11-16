@@ -44,9 +44,8 @@ AGENT_JOBS = tuple("agent-tests-shard-%d" % index for index in range(8))
 HYGIENE_DUPLICATES = ("Check documentation hygiene", "Check whitespace", "Verify Windows PowerShell command bounds")
 VISUAL_BEFORE, VISUAL_NOW = "Check fixed UI theme and visual comparator", "Check visual capture entry points"
 AGENT_STEPS = ("Test affected agent tools", "Retain public agent shard evidence")
-GRADLE_CACHE_INPUTS = ("\n        with:\n"
-                       "          cache-read-only: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev') }}\n"
-                       "          cache-disabled: ${{ github.ref == 'refs/heads/main' }}\n")
+GRADLE_CACHE_INPUTS = "\n        with:\n          cache-read-only: true\n"
+FOOTPRINT_ENV = "          AGENT_TEST_FOOTPRINT_DIR: ${{ runner.temp }}/agent-test-footprints-0\n"
 GRADLE_CACHE_ENV = "        env:\n          GRADLE_OPTS: ${{ env.GRADLE_BUILD_CACHE_OPTS }}\n"
 GRADLE_CACHE_POLICY = "Set up Gradle build cache"
 
@@ -80,6 +79,10 @@ def position(source, name, job="fast-checks"):
 
 def original_agent_step(body):
     suffix = " --shard-index 0 --shard-count 8 --ci-evidence-dir .rag_index/agent-ci-evidence-0"
+    # Selector footprints (agent_test_footprints) add only their output directory.
+    if body.count(FOOTPRINT_ENV) != 1:
+        raise AssertionError("Expected the first shard's footprint directory once")
+    body = body.replace(FOOTPRINT_ENV, "", 1)
     original = []
     commands = 0
     for line in body.splitlines(keepends=True):

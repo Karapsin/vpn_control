@@ -41,6 +41,7 @@ PINNED_JDK = {"distribution": "temurin", "java-version": "17"}
 CONTINUATIONS = (None, "${{ !cancelled() }}", "!cancelled()", "${{ always() }}", "always()")
 # Python programs that start Gradle: each runs the wrapper of this project or of a copy of it.
 GRADLE_PYTHON = frozenset((
+    "scripts/gradle_cache_warm.py",
     "scripts/prepare_desktop_update_fixture.py",
     "scripts/run_android_instrumented_tests.py",
     "scripts/test_android_instrumentation_signatures.py",
@@ -58,6 +59,8 @@ GRADLE_TEXT_ONLY = frozenset((
     "scripts/check_ci_failure_discovery.py",
     "scripts/test_ci_failure_discovery.py",
     "scripts/test_desktop_update_fixture.py",
+    # Imports the warm task table and asserts the wrapper's name; starts no build.
+    "scripts/test_gradle_ci_cache.py",
     "scripts/test_gradle_configuration_cache_evidence.py",
     "scripts/test_linux_public_install_negative.py",
     # Fake wrappers in temporary package trees; read workflow and hygiene text only.

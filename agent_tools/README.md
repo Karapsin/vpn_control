@@ -345,6 +345,15 @@ halves without it; Windows
 `--include` retains its existing path, and managed prepush writes its own
 content-bound receipt.
 
+Each shard also sets `AGENT_TEST_FOOTPRINT_DIR` to
+`$RUNNER_TEMP/agent-test-footprints-<shard>` and uploads that directory as the
+artifact `agent-test-footprints-<shard>` (30 days, overwritten on a re-run); an
+empty or absent directory uploads nothing. A `dev` push that reuses its exact-SHA
+`ci/*` result skips the shards, so footprints exist only on runs whose shards
+ran, normally the `ci/*` run: a reader must pick the newest successful Fast
+Checks run that has the artifacts, not the newest `dev` run. The coverage job
+verifies shard receipts only when the shards ran.
+
 ## Recipe Index
 
 | Need | Focused procedure |

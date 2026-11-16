@@ -48,6 +48,13 @@
           "reason": "Advisory core profile on dispatch and a weekly schedule; the release routine dispatches the mandatory exhaustive all profile for its exact SHA."
         },
         {
+          "name": "Gradle Cache Warm",
+          "path": ".github/workflows/gradle-cache-warm.yml",
+          "classification": "cache_maintenance",
+          "events": ["workflow_dispatch", "schedule"],
+          "reason": "The only Gradle cache writer: runs on the default branch (main) so ci/* and dev runs can restore its entries, builds a dev commit (input dev_sha), and is dispatched after each dev fast-forward and weekly."
+        },
+        {
           "name": "Visual Capture",
           "path": ".github/workflows/visual-regression.yml",
           "classification": "release_only",

@@ -57,6 +57,8 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+        with:
+          cache-read-only: true
 
       - name: Run fixture and integration contract regressions
         run: |
@@ -84,6 +86,8 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+        with:
+          cache-read-only: true
 
       - name: Install package tooling
         run: |
@@ -193,6 +197,8 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+        with:
+          cache-read-only: true
 
       - name: Install WiX Toolset
         shell: pwsh
@@ -243,6 +249,8 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+        with:
+          cache-read-only: true
 
       - name: Enable KVM
         run: |

@@ -169,6 +169,30 @@ on:
       - "agent_tools/tests/test_windows_tertiary_guest_stage.py"
 
 jobs:
+  reuse:
+    name: Reuse ci/* result
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      skip: ${{ steps.reuse.outputs.skip }}
+    steps:
+      - name: Checkout reuse policy
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: scripts/ci_run_reuse.py
+          sparse-checkout-cone-mode: false
+
+      - name: Find a successful ci/* run of this workflow for this SHA
+        id: reuse
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci_run_reuse.py
+
   validate-windows-update-fixture:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.fixture_base_version != ''
     name: Validate update fixture input
@@ -205,7 +229,8 @@ jobs:
       correlation_id: ${{ inputs.correlation_id }}
 
   package-windows-desktop:
-    if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''
+    needs: reuse
+    if: needs.reuse.outputs.skip != 'true' && (github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == '')
     name: Build EXE and MSI
     runs-on: windows-2025
     timeout-minutes: 45
@@ -225,8 +250,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
         with:
-          cache-read-only: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
-          cache-disabled: ${{ github.ref == 'refs/heads/main' }}
+          cache-read-only: true
 
       - name: Set up Gradle build cache
         if: ${{ !cancelled() }}
@@ -283,7 +307,8 @@ jobs:
           if-no-files-found: error
 
   windows-desktop-tests-native:
-    if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''
+    needs: reuse
+    if: needs.reuse.outputs.skip != 'true' && (github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == '')
     name: Desktop Native Tests
     runs-on: windows-2025
     timeout-minutes: 45
@@ -303,8 +328,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
         with:
-          cache-read-only: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
-          cache-disabled: ${{ github.ref == 'refs/heads/main' }}
+          cache-read-only: true
 
       - name: Set up Gradle build cache
         if: ${{ !cancelled() }}
@@ -329,7 +353,8 @@ jobs:
         run: .\scripts\package_windows_desktop.ps1 -TestsOnly -SkipReleaseHygiene -DesktopTestPartition Native
 
   windows-desktop-tests-portable:
-    if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''
+    needs: reuse
+    if: needs.reuse.outputs.skip != 'true' && (github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == '')
     name: Desktop Tests
     runs-on: windows-2025
     timeout-minutes: 45
@@ -349,8 +374,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
         with:
-          cache-read-only: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
-          cache-disabled: ${{ github.ref == 'refs/heads/main' }}
+          cache-read-only: true
 
       - name: Set up Gradle build cache
         if: ${{ !cancelled() }}
@@ -375,7 +399,8 @@ jobs:
         run: .\scripts\package_windows_desktop.ps1 -TestsOnly -SkipReleaseHygiene -DesktopTestPartition Portable
 
   windows-hygiene-native-guards:
-    if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''
+    needs: reuse
+    if: needs.reuse.outputs.skip != 'true' && (github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == '')
     name: Hygiene and Native Guards
     runs-on: windows-2025
     timeout-minutes: 45
@@ -395,8 +420,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
         with:
-          cache-read-only: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
-          cache-disabled: ${{ github.ref == 'refs/heads/main' }}
+          cache-read-only: true
 
       - name: Read native helper SDK version
         id: native-helper-sdk

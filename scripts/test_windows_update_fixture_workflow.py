@@ -24,7 +24,7 @@ class WindowsUpdateFixtureWorkflowTest(unittest.TestCase):
         self.assertIn("pull_request:", self.caller)
         fixture_guard = "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.fixture_base_version != ''"
         self.assertEqual(2, self.caller.count(fixture_guard))
-        self.assertIn("if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''", self.caller)
+        self.assertIn("if: needs.reuse.outputs.skip != 'true' && (github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == '')", self.caller)
 
     def test_caller_validates_input_then_calls_local_reusable_workflow_at_its_sha(self):
         self.assertIn("FIXTURE_BASE_VERSION: ${{ inputs.fixture_base_version }}", self.caller)

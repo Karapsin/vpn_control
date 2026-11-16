@@ -121,6 +121,7 @@ def workflow_limits(source):
     step = []
     tail = []
     retention_steps = 0
+    footprint_steps = 0
     for line in body[step_starts[0] + 1:]:
         if line.startswith('      - '):
             break
@@ -129,6 +130,24 @@ def workflow_limits(source):
         line = body[tail_index]
         if line.startswith('      - name: '):
             name = line.removeprefix('      - name: ')
+            if name == 'Retain agent test footprints':
+                # Selector footprints (agent_test_footprints) upload after the phase, never extend it.
+                footprint_steps += 1
+                end = next((index for index in range(tail_index + 1, len(body))
+                            if body[index].startswith('      - ')), len(body))
+                actual = [re.sub(r'@[0-9a-f]{40} # (v\d+)\.\d+\.\d+$', r'@\1', item) for item in body[tail_index:end] if item.strip()]
+                expected = '''      - name: Retain agent test footprints
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-test-footprints-0
+          path: ${{ runner.temp }}/agent-test-footprints-0
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 30'''.splitlines()
+                if footprint_steps != 1 or actual != expected:
+                    raise ValueError('Unexpected footprint retention step')
+                continue
             if name == 'Retain public agent shard evidence':
                 retention_steps += 1
                 if retention_steps != 1:
@@ -154,6 +173,8 @@ def workflow_limits(source):
             tail.append(name)
     if retention_steps != (0 if source == BEFORE else 1):
         raise ValueError('Required public retention step unavailable')
+    if footprint_steps != (1 if source == CURRENT else 0):
+        raise ValueError('Footprint retention step unavailable')
     limits = [int(match[1]) for line in step
               if (match := re.fullmatch(r'        timeout-minutes: ([1-9][0-9]*)', line))]
     if (len(limits) > 1 or limits and not 1 <= limits[0] <= 360

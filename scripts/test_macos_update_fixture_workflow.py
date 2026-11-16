@@ -24,7 +24,7 @@ class MacosUpdateFixtureWorkflowTest(unittest.TestCase):
         self.assertIn("workflow_dispatch:\n    inputs:\n      fixture_base_version:", self.caller)
         guard = "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.fixture_base_version != ''"
         self.assertEqual(2, self.caller.count(guard))
-        self.assertIn("if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''", self.caller)
+        self.assertIn("if: needs.reuse.outputs.skip != 'true' && (github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == '')", self.caller)
 
     def test_caller_validates_input_then_calls_same_sha_reusable_workflow(self):
         self.assertIn("from scripts.version_metadata import parse_version", self.caller)

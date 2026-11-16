@@ -20,6 +20,9 @@ FIXTURES = ROOT / "scripts/tests/fixtures/windows_desktop_ci_split"
 PUSH_JOBS = ("package-windows-desktop", "windows-desktop-tests-native", "windows-desktop-tests-portable",
              "windows-hygiene-native-guards")
 CONDITION = "    if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''\n"
+# The only dependency: a dev push skips every job when this SHA already passed on a ci/* branch.
+REUSE = ("    needs: reuse\n"
+         "    if: needs.reuse.outputs.skip != 'true' && (github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == '')\n")
 PACKAGE = r"run: .\scripts\package_windows_desktop.ps1"
 
 
@@ -51,7 +54,8 @@ def split_problems(text):
         return ["missing parallel jobs: " + ", ".join(missing)]
     for key in PUSH_JOBS:
         job = found[key]
-        if CONDITION not in job or "\n    needs:" in job or "continue-on-error" in job:
+        gated = job.startswith(REUSE) and job.count("\n    needs:") == 0
+        if not (gated or CONDITION in job and "\n    needs:" not in job) or "continue-on-error" in job:
             problems.append(key + ": must run on every push, in parallel, and fail the run normally")
     package = found["package-windows-desktop"]
     if PACKAGE + " -SkipTests -SkipReleaseHygiene\n" not in package or "choco install wixtoolset" not in package:

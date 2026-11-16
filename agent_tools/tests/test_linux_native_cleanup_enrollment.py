@@ -78,12 +78,17 @@ def enrolled_cleanup_ids(workflow_raw, test_raw):
     assert re.search(r'^  push:\n    branches:\n      - dev$', text, re.M), 'dev push coverage required'
     job = _job(text, 'package-linux-desktop')
     header, separator, _ = job.partition('    steps:\n')
-    expected_header = ("    name: Build DEB and RPM\n"
-                       "    if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''\n"
+    expected_header = ("    needs: reuse\n"
+                       "    name: Build DEB and RPM\n"
+                       "    if: needs.reuse.outputs.skip != 'true' && (github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == '')\n"
                        "    runs-on: ubuntu-24.04\n"
                        "    timeout-minutes: 45")
-    # The preserved before-workflow predates runner-image pinning (test_ci_environment_pins).
+    # The preserved before-workflow predates runner-image pinning (test_ci_environment_pins)
+    # and the dev-push ci/* reuse gate (scripts/ci_run_reuse.py).
     header = header.replace('runs-on: ubuntu-latest', 'runs-on: ubuntu-24.04')
+    if header.strip('\n').startswith("    name: Build DEB and RPM\n    if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''\n"):
+        header = header.strip('\n').replace("    name: Build DEB and RPM\n    if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''\n",
+                                "    needs: reuse\n    name: Build DEB and RPM\n    if: needs.reuse.outputs.skip != 'true' && (github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == '')\n", 1)
     assert separator and header.strip('\n') == expected_header, 'ordinary dev job header, Linux capability and failure policy must be exact'
     rows = [(name, _without_continuation(block)) for name, block in _steps(job)]
     target = [(i, b) for i, (n, b) in enumerate(rows) if n == 'Verify native JDK launcher before packaging']
@@ -156,7 +161,7 @@ class LinuxNativeCleanupEnrollmentTests(unittest.TestCase):
             '        if: false\n', '        continue-on-error: true\n',
             '        shell: bash {0}\n', '        run: echo fake\n')]
         hostile.extend((
-            raw.replace("inputs.fixture_base_version == ''\n    runs-on:", "inputs.fixture_base_version == '' && false\n    runs-on:"),
+            raw.replace("inputs.fixture_base_version == '')\n    runs-on:", "inputs.fixture_base_version == '') && false\n    runs-on:"),
             raw.replace('    timeout-minutes: 45\n', '    timeout-minutes: 45\n    continue-on-error: true\n'),
             raw.replace('      - name: Set up JDK 17\n', '      - name: Set up JDK 17\n        if: false\n'),
             raw.replace('jobs:\n', 'defaults:\n  run:\n    shell: bash {0}\njobs:\n'),
