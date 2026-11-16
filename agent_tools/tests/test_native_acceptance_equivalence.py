@@ -15,14 +15,17 @@ from agent_tools import native_artifact_registry as registry
 from agent_tools import native_artifact_reuse as reuse
 
 
-@unittest.skipIf(os.name == "nt", "private acceptance evidence requires POSIX ownership")
-class NativeAcceptanceEquivalenceTest(unittest.TestCase):
+class EquivalenceRepository:
+    """A real Git repository with a frozen set, a registered package and a passed full-native record of its first commit."""
     requirement = "android-api29-native-cli"
+    layout: dict[str, str] = {}
 
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / "repo"; self.root.mkdir()
         self.git("init", "-q"); self.git("config", "user.email", "test@example.org"); self.git("config", "user.name", "Test")
+        for path, text in self.layout.items():
+            (self.root / path).parent.mkdir(parents=True, exist_ok=True); (self.root / path).write_text(text, encoding="utf-8")
         (self.root / ".gitignore").write_text(".rag_index/\n", encoding="utf-8")
         (self.root / "gradle.properties").write_text("vpnControlVersion=2.1.18\n", encoding="utf-8")
         (self.root / "src.kt").write_text("val x = 1\n", encoding="utf-8")
@@ -57,6 +60,9 @@ class NativeAcceptanceEquivalenceTest(unittest.TestCase):
     def row(self, source: str) -> dict:
         return next(item for item in matrix.matrix_status(self.root, source)["requirements"] if item["requirementId"] == self.requirement)
 
+
+@unittest.skipIf(os.name == "nt", "private acceptance evidence requires POSIX ownership")
+class NativeAcceptanceEquivalenceTest(EquivalenceRepository, unittest.TestCase):
     def test_actual_docs_only_reuse_is_historical_until_immutable_link_then_passes(self) -> None:
         (self.root / "docs" / "guide.md").write_text("after\n", encoding="utf-8"); self.commit(); target = self.head()
         decision = reuse.artifact_reuse_check(self.root, {"artifactSetId": self.frozen["artifactSetId"]})
@@ -230,6 +236,111 @@ class NativeAcceptanceEquivalenceTest(unittest.TestCase):
             "scenarioResults": {scenarios[0]: "unknown"}, "missingEvidence": [], "nextFixedCommand": "inspect-evidence",
             "reviewerAttestation": "later unknown", "evidenceScope": "component"})
         self.assertEqual("historical", self.row(target)["status"])
+
+
+# A repository shaped like this one: a Gradle product with a test source set and a test-only srcDir, a scenario bundle
+# table, a host driver whose closure reaches the MCP server by a late import, the selector with its manifest, dispatch
+# pins no module names, tests, fixtures and an unrelated tool whose name holds the tokens the old path rule refused.
+LAYOUT = {
+    "settings.gradle.kts": 'rootProject.name = "fixture"\ninclude(":desktopApp")\n',
+    "desktopApp/build.gradle.kts": 'kotlin { sourceSets.getByName("desktopTest").resources.srcDir(rootProject.file("visual-tests")) }\n',
+    "desktopApp/src/main/kotlin/Main.kt": "fun main() = Unit\n",
+    "desktopApp/src/desktopTest/kotlin/MainTest.kt": "class MainTest\n",
+    "visual-tests/scenes.json": "{}\n",
+    "scripts/package_windows_desktop.ps1": "Write-Output package\n",
+    "scripts/test_packaged_cli.py": "HARNESS = 1\n",
+    "scripts/test_release_notes.py": "assert True\n",
+    "agent_tools/native_scenario_bundle.py":
+        '_SCENARIOS = {"windows-scenario-driver": ("agent_tools/windows_case_runner.py", "scripts/test_packaged_cli.py")}\n',
+    "agent_tools/windows_case_runner.py": "CASES = 1\n",
+    "agent_tools/native_scenario_windows.py": "from . import native_scenario_bundle, windows_scenario_host_job\n",
+    "agent_tools/windows_scenario_host_job.py": "def late():\n    from . import mcp_server\n    return mcp_server\n",
+    "agent_tools/mcp_server.py": 'SELECTOR = "affected_agent_test_dependencies.json"\nPOLICY = "tool_action_policy.json"\n',
+    "agent_tools/tool_action_policy.json": "{}\n",
+    "agent_tools/native_acceptance_matrix.py": 'LEDGER = "native_acceptance_requirements.json"\n',
+    "agent_tools/native_acceptance_requirements.json": "{}\n",
+    "agent_tools/affected_agent_tests.py": 'DEPENDENCY_MANIFEST = "affected_agent_test_dependencies.json"\nENV = "requirements-mcp.txt"\n',
+    ".mcp.json": '{"mcpServers": {"fixture": {"command": "bash", "args": ["-c", "exec bash \\"$root/agent_tools/mcp_server.sh\\""]}}}\n',
+    "agent_tools/mcp_server.sh": 'pip install -r "$root/agent_tools/requirements-mcp.txt"\nexec python "$root/agent_tools/mcp_server.py" serve\n',
+    "agent_tools/requirements-mcp.txt": "mcp==1.0\n",
+    "agent_tools/affected_agent_test_dependencies.json": "{}\n",
+    "agent_tools/readiness_vm_dispatch.json": "{}\n",
+    "agent_tools/native_package_release_report.py": "REPORT = 1\n",
+    "agent_tools/tests/test_native_scenario_windows.py": "assert True\n",
+    "agent_tools/tests/fixtures/windows_native_case/before.source": "before\n",
+}
+
+
+@unittest.skipIf(os.name == "nt", "private acceptance evidence requires POSIX ownership")
+class ExecutedInputScopeTest(EquivalenceRepository, unittest.TestCase):
+    """S3: a link ends only when a commit changes an input the recorded scenario executed."""
+    layout = LAYOUT
+
+    def link(self, path: str, text: str = "changed\n") -> dict:
+        self.setUp()
+        (self.root / path).parent.mkdir(parents=True, exist_ok=True)
+        (self.root / path).write_text(text, encoding="utf-8"); self.commit()
+        link = matrix.matrix_equivalence_record(self.root, {"receiptId": self.record["receiptId"],
+            "artifactSetId": self.frozen["artifactSetId"], "targetSourceSHA": self.head(), "reviewerAttestation": "reviewed " + path})
+        stored = self.root / ".rag_index" / "native-acceptance" / "equivalences" / (link["linkId"] + ".json")
+        return {**json.loads(stored.read_bytes()), **link}
+
+    def test_test_fixture_selector_and_unrelated_tool_commits_keep_the_link(self) -> None:
+        kept = {
+            "agent_tools/tests/test_native_scenario_windows.py": "test",  # a test-only commit
+            "agent_tools/tests/fixtures/windows_native_case/before.source": "fixture",  # a fixture-only commit
+            "agent_tools/tests/fixtures/windows_native_case/after.source": "fixture",
+            "agent_tools/affected_agent_test_dependencies.json": "metadata",  # selector metadata, though the MCP server names it
+            "agent_tools/readiness_vm_dispatch.json": "agent-tool",  # dispatch pins no executed module names
+            "agent_tools/native_package_release_report.py": "agent-tool",
+            "desktopApp/src/desktopTest/kotlin/MainTest.kt": "test",
+            "visual-tests/scenes.json": "test",
+            "scripts/test_release_notes.py": "test",
+            "agent_tools/README.md": "docs",
+            "docs/guide.md": "docs",
+        }
+        for path, kind in kept.items():
+            with self.subTest(path=path):
+                link = self.link(path)
+                self.assertEqual([kind], [entry["class"] for entry in link["changedPaths"]])
+                self.assertEqual("passed", self.row(self.head())["status"])
+                self.assertEqual(["exact-sha-ci"] + (["changed-tool-tests"] if kind != "docs" else []), link["requiredCurrentChecks"])
+
+    def test_bundle_host_classifier_product_and_version_commits_end_the_link(self) -> None:
+        ended = {
+            "agent_tools/windows_case_runner.py": "CASES = 2\n",  # a bundle file shipped to the guest
+            "scripts/test_packaged_cli.py": "HARNESS = 2\n",  # a bundle file outside agent_tools, named like a test
+            "agent_tools/native_scenario_bundle.py":
+                '_SCENARIOS = {"windows-scenario-driver": ("agent_tools/windows_case_runner.py",)}\n',  # the bundle table
+            "agent_tools/native_scenario_windows.py": "from . import native_scenario_bundle\n",  # the host driver
+            "agent_tools/windows_scenario_host_job.py": "VALUE = 2\n",  # its import closure
+            "agent_tools/mcp_server.py": 'SELECTOR = "affected_agent_test_dependencies.json"\n',  # reached by a late import
+            "agent_tools/tool_action_policy.json": '{"changed": true}\n',  # a resource the closure names
+            "agent_tools/native_acceptance_requirements.json": '{"changed": true}\n',  # the classifier's ledger
+            "agent_tools/requirements-mcp.txt": "mcp==2.0\n",  # the MCP route's environment, though the selector names it too
+            "agent_tools/mcp_server.sh": "exec python agent_tools/mcp_server.py\n",  # the MCP route's launcher
+            ".mcp.json": "{}\n",  # the MCP server registration
+            "desktopApp/src/main/kotlin/Main.kt": "fun main() = println()\n",  # product code
+            "scripts/package_windows_desktop.ps1": "Write-Output changed\n",  # a product build input
+            "gradle.properties": "vpnControlVersion=2.1.19\n",  # a version roll
+            "settings.gradle.kts": 'include(":desktopApp")\ninclude(":other")\n',
+        }
+        for path, text in ended.items():
+            with self.subTest(path=path):
+                with self.assertRaises(matrix.NativeAcceptanceMatrixError):
+                    self.link(path, text)
+                self.assertEqual("historical", self.row(self.head())["status"])
+
+    def test_a_new_import_makes_an_unrelated_tool_an_executed_input(self) -> None:
+        self.link("agent_tools/native_package_release_report.py")  # unrelated: kept
+        self.setUp()
+        # The host job now imports it: at the target it is in the closure, so the next change to it ends a link.
+        (self.root / "agent_tools/windows_scenario_host_job.py").write_text(
+            "from . import native_package_release_report\n", encoding="utf-8"); self.commit()
+        changed = self.head()
+        source = reuse._ScopedInputs(self.root, self.original, changed)
+        self.assertEqual("host-tool", source.classify("agent_tools/native_package_release_report.py"))
+        self.assertIn("agent_tools/native_package_release_report.py", source.executed_paths())
 
 
 if __name__ == "__main__":

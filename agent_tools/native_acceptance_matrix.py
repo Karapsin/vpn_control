@@ -33,6 +33,8 @@ _RESULTS = {"passed", "failed", "unknown"}
 _SCOPES = {"full-native"}
 _NEXT = {"none", "inspect-evidence", "collect-native-scenario", "rerun-required-scenario", "verify-artifact", "await-ci", "capture-visual-review"}
 _MAX_RECORD = 16384
+# The classes of a path no recorded scenario executed (native_artifact_reuse._ScopedInputs); only these keep a link.
+_LINK_CLASSES = frozenset({"docs", "test", "fixture", "metadata", "agent-tool"})
 
 
 class NativeAcceptanceMatrixError(ValueError):
@@ -698,7 +700,7 @@ def _link_schema(value: Any, path: Path) -> None:
             item.get("status") not in {"A", "M", "D"} or not isinstance(item.get("oldMode"), str) or not re.fullmatch(r"[0-7]{6}", item["oldMode"]) or
             not isinstance(item.get("newMode"), str) or not re.fullmatch(r"[0-7]{6}", item["newMode"]) or not isinstance(item.get("path"), str) or
             not item["path"] or item["path"].startswith("/") or any(part in {"", ".", ".."} for part in item["path"].split("/")) or
-            item.get("class") not in {"docs", "test", "agent-tool"} for item in paths)):
+            item.get("class") not in _LINK_CLASSES for item in paths)):
         raise NativeAcceptanceMatrixError("native acceptance equivalence is corrupt")
     checks = value.get("requiredCurrentChecks")
     if not isinstance(checks, list) or not checks or len(checks) > 2 or checks[0] != "exact-sha-ci" or any(item not in {"exact-sha-ci", "changed-tool-tests"} for item in checks):

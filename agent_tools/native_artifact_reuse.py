@@ -5,6 +5,7 @@ local decision only; CI must still verify the current commit's exact SHA.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -27,13 +28,10 @@ class ArtifactReuseError(ValueError):
 _SHA = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
+# Byte-cache reuse only (artifact_reuse_check): which dirty or changed paths a frozen package may be reused across.
+# Acceptance equivalence is scoped to executed inputs instead (_ScopedInputs).
 _ALLOWED_PREFIXES = ("docs/", "agent_docs/", "tests/")
 _FORBIDDEN = ("package", "packaging", "release", "native", "runtime", "workflow", "build", "gradle", "fixture")
-_CRITICAL_AGENT_TOOLS = {
-    "agent_tools/mcp_server.py", "agent_tools/native_artifact_reuse.py",
-    "agent_tools/native_artifact_registry.py", "agent_tools/native_acceptance_matrix.py",
-    "agent_tools/native_acceptance_overview.py", "agent_tools/native_acceptance_requirements.json",
-}
 
 
 def artifact_set_freeze(root: str | Path, value: Mapping[str, Any]) -> dict[str, Any]:
@@ -223,19 +221,22 @@ def _acceptance_equivalence_check(root: str | Path, artifact_set_id: str,
     verified = artifact_set_verify_readonly(root, frozen) if readonly else artifact_set_verify(root, frozen)
     if verified.get("verification") != "verified":
         raise ArtifactReuseError("artifact set or current bytes are not verified")
-    entries = _equivalence_diff(root, original, target)
+    scoped = _ScopedInputs(root, original, target)
+    entries = _equivalence_diff(root, original, target, scoped)
     if not entries:
         classes: list[str] = []
     else:
         classes = sorted({entry["class"] for entry in entries})
-    if any(entry["class"] == "rejected" for entry in entries):
+    if any(entry["class"] in _EXECUTED for entry in entries):
         raise ArtifactReuseError("commit diff is not eligible for acceptance equivalence")
-    product_before = _equivalence_product_tree(root, original)
-    product_after = _equivalence_product_tree(root, target)
+    # The executed inputs of both commits, compared byte for byte by Git object: none may differ.
+    executed = scoped.executed_paths()
+    product_before = _equivalence_product_tree(root, original, executed)
+    product_after = _equivalence_product_tree(root, target, executed)
     if product_before != product_after:
         raise ArtifactReuseError("product tree differs across equivalence target")
     obligations = ["exact-sha-ci"]
-    if any(kind in {"test", "agent-tool"} for kind in classes):
+    if any(kind in {"test", "fixture", "metadata", "agent-tool"} for kind in classes):
         obligations.append("changed-tool-tests")
     canonical = [{key: entry[key] for key in ("status", "oldMode", "newMode", "path", "class")}
                  for entry in entries]
@@ -318,10 +319,14 @@ def _changed_paths(root: Path, before: str, after: str) -> list[str] | None:
         return None
 
 
-def _equivalence_diff(root: Path, before: str, after: str) -> list[dict[str, str]]:
-    """Return a canonical, mode-sensitive Git diff or fail closed."""
+def _equivalence_diff(root: Path, before: str, after: str, scoped: "_ScopedInputs | None" = None) -> list[dict[str, str]]:
+    """Return a canonical, mode-sensitive Git diff or fail closed.
+
+    Each path's class is what the two commits' executed inputs make it (_ScopedInputs): an executed class ends a link.
+    """
     for sha in (before, after):
         _git(root, "cat-file", "-e", sha + "^{commit}")
+    scoped = scoped if scoped is not None else _ScopedInputs(root, before, after)
     rename_status = _git(root, "diff", "-M", "--name-status", "-z", before, after).split(b"\0")
     if any(item.startswith((b"R", b"C")) for item in rename_status[::2] if item):
         raise ArtifactReuseError("Git equivalence diff contains a rename or copy")
@@ -349,34 +354,46 @@ def _equivalence_diff(root: Path, before: str, after: str) -> list[dict[str, str
         if old_mode == "120000" or new_mode == "120000" or old_mode != new_mode and fields[4] == "M":
             raise ArtifactReuseError("Git equivalence diff changes an unsafe mode")
         entries.append({"status": fields[4], "oldMode": old_mode, "newMode": new_mode,
-                        "path": path, "class": _equivalence_class(path)})
+                        "path": path, "class": scoped.classify(path)})
     return entries
 
 
-def _equivalence_class(path: str) -> str:
-    if not path or path.startswith("/") or any(part in {"", ".", ".."} for part in path.split("/")):
-        return "rejected"
-    # Fixed read-only host observation is tooling, never a packaged product input.
-    if path == "agent_tools/native_host_observation.py":
-        return "agent-tool"
-    if path == "agent_tools/tests/test_native_host_observation.py":
-        return "test"
-    lowered = path.lower()
-    if any(word in lowered for word in _FORBIDDEN):
-        return "rejected"
-    if path == "README.md" or path.startswith(("docs/", "agent_docs/")):
-        return "docs"
-    if path.startswith("tests/") or path.startswith("agent_tools/tests/"):
-        return "test"
-    if path.startswith("agent_tools/") and path.endswith(".py") and path not in _CRITICAL_AGENT_TOOLS:
-        return "agent-tool"
-    return "rejected"
+# Native-evidence equivalence is scoped to what a recorded scenario executed (TEST-007): the product build inputs, the
+# files a scenario bundle ships to the guest, and the host-side driver and classifier import closure with the resources
+# it reads. A change to any of them ends a link; tests, fixtures, selector metadata, docs and unrelated tools do not.
+# The sets are derived from each commit's own files: the bundle table, the Python imports, the Gradle settings.
+_EXECUTED = frozenset({"product", "bundle", "host-tool", "rejected"})
+_BUNDLE_MODULE = "agent_tools/native_scenario_bundle.py"  # Its _SCENARIOS table is the manifest of every scenario bundle.
+_BUNDLE_TABLE = "_SCENARIOS"
+# The APIs of native evidence: a module that freezes or verifies a scenario bundle, journals a scenario execution, reads
+# or writes the acceptance matrix, or proves equivalence is a host-side driver or classifier. Their importers are the roots.
+_HOST_ANCHORS = ("agent_tools/native_scenario_bundle.py", "agent_tools/native_scenario_execution.py",
+                 "agent_tools/native_acceptance_matrix.py", "agent_tools/native_artifact_reuse.py")
+# The test selector: the sibling files it names are its own metadata, which no scenario reads.
+_SELECTOR_MODULE = "agent_tools/affected_agent_tests.py"
+# The MCP route's launcher: the server registration and the agent_tools files it names, and the files those name.
+_MCP_REGISTRATION = ".mcp.json"
+_TOOL_PATH = re.compile(rb"agent_tools/[A-Za-z0-9_][A-Za-z0-9_./-]*")
+_TOOLS, _TOOL_TESTS, _TOOL_FIXTURES = "agent_tools/", "agent_tools/tests/", "agent_tools/tests/fixtures/"
+_SETTINGS = "settings.gradle.kts"
+_INCLUDE = re.compile(r"\binclude\s*\(([^)]*)\)")
+_PROJECT = re.compile(r"\"(:[A-Za-z0-9_.:-]+)\"")
+_SOURCE_DIR = re.compile(r"srcDir\(\s*rootProject\.file\(\s*\"([^\"]+)\"\s*\)\s*\)")
+_SOURCE_SET = re.compile(r"getByName\(\s*\"([A-Za-z0-9_]+)\"\s*\)")
 
 
-def _equivalence_product_tree(root: Path, source: str) -> str:
-    raw = _git(root, "ls-tree", "-r", "-z", source)
-    entries = []
-    for item in raw.split(b"\0"):
+def _test_set(name: str) -> bool:
+    """A Gradle or Kotlin Multiplatform test source set: test, androidTest, desktopTest, commonTest, androidUnitTest."""
+    return name == "test" or name.endswith("Test")
+
+
+def _unsafe_path(path: str) -> bool:
+    return not path or path.startswith("/") or any(part in {"", ".", ".."} for part in path.split("/"))
+
+
+def _tree_entries(root: Path, source: str) -> dict[str, tuple[str, str, str]]:
+    entries: dict[str, tuple[str, str, str]] = {}
+    for item in _git(root, "ls-tree", "-r", "-z", "--full-tree", source).split(b"\0"):
         if not item:
             continue
         metadata, name = item.split(b"\t", 1)
@@ -384,9 +401,225 @@ def _equivalence_product_tree(root: Path, source: str) -> str:
             path = name.decode("utf-8")
         except UnicodeDecodeError as error:
             raise ArtifactReuseError("Git tree contains a non-UTF-8 path") from error
-        if _equivalence_class(path) == "rejected":
-            entries.append([path, *metadata.decode("ascii").split(" ")])
-    return hashlib.sha256(_encode(entries)).hexdigest()
+        mode, kind, oid = metadata.decode("ascii").split(" ")
+        entries[path] = (mode, kind, oid)
+    return entries
+
+
+def _blobs(root: Path, oids: set[str], cache: dict[str, bytes]) -> None:
+    """Read Git blobs by object ID in one batch into cache; a missing object fails closed."""
+    wanted = sorted(oid for oid in oids if oid not in cache)
+    if not wanted:
+        return
+    result = subprocess.run(["git", "cat-file", "--batch"], cwd=root, input=("\n".join(wanted) + "\n").encode("ascii"),
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if result.returncode:
+        raise ArtifactReuseError("Git evidence unavailable: cat-file --batch")
+    raw, offset = result.stdout, 0
+    for oid in wanted:
+        end = raw.index(b"\n", offset)
+        header = raw[offset:end].decode("ascii").split(" ")
+        if len(header) != 3 or header[0] != oid or header[1] != "blob":
+            raise ArtifactReuseError("Git evidence unavailable: blob " + oid)
+        size = int(header[2])
+        cache[oid] = raw[end + 1:end + 1 + size]
+        offset = end + 1 + size + 1
+
+
+def _syntax(source: bytes, path: str) -> ast.AST:
+    try:
+        return ast.parse(source, filename=path)
+    except (SyntaxError, ValueError) as error:
+        raise ArtifactReuseError("executed-input analysis cannot parse " + path) from error
+
+
+class _ExecutedInputs:
+    """The executed inputs of one commit, from its own files: product build inputs, bundle files and host closure."""
+
+    def __init__(self, root: Path, source: str, cache: dict[str, Any]):
+        self.root, self.cache = root, cache
+        self.tree = _tree_entries(root, source)
+        self.modules = {self._dotted(path): path for path in self.tree
+                        if path.startswith(_TOOLS) and not path.startswith(_TOOL_TESTS) and path.endswith(".py")}
+        self.bundle = self._bundle_files()
+        self.selector = self._sibling_names(_SELECTOR_MODULE) if _SELECTOR_MODULE in self.tree else set()
+        self.host = self._host_closure()
+        self.projects, self.test_directories = self._gradle()
+
+    @staticmethod
+    def _dotted(path: str) -> str:
+        parts = path[len(_TOOLS):-len(".py")].split("/")
+        return ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
+
+    def _bytes(self, paths: list[str]) -> dict[str, bytes]:
+        blobs = self.cache.setdefault("blobs", {})
+        _blobs(self.root, {self.tree[path][2] for path in paths}, blobs)
+        return {path: blobs[self.tree[path][2]] for path in paths}
+
+    def _parsed(self, path: str) -> ast.AST:
+        trees = self.cache.setdefault("syntax", {})
+        oid = self.tree[path][2]
+        if oid not in trees:
+            trees[oid] = _syntax(self._bytes([path])[path], path)
+        return trees[oid]
+
+    def _bundle_files(self) -> set[str]:
+        if _BUNDLE_MODULE not in self.tree:
+            return set()
+        for node in ast.walk(self._parsed(_BUNDLE_MODULE)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
+            if any(isinstance(target, ast.Name) and target.id == _BUNDLE_TABLE for target in targets) and node.value is not None:
+                try:
+                    table = ast.literal_eval(node.value)
+                except ValueError as error:
+                    raise ArtifactReuseError("scenario bundle manifest is not a literal table") from error
+                if (not isinstance(table, dict) or not all(isinstance(files, tuple) and all(isinstance(item, str) and not _unsafe_path(item)
+                                                                                            for item in files) for files in table.values())):
+                    raise ArtifactReuseError("scenario bundle manifest is invalid")
+                return {item for files in table.values() for item in files}
+        raise ArtifactReuseError("scenario bundle manifest is unavailable")
+
+    def _summary(self, path: str) -> tuple[tuple[tuple[int, str, tuple[str, ...]], ...], frozenset[str]]:
+        """One walk of a module: its import statements (level, module, names; level -1 a plain import) and string literals."""
+        summaries = self.cache.setdefault("summaries", {})
+        oid = self.tree[path][2]
+        if oid not in summaries:
+            imports, strings = [], set()
+            for node in ast.walk(self._parsed(path)):
+                if isinstance(node, ast.Constant):
+                    if isinstance(node.value, str) and 0 < len(node.value) <= 256:
+                        strings.add(node.value)
+                elif isinstance(node, ast.Import):
+                    imports.extend((-1, alias.name, ()) for alias in node.names)
+                elif isinstance(node, ast.ImportFrom):
+                    imports.append((node.level, node.module or "", tuple(alias.name for alias in node.names)))
+            summaries[oid] = (tuple(imports), frozenset(strings))
+        return summaries[oid]
+
+    def _imports(self, path: str) -> set[str]:
+        """The agent_tools modules one module imports, at any depth of its body, package or script style."""
+        dotted = self._dotted(path).split(".")
+        package = dotted if path.endswith("/__init__.py") else dotted[:-1]
+        names: set[str] = set()
+        for level, module, aliases in self._summary(path)[0]:
+            parts = module.split(".") if module else []
+            if level < 0:
+                names.update(".".join(parts[:index]) for index in range(1, len(parts) + 1))
+                names.add(".".join([*package, *parts]))
+                continue
+            prefixes = ([[*(package[:len(package) - (level - 1)] if level > 1 else package), *parts]] if level
+                        else [parts, [*package, *parts]])
+            for prefix in prefixes:
+                names.add(".".join(prefix))
+                names.update(".".join([*prefix, alias]) for alias in aliases)
+        resolved = set()
+        for name in names:
+            name = name[len("agent_tools."):] if name.startswith("agent_tools.") else name
+            if name in self.modules:
+                resolved.add(self.modules[name])
+        return resolved
+
+    def _sibling_names(self, path: str) -> set[str]:
+        """Tracked non-Python files a module names by literal: a sibling's file name or an agent_tools path."""
+        directory = path.rsplit("/", 1)[0] + "/"
+        found = set()
+        for value in self._summary(path)[1]:
+            for candidate in (directory + value, value):
+                if (candidate.startswith(_TOOLS) and not candidate.startswith(_TOOL_TESTS) and candidate in self.tree
+                        and not candidate.endswith((".py", ".md"))):
+                    found.add(candidate)
+        return found
+
+    def _mcp_launcher(self) -> set[str]:
+        """The files the MCP server registration names under agent_tools, and those its non-Python files name in turn."""
+        named: set[str] = set()
+        pending = [_MCP_REGISTRATION] if _MCP_REGISTRATION in self.tree else []
+        while pending:
+            for match in _TOOL_PATH.findall(self._bytes([pending.pop()]).popitem()[1]):
+                path = match.decode("ascii").rstrip("./")
+                if path in self.tree and path not in named and not path.startswith(_TOOL_TESTS) and not path.endswith(".md"):
+                    named.add(path)
+                    if not path.endswith(".py"):
+                        pending.append(path)
+        return named
+
+    def _host_closure(self) -> set[str]:
+        anchors = {path for path in _HOST_ANCHORS if path in self.tree}
+        launcher = self._mcp_launcher()
+        names = tuple(path[len(_TOOLS):-len(".py")].rsplit("/", 1)[-1].encode() for path in anchors)
+        # An import names the module in its text, so only those modules are parsed to find the anchors' importers.
+        mentions = self._bytes(sorted(path for path in self.modules.values()))
+        roots = (set(anchors) | {path for path in launcher if path in self.modules.values()}
+                 | {path for path, raw in mentions.items() if any(name in raw for name in names) and self._imports(path) & anchors})
+        closure, pending = set(), sorted(roots)
+        while pending:
+            path = pending.pop()
+            if path in closure:
+                continue
+            closure.add(path)
+            pending.extend(sorted(self._imports(path) - closure))
+        resources = {item for path in closure for item in self._sibling_names(path)} - self.selector
+        return closure | resources | launcher
+
+    def _gradle(self) -> tuple[tuple[str, ...], set[str]]:
+        """Included project directories, and repository directories only test source sets add (srcDir)."""
+        if _SETTINGS not in self.tree:
+            return (), set()
+        settings = self._bytes([_SETTINGS])[_SETTINGS].decode("utf-8", "replace")
+        projects = sorted({name.strip(":").replace(":", "/") + "/" for block in _INCLUDE.findall(settings)
+                           for name in _PROJECT.findall(block)})
+        uses: dict[str, set[bool]] = {}
+        scripts = [project + "build.gradle.kts" for project in projects if project + "build.gradle.kts" in self.tree]
+        for raw in self._bytes(scripts).values():
+            for line in raw.decode("utf-8", "replace").splitlines():
+                for directory in _SOURCE_DIR.findall(line):
+                    sets = _SOURCE_SET.findall(line)
+                    uses.setdefault(directory.strip("/") + "/", set()).add(bool(sets) and all(_test_set(name) for name in sets))
+        return tuple(projects), {directory for directory, tests in uses.items() if tests == {True}}
+
+    def classify(self, path: str) -> str:
+        if _unsafe_path(path):
+            return "rejected"
+        if path in self.bundle:
+            return "bundle"
+        if path in self.host:
+            return "host-tool"
+        project = next((item for item in self.projects if path.startswith(item)), None)
+        if path.startswith(("docs/", "agent_docs/")) or path.endswith(".md") and project is None:
+            return "docs"
+        if path.startswith(_TOOLS):
+            return ("fixture" if path.startswith(_TOOL_FIXTURES) else "test" if path.startswith(_TOOL_TESTS)
+                    else "metadata" if path in self.selector else "agent-tool")
+        parts = path.split("/")
+        if (path.startswith("tests/") or path.startswith(tuple(self.test_directories))
+                or path.startswith("scripts/") and parts[-1].startswith("test_") and parts[-1].endswith(".py")
+                or project is not None and path[len(project):].startswith("src/") and len(path[len(project):].split("/")) > 2
+                and _test_set(path[len(project):].split("/")[1])):
+            return "test"
+        return "product"
+
+
+class _ScopedInputs:
+    """Both commits' executed inputs: a path is executed when either commit executes it."""
+
+    def __init__(self, root: Path, before: str, after: str):
+        cache: dict[str, Any] = {}
+        self.sides = (_ExecutedInputs(root, before, cache), _ExecutedInputs(root, after, cache))
+
+    def classify(self, path: str) -> str:
+        classes = [side.classify(path) for side in self.sides]
+        return next((name for name in classes if name in _EXECUTED), classes[1])
+
+    def executed_paths(self) -> list[str]:
+        paths = {path for side in self.sides for path in side.tree}
+        return sorted(path for path in paths if self.classify(path) in _EXECUTED)
+
+
+def _equivalence_product_tree(root: Path, source: str, executed: list[str] | None = None) -> str:
+    """The digest of one commit's executed inputs: path, mode, type and object of each one present."""
+    tree = _tree_entries(root, source)
+    paths = executed if executed is not None else _ScopedInputs(root, source, source).executed_paths()
+    return hashlib.sha256(_encode([[path, *tree[path]] for path in paths if path in tree])).hexdigest()
 
 
 def _dirty_paths(root: Path) -> list[str]:

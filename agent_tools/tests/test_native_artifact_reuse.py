@@ -28,35 +28,41 @@ class NativeArtifactReuseImportTest(unittest.TestCase):
 
 
 class NativeArtifactEquivalencePolicyTest(unittest.TestCase):
-    def test_exact_host_observation_tooling_diff_is_eligible(self) -> None:
-        # The actual97f->04933 committed eight-path diff. Eligibility preserves
-        # original artifact attribution; it does not grant artifact or native authority.
-        expected = {
-            "agent_docs/parity-failure-regressions.md": "docs",
-            "agent_docs/work-in-progress.md": "docs",
-            "agent_tools/android_installer_direct_transport.py": "agent-tool",
-            "agent_tools/native_host_observation.py": "agent-tool",
-            "agent_tools/ssh_tmux_resource_admission.py": "agent-tool",
-            "agent_tools/tests/test_android_installer_direct_dispatch_close.py": "test",
-            "agent_tools/tests/test_native_host_observation.py": "test",
-            "docs/CHANGELOG.md": "docs",
-        }
-        self.assertEqual(expected, {path: reuse._equivalence_class(path) for path in expected})
+    """Executed inputs of this checkout's own HEAD, derived from its bundle table, imports and Gradle settings."""
 
-    def test_exact_exception_preserves_unknown_product_and_critical_refusals(self) -> None:
-        for path in (
-            "", "/agent_tools/native_host_observation.py", "agent_tools/../native_host_observation.py",
-            "agent_tools//native_host_observation.py", "agent_tools/Native_host_observation.py",
-            "agent_tools/native_host_observation_extra.py", "tests/test_native_host_observation.py",
-            "agent_tools/native_artifact_reuse.py", "agent_tools/native_artifact_registry.py",
-            "agent_tools/native_acceptance_matrix.py", "agent_tools/mcp_server.py",
-            "agent_tools/native_acceptance_requirements.json", "scripts/package_windows_desktop.ps1",
-            "desktopApp/src/main/resources/windows-install-helper.cs", "desktopApp/src/main/kotlin/Main.kt",
-            "gradle.properties", "build.gradle.kts", "settings.gradle.kts", ".github/workflows/windows.yml",
-            "agent_tools/runtime_probe.py", "tests/native_package.py", "unknown/source.py",
-        ):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = Path(__file__).resolve().parents[2]
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=cls.root, capture_output=True, text=True, check=False)
+        if head.returncode:
+            raise unittest.SkipTest("no Git checkout")
+        cls.scoped = reuse._ScopedInputs(cls.root, head.stdout.strip(), head.stdout.strip())
+
+    def test_real_tree_classes(self) -> None:
+        expected = {
+            # Executed: product build inputs, the windows-scenario-driver bundle, the driver and classifier closure.
+            "gradle.properties": "product", "settings.gradle.kts": "product", "build.gradle.kts": "product",
+            "desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/Main.kt": "product", "scripts/package_windows_desktop.ps1": "product",
+            ".github/workflows/windows-desktop.yml": "product",
+            "agent_tools/windows_scenario_host_job.py": "bundle", "scripts/test_packaged_cli.py": "bundle",
+            "agent_tools/native_scenario_windows.py": "host-tool", "agent_tools/native_acceptance_matrix.py": "host-tool",
+            "agent_tools/native_artifact_reuse.py": "host-tool", "agent_tools/native_acceptance_requirements.json": "host-tool",
+            "agent_tools/mcp_server.py": "host-tool", "agent_tools/mcp_server.sh": "host-tool",
+            "agent_tools/requirements-mcp.txt": "host-tool", ".mcp.json": "product",
+            # Not executed by any scenario: tests, fixtures, selector metadata, docs and unrelated tools.
+            "agent_tools/tests/test_native_artifact_reuse.py": "test", "desktopApp/src/test/java/com/kardinal/vpncontrol/desktop/NativeExecutionJUnitGate.java": "test",
+            "shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/AppUpdateLogicTest.kt": "test", "visual-tests/scenes.json": "test",
+            "agent_tools/tests/fixtures/x/before.source": "fixture",
+            "agent_tools/affected_agent_test_dependencies.json": "metadata", "agent_tools/readiness_vm_dispatch.json": "agent-tool",
+            "agent_tools/affected_agent_tests.py": "agent-tool",
+            "docs/CHANGELOG.md": "docs", "agent_docs/contracts.md": "docs", "agent_tools/README.md": "docs", "README.md": "docs",
+        }
+        self.assertEqual(expected, {path: self.scoped.classify(path) for path in expected})
+
+    def test_malformed_paths_are_rejected(self) -> None:
+        for path in ("", "/agent_tools/x.py", "agent_tools/../x.py", "agent_tools//x.py"):
             with self.subTest(path=path):
-                self.assertEqual("rejected", reuse._equivalence_class(path))
+                self.assertEqual("rejected", self.scoped.classify(path))
 
 
 @unittest.skipIf(os.name == "nt", "private artifact index requires POSIX admission")
