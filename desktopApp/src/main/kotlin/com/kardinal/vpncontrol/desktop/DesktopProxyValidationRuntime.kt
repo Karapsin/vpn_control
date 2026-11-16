@@ -281,6 +281,14 @@ class DesktopProxyValidationRuntime(
     ): ProfileBenchmark {
         Files.createDirectories(baseDir)
         val port = DesktopLoopback.freePort()
+        // sing-box and its probe copy come before any file: these exits leave nothing behind.
+        val singBox = singBoxResolver.resolve()
+            ?: return BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "sing_box_missing")
+        val probeSingBox = runCatching {
+            prepareDirectProbeSingBoxExecutable(singBox.path, baseDir)
+        }.getOrElse {
+            return BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "probe_binary_failed")
+        }
         val configJson = DesktopProxyConfigFactory.buildProxyOnlyConfig(
             profile = candidate.profile.withResolvedValidationServer(candidate.resolvedServerAddress),
             dns = dnsSettings,
@@ -292,49 +300,40 @@ class DesktopProxyValidationRuntime(
             .replace(Regex("[^a-z0-9]+"), "-")
             .trim('-')
             .ifBlank { "profile" }
-        val configFile = Files.createTempFile(baseDir, "validate-$safeName-", ".json")
-        val logFile = Files.createTempFile(baseDir, "validate-$safeName-", ".log")
-        Files.writeString(configFile, configJson)
-        Files.writeString(logFile, "")
-        val singBox = singBoxResolver.resolve()
-            ?: return BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "sing_box_missing")
-        val probeSingBox = runCatching {
-            prepareDirectProbeSingBoxExecutable(singBox.path, baseDir)
-        }.getOrElse {
-            return BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "probe_binary_failed")
-        }
+        // The configuration holds the candidate's credentials. It lives from here until sing-box listens, inside the
+        // short-lived runtime, which ends the child and removes the file on every exit, retrying a refused deletion
+        // and reporting what stays. sing-box's output is discarded: nothing read it, and Windows refuses to delete a
+        // redirect file while the child that inherited it lives.
+        val cleanup = DesktopBootstrapCleanup(label = VALIDATION_RUNTIME_LABEL)
+        return DesktopShortLivedRuntime(cleanup).within(DesktopShortLivedRuntimes.shared) { runtime ->
+            val configFile = runtime.createFile(baseDir, "$VALIDATION_FILE_PREFIX$safeName-", ".json")
+            Files.writeString(configFile, configJson)
+            try {
+                val benchmark = withTimeoutOrNull(settings.profileTimeoutMillis) {
+                    val process = runtime.start {
+                        ProcessBuilder(probeSingBox.toString(), "run", "-c", configFile.toString())
+                            .directory(baseDir.toFile())
+                            .redirectErrorStream(true)
+                            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                            .start()
+                    }
 
-        var process: Process? = null
-        try {
-            val benchmark = withTimeoutOrNull(settings.profileTimeoutMillis) {
-                process = ProcessBuilder(probeSingBox.toString(), "run", "-c", configFile.toString())
-                    .directory(baseDir.toFile())
-                    .redirectErrorStream(true)
-                    .redirectOutput(logFile.toFile())
-                    .start()
+                    if (!waitForPort(process, port, settings.startupTimeoutMillis)) {
+                        return@withTimeoutOrNull BenchmarkSearchLogic.failedBenchmark(
+                            candidate.profile,
+                            candidate,
+                            "proxy_not_ready",
+                        )
+                    }
+                    cleanup.deleteNow(configFile)
 
-                if (!waitForPort(process, port, settings.startupTimeoutMillis)) {
-                    return@withTimeoutOrNull BenchmarkSearchLogic.failedBenchmark(
-                        candidate.profile,
-                        candidate,
-                        "proxy_not_ready",
-                    )
+                    val test = runProxyRuns(port, benchmarkUrls.test, settings)
+                    BenchmarkSearchLogic.buildValidatedBenchmark(candidate, test)
                 }
-
-                val test = runProxyRuns(port, benchmarkUrls.test, settings)
-                BenchmarkSearchLogic.buildValidatedBenchmark(candidate, test)
+                benchmark ?: BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "validation_timeout")
+            } catch (_: IOException) {
+                BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "sing_box_launch_failed")
             }
-            return benchmark ?: BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "validation_timeout")
-        } catch (_: IOException) {
-            return BenchmarkSearchLogic.failedBenchmark(candidate.profile, candidate, "sing_box_launch_failed")
-        } finally {
-            process?.destroy()
-            if (process?.waitFor(2, TimeUnit.SECONDS) == false) {
-                process?.destroyForcibly()
-                process?.waitFor(2, TimeUnit.SECONDS)
-            }
-            runCatching { Files.deleteIfExists(configFile) }
-            runCatching { Files.deleteIfExists(logFile) }
         }
     }
 

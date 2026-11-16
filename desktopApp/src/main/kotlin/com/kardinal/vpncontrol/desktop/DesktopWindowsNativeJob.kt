@@ -27,6 +27,26 @@ internal class DesktopWindowsNativeJob private constructor(
         }
     }
 
+    /** Puts the process [pid] in this job; false when the process cannot be opened or the job refuses it. */
+    @Synchronized fun assign(pid: Long): Boolean {
+        if (closed) return false
+        // PROCESS_SET_QUOTA | PROCESS_TERMINATE, the access AssignProcessToJobObject requires.
+        val process = Kernel32.INSTANCE.OpenProcess(0x0101, false, pid.toInt()) ?: return false
+        return try {
+            api.AssignProcessToJobObject(handle, process)
+        } finally {
+            Kernel32.INSTANCE.CloseHandle(process)
+        }
+    }
+
+    /** Ends whatever still runs in the job, then closes it; never throws. */
+    @Synchronized fun release() {
+        if (closed) return
+        if (!isEmpty()) api.TerminateJobObject(handle, 1)
+        Kernel32.INSTANCE.CloseHandle(handle)
+        closed = true
+    }
+
     @Synchronized override fun close() {
         if (closed) return
         check(isEmpty()) { "OUTCOME_UNKNOWN" }
@@ -61,5 +81,6 @@ internal class DesktopWindowsNativeJob private constructor(
         fun SetInformationJobObject(job: WinNT.HANDLE, kind: Int, information: Pointer, size: Int): Boolean
         fun QueryInformationJobObject(job: WinNT.HANDLE, kind: Int, information: Pointer, size: Int, returned: Pointer?): Boolean
         fun TerminateJobObject(job: WinNT.HANDLE, exitCode: Int): Boolean
+        fun AssignProcessToJobObject(job: WinNT.HANDLE, process: WinNT.HANDLE): Boolean
     }
 }

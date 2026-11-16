@@ -126,4 +126,48 @@ class DesktopHomeSshBootstrapCleanupNativeTest {
             listener?.close()
         }
     }
+
+    /**
+     * Review of 1fe2ddab: the bootstrap's sing-box (an authenticated SSH session behind a loopback inbound without users)
+     * outlived an owner ended by End task or `taskkill /F`, since only the owner's own `finally` stopped it. A child JVM
+     * starts a real child with the product's launcher and ties it to its lifetime; TerminateProcess on that JVM (no
+     * `finally`, no shutdown hook) must take the child with it.
+     */
+    @Test fun nativeAnOwnerEndedByTerminateProcessTakesItsTiedBootstrapChildWithIt() = fixture { root ->
+        val classpath = DesktopJvmCliTestBootstrap.classpath(requireNotNull(System.getProperty("vpnControl.test.mainClasspath")))
+        val owner = ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java.exe").toString(), "-cp", classpath,
+            DesktopTiedBootstrapOwner::class.java.name, root.toString())
+            .redirectErrorStream(true).redirectOutput(root.resolve("owner.txt").toFile()).start()
+        var child: ProcessHandle? = null
+        try {
+            val pidFile = root.resolve("child.pid")
+            val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(60)
+            while (!Files.exists(pidFile)) {
+                assertTrue(owner.isAlive && System.nanoTime() < deadline, "the owner never tied its child: " +
+                    runCatching { Files.readString(root.resolve("owner.txt")) }.getOrDefault(""))
+                Thread.sleep(20)
+            }
+            child = ProcessHandle.of(Files.readString(pidFile).trim().toLong()).orElseThrow()
+            owner.destroyForcibly() // TerminateProcess.
+            assertTrue(owner.waitFor(30, java.util.concurrent.TimeUnit.SECONDS))
+            val ended = runCatching { child.onExit().get(10, java.util.concurrent.TimeUnit.SECONDS) }.isSuccess
+            assertTrue(ended && !child.isAlive, "the tied child outlived its owner")
+        } finally {
+            owner.destroyForcibly()
+            child?.destroyForcibly()
+        }
+    }
+}
+
+/** The owner of [DesktopHomeSshBootstrapCleanupNativeTest.nativeAnOwnerEndedByTerminateProcessTakesItsTiedBootstrapChildWithIt]. */
+object DesktopTiedBootstrapOwner {
+    @JvmStatic fun main(arguments: Array<String>) {
+        val directory = Path.of(arguments.single())
+        val child = launchBootstrapRuntime(listOf("ping.exe", "-n", "120", "127.0.0.1"), directory)
+        checkNotNull(tieToOwnerLifetime(child)) { "no tie on Windows" }
+        val temporary = directory.resolve("child.pid.tmp")
+        Files.writeString(temporary, child.pid().toString())
+        Files.move(temporary, directory.resolve("child.pid"))
+        Thread.sleep(120_000)
+    }
 }

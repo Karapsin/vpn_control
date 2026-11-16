@@ -7,6 +7,8 @@ object DesktopAppServiceFactory {
         val store = DesktopStateStore.default()
         val validationDirectory = store.validationDirectory()
         val credentialStore = DesktopHomeSshCredentialStore(store.runtimeDirectory().parent)
+        // The owner starts under the single-instance lock: what a killed owner's short-lived runtimes left goes first.
+        reapShortLivedRuntimesAtOwnerStart(store.runtimeDirectory(), validationDirectory)
         val runtimeManager = DesktopProxyRuntimeManager(
             runtimeConfigStore = store,
             baseDir = store.runtimeDirectory(),

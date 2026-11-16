@@ -8,7 +8,6 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -24,25 +23,25 @@ internal class DesktopDirectProbeProxy(
     suspend fun <T> useProxy(block: suspend (Int) -> T): T {
         Files.createDirectories(baseDir)
         val port = DesktopLoopback.freePort()
-        val configFile = Files.createTempFile(baseDir, "direct-probe-", ".json")
-        val logFile = Files.createTempFile(baseDir, "direct-probe-", ".log")
+        // sing-box and its probe copy come before any file, so their failures leave nothing behind.
         val sourceBinary = singBoxResolver.resolve() ?: error(singBoxResolver.missingMessage())
         val probeBinary = prepareDirectProbeSingBoxExecutable(sourceBinary.path, baseDir)
-        var process: Process? = null
-        try {
+        // The short-lived runtime ends the child and removes its configuration on every exit, retrying a refused
+        // deletion and reporting what stays; sing-box's output is discarded, so no log file is held by the child.
+        val cleanup = DesktopBootstrapCleanup(label = DIRECT_PROBE_LABEL)
+        return DesktopShortLivedRuntime(cleanup).within(DesktopShortLivedRuntimes.shared) { runtime ->
+            val configFile = runtime.createFile(baseDir, DIRECT_PROBE_FILE_PREFIX, ".json")
             Files.writeString(configFile, directProxyConfig(port))
-            process = ProcessBuilder(probeBinary.toString(), "run", "-c", configFile.toString())
-                .directory(baseDir.toFile())
-                .redirectErrorStream(true)
-                .redirectOutput(logFile.toFile())
-                .start()
+            val process = runtime.start {
+                ProcessBuilder(probeBinary.toString(), "run", "-c", configFile.toString())
+                    .directory(baseDir.toFile())
+                    .redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .start()
+            }
             require(waitForPort(process, port)) { "Direct probe proxy did not become ready" }
-            return block(port)
-        } finally {
-            process?.destroy()
-            if (process?.waitFor(2, TimeUnit.SECONDS) == false) process?.destroyForcibly()
-            runCatching { Files.deleteIfExists(configFile) }
-            runCatching { Files.deleteIfExists(logFile) }
+            cleanup.deleteNow(configFile)
+            block(port)
         }
     }
 
