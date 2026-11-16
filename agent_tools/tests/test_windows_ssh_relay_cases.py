@@ -767,6 +767,65 @@ class CaseTests(unittest.TestCase):
         if cases.os.name != "nt":
             self.assertEqual("unprobed", hold(path), "off Windows nothing refuses a deletion this way")
 
+    # Native run d71253c2-2588-4735-8222-6d1dd0dd2e27 (package 2.2.18) ended "runtime-candidates-left" right after the
+    # connected group's off, and its evidence named no folder or entry, said nothing of their holds and nothing of
+    # whether the runtime still ran.
+
+    def candidate_event(self):
+        values = [event["value"] for event in self.owner.events if event["kind"] == "ssh-relay-runtime-candidate-leftovers"]
+        self.assertEqual(1, len(values), "one description of the runtime candidate left")
+        return values[0]
+
+    def test_a_left_candidate_is_described_by_folder_and_entry_and_the_row_fails(self):
+        with self.assertRaises(AssertionError) as caught:
+            self.run_cases("candidate-left")
+        self.assertEqual("runtime-candidates-left", str(caught.exception))
+        value = self.candidate_event()
+        self.assertEqual({"atVerdict", "settleSeconds", "settleBoundSeconds", "afterSettle", "freedAfterSeconds",
+                          "goneAfterSeconds", "verdict"}, set(value))
+        self.assertEqual(("runtime-candidates-left", 0.3), (value["verdict"], value["settleBoundSeconds"]))
+        self.assertEqual(({}, {}), (value["freedAfterSeconds"], value["goneAfterSeconds"]))
+        for phase in ("atVerdict", "afterSettle"):
+            rows = value[phase]["files"]
+            self.assertEqual([("candidate-7", True, False, None), ("candidate-7/home-ssh-private-key", True, True, "unprobed")],
+                             [(row["name"], row["present"], row["regular"], row["hold"]) for row in rows], phase)
+            self.assertEqual((2, 0), (value[phase]["count"], value[phase]["runtimes"]), phase)
+            self.assertTrue(all(0 <= row["writtenSecondsAgo"] < 60 for row in rows), phase)
+        kinds = [event["kind"] for event in self.owner.events]
+        self.assertLess(kinds.index("ssh-relay-runtime-candidate-leftovers"), kinds.index("ssh-relay-fixtures-closed"))
+        groups = [event["value"]["group"] for event in self.owner.events if event["kind"] == "ssh-relay-group-complete"]
+        self.assertEqual(["ssh-stdin-key-import", "ssh-relay-disconnected"], groups, "the connected group's off is the one judged")
+        self.assertNotIn("ssh-relay-bootstrap-leftovers", kinds)
+
+    def test_a_left_candidate_is_described_by_metadata_only(self):
+        # The folder holds the runtime's key copy: no row carries its bytes, a digest of them or a key line.
+        with self.assertRaises(AssertionError):
+            self.run_cases("candidate-left")
+        value = self.candidate_event()
+        for row in value["atVerdict"]["files"] + value["afterSettle"]["files"]:
+            self.assertTrue({"name", "present", "regular", "bytes", "writtenSecondsAgo", "hold"} <= set(row)
+                            <= {"name", "present", "regular", "bytes", "writtenSecondsAgo", "createdSecondsAgo", "hold"}, row)
+        text = json.dumps(self.owner.events)
+        self.assertEqual([], [line for key in self.keys for line in cases.key_lines(key) if line in text])
+
+    def test_a_candidate_entry_whose_holder_lets_go_is_told_from_the_folder_that_stays(self):
+        asked = self.holds(lambda name, count: "held" if count == 1 else "free")
+        with self.assertRaises(AssertionError) as caught:
+            self.run_cases("candidate-left")
+        self.assertEqual("runtime-candidates-left", str(caught.exception), "a later release keeps the verdict")
+        value = self.candidate_event()
+        self.assertEqual([None, "held"], [row["hold"] for row in value["atVerdict"]["files"]])
+        self.assertEqual([None, "free"], [row["hold"] for row in value["afterSettle"]["files"]])
+        self.assertEqual(["candidate-7/home-ssh-private-key"], sorted(value["freedAfterSeconds"]))
+        self.assertEqual(["home-ssh-private-key"] * 3, asked, "a folder is never asked; its file at each look and once freed")
+
+    def test_a_runtime_left_beside_its_candidate_is_counted_at_both_looks(self):
+        with self.assertRaises(AssertionError) as caught:
+            self.run_cases("candidate-left", "runtime-left")
+        self.assertEqual("runtime-candidates-left", str(caught.exception), "the candidate is judged before the census")
+        value = self.candidate_event()
+        self.assertEqual((1, 1), (value["atVerdict"]["runtimes"], value["afterSettle"]["runtimes"]))
+
     def test_a_failure_while_connected_turns_the_runtime_off_through_the_public_off(self):
         with self.assertRaises(AssertionError) as caught:
             self.run_cases("key-copy-acl")

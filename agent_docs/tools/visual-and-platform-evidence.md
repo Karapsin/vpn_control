@@ -1883,7 +1883,15 @@ stdin (the intent records only its byte count). Its groups, in order:
   fixture, with the runtime chained through the relay (CONFIG-004); the runtime's
   candidate holds a byte-equal, owner-only copy of the key. A refresh succeeds
   through the runtime's own session, and its only SOCKS connect is to the location,
-  never to the origin. `off` leaves no candidate and no runtime.
+  never to the origin. `off` leaves no candidate and no runtime. The product retires
+  the candidate (key copy, configuration, log, folder) before `off` answers and
+  retires a refused one again only at that owner's next start or stop, so a
+  `candidate-*` folder left after `off` fails the row at once
+  (`runtime-candidates-left`), with no settle before the verdict. The same bounded
+  settle after it describes the failure in `ssh-relay-runtime-candidate-leftovers`:
+  each left folder and each entry one level down by relative name, size and age,
+  each file's hold (a folder's is null), the live runtimes, and when a held file
+  became free or a name went away; no byte is read.
 - `ssh-relay-after-disconnect`: the disconnected refresh again succeeds through a new
   bootstrap session.
 - `ssh-relay-host-key-mismatch`: with another host key pinned, the refresh ends exit 1

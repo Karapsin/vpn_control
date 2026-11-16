@@ -48,7 +48,8 @@ MAX_FILE_BYTES = 4 * 1024 * 1024
 MAX_REPLY_BYTES = 64 * 1024
 CENSUS_SECONDS = 10
 BOOTSTRAP_PREFIX = "home-ssh-bootstrap-"
-LEFTOVER_SETTLE_SECONDS = 10  # Describes bootstrap files left at the verdict; it never delays or changes the verdict.
+CANDIDATE_PREFIX = "candidate-"
+LEFTOVER_SETTLE_SECONDS = 10  # Describes what was left at the verdict; it never delays or changes the verdict.
 MAX_LEFTOVER_ROWS = 16
 TOKYO = "\u6771\u4eac"
 KEY = "\u9375"
@@ -472,6 +473,19 @@ def bootstrap_names(c):
     return [name for name in runtime_entries(c) if name.startswith(BOOTSTRAP_PREFIX)]
 
 
+def candidate_names(c):
+    """Each runtime candidate folder, then what it holds one level down by relative name ("candidate-x/runtime.log"):
+    the captured key copy, the configuration (the location's credentials) and the log of DesktopProxyRuntimeManager."""
+    folder, names = c.workspace / "runtime", []
+    for candidate in [name for name in runtime_entries(c) if name.startswith(CANDIDATE_PREFIX)]:
+        names.append(candidate)
+        try:
+            names += [candidate + "/" + name for name in sorted(entry.name for entry in (folder / candidate).iterdir())]
+        except OSError:
+            pass  # Not a folder, or gone since it was listed: its own row says which.
+    return names
+
+
 def hold_of(path):
     try:
         return HOLD(path)
@@ -480,8 +494,9 @@ def hold_of(path):
 
 
 def leftover_rows(c, names):
-    """Each left bootstrap file by name, size, age (lstat) and hold (HOLD): a left configuration names the relay and the
-    key's path, so its bytes are never read."""
+    """Each left entry by name, size, age (lstat) and, for a regular file, hold (HOLD): a left configuration names the
+    relay and the key's path, a left candidate holds a key copy, so no byte is ever read. A folder has no hold (null):
+    an open for DELETE without backup semantics is refused on every folder and would say nothing."""
     folder, now, rows = c.workspace / "runtime", time.time(), []
     for name in names[:MAX_LEFTOVER_ROWS]:
         try:
@@ -489,8 +504,9 @@ def leftover_rows(c, names):
         except OSError as error:
             rows.append({"name": name, "present": False, "error": type(error).__name__})
             continue
-        row = {"name": name, "present": True, "regular": stat.S_ISREG(held.st_mode), "bytes": held.st_size,
-               "writtenSecondsAgo": round(now - held.st_mtime, 3), "hold": hold_of(folder / name)}
+        regular = stat.S_ISREG(held.st_mode)
+        row = {"name": name, "present": True, "regular": regular, "bytes": held.st_size,
+               "writtenSecondsAgo": round(now - held.st_mtime, 3), "hold": hold_of(folder / name) if regular else None}
         birth = getattr(held, "st_birthtime", None)
         if birth is not None:
             row["createdSecondsAgo"] = round(now - birth, 3)
@@ -527,8 +543,28 @@ def bootstrap_left(c):
     leaves no such name. The record also carries the live runtimes at both looks and the settle's actual length.
     """
     names = bootstrap_names(c)
-    if not names:
-        return
+    if names:
+        describe_left(c, names, bootstrap_names, "bootstrap-leftovers", "bootstrap-files-left")
+
+
+def candidates_left(c):
+    """No runtime candidate folder may be left once ``off`` answered with no runtime running, judged at the first look.
+
+    DesktopProxyRuntimeManager.stop ends the runtime and retires its launch (retireLaunch: the captured key copy, the
+    configuration with the location's credentials, the log, then the folder) before ``off`` answers, and nothing
+    retires a refused one again until the same owner's next start or stop, so the reply is the product's word that the
+    candidate is gone and a settle before the verdict would only hide a refused retirement. Native run
+    d71253c2-2588-4735-8222-6d1dd0dd2e27 (package 2.2.18) failed here and its evidence named no entry: the settle after
+    the verdict describes the folders and what they hold, by name, size, age and, for each file, hold, as for the
+    bootstrap's files (bootstrap_left), with the live runtimes at both looks.
+    """
+    names = candidate_names(c)
+    if names:
+        describe_left(c, names, candidate_names, "runtime-candidate-leftovers", "runtime-candidates-left")
+
+
+def describe_left(c, names, lister, kind, verdict):
+    """Fails the row with ``verdict`` after one bounded settle that only describes what was left (``kind``)."""
     started = time.monotonic()
     first = leftover_census(c, names)
     held = {row["name"] for row in first["files"] if row.get("hold") in ("held", "denied")}
@@ -537,7 +573,7 @@ def bootstrap_left(c):
     while remaining and time.monotonic() < until:
         time.sleep(0.25)
         try:
-            listed = bootstrap_names(c)
+            listed = lister(c)
         except OSError:
             break
         offset = round(time.monotonic() - started, 3)
@@ -547,17 +583,19 @@ def bootstrap_left(c):
             elif name in held and name not in freed and hold_of(folder / name) == "free":
                 freed[name] = offset
         remaining = listed
-    c.record("bootstrap-leftovers", {"atVerdict": first, "settleSeconds": round(time.monotonic() - started, 3),
-                                     "settleBoundSeconds": LEFTOVER_SETTLE_SECONDS, "afterSettle": leftover_census(c, remaining),
-                                     "freedAfterSeconds": freed, "goneAfterSeconds": gone, "verdict": "bootstrap-files-left"})
-    raise AssertionError("bootstrap-files-left")
+    c.record(kind, {"atVerdict": first, "settleSeconds": round(time.monotonic() - started, 3),
+                    "settleBoundSeconds": LEFTOVER_SETTLE_SECONDS, "afterSettle": leftover_census(c, remaining),
+                    "freedAfterSeconds": freed, "goneAfterSeconds": gone, "verdict": verdict})
+    raise AssertionError(verdict)
 
 
 def leftovers(c, connected):
     """What a refresh left: no bootstrap file, no runtime candidate unless connected, and exactly the runtimes due."""
     bootstrap_left(c)
+    if not connected:
+        candidates_left(c)
     entries = runtime_entries(c)
-    candidates = [name for name in entries if name.startswith("candidate-")]
+    candidates = [name for name in entries if name.startswith(CANDIDATE_PREFIX)]
     require(len(candidates) == (1 if connected else 0), "runtime-candidates-left" if not connected else "runtime-candidate-count")
     require(len(runtimes_settle(c, 1 if connected else 0)) == (1 if connected else 0),
             "runtime-process-left" if not connected else "connected-runtime-count")
