@@ -6,6 +6,7 @@ from pathlib import Path
 import types
 import unittest
 
+from agent_tools.tests import red_gate
 from agent_tools.tests import test_native_engineering_tmux_future as current
 
 FIXTURE = Path(__file__).with_name('fixtures')/'native_engineering_transport_seam'
@@ -23,7 +24,8 @@ class EngineeringTransportSeamTests(unittest.TestCase):
         old.__file__ = str(path)
         old.__package__ = 'agent_tools.tests'
         exec(compile(path.read_bytes(), str(path), 'exec'), old.__dict__)
-        for module, red in ((old, True), (current, False)):
+        phases = ((old, True),) if red_gate.red_required(self, path, FIXTURE/'provenance.json') else ()
+        for module, red in phases + ((current, False),):
             case = module.FutureFrozenTmuxTest(METHOD)
             try:
                 case.setUp()

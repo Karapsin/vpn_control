@@ -519,8 +519,13 @@ def serial_command(root, command, fingerprint):
     return result
 
 
-def prepare_run(root, command, fingerprint):
-    """Reserve a private retained plan only after planning/source gates pass."""
+def prepare_run(root, command, fingerprint, changed=None):
+    """Reserve a private retained plan only after planning/source gates pass.
+
+    `changed` is the selection's changed path set; with it, TEST-001 RED halves
+    whose test, beforeimage and closure are unchanged are skipped and recorded
+    (agent_tools/tests/red_gate.py). None runs every RED half.
+    """
     gate = "agent_tools.tests.test_ssh_connection_session_close"
     if len(command) < 4 or command[1:3] != ["-m", "unittest"] or command[3:] == [gate]:
         return list(command)
@@ -538,6 +543,8 @@ def prepare_run(root, command, fingerprint):
     token = str(uuid.uuid4())
     plan = parent / (token + ".plan.json")
     value = {"schemaVersion": 1, "sourceFingerprint": fingerprint, "modules": command[3:], "maxWorkers": 2}
+    if changed is not None:
+        value["changedPaths"] = sorted(changed)
     fd = os.open(plan, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w") as stream:
         json.dump(value, stream, sort_keys=True); stream.flush(); os.fsync(stream.fileno())
@@ -618,7 +625,9 @@ def main(argv=None):
         for command in commands:
             modules = list(command[3:])
             if args.include is None:
-                command = prepare_run(args.root, command, fingerprint)
+                # An explicit audit without a baseline re-proves every RED half.
+                red_changed = None if args.audit and args.baseline is None else global_selection.changed
+                command = prepare_run(args.root, command, fingerprint, red_changed)
             else:
                 command = serial_command(args.root, command, fingerprint)
             if evidence is None:

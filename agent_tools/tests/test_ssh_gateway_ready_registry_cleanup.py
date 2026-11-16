@@ -7,6 +7,7 @@ from agent_tools import tests as package
 from agent_tools.tests import test_ssh_gateway_tmux_master as owner_fixture
 from agent_tools.tests import test_ssh_gateway_tmux_master_ssh as adapter_fixture
 from agent_tools.tests import test_ssh_gateway_tmux_d606_diagnostic as diagnostic_fixture
+from agent_tools.tests import red_gate
 from agent_tools.tests import test_ssh_gateway_tmux_ready_reconciliation as ready
 from agent_tools.tests import test_ssh_gateway_tmux_reconciliation_status as status_fixture
 from agent_tools.tests import test_ssh_tmux_disconnect_probe as probe_fixture
@@ -74,14 +75,16 @@ class ReadyRegistryCleanupTests(unittest.TestCase):
             time.sleep(.02)
 
     def test_authentic_unfixed_finish_late_done_red_delegating_registry_wait_green(self):
-        case,result,calls=self.original(self.before())
-        registry=Path(case.fixture_temp.name)/'.fixture-children';job='vct-'+uuid.UUID(case.request['correlationId']).hex[:16]
-        self.assertEqual((1,0,1,[]),(result.testsRun,len(result.failures),len(result.errors),calls),''.join(t for _,t in result.failures+result.errors))
-        self.assertRegex(result.errors[0][1],r"OSError: \[Errno %d\] Directory not empty: '(%s/)?\.fixture-children'"%(errno.ENOTEMPTY,re.escape(case.fixture_temp.name)))
-        self.assertEqual([job+'.done.json'],os.listdir(registry));done=json.loads((registry/(job+'.done.json')).read_bytes())
-        self.assertEqual((case.fixture_nonce,True,0),(done['nonce'],done['originalSocketRetired'],done['workerExitCode']))
-        self.assert_originals_end([done]);case.fixture_temp.cleanup()  # Owned RED leftovers, only after the originals ended.
+        if red_gate.red_required(self,BEFORE,PROVENANCE):
+            case,result,calls=self.original(self.before())
+            registry=Path(case.fixture_temp.name)/'.fixture-children';job='vct-'+uuid.UUID(case.request['correlationId']).hex[:16]
+            self.assertEqual((1,0,1,[]),(result.testsRun,len(result.failures),len(result.errors),calls),''.join(t for _,t in result.failures+result.errors))
+            self.assertRegex(result.errors[0][1],r"OSError: \[Errno %d\] Directory not empty: '(%s/)?\.fixture-children'"%(errno.ENOTEMPTY,re.escape(case.fixture_temp.name)))
+            self.assertEqual([job+'.done.json'],os.listdir(registry));done=json.loads((registry/(job+'.done.json')).read_bytes())
+            self.assertEqual((case.fixture_nonce,True,0),(done['nonce'],done['originalSocketRetired'],done['workerExitCode']))
+            self.assert_originals_end([done]);case.fixture_temp.cleanup()  # Owned RED leftovers, only after the originals ended.
         case,result,calls=self.original(ready)
+        job='vct-'+uuid.UUID(case.request['correlationId']).hex[:16]
         self.assertEqual((1,0,0,[case.fixture_registry]),(result.testsRun,len(result.failures),len(result.errors),calls),''.join(t for _,t in result.failures+result.errors))
         self.assertFalse(os.path.lexists(case.fixture_temp.name));self.assertEqual([job+'.json'],[name for name,_ in case.fixture_registry.last_records])
         self.assert_originals_end(case.fixture_registry.last_closure,0)

@@ -80,6 +80,15 @@ For an unchanged selection a recorded half therefore reruns as itself; a
 changed selection regroups it, and regrouping runs the selector once per pass.
 Recorded failed modules still narrow their rerun.
 
+`affected_agent_tests.py --run` hands the selection's changed paths to the runner
+plan (`changedPaths`), except for `--audit` without `--baseline`. A TEST-001 RED half
+wrapped in `red_gate.red_required(self, <beforeimage>...)` then runs only when the
+test, a named beforeimage or any file in the test's import or recorded-footprint
+closure changed; otherwise it is skipped and recorded in the worker's
+`red-proofs.jsonl` (copied beside CI footprints) with the digests it relied on.
+Plain `python -m unittest` and managed local runs pass no changed set, so every
+RED half runs there. GREEN halves are never gated.
+
 Managed checks also compare the loaded runner, build-environment, checkout-lease
 and output-retention source digests with current files before inspection or a
 dry-run plan, between commands and before receipt construction. Changed or

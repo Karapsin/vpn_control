@@ -10,6 +10,8 @@ import unittest
 from unittest import mock
 import uuid
 
+from agent_tools.tests import red_gate
+
 BEFORE = Path(__file__).parent / 'fixtures/ssh_gateway_fixture_release_gate/test_ssh_gateway_fixture_release_gate.py.before.source'
 BEFORE_SHA = 'fcc34697548b0d9901ceb9f6252154e2b9c9aca3f29b97b64f512391aa15e5ff'
 METHOD = 'test_authentic_whole_before_short_gate_red_current_same_delayed_release_green'
@@ -22,7 +24,8 @@ class TerminalPublicationTests(unittest.TestCase):
         from agent_tools.tests import test_ssh_gateway_fixture_release_gate as fixture
         current = Path(fixture.__file__)
         self.records = []
-        for label, path in (('before', BEFORE), ('current', current)):
+        red = (('before', BEFORE),) if red_gate.red_required(self, BEFORE) else ()
+        for label, path in red + (('current', current),):
             with self.subTest(label=label):
                 self.check_publication(label, path, fixture)
 

@@ -101,7 +101,7 @@ def digest(path: Path) -> str:
 
 
 def validate_plan(value: object) -> dict:
-    if not isinstance(value, dict) or set(value) - {"schemaVersion", "sourceFingerprint", "modules", "maxWorkers"}:
+    if not isinstance(value, dict) or set(value) - {"schemaVersion", "sourceFingerprint", "modules", "maxWorkers", "changedPaths"}:
         raise ValueError("Invalid unittest plan")
     if type(value.get("schemaVersion")) is not int or value["schemaVersion"] != 1:
         raise ValueError("Invalid unittest plan version")
@@ -112,6 +112,13 @@ def validate_plan(value: object) -> dict:
         raise ValueError("Invalid module selection")
     if any(not isinstance(name, str) or not MODULE.fullmatch(name) for name in modules) or len(set(modules)) != len(modules):
         raise ValueError("Invalid or duplicate unittest module")
+    # Optional changed repository paths of the selection's comparison; only
+    # TEST-001 RED halves read them (agent_tools/tests/red_gate.py).
+    changed = value.get("changedPaths", [])
+    if (not isinstance(changed, list) or len(changed) > 100000
+            or any(not isinstance(path, str) or not path or path.startswith("/") or "\\" in path
+                   or ".." in path.split("/") for path in changed)):
+        raise ValueError("Invalid changed paths")
     workers = value.get("maxWorkers", 2)
     if type(workers) is not int or workers not in (1, 2):
         raise ValueError("Worker limit must be 1 or 2")
@@ -483,11 +490,23 @@ def _footprint_recorder(isolation):
     return recorder, lambda: agent_test_footprints.write_worker(Path(target), recorder, os.environ.get("GITHUB_SHA"))
 
 
+def _red_gate_environment(plan: dict, directory: Path) -> None:
+    """Pass the plan's changed set to red_gate and record every RED decision here."""
+    os.environ.pop("AGENT_TEST_CHANGED_PATHS_FILE", None)
+    if "changedPaths" in plan:
+        target = directory / "changed-paths.json"
+        with create_file(target) as stream:
+            json.dump(sorted(plan["changedPaths"]), stream)
+        os.environ["AGENT_TEST_CHANGED_PATHS_FILE"] = str(target)
+    os.environ["AGENT_TEST_RED_RECORD"] = str(directory / "red-proofs.jsonl")
+
+
 def worker(plan: dict, directory: Path, *, isolation=None) -> int:
     context = directory / "sources" if isolation is not None else Path.cwd()
     sys.path.insert(0, str(context))
     started = time.monotonic()
     recorder, save_footprints = _footprint_recorder(isolation)
+    _red_gate_environment(plan, directory)
     with create_file(directory / "timings.jsonl") as journal:
         if isolation is not None and not sources_match(context, isolation):
             print("Agent unittest isolation refused: source-drift", file=sys.stderr)
@@ -504,6 +523,9 @@ def worker(plan: dict, directory: Path, *, isolation=None) -> int:
         if save_footprints is not None:
             try:
                 save_footprints()
+                proofs = directory / "red-proofs.jsonl"
+                if proofs.is_file():
+                    shutil.copyfile(proofs, Path(os.environ["AGENT_TEST_FOOTPRINT_DIR"]) / ("red-proofs-" + directory.name + "-" + str(os.getpid()) + ".jsonl"))
             except OSError as error:
                 # Footprints only narrow local selection; never a test outcome.
                 print("Agent test footprint not retained: " + type(error).__name__, file=sys.stderr)

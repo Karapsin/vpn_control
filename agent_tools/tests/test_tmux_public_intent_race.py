@@ -10,6 +10,7 @@ import unittest
 from unittest import mock
 
 from agent_tools import ssh_tmux_mcp_adapter as adapter
+from agent_tools.tests import red_gate
 from agent_tools.tests import test_ssh_tmux_mcp_adapter as fixtures
 
 BASE=Path(__file__).with_name('fixtures')/'tmux_private_transport_v2'
@@ -27,6 +28,11 @@ class IntentRaceTests(unittest.TestCase):
         exec(compile(raw,str(path),'exec',dont_inherit=True),module.__dict__)
         return module
 
+    def phases(self):
+        # The preserved reader's RED half reruns only when its proof can change (red_gate).
+        red=red_gate.red_required(self,BASE/'ssh_tmux_mcp_adapter.py.before-reread.source')
+        return ((True,)if red else())+(False,)
+
     def fixture(self,before=False):
         case=fixtures.AdapterTests();case.setUp();self.addCleanup(case.doCleanups)
         module=self.before()if before else adapter
@@ -42,7 +48,7 @@ class IntentRaceTests(unittest.TestCase):
         else:path.write_text(json.dumps(value))
 
     def test_authentic_whole_saved_reader_gap_mutation_and_replacement_red_current_nohash_green(self):
-        for before in (True,False):
+        for before in self.phases():
             for kind in ('mutate','replace','hardlink'):
                 with self.subTest(before=before,kind=kind):
                     case,module=self.fixture(before);self.assertEqual('submitted',case.start()['state'])
@@ -64,7 +70,7 @@ class IntentRaceTests(unittest.TestCase):
                     self.assertEqual(count,len(case.calls))
 
     def test_authentic_complete_submit_publication_gap_red_current_nohash_before_any_child_green(self):
-        for before in (True,False):
+        for before in self.phases():
             with self.subTest(before=before):
                 case,module=self.fixture(before);path=case.fixture.job()/'tmux-adapter-intent.json'
                 marker=secrets.token_hex(24).encode();seen=[];changed=[];digest=hashlib.sha256;fsync=os.fsync

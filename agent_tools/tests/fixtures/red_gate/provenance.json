@@ -1,0 +1,6 @@
+{
+  "commit": "e56bf041d91ab5c9c3cffd38cc721eb09ed8bdb0",
+  "path": "agent_tools/agent_test_runner.py",
+  "sha256": "ccf7619f810fa53afb2b4f233331709961a946e9cf4d89e55f2848e8989f54bd",
+  "reason": "Runner before the RED gate: a plan could not carry the selection's changed paths, so every TEST-001 RED half reran on every CI push although its test, beforeimage and closure were unchanged."
+}

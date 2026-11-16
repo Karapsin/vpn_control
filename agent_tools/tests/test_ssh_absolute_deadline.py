@@ -6,6 +6,7 @@ from unittest import mock
 from agent_tools import source_module_loader as loader
 from agent_tools.tests import test_readiness_transport as readiness_fixture
 from agent_tools import ssh_channel_keeper_entry as keeper
+from agent_tools.tests import red_gate
 
 FIXTURE=Path(__file__).parent/'fixtures/ssh_absolute_deadline'
 SOURCES=tuple(sorted(set(keeper.NAMES)|set((
@@ -29,6 +30,11 @@ class AbsoluteDeadlineTests(unittest.TestCase):
             with original.caller():pass
         self.assertEqual('readiness_nested_membership.py',Path(red.exception.filename).name)
         with self.caller():pass
+
+    def red_phases(self):
+        # The preserved callers' RED half reruns only when its proof can change (red_gate).
+        red=red_gate.red_required(self,*sorted(FIXTURE.glob('*.before.source')),FIXTURE/'provenance.json')
+        return ((True,)if red else())+(False,)
 
     @contextmanager
     def caller(self,original=False,delay='probe'):
@@ -74,7 +80,7 @@ class AbsoluteDeadlineTests(unittest.TestCase):
             f.doCleanups()
 
     def test_complete_before_total_timeout_red_current_never_dispatches_target_after_budget(self):
-        for original in (True,False):
+        for original in self.red_phases():
             with self.caller(original)as(t,plan,admission,delay,counter,f):
                 delay.touch();started=time.monotonic()
                 # The stdin-reading fixture peer gets explicit EOF, never the caller's stream.
@@ -88,7 +94,7 @@ class AbsoluteDeadlineTests(unittest.TestCase):
                     self.assertLess(time.monotonic()-started,2)
 
     def test_stage_has_same_total_budget_and_never_starts_original_target(self):
-        for original in (True,False):
+        for original in self.red_phases():
             with self.caller(original,delay='stage')as(t,plan,admission,delay,counter,f):
                 delay.touch();started=time.monotonic()
                 if original:
@@ -102,7 +108,7 @@ class AbsoluteDeadlineTests(unittest.TestCase):
 
     def test_returned_private_body_survives_only_readiness_change_without_replay(self):
         private=b'private-input-never-an-exception-or-receipt'
-        for original in (True,False):
+        for original in self.red_phases():
             with self.caller(original)as(t,plan,admission,delay,counter,f):
                 def runner(argv,**kwargs):
                     result=subprocess.run(argv,**kwargs)

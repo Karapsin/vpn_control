@@ -19,6 +19,7 @@ from agent_tools import ssh_gateway_tmux_master as owner, ssh_gateway_tmux_maste
 from agent_tools import ssh_connection_recovery as recovery, ssh_recovery_adoption as adoption
 from agent_tools import ssh_expired_recovery_retirement as retirement
 from agent_tools.tests import test_ssh_gateway_tmux_d606_diagnostic as fixtures
+from agent_tools.tests import red_gate
 from agent_tools.tests import test_ssh_gateway_tmux_master as master_fixtures
 from agent_tools.tests.test_ssh_expired_recovery_retirement import absence
 
@@ -430,12 +431,13 @@ class LateReadyHandshakeRegressionTests(unittest.TestCase):
                     return json.loads(raw,*args,**kwargs)
                 module.json=SimpleNamespace(loads=legacy_fake_json,dumps=json.dumps)
                 name = 'test_real_late_ready_reconciles_into_exact_existing_adoption_flow'
-                old = self._controlled(module.ReadyReconciliationTests(name), before=True)
-                self.assertEqual((1, 1, 0, 0), (old.testsRun, len(old.failures), len(old.errors), len(old.skipped)),
-                                 ''.join(text for _, text in old.failures + old.errors))
-                self.assertIn(str(path) + '\", line 46, in setUp', old.failures[0][1])
-                self.assertIn('AssertionError: False is not true', old.failures[0][1])
-                self.assertEqual(raw, path.read_bytes())
+                if red_gate.red_required(self, _BEFORE, _PROVENANCE):
+                    old = self._controlled(module.ReadyReconciliationTests(name), before=True)
+                    self.assertEqual((1, 1, 0, 0), (old.testsRun, len(old.failures), len(old.errors), len(old.skipped)),
+                                     ''.join(text for _, text in old.failures + old.errors))
+                    self.assertIn(str(path) + '\", line 46, in setUp', old.failures[0][1])
+                    self.assertIn('AssertionError: False is not true', old.failures[0][1])
+                    self.assertEqual(raw, path.read_bytes())
                 current = self._controlled(ReadyReconciliationTests(name), before=False)
                 self.assertEqual((1, 0, 0, 0), (current.testsRun, len(current.failures), len(current.errors), len(current.skipped)),
                                  ''.join(text for _, text in current.failures + current.errors))
