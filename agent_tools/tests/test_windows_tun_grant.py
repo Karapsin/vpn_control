@@ -919,27 +919,34 @@ class WindowsCensusTests(unittest.TestCase):
     def test_a_census_with_children_also_names_what_the_image_started(self):
         import os
         import subprocess
-        import sys
-        from agent_tools.tests.test_windows_update_grant_collectors import observer_function
-        shell = Path(os.environ["SystemRoot"]) / "System32" / "cmd.exe"
-        child = subprocess.Popen([str(shell), "/d", "/c", "ping -n 30 127.0.0.1 >NUL"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL)
-        self.addCleanup(lambda: (child.kill(), child.wait()))
+        from agent_tools.tests.test_windows_update_grant_collectors import observer_function, start_census_image
+        # An image no other process runs, which starts ping: the census matches by image leaf, and python.exe would also
+        # name the test runner, whose argv is over the census's bound (PUB_CENSUS_ARGV on the hosted runner).
+        image, parent = start_census_image(self)
         script = observer_function() + "\n" + "\n".join((
-            "$ErrorActionPreference='Stop'", "Add-ObserverType",
+            "$ErrorActionPreference='Stop'",
+            # The test's own wait, not the census's: ping is started by the image, so it must exist before the snapshot.
+            "$deadline=[DateTime]::UtcNow.AddSeconds(30)",
+            "while(@(Get-CimInstance Win32_Process -Filter ('ParentProcessId='+[int]$env:VPN_TEST_PARENT)|Where-Object{$_.Name -eq 'ping.exe'}).Count -lt 1)"
+            "{if([DateTime]::UtcNow -gt $deadline){throw 'TEST_PING_NOT_STARTED'};Start-Sleep -Milliseconds 50}",
+            "Add-ObserverType",
             "[ordered]@{children=@([VpnScenarioObserver]::Census($env:VPN_TEST_IMAGE,$true));"
             "plain=@([VpnScenarioObserver]::Census($env:VPN_TEST_IMAGE))}|ConvertTo-Json -Depth 8 -Compress"))
         powershell = Path(os.environ["SystemRoot"]) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
         result = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
                                  "$s=[Console]::In.ReadToEnd(); & ([ScriptBlock]::Create($s))"], input=script.encode("utf-8"),
-                                capture_output=True, timeout=120, check=False, env={**os.environ, "VPN_TEST_IMAGE": sys.executable})
+                                capture_output=True, timeout=120, check=False,
+                                env={**os.environ, "VPN_TEST_IMAGE": str(image), "VPN_TEST_PARENT": str(parent.pid)})
         self.assertEqual(0, result.returncode, result.stderr.decode(errors="replace"))
         value = json.loads(result.stdout)
         with_children, plain = job.census_rows(value["children"]), job.census_rows(value["plain"])
-        started = [row for row in with_children if row["pid"] == child.pid]
-        self.assertEqual(1, len(started), "the image's own child is named with it")
-        self.assertEqual((os.getpid(), True, "cmd.exe"), (started[0]["parentPid"], started[0]["live"], Path(started[0]["image"]).name.lower()))
-        self.assertEqual([], [row for row in plain if row["pid"] == child.pid], "without children only the image's own processes")
+        self.assertEqual([(parent.pid, True, image.name.lower())], [(row["pid"], row["live"], PureWindowsPath(row["image"]).name.lower())
+                                                                   for row in plain], "without children only the image's own process")
+        started = [row for row in with_children if row["parentPid"] == parent.pid and row["live"]
+                   and PureWindowsPath(row["image"]).name.lower() == "ping.exe"]
+        self.assertEqual(1, len(started), "the image's own child, of another image, is named with it")
+        self.assertEqual([parent.pid], [row["pid"] for row in with_children if row["parentPid"] != parent.pid],
+                         "with children: the image's process and what it started, nothing else")
 
 
 def publisher_function(name):

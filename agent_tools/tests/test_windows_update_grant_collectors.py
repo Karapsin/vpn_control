@@ -15,10 +15,9 @@ import functools
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import re
 import subprocess
-import sys
 import tempfile
 import types
 import unittest
@@ -799,6 +798,96 @@ def observer_function():
     return template[start:template.index("\nfunction Read-BackupPin", start)]
 
 
+def start_census_image(test):
+    """A process of an image nothing else on the machine runs: a copy of cmd.exe under a fresh name, which starts ping.
+    The census matches processes by image leaf, so a shared image such as python.exe names every interpreter on the
+    machine; on the hosted runner one of them is the test runner itself, whose argv is far over the census's bound of 16
+    (run 43877068415: PUB_CENSUS_ARGV). Returns the image's path and its process; both go when the test ends."""
+    import secrets
+    import shutil
+    directory = Path(tempfile.mkdtemp()).resolve()
+    test.addCleanup(shutil.rmtree, directory, True)
+    image = directory / ("vpn-census-" + secrets.token_hex(6) + ".exe")
+    shutil.copyfile(Path(os.environ["SystemRoot"]) / "System32" / "cmd.exe", image)
+    process = subprocess.Popen([str(image), "/d", "/c", "ping -n 30 127.0.0.1 >NUL"], stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    test.addCleanup(lambda: (process.kill(), process.wait()))
+    return image, process
+
+
+def refuse_to_this_token(path):
+    """Set the file's whole DACL, protected, rather than edit the one it was made with: SYSTEM alone is granted and this
+    process's own user is denied. An edit can leave a grant that still admits the runner (icacls /inheritance:r drops only
+    ACEs flagged inherited, and a temporary directory made with mode 0o700 grants Administrators): the hosted runner's
+    elevated administrator read such a file (run 43877068415). Returns this token's user SID, the ACEs asked for and the
+    ACEs Windows then holds, both rendered by Windows."""
+    from ctypes import wintypes
+    advapi, kernel = ctypes.WinDLL("advapi32", use_last_error=True), ctypes.WinDLL("kernel32", use_last_error=True)
+    pointer = ctypes.POINTER
+    for function, argtypes in (
+            (advapi.OpenProcessToken, [wintypes.HANDLE, wintypes.DWORD, pointer(wintypes.HANDLE)]),
+            (advapi.GetTokenInformation, [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD, pointer(wintypes.DWORD)]),
+            (advapi.ConvertSidToStringSidW, [ctypes.c_void_p, pointer(ctypes.c_void_p)]),
+            (advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW,
+             [wintypes.LPCWSTR, wintypes.DWORD, pointer(ctypes.c_void_p), pointer(wintypes.DWORD)]),
+            (advapi.ConvertSecurityDescriptorToStringSecurityDescriptorW,
+             [ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, pointer(ctypes.c_void_p), pointer(wintypes.DWORD)]),
+            (advapi.GetSecurityDescriptorDacl, [ctypes.c_void_p, pointer(wintypes.BOOL), pointer(ctypes.c_void_p), pointer(wintypes.BOOL)]),
+            (advapi.GetFileSecurityW, [wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, pointer(wintypes.DWORD)]),
+            (kernel.CloseHandle, [wintypes.HANDLE])):
+        function.argtypes, function.restype = argtypes, wintypes.BOOL
+    advapi.SetNamedSecurityInfoW.argtypes = [wintypes.LPCWSTR, ctypes.c_int, wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p,
+                                             ctypes.c_void_p, ctypes.c_void_p]
+    advapi.SetNamedSecurityInfoW.restype = wintypes.DWORD
+    kernel.GetCurrentProcess.argtypes, kernel.GetCurrentProcess.restype = [], wintypes.HANDLE
+    kernel.LocalFree.argtypes, kernel.LocalFree.restype = [ctypes.c_void_p], ctypes.c_void_p
+
+    def check(ok):
+        if not ok:
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    def text(allocated):
+        try:
+            return ctypes.wstring_at(allocated.value)
+        finally:
+            kernel.LocalFree(allocated)
+
+    def aces(descriptor):
+        rendered = ctypes.c_void_p()
+        check(advapi.ConvertSecurityDescriptorToStringSecurityDescriptorW(descriptor, 1, 4, ctypes.byref(rendered), None))
+        dacl = text(rendered)
+        return dacl[dacl.index("("):]  # The ACEs alone: the control flags before them carry no access.
+
+    token, size = wintypes.HANDLE(), wintypes.DWORD()
+    check(advapi.OpenProcessToken(kernel.GetCurrentProcess(), 8, ctypes.byref(token)))
+    try:
+        advapi.GetTokenInformation(token, 1, None, 0, ctypes.byref(size))
+        user = ctypes.create_string_buffer(size.value)
+        check(advapi.GetTokenInformation(token, 1, user, size, ctypes.byref(size)))
+    finally:
+        kernel.CloseHandle(token)
+    rendered = ctypes.c_void_p()
+    check(advapi.ConvertSidToStringSidW(ctypes.c_void_p.from_buffer(user).value, ctypes.byref(rendered)))  # TOKEN_USER.User.Sid
+    sid = text(rendered)
+    descriptor = ctypes.c_void_p()
+    check(advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW("D:P(D;;FA;;;" + sid + ")(A;;FA;;;SY)", 1,
+                                                                      ctypes.byref(descriptor), None))
+    try:
+        present, dacl, defaulted = wintypes.BOOL(), ctypes.c_void_p(), wintypes.BOOL()
+        check(advapi.GetSecurityDescriptorDacl(descriptor, ctypes.byref(present), ctypes.byref(dacl), ctypes.byref(defaulted)))
+        # SE_FILE_OBJECT; DACL_SECURITY_INFORMATION with PROTECTED_DACL_SECURITY_INFORMATION: no ACE is inherited.
+        error = advapi.SetNamedSecurityInfoW(str(path), 1, 0x80000004, None, None, dacl, None)
+        if error:
+            raise ctypes.WinError(error)
+        intended = aces(descriptor)
+    finally:
+        kernel.LocalFree(descriptor)
+    advapi.GetFileSecurityW(str(path), 4, None, 0, ctypes.byref(size))
+    held = ctypes.create_string_buffer(size.value)
+    check(advapi.GetFileSecurityW(str(path), 4, held, size, ctypes.byref(size)))
+    return sid, intended, aces(held)
+
+
 @unittest.skipUnless(os.name == "nt", "Windows itself: a file only SYSTEM may read, opened by the runner's administrator token")
 class WindowsReaderTests(unittest.TestCase):
     """Run where Windows runs the tests. The token is the runner's, not SYSTEM's: a token without SeBackupPrivilege
@@ -812,8 +901,9 @@ class WindowsReaderTests(unittest.TestCase):
         icacls = Path(os.environ["SystemRoot"]) / "System32" / "icacls.exe"
         self.addCleanup(lambda: (subprocess.run([str(icacls), str(self.path), "/reset"], capture_output=True, check=False),
                                  self.path.unlink(missing_ok=True), self.directory.rmdir()))
-        subprocess.run([str(icacls), str(self.path), "/inheritance:r", "/grant:r", "*S-1-5-18:F"], capture_output=True, check=True)
-        with self.assertRaises(PermissionError, msg="the file is SYSTEM's alone"):
+        sid, intended, held = refuse_to_this_token(self.path)
+        self.assertEqual(intended, held, "the file holds exactly the DACL set on it")
+        with self.assertRaises(PermissionError, msg="the file is SYSTEM's alone and refused to this token's user " + sid):
             self.path.read_bytes()
 
     def test_python_backup_open_reads_it_and_leaves_the_process_token_as_it_was(self):
@@ -833,6 +923,7 @@ class WindowsReaderTests(unittest.TestCase):
             self.path.read_bytes()
 
     def test_the_publisher_backup_open_and_census(self):
+        image, process = start_census_image(self)
         script = observer_function() + "\n" + "\n".join((
             "$ErrorActionPreference='Stop'", "Add-ObserverType",
             "try{$o=[VpnScenarioObserver]::BackupOpen($env:VPN_TEST_TARGET)}catch{if($_.Exception.InnerException.Message -ceq "
@@ -845,7 +936,7 @@ class WindowsReaderTests(unittest.TestCase):
         result = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
                                  "$s=[Console]::In.ReadToEnd(); & ([ScriptBlock]::Create($s))"], input=script.encode("utf-8"),
                                 capture_output=True, timeout=120, check=False,
-                                env={**os.environ, "VPN_TEST_TARGET": str(self.path), "VPN_TEST_IMAGE": sys.executable})
+                                env={**os.environ, "VPN_TEST_TARGET": str(self.path), "VPN_TEST_IMAGE": str(image)})
         self.assertEqual(0, result.returncode, result.stderr.decode(errors="replace"))
         value = json.loads(result.stdout)
         if value.get("absent"):
@@ -853,11 +944,47 @@ class WindowsReaderTests(unittest.TestCase):
         job.backup_journal(value["journal"])
         self.assertEqual(self.raw.decode(), value["text"])
         rows = job.census_rows(value["census"])
-        mine = [row for row in rows if row["pid"] == os.getpid()]
-        # A venv's python.exe is a launcher whose child runs the base image: the census names processes by image leaf.
-        self.assertEqual(1, len(mine), "the census of this interpreter's image leaf finds this process")
-        self.assertEqual((True, value["sid"], "python.exe"), (mine[0]["live"], mine[0]["token"]["sid"], Path(mine[0]["image"]).name.lower()))
-        self.assertEqual(hashlib.sha256(Path(mine[0]["image"]).read_bytes()).hexdigest(), mine[0]["imageSha256"])
+        self.assertEqual([process.pid], [row["pid"] for row in rows], "the census of the image's leaf names its one process")
+        row = rows[0]
+        self.assertEqual((True, value["sid"], image.name.lower(), [str(image), "/d", "/c", "ping -n 30 127.0.0.1 >NUL"]),
+                         (row["live"], row["token"]["sid"], PureWindowsPath(row["image"]).name.lower(), row["argv"]))
+        self.assertEqual(hashlib.sha256(image.read_bytes()).hexdigest(), row["imageSha256"])
+
+
+class WindowsHarnessPremiseTests(unittest.TestCase):
+    """Run everywhere, over the Windows-only tests' own source: the two premises the hosted runner showed false (run
+    43877068415) stay out. A census over the interpreter's image names the test runner, whose argv is over the bound; a
+    file's DACL edited with icacls kept a grant that let the elevated runner read the file meant to be SYSTEM's alone."""
+
+    @staticmethod
+    def methods():
+        import ast
+        for module, path in (("test_windows_tun_grant", ROOT / "agent_tools/tests/test_windows_tun_grant.py"),
+                             ("test_windows_update_grant_collectors", Path(__file__).resolve())):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in tree.body:
+                if isinstance(node, ast.ClassDef):
+                    for method in node.body:
+                        if isinstance(method, ast.FunctionDef):
+                            calls = {call.func.id for call in ast.walk(method) if isinstance(call, ast.Call) and isinstance(call.func, ast.Name)}
+                            names = {(name.value.id, name.attr) for name in ast.walk(method)
+                                     if isinstance(name, ast.Attribute) and isinstance(name.value, ast.Name)}
+                            yield module + "." + node.name + "." + method.name, calls, names, method
+
+    def test_no_census_runs_over_a_shared_image(self):
+        census = [(name, names) for name, calls, names, _ in self.methods() if "observer_function" in calls]
+        self.assertEqual(3, len(census), [name for name, _ in census])
+        for name, names in census:
+            with self.subTest(test=name):
+                self.assertNotIn(("sys", "executable"), names)
+
+    def test_the_system_alone_file_is_set_whole_and_read_back(self):
+        import ast
+        setup = {name: method for name, _, _, method in self.methods()}["test_windows_update_grant_collectors.WindowsReaderTests.setUp"]
+        statements = [ast.unparse(statement) for statement in setup.body]
+        self.assertIn("sid, intended, held = refuse_to_this_token(self.path)", statements)
+        read = next(at for at, statement in enumerate(statements) if "self.path.read_bytes()" in statement)
+        self.assertLess(statements.index("self.assertEqual(intended, held, 'the file holds exactly the DACL set on it')"), read)
 
 
 if __name__ == "__main__":

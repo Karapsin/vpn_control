@@ -2878,6 +2878,35 @@ launcher, and passed.
 | A fake child had no pid, so the platform tie warned on Windows only | `DesktopBootstrapCleanupTest.theBootstrapDeletesItsConfigurationBeforeTheDownloadAndEndsTheChildAfterIt` | The test gave `DesktopHomeSshBootstrapProxy` its `FakeChild`, a `Process` with no `pid()` override, and kept the default `tie`. On Windows, `tieToOwnerLifetime` calls `process.pid()`, and `Process.pid()` throws `UnsupportedOperationException` for any process that is not an OS process. Elsewhere the tie returns null before that call, so the test never failed off Windows. The test now injects a recording tie and asserts the order tied, destroy, released, untied on every platform. RED is native only (this run). The tie with a real `ProcessImpl` keeps its native coverage. |
 | The probe passed Join-Path output to a reflected method (second site) | `DesktopWindowsNativeHelperPinSharingTest.theNativePinSharingProbePassesCmdletOutputToReflectedMethodsAsStrings` | The junction checks added by `4de91184` called `$method.Invoke($null,[object[]]@($empty,$null))` at line 97 of `windows-native-pin-sharing-probe.ps1`. `MethodInfo.Invoke` cannot convert the PSObject that Join-Path returns to the `string` parameter of `PinParents`. This is the same failure that `f5246b75` fixed for `$pinned` (run 43474296998). The probe now passes `[string]$empty`. The regression reads the probe on every platform and refuses any cmdlet-output variable passed uncast to `.Invoke(`. It was RED on the unfixed probe (line 97, `$empty`) and is GREEN on the fix. The probe's junction and `Linked` checks run natively for the first time on the next Windows run. |
 | A failure in the witness test was replaced by its cleanup's sharing violation | `DesktopWindowsPinnedFolderJunctionNativeTest.nativeFolderOthersMayWriteIsUsedOnlyBesideAnEntryTheUserCanOpen` (native only) | The `finally` deletion of `drop\dropped.txt` threw `FileSystemException` 32 and replaced whatever happened first. Only a handle without delete sharing on that file explains 32. The test's own `assertFailsWith { native.open(dropped, PINNED_DIRECTORY) }` leaks exactly such a handle when the open succeeds, and so does the refused `DesktopWindowsTransferPins.open`, whose pins are never closed when it succeeds. Every pin opens with `FILE_FLAG_BACKUP_SEMANTICS`, so a token with `SeBackupPrivilege` enabled reads the private file despite its DACL. That is the probable cause on the hosted runner, but the run that would show it has not happened yet. The test now runs impersonating its process with backup and restore disabled, as an interactive user's process runs (it names any it disabled in its messages). It closes whatever an unexpected open returns before it fails, and it deletes the tree with bounded retries that never hide the body's own failure. Not a PLATFORM-003 defect: the pins were closed and `mine.txt` was deleted before `dropped.txt`. Open: if the next run's messages show the privilege was enabled, decide whether the product's witness search should refuse an entry that only a privilege opened. |
+### The publisher observer's first Windows CI run (`89b2e9c6`, run 43877068415, 2026-11-16)
+
+Windows Desktop Package, step `Verify Windows readiness native causal guards` (hosted runner, Python
+3.12, elevated `runneradmin`) ran the observer type's Windows tests for the first time; the Mac skips
+them. Two failed. The log is kept privately as
+`.runtime/windows-parity-20261107/evidence/ci-89b2e9c6/windows-43877068415-full.log`. Both were the
+tests' premises, not the tools: the publisher's census and backup open are unchanged.
+
+`WindowsCensusTests` censused `sys.executable`. The census matches every process by image leaf, so it
+also named the test runner itself: `agent_test_runner.py` takes one `--test-id` per test, about 50
+arguments, over the 16 that `Argv` and `census_rows` both bound, hence `PUB_CENSUS_ARGV`. A guest's
+census names only product images, whose argv is short (the runtime is `sing-box run -c <config>`), so
+the bound stays. `test_the_publisher_backup_open_and_census` would have hit the same refusal after its
+`setUp`. Both now census a copy of `cmd.exe` under a fresh name that starts `ping`, as the observation
+test already did. The children test waits for `ping` before the snapshot.
+
+`WindowsReaderTests.setUp` made the file SYSTEM's alone with `icacls /inheritance:r /grant:r
+*S-1-5-18:F`, and the runner then read it. That command drops only ACEs flagged inherited. The file
+was made under `tempfile.mkdtemp()`, whose mode `0o700` directory grants SYSTEM, Administrators and
+OWNER RIGHTS; a grant that survived the edit let the elevated administrator read the file. Which
+grant survived was not observed on the runner. `setUp` now sets the whole DACL, protected, with
+`SetNamedSecurityInfoW`: SYSTEM granted and this token's own user explicitly denied. It then reads
+the DACL back and checks it before it checks that an ordinary read is refused. The backup open must
+still read the file past that deny, which is as strong a proof as before.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A census test over the interpreter's image named the test runner, whose argv is over the bound | `test_windows_update_grant_collectors.WindowsHarnessPremiseTests.test_no_census_runs_over_a_shared_image` (offline; RED on the `89b2e9c6` sources: 2 of 3 subtests); native: `WindowsCensusTests`, `WindowsReaderTests.test_the_publisher_backup_open_and_census` | Test premise. Only the next Windows CI run confirms the native tests. |
+| An icacls edit left a grant that let the elevated runner read a file meant to be SYSTEM's alone | `WindowsHarnessPremiseTests.test_the_system_alone_file_is_set_whole_and_read_back` (offline; RED on `89b2e9c6`); native: `WindowsReaderTests` `setUp` | Test premise. The surviving grant was not observed. Only CI confirms. |
 
 ## Historical coverage rule
 
