@@ -378,7 +378,7 @@ MCP_SERVER.tool()(future_registered)
     def test_all_registered_singleton_tools_have_explicit_policies(self):
         for surface in ("prepare_start", "docs", "change_impact", "workflow_status", "version_bump", "run_checks"):
             self.assertIn((surface, "call"), policy.CATALOG)
-        for surface, actions in (("git_workflow", ("commit", "checkpoint", "push", "checks")),
+        for surface, actions in (("git_workflow", ("commit", "checkpoint", "push", "checks", "abandon", "cleanup")),
                                  ("release_workflow", ("status", "merge-dev", "publish"))):
             for action in actions:
                 self.assertFalse(policy.action_policy(surface, action).permitted_recoveries)

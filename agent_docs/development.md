@@ -206,13 +206,15 @@ checks remain unchanged; reduced coverage is not an efficiency measure.
   understand a failure or infer success from a shell wrapper's exit alone.
 - Run the mapped focused checks while editing. Batch compatible selections into one
   host Gradle invocation. Repeat passed checks when content, inputs, environment,
-  failures or unresolved concerns justify it. Run the complete managed prepush tier
-  after each coherent checkpoint's final content/version edit, then push and verify
-  every required workflow for that exact SHA. Retain checkpoint pushes. Never idle
+  failures or unresolved concerns justify it. The complete managed prepush tier is
+  optional; after each coherent checkpoint's final content/version edit, gate the
+  exact SHA through its `ci/*` branch (`git_workflow`), which runs every required
+  workflow there and fast-forwards `dev` only when all succeeded. Retain checkpoint
+  pushes (`action="checkpoint"` starts the `ci/*` runs without waiting). Never idle
   on CI while work remains: continue the remaining work while that verification runs
   in the background, fix CI failures in parallel, and rebase work in progress onto
   the fix before its own push. Only reporting completion waits for the final SHA's
-  CI (`AGENTS.md`, Post-Push CI Verification).
+  CI and its arrival on `origin/dev` (`AGENTS.md`, Post-Push CI Verification).
 - Reuse native harnesses and validate the assigned environment, artifact, endpoint
   and trust before product scenarios. Freeze and hash artifacts; reuse evidence only
   for its proven source and scope. Keep every distinct TEST-001 quick regression and
@@ -282,7 +284,22 @@ invent percentages or treat a cheaper model as proof of fewer total tokens.
 
 Use the project MCP lifecycle described in `agent_tools/README.md`. `prepare_start` performs dirty-aware synchronization to the `dev` development branch and routes the task before inspection. `docs` and `change_impact` provide focused repository context from the local documentation index. `workflow_status` makes the current dirty scope and missing actions visible.
 
-After the final non-documentation edit, call `version_bump` once with a concise summary. It adds an `Unreleased` changelog bullet and rolls the three-part version only when the 10-bullet threshold is reached. Then the complete `run_checks(level="prepush")` tier creates a receipt tied to the repository's content fingerprint. Committing the same validated content does not invalidate that receipt, but any content or mode change does. Use managed push/checks to push `dev` and verify the exact commit SHA against `.github/required-workflows.json`.
+After the final non-documentation edit, call `version_bump` once with a concise summary. It adds an `Unreleased` changelog bullet and rolls the three-part version only when the 10-bullet threshold is reached. The optional complete `run_checks(level="prepush")` tier still creates a receipt tied to the repository's content fingerprint, but delivery no longer requires it.
+
+### Pre-merge CI gate
+
+`git_workflow(action="commit"|"push")` is the completeness gate (`RELEASE-001`):
+
+1. It fetches `origin/dev` and refuses with a rebase blocker when `dev` is not an ancestor of the candidate.
+2. A candidate whose own exact-SHA runs already succeeded fast-forwards `dev` without new runs. Otherwise, unless `exact=True`, a candidate whose difference from the nearest first-parent ancestor with successful exact runs touches only documentation reuses that result after `git diff --check`, `./scripts/check_docs_hygiene.sh` and `scripts/check_source_whitespace.py` pass. The walk stops at the first non-documentation difference or at a red, pending or partially run ancestor.
+3. Otherwise it pushes the SHA to `origin/ci/<sha12>`. Every required workflow in `.github/required-workflows.json` triggers on `ci/**`; runs older than a fresh push of the same SHA are ignored.
+4. It waits until every required run for that SHA has finished, so a red result carries the complete failure set (`TEST-006`). A workflow that never starts within the discovery window fails the gate. `action="checks"` still returns at the first failure for fast triage.
+5. On success it fast-forwards `origin/dev` with a non-force push, which also fails safely if `dev` moved concurrently; a moved `dev` that is no longer an ancestor reports `rebase-needed`.
+6. It records the outcome in `.rag_index/ci-gate/<sha>.json`, then deletes `ci/<sha12>` on origin and its local refs after a merge, a red result or a rebase-needed result. A pending result (watch window exceeded) keeps the branch for `action="push"` to resume or `action="abandon"` to cancel its unfinished runs, record and delete it.
+
+`action="cleanup"` (CLI `git-workflow cleanup --max-age-days N`, default 7) deletes `ci/*` branches that `dev` already contains, or whose runs all finished and whose newest run is older than N days, plus local `ci/*` branches without a remote counterpart. A branch with an unfinished or recent run may be another agent's gate and is kept.
+
+The `dev` fast-forward also triggers the `dev` push workflows for the same SHA. The gate does not wait for them; `VPN Integration` stays advisory and dev-only, and dispatch-only fixture jobs and dev-only cache writes keep their exact `refs/heads/dev` conditions, which a `ci/*` push never satisfies.
 
 `main` is not a development branch. Only an explicit user release command authorizes `release_workflow` to fast-forward `main`, require exhaustive VPN integration, and dispatch the manual publisher. Ordinary completion and push requests stop after verified `origin/dev`.
 

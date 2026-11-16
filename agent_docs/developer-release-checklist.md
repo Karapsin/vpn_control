@@ -9,7 +9,7 @@ Normal work follows the development exact-SHA procedure in `AGENTS.md`. `VPN Int
 For an explicitly requested release:
 
 1. Ensure the intended `dev` SHA passed all required push workflows.
-2. If `## Unreleased` still contains notes, run `version_bump(change_type="release", force_release=true)` without a summary, rerun pre-push checks, and push/verify the resulting `dev` SHA.
+2. If `## Unreleased` still contains notes, run `version_bump(change_type="release", force_release=true)` without a summary, then gate the resulting SHA into `dev` with `git_workflow(action="commit", ..., exact=True)`. A release SHA always needs its own exact-SHA runs; a documentation-only reuse never qualifies.
 3. Run `release_workflow(action="merge-dev")`. It fast-forwards `main` from the exact `origin/dev` SHA, dispatches exhaustive VPN integration, and starts a pending full agent visual review for that SHA.
 4. Use `visual_platform` to bootstrap/start missing local environments or dispatch eligible hosted fallback; ingest automated reports, open every returned screenshot/contact sheet, and record every scene with `visual_review`.
 5. Complete the review to write its local receipt and successful exact-SHA commit status, then run `release_workflow(action="status")` after exhaustive integration and all package workflows complete.

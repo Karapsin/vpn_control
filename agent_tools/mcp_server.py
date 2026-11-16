@@ -173,6 +173,17 @@ WATCH_TIMEOUT_SECONDS = 55 * 60
 POLL_SECONDS = 15
 WORK_BRANCH = "dev"
 RELEASE_BRANCH = "main"
+# RELEASE-001: a candidate runs every required workflow on its own ci/<sha12>
+# branch; dev only fast-forwards to a SHA whose exact runs succeeded (or, by
+# documentation-only equivalence, one whose non-documentation tree equals such a
+# SHA). Results are recorded before the branch is deleted.
+CI_BRANCH_PREFIX = "ci/"
+CI_GATE_LEDGER_DIR = INDEX_DIR / "ci-gate"
+CI_STALE_DAYS = 7
+DOCS_REUSE_MAX_ANCESTORS = 50
+# Version and release metadata are product inputs checked by release hygiene,
+# so they never count as documentation for result reuse.
+DOCS_REUSE_EXCLUDED = frozenset({"gradle.properties", "README.md", "docs/CHANGELOG.md"})
 CHANGELOG_PATH = REPO_ROOT / "docs" / "CHANGELOG.md"
 UNRELEASED_CHANGELOG_THRESHOLD = 10
 VERSION_RE = re.compile(r"^vpnControlVersion=([^\s]+)$", flags=re.MULTILINE)
@@ -183,7 +194,7 @@ SERVER_INSTRUCTIONS = (
     "MANDATORY: call prepare_start before normal repository inspection, edits, or tests. "
     "Use docs and change_impact before broad searches. Never stop the VPN/runtime without "
     "explicit user approval. Preserve unrelated dirty changes. Before finishing, use "
-    "run_checks(level='prepush'), then git_workflow for a checkpoint or final push and exact-SHA CI verification on dev. "
+    "git_workflow to gate the commit on a ci/* branch with exact-SHA CI and fast-forward dev only when green. "
     "Publishing is allowed only after an explicit user release command through release_workflow. "
     "The server is fixed to the VPN Control repository root. "
     "Product invariants are centralized in agent_docs/contracts.md. "
@@ -989,24 +1000,34 @@ def git_workflow(
     message: str | None = None,
     paths: list[str] | None = None,
     sha: str | None = None,
+    exact: bool = False,
+    max_age_days: int = CI_STALE_DAYS,
 ) -> dict[str, Any]:
-    """Commit/push validated work, defer checkpoint CI, or verify an exact SHA."""
-    if action not in {"commit", "checkpoint", "push", "checks"}:
-        return _error("git_workflow", "action must be 'commit', 'checkpoint', 'push', or 'checks'")
+    """Commit and gate work through a ci/* branch before dev, verify an exact SHA, or clean ci/* branches."""
+    if action not in {"commit", "checkpoint", "push", "checks", "abandon", "cleanup"}:
+        return _error("git_workflow",
+                      "action must be 'commit', 'checkpoint', 'push', 'checks', 'abandon', or 'cleanup'")
     if action == "checks":
         target = sha or _git_stdout(["rev-parse", "HEAD"])
         if not SHA_RE.fullmatch(target):
             return _error("git_workflow", "sha must be a full 40-character lowercase commit SHA")
+        if not exact:
+            reused = _docs_only_reuse_if_unrun(target)
+            if reused is not None:
+                return reused
         return _watch_required_workflows(target)
+    if action == "cleanup":
+        return _cleanup_ci_branches(max_age_days)
+    if action == "abandon":
+        if not sha or not SHA_RE.fullmatch(sha):
+            return _error("git_workflow", "abandon requires the full 40-character SHA of the gated candidate")
+        return _abandon_ci_branch(sha)
     if action == "checkpoint" and sha is not None:
         return _error("git_workflow", "checkpoint derives its pushed SHA; sha input is not accepted")
 
     state = _repo_state()
     if state.get("branch") != WORK_BRANCH:
         return _error("git_workflow", "Commit and push operations require branch dev.")
-    receipt_error = _receipt_error()
-    if receipt_error:
-        return _error("git_workflow", receipt_error)
 
     commands: list[dict[str, Any]] = []
     if action in {"commit", "checkpoint"}:
@@ -1054,32 +1075,30 @@ def git_workflow(
             blockers=[{"phase": "push", "changed_paths": _changed_paths()}],
             command_results=commands,
         )
-    push = _run(["git", "push", "origin", f"HEAD:{WORK_BRANCH}"], timeout=10 * 60)
-    commands.append(push)
-    if not push["ok"]:
-        return _error(
-            "git_workflow",
-            "Push to origin/dev failed.",
-            blockers=[_command_blocker("push", push)],
-            command_results=commands,
-        )
     target = _git_stdout(["rev-parse", "HEAD"])
+    if not SHA_RE.fullmatch(target):
+        return _error("git_workflow", "The candidate SHA could not be resolved locally.", command_results=commands)
     if action == "checkpoint":
-        if not SHA_RE.fullmatch(target):
-            return _error("git_workflow", "Pushed checkpoint SHA could not be verified locally.",
-                          command_results=commands)
+        branch = _ci_branch(target)
+        push = _run(["git", "push", "origin", f"{target}:refs/heads/{branch}"], timeout=10 * 60)
+        commands.append(push)
+        if not push["ok"]:
+            return _error("git_workflow", f"Push to origin/{branch} failed.",
+                          blockers=[_command_blocker("push", push)], command_results=commands)
         return {
             "ok": True,
             "tool": "git_workflow",
-            "summary": "Pushed intermediate dev checkpoint; required exact-SHA workflows are deferred.",
-            "result": {"sha": target, "branch": WORK_BRANCH,
+            "summary": f"Pushed checkpoint to origin/{branch}; its exact-SHA workflows run while work continues. "
+                       "Gate it into dev later with action='push'.",
+            "result": {"sha": target, "branch": branch,
                        "requiredWorkflowsVerified": False,
+                       "devAdvanced": False,
                        "deferredReason": "intermediate-checkpoint"},
             "command_results": commands,
         }
-    watched = _watch_required_workflows(target)
-    watched["command_results"] = [*commands, *watched.get("command_results", [])]
-    return watched
+    gated = _ci_gate(target, exact=bool(exact))
+    gated["command_results"] = [*commands, *gated.get("command_results", [])]
+    return gated
 
 
 def _route(task: str, area: str) -> list[str]:
@@ -1222,19 +1241,6 @@ def _snapshot_fingerprint() -> str:
     return digest.hexdigest()
 
 
-def _receipt_error() -> str | None:
-    receipt = _read_json(RECEIPT_PATH)
-    if not receipt:
-        return "A successful run_checks(level='prepush') receipt is required."
-    try:
-        current = _snapshot_fingerprint()
-    except RuntimeError as exc:
-        return str(exc)
-    if receipt.get("fingerprint") != current:
-        return "Repository contents changed after pre-push checks; rerun run_checks(level='prepush')."
-    return None
-
-
 def _validate_commit_paths(paths: list[str]) -> str | None:
     for raw in paths:
         if not raw or raw in {".", "./"}:
@@ -1282,6 +1288,19 @@ def _merge_dev_for_release() -> dict[str, Any]:
             "release_workflow",
             "Local dev must exactly match origin/dev before release merge.",
             blockers=[{"phase": "release_merge", "message": "push and verify dev first"}],
+            command_results=commands,
+        )
+    # RELEASE-001/005: documentation-only equivalence never qualifies a release.
+    release_sha = str(commands[2]["stdout"]).strip()
+    snapshot = _required_snapshot(release_sha)
+    commands.append(snapshot["listed"])
+    if snapshot.get("state") != "success":
+        return _error(
+            "release_workflow",
+            "Release requires successful exact-SHA runs of every required workflow for origin/dev; "
+            "run git_workflow(action='push', exact=True) on that SHA first.",
+            blockers=[{"phase": "release_merge", "sha": release_sha, "state": snapshot.get("state"),
+                       "missing": snapshot.get("missing", [])}],
             command_results=commands,
         )
     merge_steps = [
@@ -1815,87 +1834,102 @@ def _advisory_runs(sha: str) -> dict[str, dict[str, Any]]:
     return latest
 
 
-def _watch_required_workflows(sha: str) -> dict[str, Any]:
+def _required_snapshot(sha: str, min_ids: dict[str, int] | None = None) -> dict[str, Any]:
+    """One exact-SHA observation of the latest run of every required workflow.
+
+    State is success, failure (a completed run with a disallowed conclusion),
+    pending, missing (no run of some workflow) or error. Runs whose id is at or
+    below ``min_ids[name]`` predate a fresh gate push and are ignored.
+    """
     try:
         required = _required_workflows()
     except ValueError as exc:
-        return _error("git_workflow", str(exc))
+        return {"state": "error", "message": str(exc),
+                "listed": {"ok": False, "command": "required-workflows", "stdout": "", "stderr": str(exc)}}
     required_by_name = {item["name"]: item for item in required}
-    required_names = set(required_by_name)
+    listed = _run(
+        [
+            "gh", "run", "list", "--commit", sha, "--limit", "100", "--json",
+            "databaseId,workflowName,event,status,conclusion,url,headSha,headBranch,createdAt",
+        ],
+        timeout=120,
+    )
+    if not listed["ok"]:
+        return {"state": "error", "message": "Could not query GitHub Actions.", "listed": listed}
+    try:
+        runs = json.loads(str(listed["stdout"]) or "[]")
+    except json.JSONDecodeError as exc:
+        return {"state": "error", "message": f"Invalid gh run list output: {exc}", "listed": listed}
+    floor = min_ids or {}
+    latest: dict[str, dict[str, Any]] = {}
+    for run in runs if isinstance(runs, list) else []:
+        if not isinstance(run, dict) or run.get("headSha") != sha:
+            continue
+        name = str(run.get("workflowName", ""))
+        if name not in required_by_name or run.get("event") != required_by_name[name]["event"]:
+            continue
+        identifier = int(run.get("databaseId") or 0)
+        if identifier <= int(floor.get(name, 0)):
+            continue
+        previous = latest.get(name)
+        if previous is None or identifier > int(previous.get("databaseId") or 0):
+            latest[name] = run
+    missing = sorted(set(required_by_name) - set(latest))
+    failures = {
+        name: run for name, run in latest.items()
+        if run.get("status") == "completed"
+        and run.get("conclusion") not in required_by_name[name]["allowed_conclusions"]
+    }
+    pending = sorted(name for name, run in latest.items() if run.get("status") != "completed")
+    if failures:
+        state = "failure"
+    elif missing:
+        state = "missing"
+    elif pending:
+        state = "pending"
+    else:
+        state = "success"
+    return {"state": state, "runs": latest, "missing": missing, "failures": failures,
+            "pending": pending, "listed": listed}
+
+
+def _failed_log_excerpts(failures: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    logs = []
+    for name, run in failures.items():
+        run_id = str(run.get("databaseId"))
+        log = _run(["gh", "run", "view", run_id, "--log-failed"], timeout=180, output_limit=None)
+        logs.append({"workflow": name, "run_id": run_id,
+                     "excerpt": _failure_log_excerpt(log.get("stdout") or log.get("stderr"))})
+    return logs
+
+
+def _watch_required_workflows(sha: str) -> dict[str, Any]:
     started = time.monotonic()
     poll_count = 0
-    latest: dict[str, dict[str, Any]] = {}
     while True:
-        listed = _run(
-            [
-                "gh",
-                "run",
-                "list",
-                "--commit",
-                sha,
-                "--limit",
-                "100",
-                "--json",
-                "databaseId,workflowName,event,status,conclusion,url,headSha",
-            ],
-            timeout=120,
-        )
+        snapshot = _required_snapshot(sha)
+        listed = snapshot["listed"]
         poll_count += 1
-        if not listed["ok"]:
-            return _error(
-                "git_workflow",
-                "Could not query GitHub Actions.",
-                blockers=[_command_blocker("github", listed)],
-                command_results=[listed],
-            )
-        try:
-            runs = json.loads(str(listed["stdout"]) or "[]")
-        except json.JSONDecodeError as exc:
-            return _error("git_workflow", f"Invalid gh run list output: {exc}")
-        latest = {}
-        for run in runs if isinstance(runs, list) else []:
-            if not isinstance(run, dict) or run.get("headSha") != sha:
-                continue
-            name = str(run.get("workflowName", ""))
-            if name not in required_names:
-                continue
-            if run.get("event") != required_by_name[name]["event"]:
-                continue
-            previous = latest.get(name)
-            if previous is None or int(run.get("databaseId") or 0) > int(previous.get("databaseId") or 0):
-                latest[name] = run
-        missing = sorted(required_names - set(latest))
-        failures = {
-            name: run
-            for name, run in latest.items()
-            if run.get("status") == "completed"
-            and run.get("conclusion") not in required_by_name[name]["allowed_conclusions"]
-        }
-        state = {
+        if snapshot["state"] == "error":
+            if not listed.get("ok") and listed.get("command") != "required-workflows":
+                return _error("git_workflow", snapshot["message"],
+                              blockers=[_command_blocker("github", listed)], command_results=[listed])
+            return _error("git_workflow", snapshot["message"])
+        latest, missing, failures = snapshot["runs"], snapshot["missing"], snapshot["failures"]
+        _write_json(WATCH_STATE_PATH, {
             "sha": sha,
             "updated_at_epoch": int(time.time()),
             "missing": missing,
             "runs": latest,
-        }
-        _write_json(WATCH_STATE_PATH, state)
+        })
         if failures:
-            logs = []
-            for name, run in failures.items():
-                run_id = str(run.get("databaseId"))
-                log = _run(["gh", "run", "view", run_id, "--log-failed"], timeout=180, output_limit=None)
-                logs.append({"workflow": name, "run_id": run_id, "excerpt": _failure_log_excerpt(log.get("stdout") or log.get("stderr"))})
             return _error(
                 "git_workflow",
                 "One or more required workflows failed for the exact pushed SHA.",
-                blockers=[{"phase": "ci", "failures": failures, "failed_log_excerpts": logs}],
+                blockers=[{"phase": "ci", "failures": failures, "failed_log_excerpts": _failed_log_excerpts(failures)}],
                 command_results=[listed],
             )
-        complete = len(latest) == len(required_names) and all(
-            run.get("status") == "completed"
-            and run.get("conclusion") in required_by_name[name]["allowed_conclusions"]
-            for name, run in latest.items()
-        )
-        if complete:
+        if snapshot["state"] == "success":
             advisory = _advisory_runs(sha)
             return {
                 "ok": True,
@@ -1925,6 +1959,386 @@ def _watch_required_workflows(sha: str) -> dict[str, Any]:
                 command_results=[listed],
             )
         time.sleep(POLL_SECONDS)
+
+
+def _ci_branch(sha: str) -> str:
+    return f"{CI_BRANCH_PREFIX}{sha[:12]}"
+
+
+def _docs_reuse_path(path: str) -> bool:
+    """Documentation-only equivalence uses the selector's classification minus version/release metadata."""
+    return path not in DOCS_REUSE_EXCLUDED and affected_agent_tests.is_document(path)
+
+
+def _record_ci_gate(sha: str, outcome: str, **details: Any) -> Path:
+    """Record a gate result before its ci/* branch is deleted."""
+    path = CI_GATE_LEDGER_DIR / f"{sha}.json"
+    _write_json(path, {"sha": sha, "branch": _ci_branch(sha), "outcome": outcome,
+                       "recorded_at_epoch": int(time.time()), **details})
+    return path
+
+
+def _delete_ci_branch(branch: str) -> dict[str, Any]:
+    """Delete a ci/* branch on origin and locally; an already absent branch counts as deleted."""
+    if not branch.startswith(CI_BRANCH_PREFIX):
+        raise ValueError("only ci/* branches are deleted")
+    commands = []
+    remote = _run(["git", "push", "origin", "--delete", branch], timeout=180)
+    commands.append(remote)
+    absent = "remote ref does not exist" in str(remote.get("stderr", ""))
+    deleted = bool(remote["ok"] or absent)
+    for ref in (f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"):
+        present = _run(["git", "show-ref", "--verify", "--quiet", ref])
+        if present["ok"]:
+            removed = _run(["git", "update-ref", "-d", ref])
+            commands.append(removed)
+            deleted = deleted and bool(removed["ok"])
+    return {"branch": branch, "deleted": deleted, "command_results": commands}
+
+
+def _dev_contains_or_precedes(sha: str) -> tuple[str, str, dict[str, Any] | None]:
+    """Return (relation, dev_sha, blocker): relation is 'ancestor' when origin/dev can fast-forward to sha."""
+    dev = _run(["git", "rev-parse", f"origin/{WORK_BRANCH}"])
+    dev_sha = str(dev.get("stdout", "")).strip()
+    if not dev["ok"] or not SHA_RE.fullmatch(dev_sha):
+        return "error", "", _command_blocker("dev", dev)
+    relation = _run(["git", "merge-base", "--is-ancestor", dev_sha, sha])
+    if relation["ok"]:
+        return "ancestor", dev_sha, None
+    if relation.get("returncode") == 1:
+        return "diverged", dev_sha, None
+    return "error", dev_sha, _command_blocker("dev", relation)
+
+
+def _docs_only_reference(sha: str) -> dict[str, Any] | None:
+    """The nearest first-parent ancestor with green exact runs whose diff to sha is documentation only.
+
+    The walk stops at the first non-documentation difference, at any red or
+    pending ancestor, and at a partially run ancestor, so reuse always means
+    every non-documentation path is byte-identical to a fully green SHA.
+    """
+    listed = _run(["git", "rev-list", "--first-parent", f"--max-count={DOCS_REUSE_MAX_ANCESTORS + 1}", sha])
+    if not listed["ok"]:
+        return None
+    for ancestor in str(listed["stdout"]).split()[1:]:
+        diff = _run(["git", "diff", "--name-only", "--no-renames", ancestor, sha], output_limit=None)
+        if not diff["ok"]:
+            return None
+        paths = [line for line in str(diff["stdout"]).splitlines() if line]
+        if not all(_docs_reuse_path(path) for path in paths):
+            return None
+        snapshot = _required_snapshot(ancestor)
+        if snapshot["state"] == "success":
+            return {"reference": ancestor, "paths": paths, "workflows": snapshot["runs"]}
+        if snapshot["state"] != "missing" or snapshot["runs"]:
+            return None
+    return None
+
+
+def _docs_only_reuse_if_unrun(sha: str) -> dict[str, Any] | None:
+    """For checks: an unrun documentation-only SHA reports its green reference instead of waiting."""
+    snapshot = _required_snapshot(sha)
+    if snapshot["state"] != "missing" or snapshot["runs"]:
+        return None
+    reference = _docs_only_reference(sha)
+    if reference is None:
+        return None
+    return {
+        "ok": True,
+        "tool": "git_workflow",
+        "summary": f"Documentation-only change: reuses the green exact-SHA result of {reference['reference']}.",
+        "result": {"sha": sha, "docsOnlyReuse": reference, "workflows": {}},
+        "command_results": [snapshot["listed"]],
+    }
+
+
+def _run_docs_reuse_checks(reference: str, sha: str) -> list[dict[str, Any]]:
+    """Run the checks Fast Checks applies to documentation, so reuse keeps their defect classes."""
+    results = []
+    for command in (["git", "diff", "--check", reference, sha],
+                    ["./scripts/check_docs_hygiene.sh"],
+                    [sys.executable, "scripts/check_source_whitespace.py"]):
+        results.append(_run(command, timeout=10 * 60))
+    return results
+
+
+def _advance_dev(sha: str) -> dict[str, Any]:
+    """Fast-forward origin/dev to sha only while dev is still its ancestor."""
+    fetch = _run(["git", "fetch", "origin", WORK_BRANCH], timeout=180)
+    if not fetch["ok"]:
+        return {"state": "error", "blocker": _command_blocker("fetch", fetch), "command_results": [fetch]}
+    relation, dev_sha, blocker = _dev_contains_or_precedes(sha)
+    if relation != "ancestor":
+        return {"state": "rebase" if relation == "diverged" else "error", "dev": dev_sha,
+                "blocker": blocker, "command_results": [fetch]}
+    if dev_sha == sha:
+        return {"state": "merged", "dev": dev_sha, "command_results": [fetch]}
+    # A non-force push is the atomic fast-forward check against a concurrent dev update.
+    push = _run(["git", "push", "origin", f"{sha}:refs/heads/{WORK_BRANCH}"], timeout=10 * 60)
+    if not push["ok"]:
+        return {"state": "rebase", "dev": dev_sha, "blocker": _command_blocker("push", push),
+                "command_results": [fetch, push]}
+    return {"state": "merged", "dev": dev_sha, "command_results": [fetch, push]}
+
+
+def _await_required_terminal(sha: str, min_ids: dict[str, int]) -> dict[str, Any]:
+    """Wait until every required run for sha is completed, so a red result is the complete failure set (TEST-006)."""
+    started = time.monotonic()
+    poll_count = 0
+    while True:
+        snapshot = _required_snapshot(sha, min_ids)
+        poll_count += 1
+        snapshot["poll_count"] = poll_count
+        if snapshot["state"] == "error":
+            return snapshot
+        _write_json(WATCH_STATE_PATH, {"sha": sha, "updated_at_epoch": int(time.time()),
+                                       "missing": snapshot["missing"], "runs": snapshot["runs"]})
+        if snapshot["state"] == "success":
+            return snapshot
+        elapsed = time.monotonic() - started
+        if not snapshot["pending"]:
+            if not snapshot["missing"]:
+                return snapshot
+            if elapsed >= DISCOVERY_TIMEOUT_SECONDS:
+                # A workflow that never started is a failed gate, not a pending one.
+                snapshot["state"] = "failure"
+                return snapshot
+        elif elapsed >= WATCH_TIMEOUT_SECONDS:
+            snapshot["state"] = "pending"
+            return snapshot
+        time.sleep(POLL_SECONDS)
+
+
+def _ci_gate(sha: str, *, exact: bool = False) -> dict[str, Any]:
+    """RELEASE-001: run required workflows on ci/<sha12>, then fast-forward dev to the same SHA."""
+    commands: list[dict[str, Any]] = []
+    fetch = _run(["git", "fetch", "origin", WORK_BRANCH], timeout=180)
+    commands.append(fetch)
+    if not fetch["ok"]:
+        return _error("git_workflow", "Could not fetch origin/dev.", blockers=[_command_blocker("fetch", fetch)],
+                      command_results=commands)
+    relation, dev_sha, blocker = _dev_contains_or_precedes(sha)
+    if relation == "diverged":
+        return _error("git_workflow", "origin/dev is not an ancestor of the candidate; rebase onto origin/dev "
+                      "and gate again.", blockers=[{"phase": "rebase", "sha": sha, "dev": dev_sha}],
+                      command_results=commands)
+    if relation != "ancestor":
+        return _error("git_workflow", "Could not compare the candidate with origin/dev.", blockers=[blocker or {}],
+                      command_results=commands)
+    branch = _ci_branch(sha)
+
+    def finish(outcome: str, ok: bool, summary: str, details: dict[str, Any],
+               blockers: list[dict[str, Any]] | None = None, delete: bool = True) -> dict[str, Any]:
+        record = _record_ci_gate(sha, outcome, **details)
+        cleanup = _delete_ci_branch(branch) if delete else None
+        if cleanup is not None:
+            commands.extend(cleanup["command_results"])
+        result = {"sha": sha, "branch": branch, "outcome": outcome, "record": str(record),
+                  "branchDeleted": bool(cleanup and cleanup["deleted"]), **details}
+        if ok:
+            return {"ok": True, "tool": "git_workflow", "summary": summary, "result": result,
+                    "command_results": commands}
+        failed = _error("git_workflow", summary, blockers=blockers, command_results=commands)
+        failed["result"] = result
+        return failed
+
+    def merge(details: dict[str, Any], summary: str) -> dict[str, Any]:
+        advanced = _advance_dev(sha)
+        commands.extend(advanced["command_results"])
+        if advanced["state"] == "merged":
+            return finish("merged", True, summary, {**details, "devAdvanced": True, "previousDev": advanced["dev"]})
+        if advanced["state"] == "rebase":
+            return finish("rebase-needed", False, "Required workflows passed, but origin/dev moved and is no longer "
+                          "an ancestor; rebase onto origin/dev and gate again.",
+                          {**details, "devAdvanced": False, "dev": advanced.get("dev")},
+                          [{"phase": "rebase", "sha": sha, "dev": advanced.get("dev")}])
+        return _error("git_workflow", "Required workflows passed, but origin/dev could not be fast-forwarded; "
+                      "the ci branch is kept so the gate can resume.",
+                      blockers=[advanced.get("blocker") or {}], command_results=commands)
+
+    current = _required_snapshot(sha)
+    commands.append(current["listed"])
+    if current["state"] == "success":
+        return merge({"workflows": current["runs"], "requiredWorkflowsVerified": True, "reused": "exact-sha"},
+                     "Exact-SHA required workflows already passed; fast-forwarded origin/dev.")
+    if not exact:
+        reference = _docs_only_reference(sha)
+        if reference is not None:
+            checks = _run_docs_reuse_checks(reference["reference"], sha)
+            commands.extend(checks)
+            failed = [_command_blocker("docs-reuse", result) for result in checks if not result["ok"]]
+            if failed:
+                return _error("git_workflow", "Documentation checks failed; the documentation-only change "
+                              "cannot reuse a green result.", blockers=failed, command_results=commands)
+            return merge({"docsOnlyReuse": reference, "requiredWorkflowsVerified": True},
+                         f"Documentation-only change reused the green exact-SHA result of "
+                         f"{reference['reference']}; fast-forwarded origin/dev.")
+
+    remote = _run(["git", "ls-remote", "origin", f"refs/heads/{branch}"], timeout=180)
+    commands.append(remote)
+    resuming = remote["ok"] and str(remote.get("stdout", "")).split()[:1] == [sha]
+    # A fresh push must not be judged by older runs of the same SHA.
+    min_ids = {} if resuming else {name: int(run.get("databaseId") or 0)
+                                   for name, run in (current.get("runs") or {}).items()}
+    if not resuming:
+        push = _run(["git", "push", "origin", f"{sha}:refs/heads/{branch}"], timeout=10 * 60)
+        commands.append(push)
+        if not push["ok"]:
+            return _error("git_workflow", f"Push to origin/{branch} failed.",
+                          blockers=[_command_blocker("push", push)], command_results=commands)
+    outcome = _await_required_terminal(sha, min_ids)
+    commands.append(outcome["listed"])
+    if outcome["state"] == "error":
+        return _error("git_workflow", outcome.get("message", "Could not query GitHub Actions."),
+                      blockers=[_command_blocker("github", outcome["listed"])], command_results=commands)
+    details = {"workflows": outcome.get("runs", {}), "missing": outcome.get("missing", []),
+               "poll_count": outcome.get("poll_count")}
+    if outcome["state"] == "success":
+        return merge({**details, "requiredWorkflowsVerified": True, "advisory_workflows": _advisory_runs(sha)},
+                     "All required exact-SHA workflows passed on the ci branch; fast-forwarded origin/dev.")
+    if outcome["state"] == "pending":
+        return finish("pending", False, f"Required workflows did not finish within the watch window; "
+                      f"origin/{branch} is kept. Resume with action='push' or stop with action='abandon'.",
+                      {**details, "devAdvanced": False},
+                      [{"phase": "ci_timeout", "sha": sha, "missing": details["missing"]}], delete=False)
+    failures = outcome.get("failures", {})
+    return finish("failed", False, "Required workflows failed or never started for the exact SHA; dev was not "
+                  "changed. Fix every reported failure and gate a new commit.",
+                  {**details, "devAdvanced": False, "failures": failures},
+                  [{"phase": "ci" if failures else "ci_discovery", "failures": failures,
+                    "missing": details["missing"], "failed_log_excerpts": _failed_log_excerpts(failures)}])
+
+
+def _abandon_ci_branch(sha: str) -> dict[str, Any]:
+    """Cancel unfinished runs of an abandoned candidate, record it, then delete its ci branch."""
+    branch = _ci_branch(sha)
+    listed = _run(["gh", "run", "list", "--commit", sha, "--limit", "100", "--json",
+                   "databaseId,workflowName,status,conclusion,headSha,headBranch"], timeout=120)
+    commands = [listed]
+    if not listed["ok"]:
+        return _error("git_workflow", "Could not query GitHub Actions.", blockers=[_command_blocker("github", listed)],
+                      command_results=commands)
+    try:
+        runs = json.loads(str(listed["stdout"]) or "[]")
+    except json.JSONDecodeError as exc:
+        return _error("git_workflow", f"Invalid gh run list output: {exc}", command_results=commands)
+    owned = [run for run in runs if isinstance(run, dict)
+             and run.get("headSha") == sha and run.get("headBranch") == branch]
+    cancelled = []
+    for run in owned:
+        if run.get("status") != "completed":
+            result = _run(["gh", "run", "cancel", str(run.get("databaseId"))], timeout=120)
+            commands.append(result)
+            cancelled.append({"run_id": run.get("databaseId"), "workflow": run.get("workflowName"),
+                              "cancelled": bool(result["ok"])})
+    record = _record_ci_gate(sha, "abandoned", runs=owned, cancelled=cancelled)
+    cleanup = _delete_ci_branch(branch)
+    commands.extend(cleanup["command_results"])
+    return {"ok": cleanup["deleted"], "tool": "git_workflow",
+            "summary": f"Abandoned {branch}: recorded, unfinished runs cancelled, branch deleted."
+            if cleanup["deleted"] else f"Abandoned {branch} was recorded, but the branch could not be deleted.",
+            "result": {"sha": sha, "branch": branch, "outcome": "abandoned", "record": str(record),
+                       "cancelled": cancelled, "branchDeleted": cleanup["deleted"]},
+            "command_results": commands}
+
+
+def _iso_epoch(value: Any) -> float | None:
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _cleanup_ci_branches(max_age_days: int = CI_STALE_DAYS) -> dict[str, Any]:
+    """Delete ci/* branches that dev already contains or whose finished runs are older than max_age_days.
+
+    A branch with an unfinished run, or a newer one, may still be another
+    agent's gate in flight and is kept.
+    """
+    if type(max_age_days) is not int or max_age_days < 0:
+        return _error("git_workflow", "max_age_days must be a non-negative integer")
+    commands: list[dict[str, Any]] = []
+    fetch = _run(["git", "fetch", "--prune", "origin",
+                  f"+refs/heads/{WORK_BRANCH}:refs/remotes/origin/{WORK_BRANCH}",
+                  f"+refs/heads/{CI_BRANCH_PREFIX}*:refs/remotes/origin/{CI_BRANCH_PREFIX}*"], timeout=300)
+    commands.append(fetch)
+    if not fetch["ok"]:
+        return _error("git_workflow", "Could not fetch origin ci/* branches.", blockers=[_command_blocker("fetch", fetch)],
+                      command_results=commands)
+    dev = _run(["git", "rev-parse", f"origin/{WORK_BRANCH}"])
+    dev_sha = str(dev.get("stdout", "")).strip()
+    if not dev["ok"] or not SHA_RE.fullmatch(dev_sha):
+        return _error("git_workflow", "Could not resolve origin/dev.", blockers=[_command_blocker("dev", dev)],
+                      command_results=commands)
+    refs = _run(["git", "for-each-ref", "--format=%(refname) %(objectname)",
+                 f"refs/remotes/origin/{CI_BRANCH_PREFIX}", f"refs/heads/{CI_BRANCH_PREFIX}"], output_limit=None)
+    commands.append(refs)
+    if not refs["ok"]:
+        return _error("git_workflow", "Could not list ci/* refs.", blockers=[_command_blocker("refs", refs)],
+                      command_results=commands)
+    remote: dict[str, str] = {}
+    local: dict[str, str] = {}
+    for line in str(refs["stdout"]).splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        name, target = parts
+        if name.startswith("refs/remotes/origin/"):
+            remote[name.removeprefix("refs/remotes/origin/")] = target
+        elif name.startswith("refs/heads/"):
+            local[name.removeprefix("refs/heads/")] = target
+    now = time.time()
+    deleted: list[dict[str, Any]] = []
+    kept: list[dict[str, Any]] = []
+    for branch, target in sorted(remote.items()):
+        contained = _run(["git", "merge-base", "--is-ancestor", target, dev_sha])["ok"]
+        reason = "contained-in-dev" if contained else None
+        runs: list[dict[str, Any]] = []
+        if reason is None:
+            listed = _run(["gh", "run", "list", "--commit", target, "--limit", "100", "--json",
+                           "databaseId,workflowName,status,conclusion,headSha,headBranch,createdAt"], timeout=120)
+            commands.append(listed)
+            try:
+                parsed = json.loads(str(listed["stdout"]) or "[]") if listed["ok"] else None
+            except json.JSONDecodeError:
+                parsed = None
+            if not isinstance(parsed, list):
+                kept.append({"branch": branch, "sha": target, "reason": "runs-unknown"})
+                continue
+            runs = [run for run in parsed if isinstance(run, dict) and run.get("headBranch") == branch]
+            if any(run.get("status") != "completed" for run in runs):
+                kept.append({"branch": branch, "sha": target, "reason": "in-flight"})
+                continue
+            stamps = [stamp for stamp in (_iso_epoch(run.get("createdAt")) for run in runs) if stamp is not None]
+            if not stamps:
+                committed = _run(["git", "log", "-1", "--format=%ct", target])
+                try:
+                    stamps = [float(str(committed.get("stdout", "")).strip())]
+                except ValueError:
+                    kept.append({"branch": branch, "sha": target, "reason": "age-unknown"})
+                    continue
+            if now - max(stamps) < max_age_days * 86400:
+                kept.append({"branch": branch, "sha": target, "reason": "recent"})
+                continue
+            reason = "stale"
+        if not (CI_GATE_LEDGER_DIR / f"{target}.json").is_file():
+            _record_ci_gate(target, "cleaned", reason=reason, runs=runs)
+        cleanup = _delete_ci_branch(branch)
+        commands.extend(cleanup["command_results"])
+        (deleted if cleanup["deleted"] else kept).append(
+            {"branch": branch, "sha": target, "reason": reason if cleanup["deleted"] else "delete-failed"})
+    for branch, target in sorted(local.items()):
+        if branch in remote:
+            continue
+        removed = _run(["git", "update-ref", "-d", f"refs/heads/{branch}"])
+        commands.append(removed)
+        (deleted if removed["ok"] else kept).append(
+            {"branch": branch, "sha": target, "reason": "local-without-remote" if removed["ok"] else "delete-failed"})
+    return {"ok": not any(item["reason"] == "delete-failed" for item in kept), "tool": "git_workflow",
+            "summary": f"Deleted {len(deleted)} ci/* branches; kept {len(kept)}.",
+            "result": {"deleted": deleted, "kept": kept, "max_age_days": max_age_days},
+            "command_results": commands}
 
 
 def _failure_log_excerpt(value: Any, limit: int = 8000) -> str:
@@ -10114,10 +10528,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     visual_verdict.add_argument("verdict")
     visual_verdict.add_argument("--notes")
     git_parser = subparsers.add_parser("git-workflow")
-    git_parser.add_argument("action", choices=("commit", "checkpoint", "push", "checks"))
+    git_parser.add_argument("action", choices=("commit", "checkpoint", "push", "checks", "abandon", "cleanup"))
     git_parser.add_argument("--message")
     git_parser.add_argument("--path", action="append", dest="paths")
     git_parser.add_argument("--sha")
+    git_parser.add_argument("--exact", action="store_true",
+                            help="Require exact-SHA runs; never reuse a documentation-only equivalence")
+    git_parser.add_argument("--max-age-days", type=int, default=CI_STALE_DAYS)
     args = parser.parse_args(argv)
 
     if args.command == "ssh-workflow":
@@ -10185,7 +10602,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _json_print(
             visual_review(args.target_sha, args.platform, args.scene_id, args.verdict, args.notes),
         )
-    return _json_print(git_workflow(args.action, args.message, args.paths, args.sha))
+    return _json_print(git_workflow(args.action, args.message, args.paths, args.sha, args.exact, args.max_age_days))
 
 
 @functools.wraps(run_checks)

@@ -1169,7 +1169,9 @@
         "commit": "workflow_status:call",
         "checkpoint": "workflow_status:call",
         "push": "git_workflow:checks",
-        "checks": "git_workflow:checks"
+        "checks": "git_workflow:checks",
+        "abandon": "git_workflow:checks",
+        "cleanup": "workflow_status:call"
       }
     },
     {

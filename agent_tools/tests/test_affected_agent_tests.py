@@ -426,6 +426,25 @@ class GitSelectionTests(unittest.TestCase):
     def test_new_branch_zero_baseline_refuses(self):
         with self.assertRaisesRegex(selector.SelectionError,'baseline is missing'):
             selector.select(self.root,'0'*40)
+    def test_new_ci_gate_branch_compares_with_the_dev_it_fast_forwards(self):
+        # RELEASE-001: the first push of ci/<sha12> creates the branch, so its event "before" is all zeros.
+        self.write('Feature.kt','dev');self.git('add','.');self.git('commit','-qm','dev tip');dev=self.git('rev-parse','HEAD').strip()
+        self.git('update-ref','refs/remotes/origin/dev',dev)
+        self.write('agent_tools/leaf.py','value=5');self.git('add','.');self.git('commit','-qm','candidate')
+        event=self.root/'.event.json'
+        def plan(ref):
+            event.write_text(json.dumps({'before':'0'*40,'created':True,'ref':ref}))
+            with mock.patch.dict(os.environ,{'GITHUB_EVENT_NAME':'push','GITHUB_EVENT_PATH':str(event)}):
+                return selector.select(self.root)
+        candidate=plan('refs/heads/ci/0123456789ab')
+        self.assertEqual(dev,candidate.baseline);self.assertNotIn('Feature.kt',candidate.changed)
+        self.assertEqual(('agent_tools.tests.test_leaf',),candidate.modules)
+        # Exact re-verification of the dev SHA itself compares with the root commit: every consumer runs.
+        self.git('update-ref','refs/remotes/origin/dev','HEAD')
+        exact=plan('refs/heads/ci/0123456789ab')
+        self.assertEqual(self.base,exact.baseline);self.assertIn('Feature.kt',exact.changed)
+        # Any other new branch still has no comparison baseline.
+        with self.assertRaisesRegex(selector.SelectionError,'baseline is missing'):plan('refs/heads/feature')
 
 class WorkflowExecutionTests(unittest.TestCase):
     git = GitSelectionTests.git

@@ -10,6 +10,8 @@ on:
   push:
     branches:
       - dev
+      # RELEASE-001 pre-merge gate: candidates run here before dev fast-forwards to the same SHA.
+      - "ci/**"
   pull_request:
     paths:
       - ".github/workflows/macos-desktop.yml"

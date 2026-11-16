@@ -104,6 +104,20 @@ def git(root, *args):
     return result.stdout
 
 
+def ci_gate_baseline(root):
+    """A new ci/* gate branch has no previous tip: compare with the dev it fast-forwards.
+
+    When the candidate already equals that fork point (an exact re-verification
+    of a dev SHA), the previous dev tip is unknown, so compare with the root
+    commit and select every affected consumer.
+    """
+    head = git(root, "rev-parse", "HEAD").decode().strip()
+    base = git(root, "merge-base", "origin/dev", "HEAD").decode().strip()
+    if base != head:
+        return base
+    return git(root, "rev-list", "--max-parents=0", "HEAD").decode().split()[-1]
+
+
 def baseline_for(root, baseline=None):
     if baseline is None:
         baseline = os.environ.get("AGENT_TEST_BASELINE") or None
@@ -114,6 +128,8 @@ def baseline_for(root, baseline=None):
                 data = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
                 if event == "push":
                     baseline = data["before"]
+                    if set(baseline) == {"0"} and data.get("created") and str(data["ref"]).startswith("refs/heads/ci/"):
+                        baseline = ci_gate_baseline(root)
                 elif event == "pull_request":
                     baseline = git(root, "merge-base", data["pull_request"]["base"]["sha"], "HEAD").decode().strip()
                 else:

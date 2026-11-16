@@ -54,7 +54,7 @@ The only startup-sync exception is a clearly read-only request where current rem
 - Preserve unrelated local changes. The worktree may be dirty.
 - Prefer small, targeted fixes with regression tests for behavior changes.
 - Workers may make reversible quick fixes and run assigned checks within explicit file and environment ownership without coordinator micro-approval. Existing scope, runtime-interruption authorization, unknown-outcome non-replay, and source/artifact provenance gates still apply.
-- After changes are done and validated, push completed commits to `origin/dev`, then complete the post-push CI verification loop before reporting success.
+- After changes are done, gate completed commits into `origin/dev` through the managed `ci/*` branch gate, which fast-forwards `dev` only after the exact SHA passes CI, before reporting success.
 - Never merge to `main`, publish, tag, or dispatch the stable publisher unless the user explicitly commands a release. Do not infer a release command from requests to finish, ship, implement, or push development work.
 - After every non-documentation change, use `version_bump` to add one concise `Unreleased` changelog bullet. It rolls the changelog and three-part base-20 product version only at 10 bullets, or when an explicitly requested release uses `force_release`.
 - For every distinct failure type discovered in VM, emulator, native/package, manual, visual, or integration testing, preserve the original failure evidence and relevant unfixed beforeimages before editing. A reversible owned fix may work before its regression is constructed. After the flow works, report the encountered failure types, known or unresolved causes, and proposed coverage; then implement every required causal regression with actual RED on the preserved unfixed source and GREEN on the fix, and add it to routine checks before integration, push, or completion. Follow `TEST-001` in `agent_docs/contracts.md`; proposals alone do not satisfy it, and the original native scenario remains required.
@@ -70,35 +70,37 @@ Before reporting a state-changing task complete:
 
 1. Call `workflow_status` and verify the changed paths remain in the requested scope.
 2. For non-documentation changes, call `version_bump` after the final content edit. Treat its changelog/version metadata edit as part of the task.
-3. Run focused checks while iterating, then `run_checks(level="prepush")` after the final content change. Every pass runs to completion; after a failed pass, fix all reported failures and run `run_checks(level="failed")` before the complete tier (`TEST-006`). Do not reuse its receipt after repository contents change.
+3. Run focused checks while iterating. The complete local `run_checks(level="prepush")` tier is optional: required CI on the candidate's `ci/*` branch is the completeness gate. Every managed pass runs to completion; after a failed pass, fix all reported failures and run `run_checks(level="failed")` first (`TEST-006`).
 4. Keep commits coherent and stage only explicit reviewed paths. The managed `git_workflow` rejects generated/runtime paths and uncovered dirty changes.
-5. Push completed commits to `origin/dev` and use `git_workflow` to watch the exact pushed SHA until every required development workflow in `.github/required-workflows.json` succeeds.
-6. If a required workflow fails, inspect the bounded failed logs of every failed step, add or update a fast regression when they exposed a product defect, fix every cause, rerun the failed checks first and then the pre-push tier, commit and push again, then restart verification for the new exact SHA.
+5. Gate completed commits with `git_workflow(action="commit"|"push")`. It pushes the exact candidate SHA to `origin/ci/<sha12>`, waits until every required workflow in `.github/required-workflows.json` has finished for that SHA, and fast-forwards `origin/dev` to the same SHA only when all succeeded and `dev` is still its ancestor; otherwise it reports that a rebase is needed. It records the result under `.rag_index/ci-gate/` and then deletes the `ci/*` branch on origin and locally, after a merge and after a red result alike. A pending run keeps its branch; resume with `action="push"` or stop with `action="abandon"`. `action="cleanup"` deletes stale `ci/*` branches (contained in `dev`, or finished and older than `max_age_days`, default 7).
+6. If a required workflow fails, inspect the bounded failed logs of every failed step, add or update a fast regression when they exposed a product defect, fix every cause, rerun the failed checks first, commit and gate again, then restart verification for the new exact SHA.
 
-Do not report success while any expected workflow for the pushed SHA is missing, pending, cancelled, or failed. See `agent_tools/README.md` for tool inputs, safety boundaries, CLI fallback, and RAG behavior.
+Do not report success while `origin/dev` does not contain the work, or while any expected workflow for its gated SHA (or, for a documentation-only reuse, its green reference SHA) is missing, pending, cancelled, or failed. See `agent_tools/README.md` for tool inputs, safety boundaries, CLI fallback, and RAG behavior.
 
 ## Post-Push CI Verification
 
-After every push to `origin/dev`:
+Candidates reach `origin/dev` only through the `ci/*` branch gate (`RELEASE-001`):
 
-1. Capture the exact pushed commit with `git rev-parse HEAD`.
-2. Query GitHub Actions runs for that exact `headSha`; do not rely on branch-latest status alone.
+1. Capture the exact candidate commit with `git rev-parse HEAD`; `git_workflow` pushes it to `origin/ci/<sha12>`.
+2. Query GitHub Actions runs for that exact `headSha`; do not rely on branch-latest status alone. Runs match by SHA, so the fast-forward of `dev` needs no second run, and a green SHA that is already on `dev` is not rerun.
 3. Track these expected workflows for that SHA until they complete (in the background while other work remains; see below):
    - Fast Checks
    - Android Release APK
    - Linux Desktop Package
    - Windows Desktop Package
    - macOS Desktop Package
-4. If any expected workflow fails, inspect the failure logs of every failed step, fix every cause, rerun the failed checks locally first and then the complete pre-push tier, commit the fix, push again, and repeat this verification loop for the new `headSha`.
-5. Do not report the push as complete while any expected workflow for the pushed SHA is pending, missing, or failed.
+4. If any expected workflow fails, inspect the failure logs of every failed step, fix every cause, rerun the failed checks locally first, commit the fix, gate again, and repeat this verification loop for the new `headSha`. The red SHA never reaches `dev`.
+5. Do not report the work as complete while `origin/dev` does not contain it, or while any expected workflow for its SHA is pending, missing, or failed.
 
-Never idle on CI while work remains. After a push, continue the remaining tasks while the exact-SHA verification runs in the background. Fix CI failures in parallel with that work as their own commits, and rebase work in progress onto the fix before its own push. Keep pushes separate so each CI failure stays attributable to one push. Only reporting completion waits for CI: the final pushed SHA must pass every expected workflow.
+A change whose difference from a SHA with successful exact runs touches only documentation (`docs/`, `agent_docs/` and the prose files that the agent-test selector classifies as documentation, excluding `README.md`, `docs/CHANGELOG.md` and `gradle.properties`) reuses that SHA's result after `git diff --check`, `./scripts/check_docs_hygiene.sh` and the source-whitespace check pass locally. A release never reuses it: `release_workflow(action="merge-dev")` requires exact-SHA runs for the `origin/dev` SHA; `git_workflow(action="push", exact=True)` produces them.
+
+Never idle on CI while work remains. After a gate push, continue the remaining tasks while the exact-SHA verification runs in the background (`action="checkpoint"` starts the `ci/*` runs without waiting). Fix CI failures in parallel with that work as their own commits, and rebase work in progress onto the fix before its own push. Keep pushes separate so each CI failure stays attributable to one push. Only reporting completion waits for CI: the final gated SHA must pass every expected workflow and be on `origin/dev`.
 
 The canonical expected-workflow list is `.github/required-workflows.json`; keep that manifest aligned with the names of the push workflows above.
 
 `VPN Integration` is advisory on ordinary `dev` pushes. The explicitly dispatched `all` profile is mandatory for a release. A release command follows this sequence and no other request authorizes it:
 
-1. Roll any remaining `Unreleased` notes with `version_bump(change_type="release", force_release=true)` and validate/push `dev`.
+1. Roll any remaining `Unreleased` notes with `version_bump(change_type="release", force_release=true)` and gate the result into `dev` with exact-SHA runs (`git_workflow(action="push", exact=True)`).
 2. Run `release_workflow(action="merge-dev")` to fast-forward `main` from the exact verified `origin/dev` SHA, dispatch exhaustive VPN integration, and start the exact-SHA agent visual review.
 3. Use `visual_platform` plus `visual_workflow`/`visual_review` to capture, automatically validate, open, and record every four-platform scene. No persistent self-hosted visual runner is used.
 4. Run `release_workflow(action="status")` until exact-SHA package workflows, exhaustive integration, and the matching agent visual receipt/status are successful.

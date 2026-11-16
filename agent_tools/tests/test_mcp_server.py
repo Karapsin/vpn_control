@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import inspect
+from datetime import datetime, timezone
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -119,48 +121,61 @@ class McpSurfaceTest(unittest.TestCase):
             self.assertIsNotNone(mcp_server._validate_commit_paths(paths), paths)
         self.assertIsNone(mcp_server._validate_commit_paths(["AGENTS.md", "agent_tools"]))
 
-    def test_checkpoint_pushes_exact_sha_without_watching_only_when_explicit(self) -> None:
+    def test_checkpoint_pushes_ci_branch_and_commit_or_push_gate_through_ci(self) -> None:
+        # RELEASE-001: no push reaches dev directly; checkpoint only starts the ci/* runs.
         sha = "a" * 40
-        for action, watch_expected in (("checkpoint", False), ("commit", True)):
+        for action, gate_expected in (("checkpoint", False), ("commit", True)):
             with self.subTest(action=action), \
                  mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev"}), \
-                 mock.patch.object(mcp_server, "_receipt_error", return_value=None), \
                  mock.patch.object(mcp_server, "_changed_paths", side_effect=[
                      ["agent_tools/mcp_server.py", "docs/CHANGELOG.md"], []]), \
                  mock.patch.object(mcp_server, "_run", return_value=command_result()) as run, \
                  mock.patch.object(mcp_server, "_git_stdout", return_value=sha), \
-                 mock.patch.object(mcp_server, "_watch_required_workflows",
-                                   return_value={"ok": True, "tool": "git_workflow", "result": {"sha": sha}}) as watch:
+                 mock.patch.object(mcp_server, "_receipt_error", return_value=None, create=True), \
+                 mock.patch.object(mcp_server, "_watch_required_workflows", return_value={"ok": True}), \
+                 mock.patch.object(mcp_server, "_ci_gate", create=True,
+                                   return_value={"ok": True, "tool": "git_workflow", "result": {"sha": sha}}) as gate:
                 result = mcp_server.git_workflow(action, "checkpoint message",
                     ["agent_tools/mcp_server.py", "docs/CHANGELOG.md"])
+            pushes = [call.args[0] for call in run.call_args_list if call.args[0][:2] == ["git", "push"]]
+            self.assertFalse(any(command[-1].endswith(":dev") or command[-1].endswith("refs/heads/dev")
+                                 for command in pushes), pushes)
             self.assertTrue(result["ok"])
-            self.assertEqual(["git", "push", "origin", "HEAD:dev"], run.call_args_list[-1].args[0])
-            if watch_expected:
-                watch.assert_called_once_with(sha)
+            if gate_expected:
+                gate.assert_called_once_with(sha, exact=False)
+                self.assertEqual([], pushes)
             else:
-                watch.assert_not_called()
+                gate.assert_not_called()
+                self.assertEqual([["git", "push", "origin", f"{sha}:refs/heads/ci/{sha[:12]}"]], pushes)
                 self.assertEqual(sha, result["result"]["sha"])
                 self.assertFalse(result["result"]["requiredWorkflowsVerified"])
+                self.assertFalse(result["result"]["devAdvanced"])
                 self.assertEqual("intermediate-checkpoint", result["result"]["deferredReason"])
         with mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev"}), \
-             mock.patch.object(mcp_server, "_receipt_error", return_value=None), \
              mock.patch.object(mcp_server, "_changed_paths", return_value=[]), \
              mock.patch.object(mcp_server, "_run", return_value=command_result()), \
              mock.patch.object(mcp_server, "_git_stdout", return_value=sha), \
-             mock.patch.object(mcp_server, "_watch_required_workflows",
-                               return_value={"ok": True, "tool": "git_workflow", "result": {"sha": sha}}) as watch:
-            self.assertTrue(mcp_server.git_workflow("push")["ok"])
-        watch.assert_called_once_with(sha)
+             mock.patch.object(mcp_server, "_ci_gate",
+                               return_value={"ok": True, "tool": "git_workflow", "result": {"sha": sha}}) as gate:
+            self.assertTrue(mcp_server.git_workflow("push", exact=True)["ok"])
+        gate.assert_called_once_with(sha, exact=True)
 
-    def test_checkpoint_rejects_invalid_receipt_and_uncovered_paths_before_push(self) -> None:
+    def test_push_needs_no_local_prepush_receipt_but_rejects_uncovered_paths(self) -> None:
+        # RELEASE-001: the ci/* gate, not a local pre-push receipt, is the completeness gate.
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(mcp_server, "RECEIPT_PATH", Path(directory) / "absent.json"), \
+             mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev"}), \
+             mock.patch.object(mcp_server, "_changed_paths", return_value=[]), \
+             mock.patch.object(mcp_server, "_run", return_value=command_result()), \
+             mock.patch.object(mcp_server, "_git_stdout", return_value=sha), \
+             mock.patch.object(mcp_server, "_watch_required_workflows", return_value={"ok": True}), \
+             mock.patch.object(mcp_server, "_ci_gate", create=True,
+                               return_value={"ok": True, "tool": "git_workflow", "result": {"sha": sha}}) as gate:
+            result = mcp_server.git_workflow("push")
+        self.assertTrue(result["ok"], result)
+        gate.assert_called_once_with(sha, exact=False)
         with mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev"}), \
-             mock.patch.object(mcp_server, "_receipt_error", return_value="stale receipt"), \
-             mock.patch.object(mcp_server, "_run") as run:
-            denied = mcp_server.git_workflow("checkpoint", "message", ["agent_tools/mcp_server.py"])
-        self.assertFalse(denied["ok"])
-        run.assert_not_called()
-        with mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev"}), \
-             mock.patch.object(mcp_server, "_receipt_error", return_value=None), \
              mock.patch.object(mcp_server, "_changed_paths", return_value=[
                  "agent_tools/mcp_server.py", "docs/CHANGELOG.md", "agent_tools/README.md"]), \
              mock.patch.object(mcp_server, "_run") as run:
@@ -437,6 +452,8 @@ class VersionPolicyTest(unittest.TestCase):
             mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev", "dirty": False}),
             mock.patch.object(mcp_server, "_run", side_effect=command_results) as run,
             mock.patch.object(mcp_server, "_git_stdout", return_value=sha),
+            mock.patch.object(mcp_server, "_required_snapshot", create=True, return_value={
+                "state": "success", "listed": command_result(), "runs": {}, "missing": []}) as snapshot,
             mock.patch.object(
                 mcp_server,
                 "_visual_command",
@@ -446,6 +463,7 @@ class VersionPolicyTest(unittest.TestCase):
             result = mcp_server._merge_dev_for_release()
 
         self.assertTrue(result["ok"])
+        snapshot.assert_called_once_with(sha)
         commands = [call.args[0] for call in run.call_args_list]
         self.assertTrue(any("vpn-integration.yml" in command for command in commands))
         self.assertFalse(any("visual-regression.yml" in command for command in commands))
@@ -973,6 +991,425 @@ class WorkflowWatchTest(unittest.TestCase):
         self.assertEqual(1, len(result["command_results"]))
         called_command = run.call_args.args[0]
         self.assertEqual(sha, called_command[called_command.index("--commit") + 1])
+
+
+class FakeGitHub:
+    """A fake origin and GitHub Actions for the ci/* gate and documentation-only reuse; every other command fails the test."""
+
+    WORKFLOWS = ("Fast Checks", "Windows Desktop Package")
+
+    def __init__(self, test: unittest.TestCase, *, head: str, dev: str, ancestry: set[tuple[str, str]],
+                 first_parent: dict[str, list[str]] | None = None,
+                 diffs: dict[tuple[str, str], list[str]] | None = None) -> None:
+        self.test = test
+        self.head = head
+        self.remote = {"dev": dev}
+        self.local_refs: set[str] = set()
+        self.ancestry = ancestry
+        self.first_parent = first_parent or {}
+        self.diffs = diffs or {}
+        self.runs: list[dict[str, object]] = []
+        # Per pushed SHA: workflow -> (conclusion or None for never-started/unfinished, polls until completed).
+        self.plans: dict[str, dict[str, tuple[str | None, int]]] = {}
+        self.polls: dict[str, int] = {}
+        self.next_id = 100
+        self.calls: list[list[str]] = []
+        self.failing_checks: set[str] = set()
+        self.on_complete = None
+        self.commit_times: dict[str, int] = {}
+        # (sha, its required-run state) for every dev update: the gate's central invariant.
+        self.dev_pushes: list[tuple[str, str]] = []
+
+    @staticmethod
+    def ok(stdout: str = "", returncode: int = 0, stderr: str = "") -> dict[str, object]:
+        return {"ok": returncode == 0, "command": "fake", "returncode": returncode,
+                "stdout": stdout, "stderr": stderr}
+
+    def is_ancestor(self, older: str, newer: str) -> bool:
+        return older == newer or (older, newer) in self.ancestry
+
+    def add_runs(self, sha: str, branch: str, plan: dict[str, tuple[str | None, int]], created: str) -> None:
+        for name, (conclusion, polls) in plan.items():
+            if polls < 0:
+                continue  # never starts
+            self.next_id += 1
+            self.runs.append({"databaseId": self.next_id, "workflowName": name, "event": "push",
+                              "status": "in_progress", "conclusion": "", "headSha": sha,
+                              "headBranch": branch, "createdAt": created, "url": f"https://x.invalid/{self.next_id}",
+                              "_done_after": polls, "_conclusion": conclusion})
+
+    def __call__(self, command, **_kwargs):
+        command = [str(part) for part in command]
+        self.calls.append(command)
+        git = command[0] == "git"
+        if git and command[1] == "fetch":
+            return self.ok()
+        if git and command[1] == "rev-parse":
+            return self.ok(self.head if command[2] == "HEAD" else self.remote.get("dev", ""))
+        if git and command[1:3] == ["merge-base", "--is-ancestor"]:
+            return self.ok(returncode=0 if self.is_ancestor(command[3], command[4]) else 1)
+        if git and command[1] == "rev-list":
+            return self.ok("\n".join(self.first_parent.get(command[-1], [command[-1]])))
+        if git and command[1:3] == ["diff", "--name-only"]:
+            return self.ok("\n".join(self.diffs[(command[-2], command[-1])]))
+        if git and command[1:3] == ["diff", "--check"]:
+            return self.ok(returncode=1 if "diff-check" in self.failing_checks else 0)
+        if git and command[1] == "ls-remote":
+            branch = command[-1].removeprefix("refs/heads/")
+            return self.ok(f"{self.remote[branch]}\t{command[-1]}" if branch in self.remote else "")
+        if git and command[1] == "push":
+            if command[3] == "--delete":
+                branch = command[4]
+                if branch not in self.remote:
+                    return self.ok(returncode=1, stderr=f"error: unable to delete '{branch}': remote ref does not exist")
+                del self.remote[branch]
+                self.local_refs.discard(f"refs/remotes/origin/{branch}")
+                return self.ok()
+            source, destination = command[-1].split(":")
+            source = self.head if source == "HEAD" else source
+            branch = destination.removeprefix("refs/heads/")
+            if branch == "dev":
+                own = [run for run in self.runs if run["headSha"] == source]
+                state = ("none" if not own else "success" if all(
+                    run["status"] == "completed" and run["conclusion"] == "success" for run in own) else "not-green")
+                self.dev_pushes.append((source, state))
+                # The gate may advance dev only to a SHA whose own runs succeeded, or by a docs-only reuse.
+                if not self.is_ancestor(self.remote["dev"], source):
+                    return self.ok(returncode=1, stderr="! [rejected] (non-fast-forward)")
+                self.remote["dev"] = source
+                return self.ok()
+            self.test.assertTrue(branch.startswith("ci/"), command)
+            self.remote[branch] = source
+            self.local_refs.add(f"refs/remotes/origin/{branch}")
+            self.add_runs(source, branch, self.plans.get(source, {}), "2026-11-16T10:00:00Z")
+            return self.ok()
+        if git and command[1] == "show-ref":
+            return self.ok(returncode=0 if command[-1] in self.local_refs else 1)
+        if git and command[1] == "update-ref":
+            self.local_refs.discard(command[-1])
+            return self.ok()
+        if git and command[1] == "for-each-ref":
+            lines = [f"refs/remotes/origin/{name} {sha}" for name, sha in self.remote.items() if name.startswith("ci/")]
+            lines += [f"{ref} {self.head}" for ref in sorted(self.local_refs) if ref.startswith("refs/heads/ci/")]
+            return self.ok("\n".join(lines))
+        if git and command[1] == "log":
+            return self.ok(str(self.commit_times.get(command[-1], 0)))
+        if command[:3] == ["gh", "run", "list"]:
+            sha = command[command.index("--commit") + 1]
+            self.polls[sha] = self.polls.get(sha, 0) + 1
+            visible = []
+            for run in self.runs:
+                if run["headSha"] != sha:
+                    continue
+                if run["status"] != "completed" and run["_conclusion"] is not None:
+                    run["_done_after"] = int(run["_done_after"]) - 1
+                    if int(run["_done_after"]) <= 0:
+                        run["status"], run["conclusion"] = "completed", run["_conclusion"]
+                visible.append({key: value for key, value in run.items() if not key.startswith("_")})
+            if self.on_complete and visible and all(run["status"] == "completed" for run in visible):
+                callback, self.on_complete = self.on_complete, None
+                callback()
+            return self.ok(json.dumps(visible))
+        if command[:3] == ["gh", "run", "view"]:
+            return self.ok(f"Traceback\nAssertionError: run {command[3]} failed\nFAILED (failures=1)\n")
+        if command[:3] == ["gh", "run", "cancel"]:
+            for run in self.runs:
+                if str(run["databaseId"]) == command[3]:
+                    run["status"], run["conclusion"] = "completed", "cancelled"
+            return self.ok()
+        if command == ["./scripts/check_docs_hygiene.sh"]:
+            return self.ok(returncode=1 if "docs-hygiene" in self.failing_checks else 0)
+        if command[1:] == ["scripts/check_source_whitespace.py"]:
+            return self.ok()
+        if git and command[1] == "switch":
+            self.test.fail(f"release merge switched to {command[2]} without exact-SHA runs")
+        self.test.fail(f"unexpected command: {command}")
+
+    def pushes(self, branch: str) -> list[list[str]]:
+        return [command for command in self.calls if command[:2] == ["git", "push"]
+                and command[-1].endswith(f":refs/heads/{branch}")]
+
+
+class CiBranchGateTest(unittest.TestCase):
+    DEV = "d" * 40
+    HEAD = "e" * 40
+    BRANCH = "ci/" + "e" * 12
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        required = [{"name": name, "workflow": "x.yml", "event": "push", "allowed_conclusions": ["success"]}
+                    for name in FakeGitHub.WORKFLOWS]
+        for patcher in (
+            mock.patch.object(mcp_server, "CI_GATE_LEDGER_DIR", root / "ci-gate", create=True),
+            # The unfixed source demanded a local receipt; the ci/* gate does not (see McpSurfaceTest).
+            mock.patch.object(mcp_server, "_receipt_error", return_value=None, create=True),
+            mock.patch.object(mcp_server, "DISCOVERY_TIMEOUT_SECONDS", 0),
+            mock.patch.object(mcp_server, "WATCH_STATE_PATH", root / "watch.json"),
+            mock.patch.object(mcp_server, "POLL_SECONDS", 0),
+            mock.patch.object(mcp_server.time, "sleep"),
+            mock.patch.object(mcp_server, "_required_workflows", return_value=required),
+            mock.patch.object(mcp_server, "_advisory_runs", return_value={}),
+            mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev"}),
+            mock.patch.object(mcp_server, "_changed_paths", return_value=[]),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.ledger = root / "ci-gate"
+
+    def fake(self, **kwargs) -> FakeGitHub:
+        fake = FakeGitHub(self, head=self.HEAD, dev=kwargs.pop("dev", self.DEV),
+                          ancestry=kwargs.pop("ancestry", {(self.DEV, self.HEAD)}),
+                          first_parent=kwargs.pop("first_parent", {self.HEAD: [self.HEAD, self.DEV]}),
+                          diffs=kwargs.pop("diffs", {(self.DEV, self.HEAD): ["agent_tools/mcp_server.py"]}))
+        patcher = mock.patch.object(mcp_server, "_run", side_effect=fake)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return fake
+
+    def record(self, sha: str | None = None) -> dict[str, object]:
+        return json.loads((self.ledger / f"{sha or self.HEAD}.json").read_text(encoding="utf-8"))
+
+    def test_dev_fast_forwards_only_after_every_required_exact_sha_run_succeeds(self) -> None:
+        fake = self.fake()
+        fake.plans[self.HEAD] = {"Fast Checks": ("success", 2), "Windows Desktop Package": ("success", 3)}
+        result = mcp_server.git_workflow("push")
+        self.assertEqual([(self.HEAD, "success")], fake.dev_pushes)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(self.HEAD, fake.remote["dev"])
+        # The candidate ran on its own ci branch first; dev moved only once every run had succeeded.
+        ci_push = fake.calls.index(["git", "push", "origin", f"{self.HEAD}:refs/heads/{self.BRANCH}"])
+        dev_push = fake.calls.index(["git", "push", "origin", f"{self.HEAD}:refs/heads/dev"])
+        self.assertLess(ci_push, dev_push)
+        self.assertGreaterEqual(fake.polls[self.HEAD], 3)
+        self.assertTrue(all(run["status"] == "completed" and run["conclusion"] == "success" for run in fake.runs))
+        # No second run on dev is demanded: the gate matched the ci/* runs by SHA.
+        self.assertEqual(1, len(fake.pushes("dev")))
+        self.assertEqual("merged", self.record()["outcome"])
+        self.assertTrue(result["result"]["branchDeleted"])
+        self.assertNotIn(self.BRANCH, fake.remote)
+        self.assertNotIn(f"refs/remotes/origin/{self.BRANCH}", fake.local_refs)
+        self.assertLess(dev_push, fake.calls.index(["git", "push", "origin", "--delete", self.BRANCH]))
+
+    def test_red_result_is_recorded_complete_then_the_branch_is_deleted_and_dev_kept(self) -> None:
+        fake = self.fake()
+        fake.local_refs.add(f"refs/heads/{self.BRANCH}")
+        # Fast Checks fails first; the gate still waits for Windows so the failure set is complete (TEST-006).
+        fake.plans[self.HEAD] = {"Fast Checks": ("failure", 1), "Windows Desktop Package": ("failure", 3)}
+        result = mcp_server.git_workflow("push")
+        self.assertEqual([], fake.dev_pushes)
+        self.assertFalse(result["ok"])
+        self.assertEqual(self.DEV, fake.remote["dev"])
+        record = self.record()
+        self.assertEqual("failed", record["outcome"])
+        self.assertEqual(set(FakeGitHub.WORKFLOWS), set(record["failures"]))
+        excerpts = result["blockers"][0]["failed_log_excerpts"]
+        self.assertEqual(2, len(excerpts))
+        self.assertIn("AssertionError", excerpts[0]["excerpt"])
+        self.assertNotIn(self.BRANCH, fake.remote)
+        self.assertNotIn(f"refs/heads/{self.BRANCH}", fake.local_refs)
+        self.assertTrue(result["result"]["branchDeleted"])
+
+    def test_missing_workflow_is_a_failed_gate_and_pending_keeps_the_branch(self) -> None:
+        fake = self.fake()
+        fake.plans[self.HEAD] = {"Fast Checks": ("success", 1), "Windows Desktop Package": (None, -1)}
+        missing = mcp_server.git_workflow("push")
+        self.assertEqual([], fake.dev_pushes)
+        self.assertFalse(missing["ok"])
+        self.assertEqual(["Windows Desktop Package"], self.record()["missing"])
+        self.assertEqual("ci_discovery", missing["blockers"][0]["phase"])
+        self.assertEqual(self.DEV, fake.remote["dev"])
+        self.assertNotIn(self.BRANCH, fake.remote)
+
+        pending = self.fake()
+        pending.plans[self.HEAD] = {name: (None, 1) for name in FakeGitHub.WORKFLOWS}
+        with mock.patch.object(mcp_server, "WATCH_TIMEOUT_SECONDS", 0):
+            result = mcp_server.git_workflow("push")
+        self.assertEqual([], pending.dev_pushes)
+        self.assertFalse(result["ok"])
+        self.assertEqual("pending", self.record()["outcome"])
+        self.assertEqual(self.DEV, pending.remote["dev"])
+        self.assertEqual(self.HEAD, pending.remote[self.BRANCH])
+        self.assertEqual([], pending.pushes("dev"))
+
+    def test_rerun_of_a_red_sha_ignores_its_older_runs(self) -> None:
+        fake = self.fake()
+        fake.add_runs(self.HEAD, self.BRANCH, {name: ("failure", 0) for name in FakeGitHub.WORKFLOWS},
+                      "2026-11-15T10:00:00Z")
+        fake.plans[self.HEAD] = {name: ("success", 2) for name in FakeGitHub.WORKFLOWS}
+        result = mcp_server.git_workflow("push")
+        self.assertEqual(1, len(fake.pushes(self.BRANCH)))
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(self.HEAD, fake.remote["dev"])
+
+    def test_refuses_when_dev_is_not_an_ancestor_before_or_after_ci(self) -> None:
+        moved = "f" * 40
+        fake = self.fake(dev=moved, ancestry=set())
+        before = mcp_server.git_workflow("push")
+        self.assertFalse(before["ok"])
+        self.assertEqual("rebase", before["blockers"][0]["phase"])
+        self.assertEqual([], fake.pushes(self.BRANCH))
+        self.assertEqual(moved, fake.remote["dev"])
+
+        racing = self.fake()
+        racing.plans[self.HEAD] = {name: ("success", 1) for name in FakeGitHub.WORKFLOWS}
+        racing.on_complete = lambda: racing.remote.__setitem__("dev", moved)
+        result = mcp_server.git_workflow("push")
+        self.assertEqual([], racing.dev_pushes)
+        self.assertFalse(result["ok"])
+        self.assertEqual("rebase-needed", self.record()["outcome"])
+        self.assertEqual(moved, racing.remote["dev"])
+        self.assertEqual([], racing.pushes("dev"))
+        self.assertNotIn(self.BRANCH, racing.remote)
+
+    def test_abandon_cancels_unfinished_runs_records_and_deletes(self) -> None:
+        fake = self.fake()
+        fake.remote[self.BRANCH] = self.HEAD
+        fake.local_refs.add(f"refs/remotes/origin/{self.BRANCH}")
+        fake.add_runs(self.HEAD, self.BRANCH, {name: ("success", 50) for name in FakeGitHub.WORKFLOWS},
+                      "2026-11-16T10:00:00Z")
+        result = mcp_server.git_workflow("abandon", sha=self.HEAD)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(2, len([command for command in fake.calls if command[:3] == ["gh", "run", "cancel"]]))
+        self.assertEqual("abandoned", self.record()["outcome"])
+        self.assertNotIn(self.BRANCH, fake.remote)
+        self.assertEqual(self.DEV, fake.remote["dev"])
+
+    def test_cleanup_deletes_contained_and_stale_ci_branches_only(self) -> None:
+        contained, stale, flying, recent = ("1" * 40, "2" * 40, "3" * 40, "4" * 40)
+        fake = self.fake(ancestry={(contained, self.DEV)})
+        for sha, created, polls in ((stale, "2026-11-01T00:00:00Z", 0), (flying, "2026-11-01T00:00:00Z", 99),
+                                    (recent, "2026-11-15T00:00:00Z", 0)):
+            fake.add_runs(sha, f"ci/{sha[:12]}", {"Fast Checks": ("success", polls)}, created)
+            for run in fake.runs:
+                if run["headSha"] == sha and polls == 0:
+                    run["status"], run["conclusion"] = "completed", "success"
+        for sha in (contained, stale, flying, recent):
+            fake.remote[f"ci/{sha[:12]}"] = sha
+        fake.local_refs.add("refs/heads/ci/orphan")
+        now = datetime(2026, 11, 16, tzinfo=timezone.utc).timestamp()
+        with mock.patch.object(mcp_server.time, "time", return_value=now):
+            result = mcp_server.git_workflow("cleanup")
+        self.assertTrue(result["ok"], result)
+        reasons = {item["branch"]: item["reason"] for item in result["result"]["deleted"]}
+        self.assertEqual({f"ci/{contained[:12]}": "contained-in-dev", f"ci/{stale[:12]}": "stale",
+                          "ci/orphan": "local-without-remote"}, reasons)
+        kept = {item["branch"]: item["reason"] for item in result["result"]["kept"]}
+        self.assertEqual({f"ci/{flying[:12]}": "in-flight", f"ci/{recent[:12]}": "recent"}, kept)
+        self.assertEqual({"dev", f"ci/{flying[:12]}", f"ci/{recent[:12]}"}, set(fake.remote))
+        self.assertEqual("cleaned", self.record(stale)["outcome"])
+        self.assertEqual(set(), {ref for ref in fake.local_refs if ref.startswith("refs/heads/ci/")})
+
+    def test_docs_only_change_reuses_the_nearest_green_sha_after_docs_checks(self) -> None:
+        middle = "c" * 40
+        fake = self.fake(ancestry={(self.DEV, self.HEAD), (self.DEV, middle), (middle, self.HEAD)},
+                         first_parent={self.HEAD: [self.HEAD, middle, self.DEV]},
+                         diffs={(middle, self.HEAD): ["agent_docs/development.md"],
+                                (self.DEV, self.HEAD): ["agent_docs/development.md", "AGENTS.md"]})
+        fake.add_runs(self.DEV, "ci/" + self.DEV[:12], {name: ("success", 0) for name in FakeGitHub.WORKFLOWS},
+                      "2026-11-16T09:00:00Z")
+        for run in fake.runs:
+            run["status"], run["conclusion"] = "completed", "success"
+        result = mcp_server.git_workflow("push")
+        self.assertIn(["./scripts/check_docs_hygiene.sh"], fake.calls)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(self.DEV, result["result"]["docsOnlyReuse"]["reference"])
+        self.assertEqual(self.HEAD, fake.remote["dev"])
+        self.assertEqual([], fake.pushes(self.BRANCH))
+        self.assertIn(["./scripts/check_docs_hygiene.sh"], fake.calls)
+        self.assertIn(["git", "diff", "--check", self.DEV, self.HEAD], fake.calls)
+        # An unrun documentation-only SHA is reported verified by the same equivalence.
+        checked = mcp_server.git_workflow("checks", sha=self.HEAD)
+        self.assertTrue(checked["ok"], checked)
+        self.assertEqual(self.DEV, checked["result"]["docsOnlyReuse"]["reference"])
+
+    def test_docs_reuse_refuses_failed_docs_checks_and_non_documentation_paths(self) -> None:
+        for paths in (["docs/CHANGELOG.md"], ["README.md"], ["gradle.properties"], ["agent_tools/README.md", "x.py"],
+                      ["agent_tools/tests/fixtures/notes.md"]):
+            with self.subTest(paths=paths):
+                fake = self.fake(diffs={(self.DEV, self.HEAD): paths})
+                fake.add_runs(self.DEV, "ci/" + self.DEV[:12], {name: ("success", 0) for name in FakeGitHub.WORKFLOWS},
+                              "2026-11-16T09:00:00Z")
+                for run in fake.runs:
+                    run["status"], run["conclusion"] = "completed", "success"
+                fake.plans[self.HEAD] = {name: ("success", 1) for name in FakeGitHub.WORKFLOWS}
+                result = mcp_server.git_workflow("push")
+                self.assertEqual([(self.HEAD, "success")], fake.dev_pushes)
+                self.assertTrue(result["ok"], result)
+                self.assertNotIn("docsOnlyReuse", result["result"])
+                self.assertEqual(1, len(fake.pushes(self.BRANCH)))
+        fake = self.fake(diffs={(self.DEV, self.HEAD): ["agent_docs/development.md"]})
+        fake.add_runs(self.DEV, "ci/" + self.DEV[:12], {name: ("success", 0) for name in FakeGitHub.WORKFLOWS},
+                      "2026-11-16T09:00:00Z")
+        for run in fake.runs:
+            run["status"], run["conclusion"] = "completed", "success"
+        fake.failing_checks.add("docs-hygiene")
+        refused = mcp_server.git_workflow("push")
+        self.assertEqual([], fake.dev_pushes)
+        self.assertFalse(refused["ok"])
+        self.assertEqual(self.DEV, fake.remote["dev"])
+        self.assertEqual([], fake.pushes(self.BRANCH))
+
+    def test_exact_and_release_never_reuse_a_documentation_only_equivalence(self) -> None:
+        # A docs-reached dev SHA has no exact runs of its own, so the release merge refuses before touching main.
+        docs_reached = self.fake(dev=self.HEAD, diffs={(self.DEV, self.HEAD): ["agent_docs/development.md"]})
+        docs_reached.head = self.HEAD
+        with mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev", "dirty": False}):
+            release = mcp_server._merge_dev_for_release()
+        self.assertFalse(release["ok"])
+        self.assertIn("exact=True", release["summary"])
+        self.assertFalse(any(command[:2] == ["git", "switch"] for command in docs_reached.calls))
+        self.assertEqual([], docs_reached.pushes("main"))
+        fake = self.fake(diffs={(self.DEV, self.HEAD): ["agent_docs/development.md"]})
+        fake.add_runs(self.DEV, "ci/" + self.DEV[:12], {name: ("success", 0) for name in FakeGitHub.WORKFLOWS},
+                      "2026-11-16T09:00:00Z")
+        for run in fake.runs:
+            run["status"], run["conclusion"] = "completed", "success"
+        fake.plans[self.HEAD] = {name: ("success", 1) for name in FakeGitHub.WORKFLOWS}
+        exact = mcp_server.git_workflow("push", exact=True)
+        self.assertEqual([(self.HEAD, "success")], fake.dev_pushes)
+        self.assertTrue(exact["ok"], exact)
+        self.assertNotIn("docsOnlyReuse", exact["result"])
+        self.assertEqual(1, len(fake.pushes(self.BRANCH)))
+        with mock.patch.object(mcp_server, "_watch_required_workflows", return_value={"ok": False}) as watch:
+            mcp_server.git_workflow("checks", sha="c" * 40, exact=True)
+        watch.assert_called_once_with("c" * 40)
+
+
+class RequiredWorkflowTriggerTest(unittest.TestCase):
+    REQUIRED = ("fast-checks.yml", "android-release.yml", "linux-desktop.yml", "windows-desktop.yml",
+                "macos-desktop.yml")
+
+    @staticmethod
+    def push_branches(text: str) -> list[str]:
+        block = re.search(r"(?m)^  push:\n    branches:\n((?:      - .*\n|      #.*\n)+)", text)
+        if block is None:
+            return []
+        return [line.strip()[2:].strip('"') for line in block.group(1).splitlines() if line.strip().startswith("- ")]
+
+    def test_required_workflows_run_on_ci_gate_branches_without_dev_only_side_effects(self) -> None:
+        workflows = mcp_server.REPO_ROOT / ".github/workflows"
+        manifest = json.loads(mcp_server.REQUIRED_WORKFLOWS_PATH.read_text(encoding="utf-8"))
+        required_paths = {Path(entry["path"]).name for entry in manifest["branches"]["dev"]["workflows"]
+                          if entry["classification"] == "required_push"}
+        self.assertEqual(set(self.REQUIRED), required_paths)
+        for name in self.REQUIRED:
+            text = (workflows / name).read_text(encoding="utf-8")
+            self.assertEqual(["dev", "ci/**"], self.push_branches(text), name)
+        # Advisory and release-only workflows never run for a ci/* candidate.
+        for name in ("vpn-integration.yml", "release-publish.yml", "visual-regression.yml", "environment-canary.yml"):
+            self.assertNotIn("ci/**", self.push_branches((workflows / name).read_text(encoding="utf-8")), name)
+        # Every dev-only condition is an exact dev ref, which a ci/* push can never satisfy.
+        for path in sorted(workflows.glob("*.yml")):
+            text = path.read_text(encoding="utf-8")
+            for match in re.finditer(r"github\.(ref|ref_name)\s*(?:==|!=)\s*'([^']*)'", text):
+                expected = "refs/heads/dev" if match.group(1) == "ref" else "dev"
+                self.assertEqual(expected, match.group(2), path.name)
+            self.assertNotRegex(text, r"startsWith\(\s*github\.ref", path.name)
+            # A cache may be written only by dev; a ci/* run stays read-only.
+            for value in re.findall(r"(?m)^\s+cache-read-only:\s*(.+)$", text):
+                self.assertIn("github.ref != 'refs/heads/dev'", value, path.name)
 
 
 if __name__ == "__main__":
