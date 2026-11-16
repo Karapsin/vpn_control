@@ -63,6 +63,8 @@ _DECISION_NAMESPACE = "windows-uac-decision"
 _REVIEW_NAMESPACE = "windows-uac-review"
 _DECISIONS = ".runtime/windows-uac-decisions"
 _REVIEWS = ".runtime/windows-uac-reviews"
+# native_scenario_windows._LOCAL_STATE, where the driver keeps a job's records; a test holds the two equal.
+_SCENARIO_LOCAL = (".rag_index", "native-scenario-windows")
 # After the one pointer move, frames are read for this long before a black display refuses. Reading moves nothing.
 REVIEW_SETTLE_SECONDS = 10
 REVIEW_FRAME_BYTES = 16 * 1024 ** 2
@@ -1129,14 +1131,46 @@ def _binding(root, plan):
     return binding
 
 
-def _job_context(root, plan):
-    """What the job's context stage retained, read through the scenario driver.
+def _retained_context(root, correlation):
+    """The copy of the job's context the scenario driver kept when it first read it, or None before that read.
 
-    The driver and the host job it imports are loaded here and nowhere earlier: this is the first contact, after
-    every local gate, so a refusal that local files decide never loads them.
+    The driver keeps it beside the job's program record (native_scenario_windows._LOCAL_STATE) from a status wait or
+    its own uac_context read, which comes before the prompt. The job writes the context once, so the copy is the read.
     """
+    path = Path(root).joinpath(*_SCENARIO_LOCAL, correlation, "uac-context.json")
+    return json.loads(_read_private(path)) if os.path.lexists(path) else None
+
+
+def _job_context(root, plan):
+    """What the job's context stage retained, and whether it was the driver's kept copy or a host read now.
+
+    The kept copy costs no SSH and no driver import at the prompt. Without it, the driver and the host job it imports are
+    loaded here and nowhere earlier: this is the first contact, after every local gate, so a refusal that local files
+    decide never loads them. Either way the packet checks the context against the live guest before any key.
+    """
+    retained = _retained_context(root, plan.correlation_id)
+    if retained is not None:
+        return _validate_context(retained), "retained"
     from . import native_scenario_windows as windows
-    return _validate_context(windows.NativeScenarioWindowsDriver(root, lambda _plan: None).uac_context(plan))
+    return _validate_context(windows.NativeScenarioWindowsDriver(root, lambda _plan: None).uac_context(plan)), "read"
+
+
+class _Clock:
+    """Where an attempt's time went, kept privately beside its journal. It decides nothing and failing to keep it is silent."""
+
+    def __init__(self):
+        self.began, self.wall, self.seconds, self.context = time.monotonic(), time.time(), {}, None
+
+    def mark(self, name):
+        self.seconds[name] = round(time.monotonic() - self.began, 3)
+
+    def keep(self, directory, attempt):
+        self.mark("replied")
+        try:
+            login._retain_local(directory, "attempt-%04d.timing.json" % attempt, {"startedAt": round(self.wall, 3), "context": self.context,
+                                                                                   "seconds": dict(self.seconds), "replayAllowed": False})
+        except (OSError, ValueError):
+            pass
 
 
 def _journal_directory(root, decision, journal=_DECISIONS):
@@ -1184,8 +1218,15 @@ def _retain_once(directory, name, value):
         pass
 
 
+# Under this many argv bytes a carrier goes inline in one SSH child (ssh_transport.build_ssh_argv's bound is 60 000,
+# route options included). Above it the transport stages the program first: a second connection and its custody checks,
+# 25 to 36 s of runs d476687a and a47da155 while the prompt's 90 s ran. Deflated, every packet is about a third of this.
+INLINE_CARRIER_BYTES = 48000
+
+
 def _command(source):
-    return ["python3", "-I", "-B", "-c", "import base64;exec(base64.b64decode(" + repr(base64.b64encode(source).decode()) + "))"]
+    packed = base64.b64encode(zlib.compress(source, 9)).decode()
+    return ["python3", "-I", "-B", "-c", "import base64,zlib;exec(zlib.decompress(base64.b64decode(" + repr(packed) + ",validate=True)))"]
 
 
 @contextmanager
@@ -1388,22 +1429,25 @@ def before_contact(root, inputs, *, review=False):
 def execute(root, inputs, *, deadline=None, direct=False):
     """Gates, then one journaled packet. A repeat is a status packet, forever, unless a known refusal was retained:
     one that proved nothing yet permits another submit, and any other is returned again with no packet."""
+    clock = _Clock()
     if deadline is None:
         deadline = time.monotonic() + SUBMIT_SECONDS + 10
     reply, admitted = _gates(root, inputs, direct=direct, review=False)
     if reply is not None:
         return reply
+    clock.mark("gates")
     root, correlation, decision, plan, row, binding = (admitted.root, admitted.correlation, admitted.decision, admitted.plan, admitted.row,
                                                          admitted.binding)
     if admitted.original is not None:
         return _status(root, binding, decision, inputs, admitted.directory, admitted.original, deadline)
     attempt, profile, profile_sha = admitted.attempt, admitted.profile, admitted.profile_sha
     try:
-        context = _job_context(root, plan)
+        context, clock.context = _job_context(root, plan)
     except (OSError, ValueError):
         return _refused("uac_context_unavailable", decision, inputs)
     if re.fullmatch(_ROOT_FORM + re.escape(correlation), context["operationRoot"]) is None:
         return _refused("uac_context_unavailable", decision, inputs)
+    clock.mark("context")
     source = program(binding, "uac-decide", decision, attempt=attempt, answer=inputs["decision"], prompt=inputs["prompt"], row=row, context=context,
                      profile=profile, profile_sha=profile_sha, scenario_operation=correlation, approver=admitted.approver)
     directory = _journal_directory(root, decision)
@@ -1435,6 +1479,7 @@ def execute(root, inputs, *, deadline=None, direct=False):
                 _retain_result(directory, attempt, refused)
                 return refused
         frame = (b"\x00\x00\x00\x00" if private is None else len(private).to_bytes(4, "big") + private)
+        clock.mark("sent")
         try:
             result = _send(root, inputs["host"], decision, source, frame, deadline)
         except _Unsubmitted:
@@ -1443,6 +1488,8 @@ def execute(root, inputs, *, deadline=None, direct=False):
             return refused
         except Exception:  # A lost reply: the child may still be running, so this decision only reads from now on.
             return {**_refused("uac_submission_unresolved", decision, inputs), "state": "unknown"}
+        finally:
+            clock.keep(directory, attempt)
         value = _reply(result, private)
         if secret is not None:
             secret.guard()
@@ -1580,20 +1627,23 @@ def review(root, inputs, *, deadline=None, direct=False):
     no packet, a lost reply is only read by status, and as for execute only a "not yet" refusal permits another
     submit. For a review a display still black is one: the next attempt cannot move the pointer and only reads.
     """
+    clock = _Clock()
     if deadline is None:
         deadline = time.monotonic() + SUBMIT_SECONDS + 10
     reply, admitted = _gates(root, inputs, direct=direct, review=True)
     if reply is not None:
         return reply
+    clock.mark("gates")
     root, correlation, decision, review_operation = admitted.root, admitted.correlation, admitted.decision, admitted.operation
     if admitted.original is not None:
         return _review_status(root, admitted.binding, review_operation, decision, inputs, admitted.directory, admitted.original, deadline)
     try:
-        context = _job_context(root, admitted.plan)
+        context, clock.context = _job_context(root, admitted.plan)
     except (OSError, ValueError):
         return _review_refused("uac_context_unavailable", review_operation, decision, inputs)
     if re.fullmatch(_ROOT_FORM + re.escape(correlation), context["operationRoot"]) is None:
         return _review_refused("uac_context_unavailable", review_operation, decision, inputs)
+    clock.mark("context")
     source = program(admitted.binding, "uac-review", review_operation, attempt=admitted.attempt, answer=inputs["decision"],
                      prompt=inputs["prompt"], row=admitted.row, context=context, scenario_operation=correlation, decision_operation=decision,
                      approver=admitted.approver)
@@ -1613,11 +1663,14 @@ def review(root, inputs, *, deadline=None, direct=False):
     except FileExistsError:
         return _review_status(root, admitted.binding, review_operation, decision, inputs, directory, admitted.attempt, deadline)
     login._retain_local(directory, label + ".py", source)
+    clock.mark("sent")
     try:
         result = _send(root, inputs["host"], review_operation, source, None, deadline)
     except _Unsubmitted:
         return _settle_review(directory, admitted.attempt, _review_refused("uac_transport_unsubmitted", review_operation, decision, inputs), None)
     except Exception:  # A lost reply: the packet may still be running, so this review only reads from now on.
         return {**_review_refused("uac_review_unresolved", review_operation, decision, inputs), "state": "unknown"}
+    finally:
+        clock.keep(directory, admitted.attempt)
     projected, raw = _project_review(_review_reply(result), review_operation, decision, inputs, submitted=True)
     return _settle_review(directory, admitted.attempt, projected, raw)

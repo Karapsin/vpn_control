@@ -883,6 +883,32 @@ try:
  print(json.dumps({"state":"read","value":json.loads(raw)},separators=(",",":")))
 except Exception: print(json.dumps({"state":"unavailable"},separators=(",",":")))'''
 
+# One host read for a client waiting on a row's prompt: the job's status copy, read every quarter second until it names
+# the event with no decision terminal, the job's receipt exists or the bound ends, and the context the action reads.
+# Host files only, as _READ_JOB_FILE reads them: no lock, QMP, QGA or guest, so the job never waits on it.
+_WAIT_UAC = r'''import json,os,stat,sys,time
+data,event,seconds=sys.argv[1],sys.argv[2],int(sys.argv[3])
+def read(name):
+ try:
+  fd=os.open(os.path.join(data,name),os.O_RDONLY|getattr(os,"O_NOFOLLOW",0))
+  try:
+   info=os.fstat(fd)
+   if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or info.st_size>8192: return None
+   raw=os.read(fd,8193)
+  finally: os.close(fd)
+  return json.loads(raw)
+ except Exception: return None
+limit=time.monotonic()+seconds
+while True:
+ status=read("status.json")
+ pending=type(status) is dict and type(status.get("uacEvents")) is list and event in status["uacEvents"] and status.get("uacDecision") is None
+ ended=os.path.lexists(os.path.join(data,"scenario-receipt.json"))
+ if pending or ended or time.monotonic()>=limit: break
+ time.sleep(.25)
+print(json.dumps({"state":"read","status":status,"context":read("uac-context.json"),"ended":ended,"observedAt":round(time.time(),3)},separators=(",",":")))'''
+_UAC_WAIT_SECONDS = 60
+_UAC_CONTEXT_FIELDS = frozenset({"operationRoot", "ordinarySid", "ordinarySessionId", "bootFileTimeUtc"})
+
 
 def _private_directory(path: Path) -> Path:
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -914,6 +940,15 @@ def _start_ticks(birth: Any) -> int | None:
     if match is None:
         return None
     return int(match[1]) if match[1] else int(match[2]) * 1_000_000 + int(match[3]) + 1
+
+
+def _uac_token(uac: Mapping[str, Any], status: Any) -> str | None:
+    """The run template reports the row's prompt event from every event, not a recent window, and the host job
+    adds the decision's input terminal once it exists: until then the prompt is pending."""
+    pending = status.get("uacEvents") if isinstance(status, Mapping) else None
+    decided = isinstance(status, Mapping) and status.get("uacDecision") is not None
+    return ("uac-pending:" + uac["prompt"] + ":" + uac["decision"]
+            if isinstance(pending, list) and uac["event"] in pending and not decided else None)
 
 
 def _exit_marker(stdout: bytes, operation: str) -> dict[str, Any] | None:
@@ -1136,12 +1171,23 @@ class NativeScenarioWindowsDriver:
             status = self._read_job_file(plan, program["dataDirectory"], "status.json")
         except (OSError, ValueError, ssh_transport.SshConfigError):
             return None
-        # The run template reports the row's prompt event from every event, not a recent window, and the host job
-        # adds the decision's input terminal once it exists: until then the prompt is pending.
-        pending = status.get("uacEvents") if isinstance(status, Mapping) else None
-        decided = isinstance(status, Mapping) and status.get("uacDecision") is not None
-        return ("uac-pending:" + uac["prompt"] + ":" + uac["decision"]
-                if isinstance(pending, list) and uac["event"] in pending and not decided else None)
+        return _uac_token(uac, status)
+
+    def _retain_uac_context(self, plan: native_scenario_execution.ScenarioPlan, value: Any) -> None:
+        """Keep the job's context as first read, create-only, beside the job's program record.
+
+        The job writes it once, at its context stage, before any prompt; the action reads this copy instead of a host
+        read and the driver's import at the prompt. It checks the copy as it checks a read, and the packet checks it
+        against the live guest. A shape this cannot be is not kept.
+        """
+        if (not isinstance(value, dict) or set(value) != _UAC_CONTEXT_FIELDS or not all(type(value[key]) is str for key in
+                                                                                       ("operationRoot", "ordinarySid", "bootFileTimeUtc"))
+                or type(value["ordinarySessionId"]) is not int):
+            return
+        try:
+            _create_private(_private_directory(self._local(plan)) / "uac-context.json", json.dumps(value, sort_keys=True).encode())
+        except FileExistsError:
+            pass
 
     def uac_context(self, plan: native_scenario_execution.ScenarioPlan) -> dict[str, Any]:
         """The operation root and SIDs this job's context stage retained. Holds no QMP or QGA socket and takes no lock."""
@@ -1149,7 +1195,35 @@ class NativeScenarioWindowsDriver:
         _need(retained is not None, "windows_scenario_job_unknown")
         value = self._read_job_file(plan, retained["program"]["dataDirectory"], "uac-context.json")
         _need(isinstance(value, dict), "windows_scenario_uac_context_unavailable")
+        self._retain_uac_context(plan, value)
         return value
+
+    def wait_uac_pending(self, plan: native_scenario_execution.ScenarioPlan, seconds: int) -> dict[str, Any] | None:
+        """One host read that returns as soon as this row's prompt event is pending, for a fixed client to call at once.
+
+        A client that sleeps and then asks status sees the event one status round trip late, up to a minute on a loaded
+        coordinator, and the prompt's 90 s count runs from its birth (runs d476687a and a47da155). This read waits on the
+        host next to the job's own status copy instead, and keeps the context so the action needs no read of its own.
+        None means the read failed and proves nothing. ``ended`` means the job has its receipt: ask status.
+        """
+        uac = _row(plan.scenario_id).get("uac")
+        _need(uac is not None, "windows_scenario_no_uac_prompt")
+        _need(type(seconds) is int and 0 <= seconds <= _UAC_WAIT_SECONDS, "windows_scenario_uac_wait_invalid")
+        retained = self._retained(plan)
+        _need(retained is not None, "windows_scenario_job_unknown")
+        try:
+            config = ssh_transport.load_config(self.configuration_root)
+            with self._admitted(config, plan, seconds + _OBSERVE_SECONDS):
+                reply = self._send(config, plan.host, _py(_WAIT_UAC, retained["program"]["dataDirectory"], uac["event"], str(seconds)),
+                                   seconds=seconds + _OBSERVE_SECONDS)
+        except (OSError, ValueError, ssh_transport.SshConfigError):
+            return None
+        if not isinstance(reply, Mapping) or reply.get("state") != "read" or type(reply.get("ended")) is not bool:
+            return None
+        self._retain_uac_context(plan, reply.get("context"))
+        observed = reply.get("observedAt")
+        return {"token": _uac_token(uac, reply.get("status")), "ended": reply["ended"],
+                "observedAt": observed if type(observed) in (int, float) else None}
 
     def collect(self, plan: native_scenario_execution.ScenarioPlan, identity: native_scenario_execution.JobIdentity) -> Mapping[str, Any] | None:
         retained = self._retained(plan)

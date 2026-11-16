@@ -1915,7 +1915,8 @@ dotted name is in the closed table of `agent_tools/windows_uac_decision.py`, and
 only when that row's prompt and decision equal the inputs. A row whose owner
 published its prompt event reports `uac-pending:<prompt>:<decision>` in
 `scenario-status`; a fixed client polls for it, because a model turn may not fit
-the prompt's lifetime. The job and the owner never call or wait on this action.
+the prompt's lifetime, and waits for it on the host with the driver's
+`wait_uac_pending` rather than sleeping between status calls. The job and the owner never call or wait on this action.
 The token outlives the prompt, so the client may call on every poll: a refusal
 that proved only "not yet" (event not pending, a failed guest read, a busy lock,
 nothing sent) permits another submit; any other refusal, such as no prompt
@@ -1995,6 +1996,28 @@ importers only, and `mcp_tool.sh` imports it in its probe for `serve` only, whil
 a one-shot command still imports `cryptography` and still requires the MCP
 package to be installed. A client that polls for a prompt should call the server
 through that launcher or directly, once per poll.
+
+The 90 s rule counts from the prompt's birth, so everything between the prompt and
+the census spends it. Runs `d476687a` and `a47da155` (clone `192e5a3d`,
+`windows-scoped-tun.restart-deny`) refused `instance_uac_prompt_age` on their first
+review: a client that slept 5 s and then asked status saw the token one status round
+trip late (39 to 56 s each), and the call itself then took about 95 s and 80 s to its
+census. Three changes hold that down without moving the rule. Every UAC packet
+(decide, status, review, review status and the visual route's) is deflated into an
+inline carrier of about 24 to 33 kB, under `INLINE_CARRIER_BYTES` (48 000), so
+`ssh_transport` sends it in one SSH child instead of staging the 86 to 94 kB source
+over a second connection with its custody checks. The scenario driver keeps the
+job's context (`uac-context.json`, written once by the job's context stage) as first
+read, create-only under `.rag_index/native-scenario-windows/<correlation>/`, and the
+action reads that copy, checked as a read one is, with no SSH and no driver import;
+without it the action reads once as before and the driver keeps it. The packet still
+checks the context against the live guest. A client waits for the token with the
+driver's `wait_uac_pending(plan, seconds)`: one host read of at most 60 s that polls
+the job's status copy every quarter second, beside the job and with no lock, QMP,
+QGA or guest, returns when the row's event is pending with no decision terminal or
+when the job has its receipt, and keeps the context. Each attempt that sent a packet
+keeps `attempt-NNNN.timing.json` beside its journal: its wall start, where the context
+came from, and seconds to the gates, the context, the send and the reply.
 
 A profile for a clone, by one operator, with no other guest action in between:
 

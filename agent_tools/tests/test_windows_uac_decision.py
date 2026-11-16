@@ -113,6 +113,16 @@ def png(raw_ppm, *, filters=(0, 1, 2, 3, 4)):
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(bytes(rows))) + chunk(b"IEND", b"")
 
 
+def carried(carrier):
+    """The exact packet bytes one carrier executes. The plain form is what 450b8764 sent; reading it keeps a RED run there causal."""
+    found = re.fullmatch(r"import base64,zlib;exec\(zlib\.decompress\(base64\.b64decode\('([A-Za-z0-9+/=]+)',validate=True\)\)\)", carrier)
+    if found is not None:
+        return zlib.decompress(base64.b64decode(found[1], validate=True))
+    plain = re.fullmatch(r"import base64;exec\(base64\.b64decode\('([A-Za-z0-9+/=]+)'\)\)", carrier)
+    assert plain is not None, carrier[:80]
+    return base64.b64decode(plain[1], validate=True)
+
+
 def consent(**changes):
     return {"pid": 4242, "birth": "134368653100000000", "sessionId": 2, "image": "C:\\Windows\\System32\\consent.exe", "signature": "Valid",
             "signer": "Microsoft Windows", "parentIsAppinfo": True, "ageSeconds": 3, **changes}
@@ -996,7 +1006,7 @@ class ExecuteBase(unittest.TestCase):
         if command[4].startswith("exec("):
             self.reads.append(command[-1])
             return subprocess.CompletedProcess(argv, 0, json.dumps({"state": "read", "value": self.context_reply}).encode(), b"")
-        source = base64.b64decode(command[4][len("import base64;exec(base64.b64decode('"):-len("'))")])
+        source = carried(command[4])
         self.packets.append({"mode": re.search(rb"\nMODE='([a-z-]+)'\n", source)[1].decode(), "source": source, "argv": list(argv), "options": dict(options)})
         reply = self.replies.pop(0)
         if isinstance(reply, BaseException):
@@ -2775,6 +2785,182 @@ class TunFinishTests(unittest.TestCase):
             self.finish(owner, self.lease(owner, "restart-grant"))
         self.assertEqual(["original-find-best-pending-no-replay"], self.parked)
         self.assertGreaterEqual(self.clock[0], 300.0)
+
+
+# Prompt age budget. Runs d476687a (2026-11-13, coordinator load ~17) and a47da155 (2026-11-16, load ~5) on clone
+# 192e5a3d, windows-scoped-tun.restart-deny on 2.2.17: windows-uac-review was called on the poll that first reported
+# uac-pending and refused instance_uac_prompt_age after 100.7 s and 86.2 s. From the call's start the census came
+# about 95 s and 80 s later: 25 to 30 s to the attempt journal (CLI, gates, a context read over SSH), 11 to 13 s to the
+# transport's journal, 25 to 36 s staging the 115 kB carrier over a second SSH connection with its custody checks,
+# and 17 to 28 s for the packet itself. The helper's status poll, 5 s plus two SSH reads (39 to 56 s a round), came
+# on top of that between the prompt and the call. The 90 s rule is unchanged; these hold the time spent to it down.
+
+def packet_sources():
+    """Every UAC packet the action sends, as the deny row of the failed runs builds it."""
+    corr, row = CORRELATION, decision.ROWS[DENY_ROW]
+    made, reviewed = decision.decision_id(corr), decision.review_id(corr)
+    return {"uac-decide": decision.program(binding(), "uac-decide", made, attempt=1, answer="deny", prompt="vpn-broker", row=row, context=dict(CONTEXT),
+                                           profile=profile_value(), profile_sha="a" * 64, scenario_operation=corr),
+            "uac-status": decision.program(binding(), "uac-status", made),
+            "uac-review": decision.program(binding(), "uac-review", reviewed, attempt=1, answer="deny", prompt="vpn-broker", row=row,
+                                           context=dict(CONTEXT), scenario_operation=corr, decision_operation=made),
+            "uac-review-status": decision.program(binding(), "uac-review-status", reviewed)}
+
+
+class InlineCarrierTests(unittest.TestCase):
+    def test_every_uac_packet_goes_inline_in_one_ssh_child(self):
+        """Above 60 000 argv bytes ssh_transport.build_ssh_argv stages the program over a second connection first."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            for name in ("key", "known"):
+                (root / name).write_text("x")
+                (root / name).chmod(0o600)
+            config = root / ".vm-hosts.local.json"
+            config.write_text(json.dumps({"schemaVersion": 1, "hosts": {"fixture": {"host": "fixture", "port": 22, "user": "tester",
+                                                                                    "identityFile": str(root / "key"), "knownHostsFile": str(root / "known")}}}))
+            config.chmod(0o600)
+            loaded = transport.load_config(root)
+            for mode, source in packet_sources().items():
+                with self.subTest(mode=mode):
+                    argv = transport._build_ssh_argv(loaded, "fixture", 30, decision._command(source))
+                    self.assertLessEqual(sum(len(part.encode("utf-8")) + 1 for part in argv), 60000,
+                                         mode + " would be staged by a second SSH connection before it runs")
+                    command = decision._command(source)
+                    self.assertLessEqual(sum(len(part.encode("utf-8")) + 1 for part in command), decision.INLINE_CARRIER_BYTES)
+                    self.assertEqual(["python3", "-I", "-B", "-c"], command[:4])
+                    self.assertEqual(source, carried(command[4]), "the carrier runs exactly the packet the journal names")
+
+    def test_the_carrier_runs_its_packet_and_reads_stdin_as_before(self):
+        carrier = decision._command(b"import sys\nprint(sys.stdin.buffer.read(4).hex(),'carried')\n")[4]
+        done = subprocess.run([sys.executable, "-I", "-B", "-c", carrier], input=b"\0\0\0\0", capture_output=True, timeout=120)
+        self.assertEqual((0, b"00000000 carried\n", b""), (done.returncode, done.stdout, done.stderr))
+
+
+class RetainedContextTests(ExecuteBase):
+    """The context is read before the prompt and kept, so the call at the prompt reads it over no SSH and loads no driver."""
+
+    def retain(self, value=None, mode=0o600):
+        path = self.root.joinpath(*windows._LOCAL_STATE, CORRELATION, "uac-context.json")
+        path.write_text(json.dumps(dict(CONTEXT) if value is None else value))
+        path.chmod(mode)
+        return path
+
+    def test_the_action_reads_the_kept_context_and_no_driver(self):
+        self.retain()
+        self.journal(DENY_ROW)
+        self.replies = [self.ack(decision="deny"), review_terminal(answer="deny")]
+        with mock.patch.object(windows.NativeScenarioWindowsDriver, "uac_context", side_effect=AssertionError("a host read at the prompt")):
+            self.assertEqual("input-ack-only", self.execute(decision="deny")["state"])
+            shutil.rmtree(self.root / ".runtime/windows-uac-decisions")
+            self.assertEqual("review-frame-retained", decision.review(self.root, self.inputs(decision="deny"))["state"])
+        self.assertEqual([], self.reads, "no context read over SSH")
+        self.assertEqual(["uac-decide", "uac-review"], [packet["mode"] for packet in self.packets])
+        self.assertIn(repr(CONTEXT["operationRoot"]), self.packets[0]["source"].decode())
+        self.assertEqual(windows._LOCAL_STATE, decision._SCENARIO_LOCAL, "the action reads where the driver keeps it")
+
+    def test_a_kept_context_is_checked_as_a_read_one_is(self):
+        for value, mode in (({**CONTEXT, "ordinarySid": "S-1-5-18"}, 0o600),
+                            ({**CONTEXT, "operationRoot": "C:\\Users\\recovery\\AppData\\Local\\VpnControlOrdinary-" + str(uuid.uuid4())}, 0o600),
+                            (dict(CONTEXT), 0o644), ("not json", 0o600)):
+            with self.subTest(value=value, mode=oct(mode)):
+                path = self.retain(value, mode)
+                with mock.patch.object(windows.NativeScenarioWindowsDriver, "uac_context", side_effect=AssertionError("a kept copy decides")):
+                    self.assertEqual(("refused", "uac_context_unavailable"), tuple(self.execute()[key] for key in ("state", "reason")))
+                self.assertEqual(([], [], []), (self.packets, self.reads, self.journal_files()))
+                path.unlink()
+
+    def test_without_a_kept_copy_the_action_reads_once_and_the_driver_keeps_it(self):
+        self.replies = [self.ack(), self.ack()]
+        self.assertEqual("input-ack-only", self.execute()["state"])
+        self.assertEqual(1, len(self.reads), "the first call reads the context over SSH")
+        kept = self.root.joinpath(*windows._LOCAL_STATE, CORRELATION, "uac-context.json")
+        self.assertEqual((CONTEXT, 0o600), (json.loads(kept.read_text()), kept.stat().st_mode & 0o777))
+        timing = json.loads((self.root / ".runtime/windows-uac-decisions" / self.decision / "attempt-0001.timing.json").read_text())
+        self.assertEqual(("read", ["context", "gates", "replied", "sent"]), (timing["context"], sorted(timing["seconds"])))
+        shutil.rmtree(self.root / ".runtime/windows-uac-decisions")
+        self.assertEqual("input-ack-only", self.execute()["state"])
+        self.assertEqual(1, len(self.reads), "a later call uses the kept copy")
+        timing = json.loads((self.root / ".runtime/windows-uac-decisions" / self.decision / "attempt-0001.timing.json").read_text())
+        self.assertEqual("retained", timing["context"])
+        self.assertLessEqual(timing["seconds"]["gates"], timing["seconds"]["context"])
+        self.assertLessEqual(timing["seconds"]["sent"], timing["seconds"]["replied"])
+
+
+class WaitSsh(TokenSsh):
+    """Runs the driver's real wait program over a local copy of the job's data directory."""
+
+    def __init__(self, directory, data):
+        super().__init__(directory)
+        self.data = data
+
+    def respond(self, command):
+        if command[:4] == ("python3", "-I", "-B", "-c") and command[4].startswith("exec("):
+            import ast
+            # getattr: on 450b8764 there is no wait program, and every other carrier still reaches the driver's fake.
+            if ast.literal_eval(command[4][5:-1]) == getattr(windows, "_WAIT_UAC", None):
+                done = subprocess.run([sys.executable, "-I", "-B", "-c", windows._WAIT_UAC, str(self.data), *command[6:]],
+                                      capture_output=True, timeout=120)
+                return "wait", json.loads(done.stdout)
+        return super().respond(command)
+
+
+class PromptWaitTests(DriverBase):
+    """A fixed client waits on the host for the token instead of sleeping and asking status a round trip later."""
+
+    def setUp(self):
+        super().setUp()
+        self.data = self.work / "job-data"
+        self.data.mkdir(mode=0o700)
+        self.ssh = WaitSsh(self.work, self.data)
+        self.row = {**windows.RECIPES["windows-ordinary-qualification"],
+                    "uac": {"prompt": "vpn-broker", "decision": "deny", "event": "scoped-tun-awaiting-current-input"}}
+        self.assertEqual("submitted", self.executor().start(self.request())["state"])
+        patcher = mock.patch.dict(windows.RECIPES, {self.request()["scenarioId"]: self.row})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write(self, name, value):
+        temporary = self.data / (name + ".new")
+        temporary.write_text(json.dumps(value))
+        os.replace(temporary, self.data / name)
+
+    def test_the_token_comes_back_when_the_event_lands_not_at_the_bound(self):
+        self.write("status.json", {"uacEvents": []})
+        self.write("uac-context.json", dict(CONTEXT))
+        landed = threading.Timer(1.0, self.write, ("status.json", {"uacEvents": ["scoped-tun-awaiting-current-input"], "uacDecision": None}))
+        landed.start()
+        self.addCleanup(landed.cancel)
+        began = time.monotonic()
+        found = self.driver().wait_uac_pending(self.plan(), 45)
+        took = time.monotonic() - began
+        self.assertEqual(("uac-pending:vpn-broker:deny", False), (found["token"], found["ended"]))
+        self.assertGreaterEqual(took, 1.0)
+        self.assertLess(took, 30.0, "it returns when the event lands, well before its 45 s bound")
+        self.assertEqual(["wait"], self.ssh.calls[-1:], "one host read")
+        kept = self.root.joinpath(*windows._LOCAL_STATE, self.operation, "uac-context.json")
+        self.assertEqual((CONTEXT, 0o600), (json.loads(kept.read_text()), kept.stat().st_mode & 0o777), "kept for the action, before the prompt")
+
+    def test_a_decided_prompt_or_an_ended_job_is_not_pending(self):
+        self.write("status.json", {"uacEvents": ["scoped-tun-awaiting-current-input"], "uacDecision": {"state": "input-ack-only"}})
+        found = self.driver().wait_uac_pending(self.plan(), 1)
+        self.assertEqual((None, False), (found["token"], found["ended"]))
+        self.write("status.json", {"uacEvents": []})
+        self.write("scenario-receipt.json", {"exitCode": 0})
+        began = time.monotonic()
+        found = self.driver().wait_uac_pending(self.plan(), 45)
+        self.assertEqual((None, True), (found["token"], found["ended"]))
+        self.assertLess(time.monotonic() - began, 30.0, "a job with its receipt ends the wait at once")
+        self.assertFalse(self.root.joinpath(*windows._LOCAL_STATE, self.operation, "uac-context.json").exists(), "no context, nothing kept")
+
+    def test_the_wait_is_bounded_and_only_for_a_prompt_row(self):
+        for seconds in (-1, 61, 1.5, True, "5"):
+            with self.subTest(seconds=seconds), self.assertRaisesRegex(ValueError, "windows_scenario_uac_wait_invalid"):
+                self.driver().wait_uac_pending(self.plan(), seconds)
+        self.ssh.lost.add("wait")
+        self.assertIsNone(self.driver().wait_uac_pending(self.plan(), 0), "a failed read proves nothing")
+        with mock.patch.dict(windows.RECIPES, {self.request()["scenarioId"]: {k: v for k, v in self.row.items() if k != "uac"}}), \
+                self.assertRaisesRegex(ValueError, "windows_scenario_no_uac_prompt"):
+            self.driver().wait_uac_pending(self.plan(), 1)
 
 
 if __name__ == "__main__":

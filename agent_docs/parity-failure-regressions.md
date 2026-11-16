@@ -2782,6 +2782,44 @@ of the old tests only the plain submit-path one did, and the old `f4fdee43` test
 green. GREEN: the four modules, 48 tests, `OK` on both. Logs are `.runtime/logs/followup-*`
 of the fix clone.
 
+### A UAC review reached its census past the 90 s rule (native, 2026-11-13 and 2026-11-16)
+
+Runs `d476687a` (2026-11-13, coordinator load about 17) and `a47da155` (2026-11-16, load about 5) of
+`windows-scoped-tun.restart-deny` on clone `192e5a3d` with the 2.2.17 package: the operator helper
+called `windows-uac-review` on the first poll that reported `uac-pending:vpn-broker:deny`, and each
+call refused `instance_uac_prompt_age` (100.7 s and 86.2 s). The local journals give the split. The
+helper slept 5 s and asked status, two SSH reads with their admissions: a round took 44 s and 61 s, so
+the token was seen up to that late. From the call's start: 24.6 s and 29.6 s to the review's attempt
+journal (CLI, gates, the dispatch admission, the scenario driver's import and a context read over SSH);
+11 s and 13 s more until the transport journaled the 115,772-byte carrier; 12 s and 13 s staging it
+over a second SSH connection; 24 s and 12 s of custody checks until its execution; 28 s and 17 s for
+the packet, its lock, session read and census. The census saw the prompt 90 s or older at most 100 s
+and 85 s after the call began, so even a token seen at once left no time. Evidence:
+`.runtime/windows-parity-20261107/family/d5D-review.out`, `d5D2-review.out`, `family/uac/`,
+`.runtime/windows-uac-reviews/{0559112d,0d4926a2}-*/` and `.rag_index/ssh-automatic-program/{488a5f5c,f659737e}*/`
+of the recovery checkout. The receipts were never collected (`collector_unavailable`), so the prompt's
+own birth time is bounded only by the census.
+
+Built offline on `450b8764` in `builders/fix-uac-age`; nothing below has run natively. The rule is
+unchanged: 90 s at the census and again at the decision's burn. The review keeps the same bound, since
+it is the decision's rehearsal and a looser bound would hide the decision's budget. RED ran in an
+archive of `450b8764` holding only the changed test module, on Python 3.14 and 3.12 with identical
+counts: `Ran 8 tests`, `FAILED (failures=9, errors=9)` with subtests, every test but the carrier
+control. GREEN: the whole module, 162 tests, OK (2 skipped), on both. Logs: `evidence/uac-age/test-logs/` of the recovery
+checkout's parity folder.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The packet was staged over a second SSH connection | `test_windows_uac_decision.InlineCarrierTests.test_every_uac_packet_goes_inline_in_one_ssh_child`; control `test_the_carrier_runs_its_packet_and_reads_stdin_as_before` | Every UAC packet is deflated into an inline carrier of 24 to 33 kB (the visual route's 28 to 30 kB), under `INLINE_CARRIER_BYTES`, so `ssh_transport.build_ssh_argv` keeps it inline. The retained attempt source and its digest are unchanged. RED on `450b8764`: the four packets take 94,183 to 125,267 argv bytes. |
+| The context was read over SSH at the prompt | `RetainedContextTests.test_the_action_reads_the_kept_context_and_no_driver`, `test_without_a_kept_copy_the_action_reads_once_and_the_driver_keeps_it`; control `test_a_kept_context_is_checked_as_a_read_one_is` | The driver keeps the job's context as first read, create-only and private; the action reads that copy, checked as a read one is, with no SSH and no driver import. Each attempt that sent a packet keeps `attempt-NNNN.timing.json`. RED: the action reads the context over SSH at the prompt (`a host read at the prompt`) and keeps nothing. |
+| The token was seen one status round trip late | `PromptWaitTests.test_the_token_comes_back_when_the_event_lands_not_at_the_bound`; controls `test_a_decided_prompt_or_an_ended_job_is_not_pending`, `test_the_wait_is_bounded_and_only_for_a_prompt_row` | `NativeScenarioWindowsDriver.wait_uac_pending` is one host read of at most 60 s over the job's status copy, polled every quarter second, with no lock, QMP, QGA or guest; the test runs the real host program. The private helper's change to use it is `evidence/uac-age/register_and_run.patch`. RED: the driver has no wait. |
+
+Pins renewed: `readiness_vm_dispatch.json` `sourcePins.windows_uac_decision` and
+`sourcePins.native_scenario_windows`, and the selector's `nonPythonResources` entry for that manifest.
+No file of `readiness_windows._source_pins()` changed. Native only: the time each phase now takes, read
+from the helper's timestamped lines and the attempt's `timing.json`; that the deflated carrier runs on
+the VM host's Python; and that the census then finds the prompt well under 90 s.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

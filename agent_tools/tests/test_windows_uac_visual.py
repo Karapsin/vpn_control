@@ -20,6 +20,7 @@ import types
 import unittest
 from unittest import mock
 import uuid
+import zlib
 
 from agent_tools import readiness_windows  # Before any transport patch below: its source guard refuses a patched ssh_transport at import.
 from agent_tools import ssh_transport as transport
@@ -603,7 +604,8 @@ class LocalBase(unittest.TestCase):
         self.intent.chmod(0o600)
 
     def run_ssh(self, argv, **options):
-        source = base64.b64decode(argv[5][len("import base64;exec(base64.b64decode('"):-len("'))")])
+        found = re.fullmatch(r"import base64,zlib;exec\(zlib\.decompress\(base64\.b64decode\('([A-Za-z0-9+/=]+)',validate=True\)\)\)", argv[5])
+        source = zlib.decompress(base64.b64decode(found[1], validate=True))
         self.packets.append({"mode": re.search(rb"\nMODE='([a-z-]+)'\n", source)[1].decode(), "source": source, "options": dict(options)})
         reply = self.replies.pop(0)
         if isinstance(reply, BaseException):
