@@ -361,9 +361,10 @@ def _equivalence_diff(root: Path, before: str, after: str, scoped: "_ScopedInput
 
 
 # Native-evidence equivalence is scoped to what a recorded scenario executed (TEST-007): the product build inputs, the
-# files a scenario bundle ships to the guest, and the host-side driver and classifier import closure with the resources
-# it reads. A change to any of them ends a link; tests, fixtures, selector metadata, docs and unrelated tools do not.
-# The sets are derived from each commit's own files: the bundle table, the Python imports, the Gradle settings.
+# files a scenario bundle ships to the guest, and the host-side driver and classifier executed inputs (imports, by-name
+# loads, with_name sources) with the resources they read. A change to any of them ends a link; tests, fixtures, selector
+# metadata, docs and unrelated tools do not. The sets are derived from each commit's own files: the bundle table, the
+# Python sources, the Gradle settings.
 _EXECUTED = frozenset({"product", "bundle", "host-tool", "rejected"})
 _BUNDLE_MODULE = "agent_tools/native_scenario_bundle.py"  # Its _SCENARIOS table is the manifest of every scenario bundle.
 _BUNDLE_TABLE = "_SCENARIOS"

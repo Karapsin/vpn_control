@@ -2108,18 +2108,22 @@ diff. `native_artifact_reuse._ScopedInputs` derives those inputs from each commi
 files: the product build inputs (every tracked path outside `agent_tools/`, documentation
 and tests, so product code, `settings.gradle.kts` and build files, `scripts/` other than
 `test_*.py`, `.github/` and `gradle.properties`), the files the `_SCENARIOS` table of
-`native_scenario_bundle.py` ships to a guest, and the static import closure of every
-`agent_tools` module that imports the bundle, execution, matrix or equivalence module,
-with the non-Python files those modules name (such as `native_acceptance_requirements.json`
-and `tool_action_policy.json`). A path is executed when either commit executes it, and
-the executed paths of both commits must be byte-identical. Not executed, and so kept:
+`native_scenario_bundle.py` ships to a guest, and the executed-input closure of every
+`agent_tools` module that imports the bundle, execution, matrix or equivalence module:
+their imports, the modules they load by name (the MCP server's `_VM_NATIVE_ADAPTERS`,
+`_agent_module` and `import_module` strings, source-session loads), sibling sources named
+by `with_name` (the selector `affected_agent_tests.py`), and the non-Python files those
+modules name, including a module's own `with_suffix` resource (such as
+`native_acceptance_requirements.json`, `tool_action_policy.json` and the dispatch
+catalog `readiness_vm_dispatch.json`). A path is executed when either commit executes
+it, and the executed paths of both commits must be byte-identical. Not executed, and so kept:
 `docs/`, `agent_docs/` and Markdown outside the Gradle projects; Gradle test source sets
 (`src/test`, `src/*Test`) and directories only they add (`visual-tests/`); `tests/`,
 `scripts/**/test_*.py` outside the bundle, `agent_tools/tests/` and its fixtures; the
 selector's own metadata (the files `affected_agent_tests.py` names, such as
 `affected_agent_test_dependencies.json`, even where `mcp_server.py` reads them to load
-the selector); and any other `agent_tools` file outside the closure, such as
-`readiness_vm_dispatch.json`. When only such paths changed, from a clean checkout at HEAD call
+the selector); and any other `agent_tools` file outside the closure. When only such
+paths changed, from a clean checkout at HEAD call
 `vm_workflow matrix-equivalence-record` with the receipt ID, the target package's
 frozen `artifactSetId`, `targetSourceSHA` HEAD and an attestation, once per record and
 HEAD, then finish its `requiredCurrentChecks`: exact-SHA CI for HEAD, and the changed
