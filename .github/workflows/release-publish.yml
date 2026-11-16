@@ -55,11 +55,14 @@ jobs:
           for index in "${!workflows[@]}"; do
             workflow=${workflows[$index]}
             artifact=${artifacts[$index]}
-            # Newest first. A dev push that reused a ci/* result is green but has no
-            # artifacts, so a package comes from the newest successful run that has it.
-            run_ids=$(gh api "repos/$REPOSITORY/actions/workflows/$workflow/runs?event=push&status=completed&head_sha=$TARGET_SHA&per_page=100" \
-              --jq ".workflow_runs | map(select(.head_sha == \"$TARGET_SHA\" and .conclusion == \"success\")) | sort_by(.id) | reverse | .[].id")
-            [[ -n "$run_ids" ]] || { echo "Missing exact-SHA success for $workflow" >&2; exit 1; }
+            # Newest first, and the newest push run of the SHA decides: only the unbroken
+            # run of successes from the newest one down is eligible, so an older green run
+            # never stands in for a newer red, cancelled or unfinished one. A dev push that
+            # reused a ci/* result is green but has no artifacts, so a package comes from
+            # the newest eligible run that has it.
+            run_ids=$(gh api "repos/$REPOSITORY/actions/workflows/$workflow/runs?event=push&head_sha=$TARGET_SHA&per_page=100" \
+              --jq ".workflow_runs | map(select(.head_sha == \"$TARGET_SHA\")) | sort_by(.id) | reverse | reduce .[] as \$run ({open: true, ids: []}; if .open and \$run.status == \"completed\" and \$run.conclusion == \"success\" then .ids += [\$run.id] else .open = false end) | .ids[]")
+            [[ -n "$run_ids" ]] || { echo "The newest exact-SHA push run of $workflow is missing or not successful" >&2; exit 1; }
             [[ -n "$artifact" ]] || continue
             run_id=""
             for candidate in $run_ids; do

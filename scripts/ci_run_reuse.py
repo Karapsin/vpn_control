@@ -4,9 +4,11 @@
 RELEASE-001 gates a candidate on its own `ci/<sha12>` branch, then fast-forwards
 `dev` to the same SHA, which triggers every required push workflow again. The
 first job of each required workflow runs this script. On a `dev` push it asks
-the Actions API whether this same workflow file already has a successful push
-run for this exact SHA on a `ci/*` branch. If so it writes `skip=true` to
-`$GITHUB_OUTPUT`; every expensive job needs this job and runs only when skip is
+the Actions API for the push runs of this same workflow file for this exact SHA
+and takes the newest one on a `ci/*` branch, which is the gate's result. Only
+when that newest run completed successfully does it write `skip=true` to
+`$GITHUB_OUTPUT`; an older green run never hides a newer red, cancelled or
+unfinished one. Every expensive job needs this job and runs only when skip is
 not true, so the run stays green without repeating the checks.
 
 Every other event or ref, no matching run, or any API failure writes
@@ -34,21 +36,27 @@ def workflow_file(workflow_ref: str) -> str:
     return path.rsplit("/", 1)[1]
 
 
+def newest_ci_run(runs: list[dict], sha: str, run_id: str) -> dict | None:
+    """The newest ci/* push run of this workflow for exactly this SHA, whatever its state."""
+    candidates = [run for run in runs
+                  if run.get("head_sha") == sha and run.get("event") == "push"
+                  and str(run.get("head_branch") or "").startswith(CI_BRANCH_PREFIX)
+                  and str(run.get("id")) != str(run_id)]
+    return max(candidates, key=lambda run: int(run.get("id") or 0), default=None)
+
+
 def matching_run(runs: list[dict], sha: str, run_id: str) -> dict | None:
-    """Return a successful ci/* push run of this workflow for exactly this SHA."""
-    for run in runs:
-        if (run.get("head_sha") == sha and run.get("event") == "push"
-                and run.get("status") == "completed" and run.get("conclusion") == "success"
-                and str(run.get("head_branch") or "").startswith(CI_BRANCH_PREFIX)
-                and str(run.get("id")) != str(run_id)):
-            return run
+    """Return the newest ci/* push run of this workflow for this SHA only when it succeeded."""
+    run = newest_ci_run(runs, sha, run_id)
+    if run is not None and run.get("status") == "completed" and run.get("conclusion") == "success":
+        return run
     return None
 
 
 def fetch_runs(environment: dict[str, str], workflow: str) -> list[dict]:
     api = environment.get("GITHUB_API_URL", "https://api.github.com").rstrip("/")
-    query = urllib.parse.urlencode({"event": "push", "status": "success",
-                                    "head_sha": environment["GITHUB_SHA"], "per_page": "100"})
+    # No status filter: the newest run decides, so red and unfinished runs must be visible.
+    query = urllib.parse.urlencode({"event": "push", "head_sha": environment["GITHUB_SHA"], "per_page": "100"})
     url = f"{api}/repos/{environment['GITHUB_REPOSITORY']}/actions/workflows/{workflow}/runs?{query}"
     request = urllib.request.Request(url, headers={
         "Accept": "application/vnd.github+json",
@@ -69,7 +77,7 @@ def decide(environment: dict[str, str], fetch=None) -> dict[str, str]:
     except Exception as error:  # Unknown reuse state runs every job.
         return {"skip": "false", "reason": f"reuse lookup failed: {type(error).__name__}: {error}"}
     if run is None:
-        return {"skip": "false", "reason": "no successful ci/* push run of this workflow for this SHA"}
+        return {"skip": "false", "reason": "the newest ci/* push run of this workflow for this SHA is not a success"}
     return {"skip": "true", "reason": f"reusing {run.get('head_branch')} run {run.get('id')} {run.get('html_url', '')}".rstrip()}
 
 

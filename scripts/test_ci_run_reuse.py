@@ -2,8 +2,12 @@
 """A dev push reuses its exact-SHA ci/* result; nothing else skips, and the publisher still finds packages."""
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -123,6 +127,28 @@ class DecisionTests(unittest.TestCase):
                 decision, calls = self.decide([self.run_row()], **environment)
                 self.assertEqual(("false", []), (decision["skip"], calls))
 
+    def test_only_the_newest_ci_run_of_the_sha_decides(self):
+        # An older green ci/* run never hides a newer red, cancelled or unfinished one.
+        newer = {
+            "red": self.run_row(id=7, conclusion="failure"),
+            "cancelled": self.run_row(id=7, conclusion="cancelled"),
+            "re-run in progress": self.run_row(id=7, status="in_progress", conclusion=None),
+            "queued": self.run_row(id=7, status="queued", conclusion=None),
+        }
+        for label, row in newer.items():
+            for order in ((self.run_row(id=5), row), (row, self.run_row(id=5))):
+                with self.subTest(label, order=[run["id"] for run in order]):
+                    decision = self.decide(list(order))[0]
+                    self.assertEqual("false", decision["skip"])
+                    self.assertIn("newest ci/* push run", decision["reason"])
+        # The newest ci/* run wins; dev runs, other SHAs and the run itself do not count.
+        rows = [self.run_row(id=3, conclusion="failure"), self.run_row(id=8),
+                self.run_row(id=9, conclusion="failure"), self.run_row(id=11, head_branch="dev", conclusion="failure"),
+                self.run_row(id=12, head_sha="b" * 40, conclusion="failure")]
+        decision = self.decide(rows)[0]
+        self.assertEqual("true", decision["skip"])
+        self.assertIn("run 8", decision["reason"])
+
     def test_lookup_failure_runs_the_jobs(self):
         def fail(env, workflow):
             raise OSError("network down")
@@ -139,7 +165,7 @@ class DecisionTests(unittest.TestCase):
                 self.assertEqual(0, subject.main())
             self.assertEqual("skip=true\n", output.read_text(encoding="utf-8"))
 
-    def test_query_names_the_exact_workflow_sha_and_push_success(self):
+    def test_query_names_the_exact_workflow_sha_and_every_push_run_state(self):
         captured = {}
 
         class Response:
@@ -158,7 +184,7 @@ class DecisionTests(unittest.TestCase):
         with mock.patch.object(subject.urllib.request, "urlopen", urlopen):
             self.assertEqual([], subject.fetch_runs(dict(self.ENV), "linux-desktop.yml"))
         self.assertEqual("https://api.github.com/repos/owner/repo/actions/workflows/linux-desktop.yml/runs?"
-                         f"event=push&status=success&head_sha={SHA}&per_page=100", captured["url"])
+                         f"event=push&head_sha={SHA}&per_page=100", captured["url"])
         self.assertEqual("Bearer token", captured["auth"])
 
 
@@ -187,12 +213,45 @@ class WorkflowGateTests(unittest.TestCase):
                          gate_problems("fast-checks.yml", PRESERVED.read_text(encoding="utf-8")))
 
 
+def publisher_candidates(text, rows):
+    """Run the publisher's own --jq program, as bash expands it, over one runs page."""
+    line = next(line for line in text.splitlines() if '--jq ".workflow_runs | map(select(.head_sha == ' in line)
+    quoted = line.split("--jq ", 1)[1].rstrip().removesuffix(")")  # closes the $( ... ) substitution
+    program = subprocess.run(["bash", "-c", "printf '%s' " + quoted], env={**os.environ, "TARGET_SHA": SHA},
+                             capture_output=True, text=True, check=True).stdout
+    result = subprocess.run(["jq", "-r", program], input=json.dumps({"workflow_runs": rows}),
+                            capture_output=True, text=True, check=True)
+    return [int(value) for value in result.stdout.split()]
+
+
 class PublisherTests(unittest.TestCase):
+    # The publisher runs on ubuntu; Windows hygiene may resolve bash to the WSL launcher.
+    @unittest.skipIf(os.name == "nt" or not shutil.which("jq") or not shutil.which("bash"), "POSIX bash and jq")
+    def test_publisher_takes_only_the_unbroken_successes_from_the_newest_run(self):
+        text = (WORKFLOWS / "release-publish.yml").read_text(encoding="utf-8")
+        run = lambda identifier, conclusion="success", status="completed", sha=SHA: {
+            "id": identifier, "head_sha": sha, "status": status, "conclusion": conclusion}
+        cases = {
+            # A reused dev run (no artifacts) above its green ci/* run: both eligible, newest first.
+            "reused": ([run(5), run(9)], [9, 5]),
+            # An older green run never stands in for a newer red, cancelled or unfinished one.
+            "newer red": ([run(5), run(9, "failure")], []),
+            "newer cancelled": ([run(5), run(9, "cancelled")], []),
+            "newer in progress": ([run(5), run(9, None, "in_progress")], []),
+            "red between": ([run(3), run(5, "failure"), run(9)], [9]),
+            "other SHA ignored": ([run(5), run(9, "failure", sha="b" * 40)], [5]),
+            "none": ([], []),
+        }
+        for label, (rows, expected) in cases.items():
+            with self.subTest(label):
+                self.assertEqual(expected, publisher_candidates(text, rows))
+
     def test_publisher_downloads_each_package_from_a_successful_run_that_has_it(self):
         text = (WORKFLOWS / "release-publish.yml").read_text(encoding="utf-8")
         self.assertIn("head_sha=$TARGET_SHA", text)
-        self.assertIn('.conclusion == \\"success\\"', text)
-        self.assertIn("sort_by(.id) | reverse | .[].id", text)
+        self.assertNotIn("status=completed&head_sha", text)
+        self.assertIn('\\$run.conclusion == \\"success\\"', text)
+        self.assertIn("sort_by(.id) | reverse | reduce .[] as", text)
         self.assertNotIn("| last | .id\")\n            [[ -n \"$run_id\"", text)
         self.assertIn('actions/runs/$candidate/artifacts?name=$artifact', text)
         self.assertIn("select(.expired == false)", text)
