@@ -94,7 +94,7 @@ try {
  $empty=Join-Path $base 'empty'; $hideout=Join-Path $base 'hideout'
  foreach ($folder in @($empty,$hideout)) { [IO.Directory]::CreateDirectory($folder) | Out-Null }
  $linked=[VpnScopedStorage.OriginalUser].GetMethod('Linked',[Reflection.BindingFlags]'NonPublic,Static')
- $parents=$method.Invoke($null,[object[]]@($empty,$null))
+ $parents=$method.Invoke($null,[object[]]@([string]$empty,$null))
  $child=[NativePinSharingFixture]::CreateNew((Join-Path $empty 'inside.tmp'))
  $linked.Invoke($null,[object[]]@($parents,$child)) | Out-Null
  $results.Add('linked-child-in-pinned-folder=0')

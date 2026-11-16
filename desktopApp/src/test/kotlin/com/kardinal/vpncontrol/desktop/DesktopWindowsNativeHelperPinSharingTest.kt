@@ -218,6 +218,33 @@ class DesktopWindowsNativeHelperPinSharingTest {
         assertNoProblems(required.filterNot { (_, pattern) -> pattern.containsMatchIn(code) }.map { "Linked does not check ${it.first}" })
     }
 
+    /**
+     * The native probe (windows-native-pin-sharing-probe.ps1) reaches the helpers' private methods by reflection.
+     * MethodInfo.Invoke hands its argument array's elements to the method unchanged, and a cmdlet's output (Join-Path)
+     * is a PSObject that reflection cannot convert to a string parameter, so the probe ended with "Object of type
+     * 'System.Management.Automation.PSObject' cannot be converted to type 'System.String'" before its checks ran:
+     * Windows Desktop Package run 43474296998 for `$pinned` and, after the junction checks were added, run 43877068415
+     * for `$empty`. Every cmdlet-output variable a reflected call receives must be passed as `[string]`.
+     */
+    @Test fun theNativePinSharingProbePassesCmdletOutputToReflectedMethodsAsStrings() {
+        val probe = resource("windows-native-pin-sharing-probe.ps1")
+        val fromCmdlets = Regex("""\$(\w+)\s*=\s*[A-Z][a-z]+-[A-Z]\w*\b""").findAll(probe).map { it.groupValues[1] }.toSet()
+        assertTrue("pinned" in fromCmdlets && "empty" in fromCmdlets, "Join-Path variables found: $fromCmdlets")
+        val problems = mutableListOf<String>()
+        var reflected = 0
+        probe.lines().forEachIndexed { index, line ->
+            val call = line.indexOf(".Invoke(")
+            if (call < 0 || line.trimStart().startsWith("#")) return@forEachIndexed
+            reflected++
+            for (argument in Regex("""(\[string]\s*)?\$(\w+)""").findAll(line.substring(call))) {
+                if (argument.groupValues[2] in fromCmdlets && argument.groupValues[1].isEmpty())
+                    problems += "line ${index + 1} passes Join-Path output \$${argument.groupValues[2]} to a reflected method: ${line.trim()}"
+            }
+        }
+        assertTrue(reflected >= 4, "reflected calls found: $reflected")
+        assertNoProblems(problems)
+    }
+
     private fun resource(name: String) = requireNotNull(javaClass.getResource("/$name")) { "Missing resource $name" }.readText()
     private fun source(name: String) = CSharpSource(name, resource(name))
     private fun assertNoProblems(problems: List<String>) =
