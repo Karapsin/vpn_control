@@ -3,12 +3,15 @@ package com.kardinal.vpncontrol.desktop
 import com.sun.jna.Memory
 import com.sun.jna.Native
 import com.sun.jna.Platform
+import com.sun.jna.platform.win32.Advapi32
 import com.sun.jna.platform.win32.Kernel32
+import com.sun.jna.platform.win32.WinDef
 import com.sun.jna.platform.win32.WinBase
 import com.sun.jna.platform.win32.WinNT
 import com.sun.jna.ptr.IntByReference
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import org.junit.Assume.assumeTrue
@@ -28,8 +31,36 @@ class DesktopWindowsPinnedFolderJunctionNativeTest {
         val root = Files.createTempDirectory("pinned-junction-東京")
         val pinned = Files.createDirectory(root.resolve("pinned"))
         val hideout = Files.createDirectory(root.resolve("hideout"))
-        try { block(pinned, hideout) }
-        finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::delete) } }
+        removingTree(root) { block(pinned, hideout) }
+    }
+
+    /**
+     * Runs [block], then deletes [root]. A deletion the file system refuses is retried with a bounded backoff (a scanner
+     * may hold a file just closed), and one that still fails never hides [block]'s own failure: it is suppressed into
+     * it, and thrown only when [block] passed.
+     */
+    private fun <T> removingTree(root: Path, block: () -> T): T {
+        var failure: Throwable? = null
+        try {
+            return block()
+        } catch (error: Throwable) {
+            failure = error
+            throw error
+        } finally {
+            val leftover = runCatching {
+                Files.walk(root).use { paths -> paths.sorted(Comparator.reverseOrder()).toList() }.forEach { path ->
+                    var attempt = 0
+                    while (true) {
+                        try { Files.deleteIfExists(path); break }
+                        catch (refused: FileSystemException) {
+                            if (++attempt == 8) throw refused
+                            Thread.sleep(25L shl (attempt - 1))
+                        }
+                    }
+                }
+            }.exceptionOrNull()
+            if (leftover != null) failure?.addSuppressed(leftover) ?: throw leftover
+        }
     }
 
     @Test fun nativeFileWriteDataTurnsAnEmptyFolderPinnedSharingWritesIntoAJunction() = fixture { pinned, hideout ->
@@ -95,6 +126,12 @@ class DesktopWindowsPinnedFolderJunctionNativeTest {
      * READ_CONTROL and DELETE but neither FILE_READ_DATA nor SYNCHRONIZE) refuses the open with 5, and a folder Users
      * may add files to that holds only such entries is refused with the clear message. A file of the user's own is
      * retained: it cannot be deleted while the pins live, and the transfer folder is created in place.
+     *
+     * Every pin opens with FILE_FLAG_BACKUP_SEMANTICS, so a token with SeBackupPrivilege enabled reads any file whatever
+     * its DACL. The test therefore runs on a thread impersonating this process with backup and restore disabled, as an
+     * interactive user's process runs. An open that succeeds anyway is closed before the test fails, so no handle of
+     * the test keeps the private file from its deletion. Windows Desktop Package run 43877068415 lost such a failure:
+     * the fixture's deletion of dropped.txt was refused with 32 ("being used by another process") and replaced it.
      */
     @Test fun nativeFolderOthersMayWriteIsUsedOnlyBesideAnEntryTheUserCanOpen() {
         assumeTrue(Platform.isWindows())
@@ -102,17 +139,22 @@ class DesktopWindowsPinnedFolderJunctionNativeTest {
         val sid = ancestry.currentSid()
         val native = JnaWindowsInstallNative()
         val root = Files.createTempDirectory("pinned-witness-東京")
-        try {
+        removingTree(root) { withoutBackupPrivileges { disabled ->
             val drop = root.resolve("drop")
             native.createDirectory(drop.toString(), "O:${sid}G:${sid}D:P(A;OICI;FA;;;$sid)(A;;0x1200af;;;BU)", allowExisting = false)
             val dropped = drop.resolve("dropped.txt")
             native.close(native.open(dropped.toString(), WindowsInstallNative.READ_WRITE, shareDelete = true,
                 createSddl = "O:${sid}G:${sid}D:P(A;;FA;;;S-1-5-21-1-2-3-1002)(A;;SD;;;$sid)"))
-            assertEquals(5, assertFailsWith<WindowsInstallNativeFailure> {
-                native.open(dropped.toString(), WindowsInstallNative.PINNED_DIRECTORY, shareDelete = false) }.code)
-            val refused = assertFailsWith<IllegalStateException> { DesktopWindowsTransferPins.open(drop.toString(), sid, native, ancestry) }
+            val unreadable = runCatching { native.open(dropped.toString(), WindowsInstallNative.PINNED_DIRECTORY, shareDelete = false) }
+            unreadable.getOrNull()?.let(native::close)
+            assertEquals(5, (unreadable.exceptionOrNull() as? WindowsInstallNativeFailure)?.code,
+                "another account's private file was opened as a pin ($unreadable; privileges this thread disabled: $disabled)")
+            val refused = runCatching { DesktopWindowsTransferPins.open(drop.toString(), sid, native, ancestry) }
+            refused.getOrNull()?.close()
             assertEquals("Cannot use $drop: other accounts can write to it and it holds nothing you can open. " +
-                "Add a file of your own to it, or choose a folder only you can change.", refused.message)
+                "Add a file of your own to it, or choose a folder only you can change.",
+                (refused.exceptionOrNull() as? IllegalStateException)?.message,
+                "$refused (privileges this thread disabled: $disabled)")
             val mine = Files.writeString(drop.resolve("mine.txt"), "mine")
             DesktopWindowsTransferPins.open(drop.toString(), sid, native, ancestry).use { pins ->
                 assertFails { Files.delete(mine) } // the retained witness shares no deletion
@@ -121,7 +163,36 @@ class DesktopWindowsPinnedFolderJunctionNativeTest {
                 pins.deleteDirectory()
             }
             assertEquals(listOf(dropped, mine), Files.list(drop).use { it.sorted().toList() })
-        } finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::delete) } }
+        } }
+    }
+
+    /**
+     * Runs [block] on this thread impersonating this process with SeBackupPrivilege and SeRestorePrivilege disabled, and
+     * hands it the names of those that were enabled. CreateFile checks access against the thread's token.
+     */
+    private fun <T> withoutBackupPrivileges(block: (List<String>) -> T): T {
+        val advapi = Advapi32.INSTANCE
+        check(advapi.ImpersonateSelf(2)) { "ImpersonateSelf: ${Native.getLastError()}" } // SecurityImpersonation
+        try {
+            val token = WinNT.HANDLEByReference()
+            // TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, checked against this process's own token (OpenAsSelf).
+            check(advapi.OpenThreadToken(Kernel32.INSTANCE.GetCurrentThread(), 0x20 or 0x8, true, token)) {
+                "OpenThreadToken: ${Native.getLastError()}" }
+            try {
+                val disabled = mutableListOf<String>()
+                for (name in listOf("SeBackupPrivilege", "SeRestorePrivilege")) {
+                    val luid = WinNT.LUID()
+                    check(advapi.LookupPrivilegeValue(null, name, luid)) { "LookupPrivilegeValue($name): ${Native.getLastError()}" }
+                    val wanted = WinNT.TOKEN_PRIVILEGES(1).apply { Privileges[0] = WinNT.LUID_AND_ATTRIBUTES(luid, WinDef.DWORD(0)) }
+                    val previous = WinNT.TOKEN_PRIVILEGES(1)
+                    check(advapi.AdjustTokenPrivileges(token.value, false, wanted, previous.size(), previous, IntByReference())) {
+                        "AdjustTokenPrivileges($name): ${Native.getLastError()}" }
+                    // The previous state lists the privilege only when this call changed it: it was enabled.
+                    if (previous.PrivilegeCount.toInt() == 1 && previous.Privileges[0].Attributes.toInt() and 0x2 != 0) disabled += name
+                }
+                return block(disabled)
+            } finally { Kernel32.INSTANCE.CloseHandle(token.value) }
+        } finally { check(advapi.RevertToSelf()) { "RevertToSelf: ${Native.getLastError()}" } }
     }
 
     /** Another program's view of a folder: FILE_WRITE_DATA only, and the mount point it may set ([MS-FSCC] 2.1.2.5). */
