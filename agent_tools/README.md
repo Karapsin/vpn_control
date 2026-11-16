@@ -89,6 +89,19 @@ closure changed; otherwise it is skipped and recorded in the worker's
 Plain `python -m unittest` and managed local runs pass no changed set, so every
 RED half runs there. GREEN halves are never gated.
 
+On macOS the agent-session tmux tree runs at Darwin background priority (`ps` pri 4)
+and every child inherits it; CPU-bound agent tests ran about 6x slower there, and no
+per-process option (`taskpolicy`, `nice`, `launchctl asuser`, `setpriority`) lifts it.
+Managed agent commands and any `_run` command with a bound of 30 minutes or more are
+therefore prefixed by `managed_agent_check.background_escape`, which runs them through
+`agent_tools/launchd_escape.py`: a relay that submits the command as a `launchctl submit`
+job (launchd-parented, normal priority, no sudo, no system change), then streams its
+output, returns its exit status, forwards SIGTERM and stops the job if the relay dies.
+Same cwd and environment; it is a no-op off macOS, when `launchctl` or the relay is
+missing, inside a relay, or with `VPN_CONTROL_LAUNCHD_ESCAPE=0`; a failed submission runs
+the command directly. Measured on one shared Mac: the same CPU loop took 6.3 s direct and
+0.8 s escaped; `test_android_installer_dispatch` 11.1 s versus 3.7 s.
+
 Managed checks also compare the loaded runner, build-environment, checkout-lease
 and output-retention source digests with current files before inspection or a
 dry-run plan, between commands and before receipt construction. Changed or

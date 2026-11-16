@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
 
 
@@ -111,3 +112,28 @@ def run(command: list[str], *, cwd: Path, env: dict[str, str],
         interruption.managed_agent_outcome = outcome
         raise interruption
     return outcome
+
+
+BACKGROUND_ESCAPE_DISABLE = "VPN_CONTROL_LAUNCHD_ESCAPE"
+BACKGROUND_ESCAPE_MARKER = "VPN_CONTROL_LAUNCHD_ESCAPED"
+
+
+def background_escape(command, *, platform=None, environ=None, which=None, python=None, relay=None):
+    """Prefix a heavy command with the launchd relay on macOS; unchanged elsewhere.
+
+    The agent-session tmux tree runs at Darwin background priority and children
+    inherit it (agent tests ran 5-7x slower). Only a launchd-parented job escapes
+    without sudo. VPN_CONTROL_LAUNCHD_ESCAPE=0 disables it; a missing relay file or
+    launchctl keeps the command unchanged.
+    """
+    import shutil
+    from pathlib import Path
+    environ = os.environ if environ is None else environ
+    platform = sys.platform if platform is None else platform
+    which = shutil.which if which is None else which
+    relay = Path(__file__).resolve().with_name("launchd_escape.py") if relay is None else Path(relay)
+    if (platform != "darwin" or environ.get(BACKGROUND_ESCAPE_DISABLE) == "0"
+            or environ.get(BACKGROUND_ESCAPE_MARKER) or which("launchctl") is None
+            or not relay.is_file()):
+        return list(command)
+    return [python or sys.executable, str(relay), "relay", "--", *command]

@@ -2371,6 +2371,9 @@ def _failure_log_excerpt(value: Any, limit: int = 8000) -> str:
     return "".join(selected)[:limit - len(marker) - len(tail)] + marker + tail
 
 
+HEAVY_COMMAND_SECONDS = 1800
+
+
 def _run(
     command: list[str],
     timeout: int = 120,
@@ -2384,6 +2387,9 @@ def _run(
         return {"ok": False, "command": _display(command), "returncode": None,
                 "stdout": "", "stderr": str(exc)}
     environment.pop("DYLD_INSERT_LIBRARIES", None)
+    if managed_agent or timeout >= HEAVY_COMMAND_SECONDS:
+        # Heavy checks leave the caller's background-priority tmux tree on macOS (no-op elsewhere).
+        command = managed_agent_check.background_escape(command)
     try:
         owned = None
         if managed_agent:
