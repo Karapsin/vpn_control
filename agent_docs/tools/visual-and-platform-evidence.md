@@ -1585,8 +1585,13 @@ stdin (the intent records only its byte count). Its groups, in order:
   returns, so a file left once the refresh answered fails the row at once
   (`bootstrap-files-left`), with no settle before the verdict. A bounded settle
   after it only describes the failure in `ssh-relay-bootstrap-leftovers`: each
-  left file's name, size and age, the live runtimes under the workspace, and
-  whether the files were still there at the bound; their bytes are never read.
+  left file's name, size, age and hold at the verdict and after the settle, the
+  live runtimes under the workspace, the settle's actual length, and when a held
+  file became free or a name went away. The hold is an open for DELETE access
+  alone with every share mode, closed at once: `held` (a sharing violation), `free`,
+  `denied` (delete pending or an ACL). A refused file stays listed whatever its
+  holder does later, so the hold, not the listing, tells a holder that let go
+  after the product's retries from one that never did; their bytes are never read.
 - `ssh-relay-connected`: proxy-only `on` through a location served by the SOCKS
   fixture, with the runtime chained through the relay (CONFIG-004); the runtime's
   candidate holds a byte-equal, owner-only copy of the key. A refresh succeeds

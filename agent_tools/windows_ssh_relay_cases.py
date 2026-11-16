@@ -20,8 +20,8 @@ location and the SSH chain); a refresh after disconnecting; a relay whose host k
 with the relay stopped, a refresh that fails without a direct fallback and keeps the last good cache. Each
 refresh is checked against the relay's own record, and the exact failure code comes from sing-box 1.13.4 and the
 JDK on loopback (the ledger's SSH relay rows), not from a guess. A bootstrap file left once the product answered a
-refresh fails the row at once; only after that verdict does a bounded settle describe the files by name, size and age,
-with the live runtimes, never by their bytes (bootstrap_left).
+refresh fails the row at once; only after that verdict does a bounded settle describe the files by name, size, age
+and whether a holder still refuses their deletion, with the live runtimes, never by their bytes (bootstrap_left).
 """
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ def configure_launch(owner, workspace):
     owner.event("ssh-relay-trust-scoped", {"trustStore": TRUST_STORE, "scope": "original-serve-only"})
 
 
-# ---- Native reads; offline tests replace these three, since nothing there is Windows ---------------------------
+# ---- Native reads; offline tests replace these four, since nothing there is Windows ----------------------------
 
 def _windows_security(path):
     """The owner SID and the owner+DACL SDDL of one file, read by name; each caller first read that name as a regular file."""
@@ -164,6 +164,32 @@ def _windows_runtimes(root):
     return sorted(found)
 
 
+_ERROR_HOLDS = {2: "gone", 3: "gone", 5: "denied", 32: "held"}
+
+
+def _windows_hold(path, kernel=None, last_error=None):
+    """Whether a deletion of ``path`` would be refused now, asked without reading a byte: an open for DELETE access alone,
+    sharing read, write and delete, not following a reparse point, closed at once and never given a delete disposition.
+    A holder that opened the file without FILE_SHARE_DELETE (the JVM's redirect handle, a scanner) refuses it as a sharing
+    violation, "held"; access denied, "denied", is a delete-pending name or an ACL; "free" means nothing holds it now.
+    Off Windows nothing refuses a deletion this way, so the answer is "unprobed"."""
+    if kernel is None:
+        if os.name != "nt":
+            return "unprobed"
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateFileW.argtypes = (ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_uint32,
+                                       ctypes.c_uint32, ctypes.c_void_p)
+        kernel.CreateFileW.restype = ctypes.c_void_p
+        kernel.CloseHandle.argtypes = (ctypes.c_void_p,)
+    # DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT.
+    handle = kernel.CreateFileW(str(path), 0x00010000, 0x7, None, 3, 0x00200000, None)
+    if handle not in (None, 0, ctypes.c_void_p(-1).value):
+        kernel.CloseHandle(handle)
+        return "free"
+    code = (last_error or ctypes.get_last_error)()
+    return _ERROR_HOLDS.get(code, "error-%d" % code)
+
+
 def _origin_context(certificate, private_key):
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -171,7 +197,7 @@ def _origin_context(certificate, private_key):
     return context
 
 
-SECURITY, RUNTIMES, ORIGIN_CONTEXT = _windows_security, _windows_runtimes, _origin_context
+SECURITY, RUNTIMES, ORIGIN_CONTEXT, HOLD = _windows_security, _windows_runtimes, _origin_context, _windows_hold
 
 
 class Cases:
@@ -446,9 +472,16 @@ def bootstrap_names(c):
     return [name for name in runtime_entries(c) if name.startswith(BOOTSTRAP_PREFIX)]
 
 
+def hold_of(path):
+    try:
+        return HOLD(path)
+    except OSError as error:
+        return "error-" + type(error).__name__
+
+
 def leftover_rows(c, names):
-    """Each left bootstrap file by name, size and age, read by lstat alone: a left configuration names the relay and the
-    key's path, so its bytes are never opened."""
+    """Each left bootstrap file by name, size, age (lstat) and hold (HOLD): a left configuration names the relay and the
+    key's path, so its bytes are never read."""
     folder, now, rows = c.workspace / "runtime", time.time(), []
     for name in names[:MAX_LEFTOVER_ROWS]:
         try:
@@ -457,7 +490,7 @@ def leftover_rows(c, names):
             rows.append({"name": name, "present": False, "error": type(error).__name__})
             continue
         row = {"name": name, "present": True, "regular": stat.S_ISREG(held.st_mode), "bytes": held.st_size,
-               "writtenSecondsAgo": round(now - held.st_mtime, 3)}
+               "writtenSecondsAgo": round(now - held.st_mtime, 3), "hold": hold_of(folder / name)}
         birth = getattr(held, "st_birthtime", None)
         if birth is not None:
             row["createdSecondsAgo"] = round(now - birth, 3)
@@ -482,23 +515,41 @@ def bootstrap_left(c):
     bootstrap exists only to carry that one download while no runtime is active (CONFIG-004: the intentional direct
     exception; CONFIG-005: an active runtime's management inbound carries it otherwise), so the refresh's final reply is
     the product's word that the bootstrap is gone. A settle before the verdict would pass a product that answers before
-    its cleanup ends, or one whose single refused deletion a holder later makes moot. The settle after the verdict only
-    describes it: names, sizes and ages at the verdict, the product's live runtimes under the workspace, and whether the
-    files were still there at the bound, which tells files the product never removed from files a holder let go of later.
+    its cleanup ends, or one whose single refused deletion a holder later makes moot.
+
+    The settle after the verdict only describes it. A file still listed is one whose every deletion was refused, and the
+    product never deletes it again, so whether it is still listed later cannot tell a holder that let go from one that
+    never does. Each file's hold (HOLD) can: "held" at the verdict and "free" later means a holder let go that many
+    seconds after the verdict (freedAfterSeconds; the product's retry bound was too short for it), "held" at both looks
+    a holder that never let go within the bound, "free" at the verdict nothing held it when judged (no retry, or a
+    holder gone between the product's last attempt and the verdict). A name that goes away during the settle
+    (goneAfterSeconds) was a delete-pending name whose last handle closed; with POSIX delete semantics a refused deletion
+    leaves no such name. The record also carries the live runtimes at both looks and the settle's actual length.
     """
     names = bootstrap_names(c)
     if not names:
         return
+    started = time.monotonic()
     first = leftover_census(c, names)
-    remaining, until = names, time.monotonic() + LEFTOVER_SETTLE_SECONDS
+    held = {row["name"] for row in first["files"] if row.get("hold") in ("held", "denied")}
+    folder, remaining, gone, freed = c.workspace / "runtime", names, {}, {}
+    until = started + LEFTOVER_SETTLE_SECONDS
     while remaining and time.monotonic() < until:
         time.sleep(0.25)
         try:
-            remaining = bootstrap_names(c)
+            listed = bootstrap_names(c)
         except OSError:
             break
-    c.record("bootstrap-leftovers", {"atVerdict": first, "settleSeconds": LEFTOVER_SETTLE_SECONDS,
-                                     "afterSettle": leftover_census(c, remaining), "verdict": "bootstrap-files-left"})
+        offset = round(time.monotonic() - started, 3)
+        for name in remaining[:MAX_LEFTOVER_ROWS]:
+            if name not in listed:
+                gone.setdefault(name, offset)
+            elif name in held and name not in freed and hold_of(folder / name) == "free":
+                freed[name] = offset
+        remaining = listed
+    c.record("bootstrap-leftovers", {"atVerdict": first, "settleSeconds": round(time.monotonic() - started, 3),
+                                     "settleBoundSeconds": LEFTOVER_SETTLE_SECONDS, "afterSettle": leftover_census(c, remaining),
+                                     "freedAfterSeconds": freed, "goneAfterSeconds": gone, "verdict": "bootstrap-files-left"})
     raise AssertionError("bootstrap-files-left")
 
 

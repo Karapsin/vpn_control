@@ -6,7 +6,7 @@ bootstrap proxy's temporary files and process), the refresh result (DesktopSubsc
 DesktopOperationRunner.complete), the runtime's candidate folder and captured key (DesktopProxyRuntimeManager) and the
 failure reason sing-box 1.13.4 and the JDK gave on loopback (CONNECTIVITY). The relay records what
 windows_ssh_relay_fixture records, in its shapes. Nothing listens, no process starts and no Win32 call is made:
-the three native reads of the module (file security, runtime census, origin TLS context) are this world's.
+the four native reads of the module (file security, runtime census, deletion hold, origin TLS context) are this world's.
 Each defect variant shows the oracle that catches it; the faithful product passes every group.
 """
 import base64
@@ -610,8 +610,11 @@ class CaseTests(unittest.TestCase):
             self.run_cases("bootstrap-files-left")
         self.assertEqual("bootstrap-files-left", str(caught.exception))
         value = self.leftover_event()
-        self.assertEqual({"atVerdict", "settleSeconds", "afterSettle", "verdict"}, set(value))
-        self.assertEqual(("bootstrap-files-left", 0.3), (value["verdict"], value["settleSeconds"]))
+        self.assertEqual({"atVerdict", "settleSeconds", "settleBoundSeconds", "afterSettle", "freedAfterSeconds",
+                          "goneAfterSeconds", "verdict"}, set(value))
+        self.assertEqual(("bootstrap-files-left", 0.3), (value["verdict"], value["settleBoundSeconds"]))
+        self.assertTrue(0.3 <= value["settleSeconds"] < 5, "the files stayed, so the settle ran to its bound")
+        self.assertEqual(({}, {}), (value["freedAfterSeconds"], value["goneAfterSeconds"]))
         for phase in ("atVerdict", "afterSettle"):
             rows = value[phase]["files"]
             self.assertEqual(["home-ssh-bootstrap-1.json", "home-ssh-bootstrap-1.log"], [row["name"] for row in rows], phase)
@@ -625,8 +628,9 @@ class CaseTests(unittest.TestCase):
         self.assertEqual(["ssh-stdin-key-import"], groups, "the first HOME_RELAY refresh is the one judged")
 
     def test_files_a_holder_lets_go_of_after_the_first_look_still_fail_the_row(self):
-        # The settle only describes: what the product left when it answered fails the row even if it goes away later.
-        # A settle before the verdict would pass here, since the next look after the first finds nothing.
+        # The settle only describes: what the product left when it answered fails the row even if it goes away later
+        # (a delete-pending name whose last handle closed). A settle before the verdict would pass here, since the next
+        # look after the first finds nothing.
         original, seen = cases.runtime_entries, []
 
         def entries(c):
@@ -646,6 +650,8 @@ class CaseTests(unittest.TestCase):
         self.assertEqual([("home-ssh-bootstrap-1.json", True), ("home-ssh-bootstrap-1.log", True)],
                          [(row["name"], row["present"]) for row in value["atVerdict"]["files"]], "described at the verdict")
         self.assertEqual({"files": [], "count": 0, "runtimes": 0}, value["afterSettle"])
+        self.assertEqual(["home-ssh-bootstrap-1.json", "home-ssh-bootstrap-1.log"], sorted(value["goneAfterSeconds"]))
+        self.assertTrue(all(0 < offset < 5 for offset in value["goneAfterSeconds"].values()), value["goneAfterSeconds"])
         self.assertEqual("bootstrap-files-left", value["verdict"])
 
     def test_a_bootstrap_process_left_with_its_files_is_counted_beside_them(self):
@@ -676,8 +682,90 @@ class CaseTests(unittest.TestCase):
             self.run_cases("bootstrap-files-left")
         value = self.leftover_event()
         for row in value["atVerdict"]["files"] + value["afterSettle"]["files"]:
-            self.assertTrue({"name", "present", "regular", "bytes", "writtenSecondsAgo"} <= set(row)
-                            <= {"name", "present", "regular", "bytes", "writtenSecondsAgo", "createdSecondsAgo"}, row)
+            self.assertTrue({"name", "present", "regular", "bytes", "writtenSecondsAgo", "hold"} <= set(row)
+                            <= {"name", "present", "regular", "bytes", "writtenSecondsAgo", "createdSecondsAgo", "hold"}, row)
+
+    # Review of 1fe2ddab: a file still listed after the product's reply is one whose every deletion was refused, and
+    # nothing in the product deletes it again, so its being listed after the settle is the same whether its holder let
+    # go a moment after the product's last retry or never did. Only whether a deletion is refused now tells them apart.
+
+    def holds(self, answer):
+        asked = []
+
+        def hold(path):
+            asked.append(Path(path).name)
+            return answer(Path(path).name, len(asked))
+        self.enterContext(mock.patch.object(cases, "HOLD", hold, create=True))
+        return asked
+
+    def test_a_holder_that_lets_go_during_the_settle_is_told_from_one_that_never_does(self):
+        released = []
+
+        def answer(name, count):
+            if count <= 2:
+                return "held"
+            released.append(name)
+            return "free"
+        self.holds(answer)
+        with self.assertRaises(AssertionError) as caught:
+            self.run_cases("bootstrap-files-left")
+        self.assertEqual("bootstrap-files-left", str(caught.exception), "a later release keeps the verdict")
+        value = self.leftover_event()
+        self.assertEqual([("home-ssh-bootstrap-1.json", True, "held"), ("home-ssh-bootstrap-1.log", True, "held")],
+                         [(row["name"], row["present"], row.get("hold")) for row in value["atVerdict"]["files"]])
+        self.assertEqual([("home-ssh-bootstrap-1.json", True, "free"), ("home-ssh-bootstrap-1.log", True, "free")],
+                         [(row["name"], row["present"], row.get("hold")) for row in value["afterSettle"]["files"]],
+                         "still listed after the settle, and no longer held")
+        freed = value.get("freedAfterSeconds")
+        self.assertEqual(["home-ssh-bootstrap-1.json", "home-ssh-bootstrap-1.log"], sorted(freed or {}))
+        self.assertTrue(all(0 < offset <= value["settleSeconds"] for offset in freed.values()), freed)
+        self.assertEqual({}, value.get("goneAfterSeconds"), "the names stayed listed")
+
+    def test_a_holder_that_never_lets_go_stays_held_at_both_looks(self):
+        self.holds(lambda name, count: "held")
+        with self.assertRaises(AssertionError):
+            self.run_cases("bootstrap-files-left")
+        value = self.leftover_event()
+        for phase in ("atVerdict", "afterSettle"):
+            self.assertEqual(["held", "held"], [row.get("hold") for row in value[phase]["files"]], phase)
+        self.assertEqual(({}, {}), (value.get("freedAfterSeconds"), value.get("goneAfterSeconds")))
+        self.assertGreaterEqual(value["settleSeconds"], value.get("settleBoundSeconds"), "the settle ran to its bound")
+
+    def test_a_file_nothing_held_when_judged_is_free_at_the_verdict(self):
+        asked = self.holds(lambda name, count: "free")
+        with self.assertRaises(AssertionError):
+            self.run_cases("bootstrap-files-left")
+        value = self.leftover_event()
+        self.assertEqual(["free", "free"], [row.get("hold") for row in value["atVerdict"]["files"]])
+        self.assertEqual({}, value.get("freedAfterSeconds"), "only a file held at the verdict can be freed later")
+        self.assertEqual(4, len(asked), "asked once per file at each look, never while settling")
+
+    def test_the_hold_is_asked_by_an_open_for_delete_alone_that_is_closed_at_once(self):
+        calls, closed = [], []
+
+        class Kernel:
+            def __init__(self, handle):
+                self.handle = handle
+
+            def CreateFileW(self, *arguments):
+                calls.append(arguments)
+                return self.handle
+
+            def CloseHandle(self, handle):
+                closed.append(handle)
+        path = self.root / "home-ssh-bootstrap-9.json"
+        hold = getattr(cases, "_windows_hold", None)
+        self.assertIsNotNone(hold, "the module asks Windows whether a deletion is refused")
+        self.assertEqual("free", hold(path, kernel=Kernel(1234), last_error=lambda: 0))
+        self.assertEqual([1234], closed, "an open that succeeded is closed at once")
+        # DELETE alone, every share mode, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT: no data access, no delete disposition.
+        self.assertEqual((str(path), 0x00010000, 0x7, None, 3, 0x00200000, None), calls[0])
+        invalid = cases.ctypes.c_void_p(-1).value
+        for code, expected in ((32, "held"), (5, "denied"), (2, "gone"), (3, "gone"), (1224, "error-1224")):
+            self.assertEqual(expected, hold(path, kernel=Kernel(invalid), last_error=lambda code=code: code), code)
+        self.assertEqual([1234], closed, "a refused open has no handle to close")
+        if cases.os.name != "nt":
+            self.assertEqual("unprobed", hold(path), "off Windows nothing refuses a deletion this way")
 
     def test_a_failure_while_connected_turns_the_runtime_off_through_the_public_off(self):
         with self.assertRaises(AssertionError) as caught:
