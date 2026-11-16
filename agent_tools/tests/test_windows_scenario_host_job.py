@@ -2881,7 +2881,7 @@ class UpdateQga(FakeQga):
             kind = "collector-release" if "$releaseBytes=" in source else "collector"
             terminal = self._release(source, pid) if kind == "collector-release" else self._collector(source, pid)
             self.programs.append((kind, source))
-            watching = kind == "collector" and "cancelWatchHelper" in self.collectors[-1]["collectorRequest"]["fileInputs"]
+            watching = kind == "collector" and "cancelWatchHelper" in self.collectors[-1]["collectorRequest"].get("fileInputs", {})
             self.pending[pid] = {"polls": self.watch_polls if watching else 0, "terminal": terminal, "collector": kind == "collector"}
             return {"pid": pid}
         self.admin_requested = "administratorSid=" in source

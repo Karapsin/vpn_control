@@ -612,7 +612,8 @@ ORDINARY_SID, FIXTURE_ADMIN_SID, SECOND_ADMIN_SID = "S-1-5-21-1-2-3-1001", "S-1-
 
 # The grant rows: each collector has an authorization stage, so its installer job's coordinator and worker are observed
 # (TableTests holds RECIPES to this set). A run of one names who approved it.
-GRANTS = frozenset({"success-off", "different-admin", "wait-client-loss", "installer-wait-client-loss"})
+GRANTS = frozenset({"success-off", "different-admin", "success-reconnect", "success-explicit-off", "participating-copy-lock", "wait-client-loss",
+                     "installer-wait-client-loss"})
 
 
 def grant(variant):
