@@ -1,0 +1,8 @@
+{
+  "commit": "a34e07cb0e9ad925935bcc84665fd07f5e540906",
+  "path": "agent_tools/readiness_vm_dispatch.json",
+  "sha256": "c44f8ab55b87ba1924c4dc3dec1143bd2f6131a2a40d12c793d2e80a4ec5b50d",
+  "extract": "actions[*].modules and actions[*].closure, compact JSON with sorted keys, gzip with mtime 0",
+  "reason": "Hand-maintained closures before the CI closure test: 403 of 414 actions omitted modules their entry modules import, read or ship (for example ssh_transport and the guest worker windows_ordinary_process_owner), so the source pins checked fewer files than an action can run.",
+  "extractSha256": "a72bc4b6738d2074146e8fb2cb68fb24855c569a2013bd611af8fde5669064c3"
+}
