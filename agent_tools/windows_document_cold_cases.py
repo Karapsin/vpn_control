@@ -24,14 +24,22 @@ expected semantic digest from the same fixed recipe that produced the document.
   source is stopped, so nothing can be fetched again, the serve quit, the closed file read, and an
   independent serve must read the same cache back. Windows keeps this cache in the workspace JSON,
   with no product digest of its own (unlike the Android preference store's verified reuse), so the
-  digest here is the harness's, over the committed bytes. This is only the readback half of
-  cache-digest-bytes: the scenario's Android anchor also fails a read of truncated bytes rather than
-  serve a substitute, while the desktop store writes its default workspace over a workspace.json
-  that does not decode, and nothing here corrupts one. The matrix names this row for no scenario.
+  digest here is the harness's, over the committed bytes. Between the closed read and the reopen
+  comes the closed-state corruption step, the other half of cache-digest-bytes: the scenario's
+  Android anchor fails a read of bytes it cannot decode rather than serve a substitute, and the
+  desktop store keeps such a workspace.json aside (PRODUCT-003). Three times, with the product closed,
+  the committed file is changed (one byte of the first cached location made invalid UTF-8, the last
+  byte cut, one byte appended); an independent serve opens it and must keep exactly those bytes aside
+  under its own name, load the defaults, and return the typed status: the `status` warning and the
+  one log entry naming the kept file. That serve is quit, the kept copy is moved out of the state
+  folder, and the exact committed bytes are put back before the reopen reads the cache again. With
+  both halves the matrix names this row for cache-digest-bytes.
 """
 import hashlib
 import json
+import os
 from pathlib import Path
+import re
 import time
 import uuid
 
@@ -64,6 +72,17 @@ CACHE_STOP_SECONDS = 30
 CACHE_TERMINATE_SECONDS = 15
 CACHE_JOURNAL_LIMIT = 1024 * 1024
 PRODUCT_AGENT = "VPNControlDesktop/1.0"  # DesktopSubscriptionDownloadClient's own User-Agent.
+# The closed-state corruption step, in this order. Each corruption is one no strict UTF-8 JSON decoder may accept: a
+# printable change inside a string would still decode, and the product, like the Android anchor, then uses it as it is.
+CORRUPTIONS = ("changed-byte", "truncated", "trailing-byte")
+# DesktopStateStore.keptPath: <original name>.unreadable-<UTC yyyyMMddTHHmmssZ>-<8 hex>, in the state folder itself.
+KEPT_NAME = re.compile(r"workspace\.json\.unreadable-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
+KEPT_PREFIXES = ("workspace.json.unreadable-", "workspace-recovery.json.unreadable-")
+RECOVERY_LEAF = "workspace-recovery.json"
+KEPT_WARNING = "UNREADABLE_WORKSPACE_KEPT"  # DesktopStateStore's `status` warning while a kept copy remains.
+DEFAULTS_LOADED = "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED"
+UNREADABLE_PREFIX = "SAVED_SETTINGS_UNREADABLE_"
+LOG_LIMIT = "200"
 CODE_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789:_-")
 NAME_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_")
 
@@ -404,6 +423,126 @@ def locations_export(owner, workspace, controller, harness, windows, leaf, expec
             "semanticSha256": sha256(json.dumps(semantic, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii"))}
 
 
+# ---- The closed-state corruption step ---------------------------------------------------------------------------------
+
+def corrupted(raw, kind):
+    """The committed workspace bytes with one corruption, and the offset it is at.
+
+    changed-byte: the first byte inside the first cached location string, its '{', becomes 0xFF, which is never valid
+    UTF-8 anywhere. truncated: the document's closing brace, the last byte before any trailing whitespace, is cut with
+    what follows it. trailing-byte: one non-whitespace byte after the document."""
+    if kind == "changed-byte":
+        key = raw.find(b'"cached_locations"')
+        start = raw.find(b"[", key) if key >= 0 else -1
+        offset = raw.find(b'"', start) + 1 if start >= 0 else 0
+        need(key >= 0 and start > key and offset > start and raw[offset:offset + 1] == b"{", "document-cache-corruption-shape")
+        return raw[:offset] + b"\xff" + raw[offset + 1:], offset
+    if kind == "truncated":
+        end = len(raw.rstrip(b" \t\r\n"))
+        need(end > 1 and raw[end - 1:end] == b"}", "document-cache-corruption-shape")
+        return raw[:end - 1], end - 1
+    need(kind == "trailing-byte", "document-cache-corruption-kind")
+    return raw + b"x", len(raw)
+
+
+def _state_names(folder):
+    return sorted(os.listdir(folder))
+
+
+def _kept_names(folder):
+    return [name for name in _state_names(folder) if name.startswith(KEPT_PREFIXES)]
+
+
+def _read_held(owner, windows, path):
+    held = windows.Held(owner.native, path)
+    try:
+        return held.bytes()
+    finally:
+        held.close()
+
+
+def _place_workspace(owner, windows, folder, leaf, raw):
+    """With the product closed, raw becomes workspace.json as the product itself replaces it: a new file in the state
+    folder, flushed, then renamed over the workspace file. The held read back must be exactly raw."""
+    temp = Path(folder) / leaf
+    need(not temp.exists(), "document-cache-corruption-new-leaf")
+    with temp.open("xb") as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temp, Path(folder) / "workspace.json")
+    need(_read_held(owner, windows, Path(folder) / "workspace.json") == raw, "document-cache-corruption-placed")
+
+
+def corrupt_closed(owner, workspace, harness, windows, kind, committed, previous):
+    """One corruption of the closed committed workspace, opened by an independent serve, then the committed bytes back.
+
+    The product must keep the exact bad bytes aside under its own kept name, load the defaults and save them at once,
+    warn in `status` and name the kept file in its one typed log entry, and keep serving: nothing is accepted silently,
+    nothing is written over the bad bytes, and nothing crashes. A product that writes its defaults over them (every
+    build before the workspace-corruption fix) fails at the first oracle: document-cache-corruption-kept-aside:<kind>.
+    Returns what was observed and the serve's controller, which the next owner of the workspace must differ from."""
+    folder = Path(workspace)
+    bad, offset = corrupted(committed, kind)
+    need(not (folder / "activation.port").exists() and not (folder / RECOVERY_LEAF).exists() and not _kept_names(folder),
+         "document-cache-corruption-closed-state")
+    _place_workspace(owner, windows, folder, "document-cache-%s.tmp" % kind, bad)
+    owner.event("document-cache-corruption-placed", {"kind": kind, "offset": offset, "committedBytes": len(committed),
+        "committedSha256": sha256(committed), "corruptBytes": len(bad), "corruptSha256": sha256(bad), "productClosed": True})
+    child = owner.child("document-cache-corrupt-serve", [owner.request["cliPath"], "--state-dir", str(workspace), "serve"])
+    controller = _ready(owner, workspace, child, READY_SECONDS["serve"], previous)
+    # From here a known failure quits this serve (close_known), as it does the reopened one.
+    owner.document_reopened_owner = {"child": child, "controllerId": controller, "gui": False}
+    owner.event("document-cache-corruption-opened", {"kind": kind, "child": child.ordinal, "controllerId": controller})
+
+    def call(*tail):
+        body = harness["envelope"](owner.invoke(workspace, "--json", "--controller-id", controller, *tail))
+        need(body["controllerId"] == controller and body["final"] is True, "document-cache-owner-answer")
+        return body
+    kept = _kept_names(folder)
+    need(len(kept) == 1 and KEPT_NAME.fullmatch(kept[0]) is not None and not (folder / RECOVERY_LEAF).exists(),
+         "document-cache-corruption-kept-aside:" + kind)
+    kept_raw = _read_held(owner, windows, folder / kept[0])
+    need(kept_raw == bad, "document-cache-corruption-kept-bytes:" + kind)
+    status = call("status")
+    need(status["data"].get("runtimeRunning") is False and status.get("warnings") == [KEPT_WARNING],
+         "document-cache-corruption-status-warning:" + kind)
+    entries = call("logs", "--limit", LOG_LIMIT)["data"].get("entries")
+    need(type(entries) is list, "document-cache-corruption-typed-status:" + kind)
+    typed = [row.get("message") for row in entries if type(row) is dict and type(row.get("message")) is str
+             and row["message"].startswith(UNREADABLE_PREFIX)]
+    need(typed == ["%s(%s)" % (DEFAULTS_LOADED, kept[0])], "document-cache-corruption-typed-status:" + kind)
+    need(call("subscriptions", "list")["data"].get("subscriptions") == [], "document-cache-corruption-defaults:" + kind)
+    # The defaults were saved at once in place of the bad bytes, in this build's format.
+    current = _read_held(owner, windows, folder / "workspace.json")
+    try:
+        saved = json.loads(current.decode("utf-8", "strict"))
+    except ValueError:
+        saved = None
+    need(type(saved) is dict and saved.get("format") == 1 and type(saved.get("persisted_state")) is dict
+         and saved["persisted_state"].get("subscriptions") == [], "document-cache-corruption-defaults-saved:" + kind)
+    need(child.process.poll() is None and _kept_names(folder) == kept, "document-cache-corruption-owner-alive:" + kind)
+    owner.event("document-cache-corrupt-quit-intent", {"kind": kind, "child": child.ordinal, "controllerId": controller,
+                                                       "replayAllowed": False})
+    call("quit")
+    terminal = child.wait()
+    need(terminal["exitCode"] == 0 and not (folder / "activation.port").exists(), "document-cache-corruption-owner-closed:" + kind)
+    # The kept copy leaves the state folder whole, so no later owner names or warns about it, and the committed bytes
+    # go back exactly before anything else opens the workspace.
+    evidence = Path(owner.root) / ("document-cache-kept-%s.json" % kind)
+    need(not evidence.exists(), "document-cache-corruption-new-leaf")
+    os.replace(folder / kept[0], evidence)
+    need(_read_held(owner, windows, evidence) == bad, "document-cache-corruption-kept-bytes:" + kind)
+    _place_workspace(owner, windows, folder, "document-cache-restore-%s.tmp" % kind, committed)
+    need(not _kept_names(folder) and not (folder / RECOVERY_LEAF).exists(), "document-cache-corruption-restored")
+    observed = {"kind": kind, "offset": offset, "corruptBytes": len(bad), "corruptSha256": sha256(bad), "keptName": kept[0],
+                "keptSha256": sha256(kept_raw), "warnings": status["warnings"], "typedStatus": typed[0],
+                "defaultsSha256": sha256(current), "child": child.ordinal, "controllerId": controller,
+                "exitCode": terminal["exitCode"], "keptEvidenceLeaf": evidence.name, "restoredSha256": sha256(committed)}
+    owner.event("document-cache-corruption-observed", observed)
+    return observed, controller
+
+
 def _run_cache(owner, workspace, identity, harness, windows, case, original):
     cache, lease = case["cache"], owner.document_cache_lease
     expected, name = cache["expectedLocations"], cache["subscriptionName"]
@@ -450,8 +589,16 @@ def _run_cache(owner, workspace, identity, harness, windows, case, original):
     terminal = original.wait()
     need(terminal["exitCode"] == 0 and not (Path(workspace) / "activation.port").exists(), "document-cold-original-closed")
     closed = committed_cache(owner, windows, workspace, subscription, url, cache, "closed")
+    # Still closed: the committed bytes, read whole, are corrupted three ways, each opened by an independent serve and
+    # put back exactly, so the reopen below reads the file the original serve left.
+    committed = _read_held(owner, windows, Path(workspace) / "workspace.json")
+    need(sha256(committed) == closed["workspaceSha256"], "document-cache-workspace-generation")
+    corruption, previous = [], identity
+    for kind in CORRUPTIONS:
+        observed, previous = corrupt_closed(owner, workspace, harness, windows, kind, committed, previous)
+        corruption.append(observed)
     child = owner.child("document-cold-serve", [owner.request["cliPath"], "--state-dir", str(workspace), "serve"])
-    reopened = _ready(owner, workspace, child, READY_SECONDS["serve"], identity)
+    reopened = _ready(owner, workspace, child, READY_SECONDS["serve"], previous)
     owner.document_reopened_owner = {"child": child, "controllerId": reopened, "gui": False}
     owner.event("document-cold-reopened", {"variant": CACHE, "child": child.ordinal, "controllerId": reopened,
                                            "byInstalledGui": False, "originalControllerId": identity})
@@ -462,7 +609,8 @@ def _run_cache(owner, workspace, identity, harness, windows, case, original):
     result = {"variant": CACHE, "subscriptionId": subscription, "cacheCount": cold["cacheCount"], "newlineBytes": cold["newlineBytes"],
               "newlineSha256": cold["newlineSha256"], "warm": warm, "closed": closed, "reopened": cold, "warmExport": warm_export,
               "reopenedExport": cold_export, "productFetches": fetches, "controllerId": reopened, "independentOwner": True,
-              "windowsStoreFormat": "workspace-json-array", "productDigestOfCache": False}
+              "windowsStoreFormat": "workspace-json-array", "productDigestOfCache": False,
+              "corruption": corruption, "unreadableKeptAside": [item["kind"] for item in corruption]}
     owner.event("document-cold-observed", {**result, "nativeAcceptanceComplete": False})
     return result
 
@@ -590,8 +738,8 @@ def close_known(owner, error, serve, identity):
     Known: the harness's AssertionError, or this module's own document- codes. The cache variant's source is ended
     first, by one termination of its original handle, unless a refresh may still be fetching from it: then every
     original stays for the park. A GUI-started owner is closed here by one journaled public quit and its exit, because
-    the owner's closing knows only serves; a reopened serve is returned for that closing, and before any reopen the
-    original is.
+    the owner's closing knows only serves; a reopened serve, or the live serve of the cache variant's corruption step,
+    is returned for that closing, and before any reopen, or once that serve has exited, the original is.
     """
     try:
         name = type(error).__name__

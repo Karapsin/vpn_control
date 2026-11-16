@@ -80,11 +80,11 @@ Android and macOS native and visual work stay deferred and open, never passed.
    relay, a stdin key import and refreshes through the relay, connected and
    disconnected; the matrix maps ssh-import-routing to the two SSH rows.
    Built offline on 2026-11-13, not yet run natively: the in-guest subscription
-   source of `windows-document-cold.cache-bytes`, now admitted. It proves the
-   committed cache's readback only, so cache-digest-bytes maps to no row yet.
-   Still to add: the TUN grant collector route, the closed-state corruption step of
-   cache-digest-bytes (after the product keeps an undecodable `workspace.json`
-   aside instead of writing defaults over it), dns-ws-ssh-cache-resources,
+   source of `windows-document-cold.cache-bytes`, now admitted. Built offline on
+   2026-11-17, not yet run natively: its closed-state corruption step (one byte
+   made invalid UTF-8, the last byte cut, one byte appended; each kept aside with
+   the typed status), so cache-digest-bytes maps to the row again.
+   Still to add: the TUN grant collector route, dns-ws-ssh-cache-resources,
    pipe-storage-races, the GUI half of gui-cli-transfer, and an in-guest build
    for the complete
    `:desktopApp:test` and the local visual capture. Fix the tool defects

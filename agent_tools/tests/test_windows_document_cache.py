@@ -397,6 +397,49 @@ class CacheGuest(ColdGuest):
         # How the source ends on its stop record: its exit code, its stderr, its terminal line, the journal it leaves,
         # and how many entries its terminal line claims beyond the journal's lines.
         self.stop_exit, self.stop_stderr, self.terminal_change, self.journal_change, self.entries_delta = 0, "", None, None, 0
+        # How the product's store loads a workspace.json that does not decode as strict UTF-8 JSON, at a serve's start:
+        # "keep" (DesktopStateStore since the workspace-corruption fix): renamed aside under its kept name, the defaults
+        # loaded and saved with the typed notice as one log entry, and `status` warns while a kept copy remains;
+        # "overwrite" (every build before it): the defaults written over it, silently; "lenient": keeps what it cannot
+        # decode, but its decoder reads the first JSON value and ignores what follows it.
+        self.unreadable = "keep"
+        self.load_change = None  # (guest, workspace, kept path): a defect's change once the store kept a copy and saved
+        self.logs = {}  # workspace -> [log message]
+        self.kept_counter = 0
+
+    def load(self, workspace):
+        """DesktopStateStore.loadWorkspace at a serve's start, over the workspace.json a case left while it was closed."""
+        path = self.workspace_file(workspace)
+        if not path.exists():
+            return
+        raw = path.read_bytes()
+        try:
+            text = raw.decode("utf-8", "strict")
+            document = json.JSONDecoder().raw_decode(text)[0] if self.unreadable == "lenient" else json.loads(text)
+        except ValueError:
+            document = None
+        # The log is the loaded workspace's own: the defaults start an empty one.
+        logs = self.logs[workspace] = []
+        if document is not None:
+            self.subscriptions[workspace] = [{"id": row["id"], "source": row["url"], "name": row["custom_name"],
+                                              "cached": row["cached_locations"], "status": row["last_refresh_status"]}
+                                             for row in document["persisted_state"]["subscriptions"]]
+            return
+        if self.unreadable != "overwrite":
+            self.kept_counter += 1
+            kept = path.with_name("workspace.json.unreadable-20261117T101500Z-%08x" % (0x9e3779b1 * self.kept_counter % 2 ** 32))
+            path.rename(kept)
+            logs.append("SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED(%s)" % kept.name)
+        self.subscriptions[workspace] = []
+        path.write_text(json.dumps({"format": 1, "persisted_state": {"subscriptions": [], "current_locations": []},
+                                    "resume_connection_on_launch": False, "locations": []}, indent=2), encoding="utf-8")
+        if self.unreadable != "overwrite" and self.load_change is not None:
+            self.load_change(self, workspace, kept)
+
+    def warnings(self, workspace):
+        """As controlStatusWarnings: the state folder is listed on every status."""
+        kept = [name for name in (os.listdir(workspace) if os.path.isdir(workspace) else ()) if name.startswith(("workspace.json.unreadable-", "workspace-recovery.json.unreadable-"))]
+        return ["UNREADABLE_WORKSPACE_KEPT"] if kept else []
 
     def outcome(self, child):
         if child.label == cold.CACHE_FIXTURE_LABEL:
@@ -507,6 +550,12 @@ class CacheGuest(ColdGuest):
         if getattr(serve, "reloaded", False) is False and serve.label == "document-cold-serve":
             serve.reloaded = True
             self.reload(workspace)
+        if tail == ["status"]:
+            return 0, self.envelope("OK", controller, {"runtimeRunning": False}, warnings=self.warnings(workspace)), ""
+        if tail == ["logs", "--limit", "200"]:
+            entries = [{"id": "log-%d" % index, "createdAtEpochMillis": 1 + index, "message": message}
+                       for index, message in enumerate(["CONNECTION_READY_ON_COMPUTER"] + self.logs.get(workspace, []))]
+            return 0, self.envelope("OK", controller, {"entries": entries, "nextCursor": "log-0", "gap": False}), ""
         if tail == ["subscriptions", "list"]:
             return 0, self.envelope("OK", controller, {"subscriptions": [{"id": row["id"], "name": row["name"], "cachedLocations": len(row["cached"]),
                                                                           "refreshStatus": row["status"], "failureReason": None} for row in rows]}), ""
@@ -563,6 +612,8 @@ class CacheGuest(ColdGuest):
                     self.terminations.append(value.ordinal)
                 value.process.terminate = terminate
                 self.start_fixture(value)
+            if argv[-1] == "serve":
+                self.load(argv[2])
             return value
         owner.child = child
         return owner
@@ -621,7 +672,9 @@ class RuntimePeer:
         return ready
 
 
-class CacheFlowTests(unittest.TestCase):
+class CacheFlowBase(unittest.TestCase):
+    """One run of the cache variant under the real owner, with the guest's product and the case's inputs."""
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -703,6 +756,8 @@ class CacheFlowTests(unittest.TestCase):
     def kinds(self, guest):
         return [kind for kind, _ in guest.events]
 
+
+class CacheFlowTests(CacheFlowBase):
     def test_the_committed_cache_is_the_recipes_bytes_and_an_independent_owner_reads_it_back_unchanged(self):
         guest, code = self.run_cache()
         self.assertEqual((0, [], [(0, "NoneType", "None")]), (code, guest.parks, guest.finished))
@@ -726,11 +781,12 @@ class CacheFlowTests(unittest.TestCase):
                         "nothing can be fetched again before the cold owner reads the cache")
         self.assertLess(order.index("document-cold-quit-intent"), order.index("document-cold-reopened"))
         owners = guest.owners(str(guest.root / "workspace"))
-        self.assertEqual(2, len(owners), "the original serve and one independent serve")
-        self.assertEqual(guest.generations[owners[1].ordinal], observed["controllerId"])
+        self.assertEqual(5, len(owners), "the original serve, one serve per corruption and one independent serve")
+        self.assertEqual(guest.generations[owners[-1].ordinal], observed["controllerId"])
         self.assertTrue(all(child.terminal is not None and child.terminal["exitCode"] == 0 for child in guest.owner_object.children))
         self.assertEqual([], guest.terminations, "a pass stops the source by its own record, never by a termination")
-        self.assertEqual(2, len([row for row in guest.trace if row[0] == "quit"]), "the case's quit of the original and the owner's own")
+        self.assertEqual(5, len([row for row in guest.trace if row[0] == "quit"]),
+                         "the case's quit of the original and of each corruption's serve, and the owner's own")
 
     def test_only_the_original_serve_trusts_the_source(self):
         # RED on the unfixed owner: it removed the scoped trust options after its serve only for the responsive work,
@@ -803,7 +859,7 @@ class CacheFlowTests(unittest.TestCase):
             with self.subTest(change=name):
                 guest, code = self.run_cache(guest_change=lambda guest, change=change: setattr(guest, "reopen_change", change))
                 self.assertEqual((1, [], failure), (code, guest.parks, guest.finished[0][2]))
-                self.assertEqual(2, len(guest.owners(str(guest.root / "workspace"))))
+                self.assertEqual(5, len(guest.owners(str(guest.root / "workspace"))))
                 self.assertEqual(["known-failure-closing", "known-failure-quit-intent", "known-failure-serve-closed", "known-failure-closed"],
                                  [kind for kind in self.kinds(guest) if kind.startswith("known-failure")], "the reopened serve is quit")
                 self.assertEqual([], guest.terminations, "the source had already stopped by its own record")
@@ -962,6 +1018,156 @@ class CacheFlowTests(unittest.TestCase):
         self.assertIsNone(guest.fixture_child)
 
 
+class CorruptionTests(CacheFlowBase):
+    """The closed-state corruption step, cache-digest-bytes' other half.
+
+    RED on the unfixed cold module (efd774b0), which read the committed cache warm, closed and reopened and corrupted
+    nothing: no corruption was ever placed or observed, and a product that writes its defaults over a workspace.json it
+    cannot decode (every build before the workspace-corruption fix) passed the row, as did one that keeps the bad bytes
+    but never says so."""
+
+    def observed(self, guest):
+        return [value for kind, value in guest.events if kind == "document-cache-corruption-observed"]
+
+    def closing(self, guest):
+        return [kind for kind in self.kinds(guest) if kind.startswith("known-failure")]
+
+    def test_each_corruption_is_kept_aside_byte_for_byte_with_its_typed_status_and_the_committed_bytes_come_back(self):
+        guest, code = self.run_cache()
+        self.assertEqual((0, []), (code, guest.parks))
+        observed = self.observed(guest)
+        self.assertEqual(["changed-byte", "truncated", "trailing-byte"], [item["kind"] for item in observed])
+        closed = next(value for kind, value in guest.events if kind == "document-cache-committed" and value["moment"] == "closed")
+        placed = [value for kind, value in guest.events if kind == "document-cache-corruption-placed"]
+        committed = closed["workspaceBytes"]
+        self.assertEqual([committed, committed - 1, committed + 1], [value["corruptBytes"] for value in placed])
+        self.assertEqual(3, len({value["corruptSha256"] for value in placed}), "three different bad files")
+        for item, place in zip(observed, placed):
+            self.assertEqual((closed["workspaceSha256"],) * 2, (place["committedSha256"], item["restoredSha256"]))
+            self.assertEqual(place["corruptSha256"], item["keptSha256"], "the kept copy holds exactly the bad bytes")
+            self.assertRegex(item["keptName"], r"\Aworkspace\.json\.unreadable-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}\Z")
+            self.assertEqual("SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED(%s)" % item["keptName"], item["typedStatus"])
+            self.assertEqual(["UNREADABLE_WORKSPACE_KEPT"], item["warnings"])
+            self.assertEqual(place["corruptSha256"], sha((guest.root / item["keptEvidenceLeaf"]).read_bytes()),
+                             "the kept copy left the state folder whole")
+        # The workspace the reopen read is the one the original serve left, with nothing kept beside it.
+        workspace = guest.root / "workspace"
+        raw = (workspace / "workspace.json").read_bytes()
+        self.assertEqual(closed["workspaceSha256"], sha(raw))
+        self.assertEqual([], [name for name in os.listdir(workspace) if "unreadable" in name or name.endswith(".tmp")])
+        offset = placed[0]["offset"]
+        self.assertEqual((b'"', b"{"), (raw[offset - 1:offset], raw[offset:offset + 1]), "the first byte inside a cached string")
+        self.assertGreater(offset, raw.index(b'"cached_locations"'), "the changed byte is the first cached location's")
+        # Each corruption's serve answered, was quit by the case and exited 0 before the next one was placed.
+        order = self.kinds(guest)
+        serves = [child for child in guest.owner_object.children if child.label == "document-cache-corrupt-serve"]
+        self.assertEqual(3, len(serves))
+        self.assertTrue(all(child.terminal["exitCode"] == 0 for child in serves))
+        self.assertEqual([item["child"] for item in observed], [child.ordinal for child in serves])
+        moments = [kind for kind in order if kind in ("document-cache-committed", "document-cache-corruption-placed",
+                                                      "document-cache-corrupt-quit-intent", "document-cache-corruption-observed",
+                                                      "document-cold-reopened")]
+        self.assertEqual(["document-cache-committed"] * 2 + ["document-cache-corruption-placed", "document-cache-corrupt-quit-intent",
+                         "document-cache-corruption-observed"] * 3 + ["document-cold-reopened", "document-cache-committed"], moments)
+        self.assertEqual(["changed-byte", "truncated", "trailing-byte"], dict(guest.events)["document-cold-observed"]["unreadableKeptAside"])
+
+    def test_each_corruption_is_one_no_strict_decoder_accepts_and_the_step_refuses_any_other_shape(self):
+        raw = json.dumps({"format": 1, "persisted_state": {"subscriptions": [{"id": "s", "cached_locations": list(PRODUCT_STORED[:2])}]},
+                          "locations": []}, indent=2).encode()
+        for kind in cold.CORRUPTIONS:
+            with self.subTest(kind=kind):
+                bad, offset = cold.corrupted(raw, kind)
+                self.assertRaises(ValueError, lambda: json.loads(bad.decode("utf-8", "strict")))
+        bad, offset = cold.corrupted(raw, "changed-byte")
+        self.assertEqual((len(raw), [offset], b"{", b"\xff"),
+                         (len(bad), [index for index in range(len(raw)) if raw[index] != bad[index]], raw[offset:offset + 1],
+                          bad[offset:offset + 1]))
+        self.assertTrue(raw[:offset].endswith(b'"') and raw.index(b'"cached_locations"') < offset)
+        # Why not a printable byte: inside the string it still decodes, and the product, like the Android anchor
+        # (AndroidPreferencesSerializerTest), then uses the changed value as it is.
+        json.loads((raw[:offset] + b"[" + raw[offset + 1:]).decode("utf-8", "strict"))
+        self.assertEqual((raw[:-1], len(raw) - 1), cold.corrupted(raw, "truncated"))
+        self.assertEqual((raw[:-1], len(raw) - 1), cold.corrupted(raw + b"\r\n", "truncated"), "the brace, not trailing whitespace")
+        self.assertEqual((raw + b"x", len(raw)), cold.corrupted(raw, "trailing-byte"))
+        for kind, shape in (("changed-byte", b'{"persisted_state": {"subscriptions": []}}'),
+                            ("changed-byte", b'{"cached_locations": []}'), ("truncated", b"[]"), ("truncated", b"}")):
+            with self.subTest(refused=kind):
+                with self.assertRaisesRegex(RuntimeError, "document-cache-corruption-shape"):
+                    cold.corrupted(shape, kind)
+        with self.assertRaisesRegex(RuntimeError, "document-cache-corruption-kind"):
+            cold.corrupted(raw, "zeroed")
+
+    def test_a_product_that_writes_its_defaults_over_the_bad_bytes_fails_the_first_corruption_and_its_serve_is_quit(self):
+        # The native RED this row must show on a build before the workspace-corruption fix (S_D 2.2.17).
+        guest, code = self.run_cache(guest_change=lambda guest: setattr(guest, "unreadable", "overwrite"))
+        self.assertEqual((1, [], "document-cache-corruption-kept-aside:changed-byte"), (code, guest.parks, guest.finished[0][2]))
+        self.assertEqual(2, len(guest.owners(str(guest.root / "workspace"))), "the original serve and the first corruption's; no reopen")
+        self.assertEqual(["known-failure-closing", "known-failure-quit-intent", "known-failure-serve-closed", "known-failure-closed"],
+                         self.closing(guest), "the corruption's serve is quit by the closing")
+        self.assertTrue(all(child.terminal is not None for child in guest.owner_object.children))
+        self.assertEqual([], self.observed(guest))
+
+    def test_a_decoder_that_reads_past_a_trailing_byte_is_a_known_failure(self):
+        guest, code = self.run_cache(guest_change=lambda guest: setattr(guest, "unreadable", "lenient"))
+        self.assertEqual((1, [], "document-cache-corruption-kept-aside:trailing-byte"), (code, guest.parks, guest.finished[0][2]))
+        self.assertEqual(["changed-byte", "truncated"], [item["kind"] for item in self.observed(guest)])
+        self.assertEqual(4, len(self.closing(guest)))
+
+    def test_a_kept_copy_without_its_exact_bytes_name_or_typed_status_is_a_known_failure(self):
+        def rename(guest, workspace, kept):
+            kept.rename(kept.with_name("workspace.json.unreadable-backup"))
+
+        def repair(guest, workspace, kept):
+            kept.write_bytes(kept.read_bytes().replace(b"\xff", b"{"))
+
+        def silent(guest, workspace, kept):
+            guest.warnings = lambda workspace: []
+
+        def older(guest, workspace, kept):
+            guest.logs[workspace] = ["SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED(%s)" % kept.name]
+
+        def twice(guest, workspace, kept):
+            guest.logs[workspace] = guest.logs[workspace] * 2
+
+        def untyped(guest, workspace, kept):
+            guest.logs[workspace] = ["Saved settings could not be read"]
+
+        def substitute(guest, workspace, kept):
+            guest.subscriptions[workspace] = [{"id": "s", "source": "https://localhost:50443/x", "name": "n", "cached": [],
+                                               "status": "OK"}]
+
+        def unformatted(guest, workspace, kept):
+            path = guest.workspace_file(workspace)
+            document = json.loads(path.read_bytes())
+            del document["format"]
+            path.write_text(json.dumps(document), encoding="utf-8")
+        for name, change, failure in (("other-name", rename, "kept-aside"), ("repaired", repair, "kept-bytes"),
+                                      ("no-warning", silent, "status-warning"), ("older-copy-key", older, "typed-status"),
+                                      ("two-entries", twice, "typed-status"), ("untyped", untyped, "typed-status"),
+                                      ("substitute", substitute, "defaults"), ("unsaved-format", unformatted, "defaults-saved")):
+            with self.subTest(defect=name):
+                guest, code = self.run_cache(guest_change=lambda guest, change=change: setattr(guest, "load_change", change))
+                self.assertEqual((1, [], "document-cache-corruption-%s:changed-byte" % failure),
+                                 (code, guest.parks, guest.finished[0][2]))
+                self.assertEqual(4, len(self.closing(guest)), "the corruption's serve is quit by the closing")
+                self.assertNotIn("document-cold-reopened", self.kinds(guest))
+
+    def test_a_serve_that_ends_on_the_bad_bytes_is_a_known_failure(self):
+        def crash(guest):
+            outcome = guest.outcome
+
+            def ended(child):
+                if child.label == "document-cache-corrupt-serve":
+                    return 1, "", 'Exception in thread "main"\n'
+                return outcome(child)
+            guest.outcome = ended
+        guest, code = self.run_cache(guest_change=crash)
+        self.assertEqual((1, [], "document-cold-owner-ended-before-readiness"), (code, guest.parks, guest.finished[0][2]))
+        crashed = [child for child in guest.owner_object.children if child.label == "document-cache-corrupt-serve"]
+        self.assertEqual([1], [child.terminal["exitCode"] for child in crashed])
+        self.assertTrue(all(child.terminal is not None for child in guest.owner_object.children))
+
+
 class TrustGuest(ColdGuest):
     """The inert guest whose case module, like the cache variant, gives the serve it is about to start scoped trust."""
 
@@ -1005,7 +1211,7 @@ class OwnerTrustTests(unittest.TestCase):
 
 
 class RowTests(unittest.TestCase):
-    def test_the_row_is_admitted_with_its_sources_and_generated_files_and_proves_no_scenario_alone(self):
+    def test_the_row_is_admitted_with_its_sources_and_generated_files_and_closes_cache_digest_bytes(self):
         row = windows.RECIPES[ROW]
         self.assertIsNone(row["refusal"])
         self.assertEqual({"variant": "cache-bytes", "principalProbe": False, "rootSubfolders": ("document-temp",)}, row["document"])
@@ -1013,11 +1219,12 @@ class RowTests(unittest.TestCase):
                           "socks", "https"], [role for _, role, _ in row["guestFiles"]])
         self.assertEqual((*host_job.CACHE_TLS, ("cacheBody", "document-cache-subscription.txt"), ("coldInput", "document-cold-input.json")),
                          row["generated"])
-        # RED on 7e6ee369, which named this row for cache-digest-bytes: it proves the committed cache's readback only, while
-        # the scenario's Android anchor also fails a read of truncated bytes, and the desktop store writes its default
-        # workspace over a workspace.json that does not decode. No row corrupts one yet, so the scenario maps to no row.
-        self.assertEqual((), windows.MATRIX_SCENARIOS["document-persistence-transfer"]["cache-digest-bytes"])
-        self.assertEqual([], [scenario for table in windows.MATRIX_SCENARIOS.values() for scenario, rows in table.items() if ROW in rows])
+        # 154dae38 named this row for no scenario: it read the committed cache back but corrupted nothing, while the
+        # scenario's Android anchor also fails a read of bytes it cannot decode. With the closed-state corruption step
+        # (CorruptionTests) it is the scenario's one row again, and it names nothing else.
+        self.assertEqual((ROW,), windows.MATRIX_SCENARIOS["document-persistence-transfer"]["cache-digest-bytes"])
+        self.assertEqual(["cache-digest-bytes"], [scenario for table in windows.MATRIX_SCENARIOS.values() for scenario, rows in table.items()
+                                                  if ROW in rows])
         self.assertIn("agent_tools/windows_document_cache_fixture.py", bundles._SCENARIOS["windows-scenario-driver"])
 
 

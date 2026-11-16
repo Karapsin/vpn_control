@@ -2746,8 +2746,8 @@ the defect the test guards. On each such mutant the `7e6ee369` tests stayed gree
 | No test placed the closed cache read after the original serve's exit | `CacheFlowTests.test_the_closed_read_is_of_the_file_the_original_serve_left_after_its_exit` | The "closed" moment must be read with the product closed: after the original serve's own exit and before any later owner of the workspace exists. The `7e6ee369` tests checked only the order of the three moments. RED on the mutant `closed-early`, which moves the read before the quit: 1 failure, a closed read before the serve's exit. |
 | Four of the source's own refusals had no test | `CacheFlowTests.test_a_ready_record_an_oracle_refuses_ends_the_source_before_any_serve`, `test_a_stop_receipt_other_than_the_sources_clean_end_is_a_known_failure`, `test_a_journal_other_than_the_sources_own_count_and_order_is_a_known_failure`, `test_an_answer_the_source_did_not_send_whole_is_a_known_failure` | With the `7e6ee369` tests green, each of these clauses could be deleted: the ready-record check and its `refused:` code, the exit code and stderr of the stop receipt, the journal's count and ordinals, and `sent` on an answer row. Without the ready check, the serve would trust a source the record misnamed, and the refresh's TLS failure would then read as the product's. Each case now ends 1 with its code. A refused ready record also ends the live source with one termination before any serve exists. RED on one mutant each: `ready-unchecked` 6 failures, `stop-unchecked` 2 (exit 1, stderr), `count-unchecked` 2 (count, ordinal), and `sent-unchecked` 1 (an unsent answer that still names the recipe body). The other subtests check the same conditions' other clauses, which those mutants keep. |
 
-Still open: the closed-state corruption step itself, after the product fix, and the row's first
-native run.
+The closed-state corruption step was added later ("Windows document cache row: the closed-state corruption
+step", below); the row's first native run is still open.
 
 ### Readiness wake, budget and counter-start replies of clone 9059be98 (native, 2026-11-09)
 
@@ -3314,6 +3314,27 @@ runner plus a named allowlist of local pure-Python checks). Preserved unfixed so
 | A SIGKILLed relay left its job | `FakeLaunchdTests.test_sigkilled_relay_left_its_job_RED_job_stops_and_removes_itself_GREEN`; `RealLaunchdTests.test_no_label_or_process_remains_after_exit_sigterm_or_sigkill` | Unfixed job never removed; current job stops the command and boots itself out. |
 | The job got launchd's limits and environment | `FakeLaunchdTests.test_job_gets_exactly_the_caller_environment_and_soft_limits`; `RealLaunchdTests.test_unfixed_relay_gave_launchd_limits_and_environment_RED`, `test_status_streams_cwd_exact_environment_and_limits` | Unfixed: nofile 256 and SSH_AUTH_SOCK/XPC_SERVICE_NAME (RED); current: the caller's soft limits and exact environment (GREEN). |
 | Stale labels were never swept | `FakeLaunchdTests.test_startup_sweep_removes_labels_past_their_bound_or_relay` | Labels past their bound or with a dead relay (and legacy submit labels with a dead relay) are removed; live ones are kept. |
+
+### Windows document cache row: the closed-state corruption step, offline (2026-11-17)
+
+Built in the `doc-cache-b` builder clone on `efd774b0`, after the workspace-corruption product fix landed; nothing
+here has run natively. `windows-document-cold.cache-bytes` read the committed cache back warm, closed and reopened
+but never corrupted it, so `cache-digest-bytes` mapped to no row (above). Between the closed read and the reopen
+the case now reads the committed `workspace.json` whole and, three times, with the product closed: places one
+corruption (`changed-byte`: the first byte inside the first cached location string, its `{`, made `0xFF`, never
+valid UTF-8; `truncated`: the closing brace cut; `trailing-byte`: one `x` appended), opens it with an independent
+serve, requires the bad bytes kept whole in one `workspace.json.unreadable-<UTC>-<8 hex>`, the `status` warning
+`UNREADABLE_WORKSPACE_KEPT`, exactly one log entry `SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED(<kept name>)`, no
+subscription, the defaults saved in format 1 and the serve still serving, quits it, moves the kept copy to the
+operation root and puts the exact committed bytes back. A printable change inside a string is not used: it still
+decodes, and the product, like the Android anchor, then uses the changed value. The matrix maps
+`cache-digest-bytes` to the row again. The unfixed bytes are git objects at `efd774b0` and copies in
+`.runtime/windows-parity-20261107/evidence/doc-cache-b/beforeimages/` of the recovery checkout; RED swapped those
+two modules into the clone and restored the fix (sha256 recorded in `red/tree.txt` and `green/tree.txt`).
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The cache row passed a product that writes its defaults over an undecodable `workspace.json` | `test_windows_document_cache.CorruptionTests` (6), `CacheFlowTests.test_the_committed_cache_is_the_recipes_bytes_and_an_independent_owner_reads_it_back_unchanged`, `test_a_cold_owner_that_reads_a_different_cache_is_a_known_failure_that_closes_it`, `RowTests`; `test_native_scenario_windows_matrix.ExactChildStopTests.test_with_the_real_table_the_cache_row_closes_cache_digest_bytes_and_only_that`, `TableTests` (2) | The inert guest's store now models `DesktopStateStore.loadWorkspace` at each serve's start: kept aside with the typed notice (`keep`), the defaults written over (`overwrite`, every build before the fix) and a decoder that ignores what follows the first value (`lenient`); defect variants keep the copy under another name or with other bytes, give no warning, the older-copy key, two entries or untyped text, a substitute subscription, or defaults without a format. Each fails with its own `document-cache-corruption-<oracle>:<kind>` and the closing quits the corruption's serve; a serve that ends on the bad bytes fails `document-cold-owner-ended-before-readiness`. RED on the `efd774b0` cold module and matrix with the new tests, on Python 3.14.3 and 3.12.13 alike: 12 tests, 19 failures (counting subtests) and 1 error (`no attribute 'CORRUPTIONS'`), e.g. `(1, [], 'document-cache-corruption-kept-aside:changed-byte') != (0, [], 'None')` for `overwrite`, `['changed-byte', 'truncated', 'trailing-byte'] != []`, `5 != 2` serves, and the matrix `('passed', 'unmapped') != ('unmapped', 'unmapped')`. GREEN: the same 12 OK on both. Native only: the installed product's keep on Windows (rename in its state folder, kept name, ACL), the `logs` text on Windows, and the file replacement while no owner runs. Expected native RED on a build before the fix: `document-cache-corruption-kept-aside:changed-byte`. |
 
 ## Historical coverage rule
 

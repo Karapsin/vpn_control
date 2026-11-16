@@ -1673,8 +1673,8 @@ module in `document-cold-input.json`.
   GUI-started owner. It needs no UI input. It is only the CLI half of
   gui-cli-transfer: the GUI's own file picker import and export have no tool, so
   gui-cli-transfer stays open and a passed `gui-owner` never counts for it.
-- `cache-bytes`: the committed subscription cache, the readback half of
-  cache-digest-bytes only (the matrix names it for no scenario, below). The
+- `cache-bytes` (cache-digest-bytes): the committed subscription cache, read
+  back and then corrupted while the product is closed. The
   committed cache is filled only by a refresh from a subscription source, so before
   the serve exists the owner starts its own one,
   `windows_document_cache_fixture.py`: loopback only, the two producers' TLS
@@ -1704,15 +1704,33 @@ module in `document-cold-input.json`.
   fetched again: its journal must hold only the product's GETs of the one path,
   each answered whole. Windows keeps this cache in `workspace.json` with no
   product digest of its own (the Android preference store's verified reuse has
-  one), so the digest is the harness's over the committed bytes. The case does not
-  change or truncate the closed file, and that is the scenario's other half: its
-  Android anchor (`AndroidPreferencesSerializerTest`) decodes changed bytes but
-  fails a read of bytes truncated by one, where the desktop store
-  (`DesktopStateStore.loadStoredWorkspace`) writes its default workspace over a
-  `workspace.json` that does not decode, with no notice and no copy kept. Until the
-  product keeps such a file aside and reports the failure, and this case corrupts
-  the closed file and restores it before the reopen, cache-digest-bytes maps to no
-  row. A source that is not ready in 30 s, ends first or publishes a record
+  one), so the digest is the harness's over the committed bytes. Between the
+  closed read and the reopen comes the scenario's other half, the closed-state
+  corruption step: the Android anchor (`AndroidPreferencesSerializerTest`) fails a
+  read of bytes it cannot decode rather than serve a substitute, and the desktop
+  store keeps such a `workspace.json` aside (`PRODUCT-003`). The case reads the
+  committed bytes whole and corrupts them three ways, in turn: `changed-byte` (the
+  first byte inside the first cached location string, its `{`, becomes `0xFF`,
+  never valid UTF-8; a printable change inside a string would still decode, and
+  the product, like the anchor, then uses the changed value), `truncated` (the
+  closing brace cut) and `trailing-byte` (one `x` appended). Each is placed as the
+  product replaces the file (a new file in the state folder, flushed, renamed over
+  `workspace.json`) and read back held. An independent serve opens it, and with no
+  recovery file or earlier kept copy present it must: keep exactly those bytes in
+  one `workspace.json.unreadable-<UTC>-<8 hex>` in the state folder; warn
+  `UNREADABLE_WORKSPACE_KEPT` in `status`; hold exactly one typed log entry
+  `SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED(<kept name>)` (`logs --limit 200`);
+  list no subscription; have saved the defaults in format 1 in place of the bad
+  bytes; and keep serving. The case quits that serve, moves the kept copy whole to
+  `document-cache-kept-<kind>.json` in the operation root (so no later owner names
+  or warns about it), and puts the exact committed bytes back before the next
+  step. The first failed oracle is `document-cache-corruption-<oracle>:<kind>`
+  (`kept-aside`, `kept-bytes`, `status-warning`, `typed-status`, `defaults`,
+  `defaults-saved`, `owner-alive`, `owner-closed`); a build that writes its
+  defaults over the bad bytes, every build before the workspace-corruption fix,
+  fails `kept-aside:changed-byte`, and a serve that ends on them fails
+  `document-cold-owner-ended-before-readiness`. The corruption's live serve is the
+  one a known failure quits. A source that is not ready in 30 s, ends first or publishes a record
   an oracle refuses is journaled, ended by one termination of its original handle
   and awaited before any serve exists: `document-cache-fixture-not-ready:<timeout
   |ended|refused>:...`. A refresh whose answer is not final keeps every original
@@ -1991,11 +2009,10 @@ all built, or whose only row declares procedures still to do, maps to `()` and s
 missing: the TUN fault and config rows (no variant exists), `exact-child-stop` (no grant variant keeps a sibling
 runtime through its off, so its TUN half has no row), the GUI half of `gui-cli-transfer`
 (`windows-document-cold.gui-owner` is only its CLI half and is named for no
-scenario), the undecodable-workspace half of `cache-digest-bytes`
-(`windows-document-cold.cache-bytes` reads the committed cache back but corrupts
-nothing, and the desktop store replaces a `workspace.json` that does not decode
-with defaults, so it is named for no scenario either), and
-`windows-visual`, which stays on `visual_platform` and `visual_review`.
+scenario), and `windows-visual`, which stays on `visual_platform` and
+`visual_review`. `cache-digest-bytes` names `windows-document-cold.cache-bytes`
+alone: it reads the committed cache back and keeps its closed-state corruption
+step.
 `ssh-import-routing` names the SSH row and the SSH relay row together. The other
 document scenarios name DOC, CLD (`cold-reopen`, `legacy-newline`) or RSP, with CFG
 where design.md step 8 adds it; the second real principal of
