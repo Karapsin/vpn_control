@@ -407,6 +407,31 @@ def context_source(guest, user, native, administrator=None, approving=None):
     return wrap_output(body)
 
 
+CLEAN_START_IMAGES = (PRODUCT_GUI, CLI_LEAF, RUNTIME_LEAF, INSTALL_HELPER[-1], VPN_BROKER[-1])
+_CENSUS_IMAGE = re.compile(r"[a-z0-9][a-z0-9_.-]{0,79}\Z")
+
+
+def _ps_literal(text):
+    if type(text) is not str or not text or any(ord(c) < 32 or ord(c) > 126 for c in text):
+        raise ValueError("clean_start_path")
+    return "'" + text.replace("'", "''") + "'"
+
+
+def clean_start_source(installed, python):
+    """Read-only, as SYSTEM: the lower-case image names of every process of the product's images, or running from the
+    install or Python folder, and how many ordinary tasks (VpnControlOrdinary-*) still exist. Nothing is changed."""
+    roots = "@(" + ",".join(_ps_literal(path + "\\") for path in (installed, python)) + ")"
+    images = "@(" + ",".join(_ps_literal(name) for name in CLEAN_START_IMAGES) + ")"
+    body = ("$ErrorActionPreference='Stop'\n"
+            "$images=" + images + "\n$roots=" + roots + "\n"
+            "$found=@(Get-CimInstance Win32_Process|Where-Object{$name=([string]$_.Name).ToLowerInvariant();$path=[string]$_.ExecutablePath;"
+            "($images -contains $name) -or ($path -and @($roots|Where-Object{$path.StartsWith($_,[StringComparison]::OrdinalIgnoreCase)}).Count -gt 0)}"
+            "|ForEach-Object{([string]$_.Name).ToLowerInvariant()}|Sort-Object -Unique)\n"
+            "$tasks=@(Get-ScheduledTask|Where-Object{$_.TaskName -like 'VpnControlOrdinary-*'})\n"
+            "[pscustomobject]@{processes=[string[]]$found;tasks=[int]$tasks.Count}\n")
+    return wrap_output(body)
+
+
 def decode_stdout(terminal):
     """The gzip+base64 JSON of an ended program; anything else stays a ValueError."""
     if (terminal.get("exited") is not True or type(terminal.get("exitcode")) is not int or terminal["exitcode"] != 0
@@ -1511,6 +1536,18 @@ class Job:
         self.fault_facts = None
         self.document = self.row.get("document")
         self.principal = None  # The LOCAL SERVICE probe of the acceptance row: None until claimed, then its outcome.
+        # A row its caller ran without a reset (plan cleanStart): how many jobs ended on this VM since its prior install,
+        # all passed or refused, and what the clean-start census found. None when the plan asks for no proof.
+        self.since_install = self.clean_start = None
+        # How long each stage and guest program took, for timing.json beside the receipt. Never evidence, never decides.
+        self.timing = {"schemaVersion": 1, "stages": [], "programs": []}
+        self.started = rt.monotonic()
+
+    def _timed(self, kind, name, began):
+        try:
+            self.timing[kind].append({"name": name, "at": round(began - self.started, 3), "seconds": round(self.rt.monotonic() - began, 3)})
+        except Exception:
+            pass
 
     # QGA and journal helpers.
     def _keep(self, relative, raw):
@@ -1534,6 +1571,7 @@ class Job:
         if os.path.lexists(self.root / (prefix + ".intent.json")):
             raise Unknown("guest_program_intent_exists:" + label)
         self._keep("guest-programs/" + label + ".ps1", raw)
+        began = self.rt.monotonic()
         self.rt.save(prefix + ".intent.json", {"operationId": self.op, "label": label, "sourceSha256": _sha(raw),
                                                "replayAllowed": False})
         self.programs += 1
@@ -1572,6 +1610,7 @@ class Job:
             raise Unknown("guest_terminal_invalid:" + label)
         self.rt.save(prefix + ".terminal.json", terminal)  # Before any decoding.
         self.program_open -= 1
+        self._timed("programs", label, began)
         return terminal, ack["pid"]
 
     @staticmethod
@@ -1740,6 +1779,8 @@ class Job:
                 raise Refused("prior_job_fence_missing")
         if self.row.get("priorInstall"):
             self.prior_installed = self._prior_install()
+            if self.plan.get("cleanStart") is True and (self.row.get("reboot") or {}).get("phase") != "post":
+                self.since_install = self._since_install()
         if (self.row.get("reboot") or {}).get("phase") == "post":
             self.prior_preboot = self._prior_preboot()
         if self.row.get("reboot"):
@@ -1792,6 +1833,55 @@ class Job:
         if installed.get("packageSha256") != self.package_target()["sha256"] or installed.get("productVersion") != self.plan["product"]["productVersion"]:
             raise Refused("prior_install_other_package")
         return installed
+
+    def _since_install(self):
+        """How many jobs on this VM ended after the prior install this row names, refused unless each passed or was refused.
+
+        A caller that skips the reset after a passed row asks for this (plan cleanStart). Every job's exit is known here
+        already (_admit), and the host's own job-exit.json times order them. A job that failed or ended unknown since
+        the install may have left anything behind, so only a reset can give this row its start: refused before any
+        guest effect. With none, the row runs right after its install, exactly as after a reset; with some, the context
+        stage adds the clean-start census (_clean_start_census).
+        """
+        prior = self.plan["prior"]["install"]
+        try:
+            anchor = os.stat(self.data.parent / prior / "job-exit.json", follow_symlinks=False).st_mtime_ns
+            later = []
+            for other in sorted(self.data.parent.iterdir()):
+                if other.name in (self.op, prior) or _UUID.fullmatch(other.name) is None:
+                    continue
+                path = other / "job-exit.json"
+                # Not older than the install: a tie counts as later, so a coarse clock can only add a census or a refusal.
+                if os.stat(path, follow_symlinks=False).st_mtime_ns >= anchor:
+                    later.append((self._read_record(path) or {}).get("exitCode"))
+        except OSError:
+            raise Refused("clean_start_unordered") from None
+        if any(code not in (EXIT_PASSED, EXIT_REFUSED) for code in later):
+            raise Refused("clean_start_unclean_job")
+        return len(later)
+
+    def _clean_start_census(self):
+        """A read-only SYSTEM census before any publish: no process of the product, its helpers or the bundled runtime,
+        none running from the install or Python folder, and no ordinary task left. The row's publish stage then checks
+        the registration and the complete installed tree against the install, as it always does. Drift is this row's
+        known failure before any file effect; its caller resets and runs the row again as a new operation."""
+        terminal, _ = self.guest_program("clean-start-census", self._rendered(
+            lambda: clean_start_source(self.paths["installed"], self.paths["python"])))
+        try:
+            value = decode_stdout(terminal)
+            processes, tasks = value["processes"], value["tasks"]
+            processes = [] if processes is None else [processes] if type(processes) is str else processes
+            if (set(value) != {"processes", "tasks"} or type(processes) is not list or len(processes) > CENSUS_LIMIT
+                    or any(type(name) is not str or _CENSUS_IMAGE.fullmatch(name) is None for name in processes)
+                    or type(tasks) is not int or tasks < 0):
+                raise ValueError("clean_start_census_shape")
+        except (ValueError, TypeError, KeyError):
+            raise KnownFailure("clean_start_census_unreadable") from None
+        self.clean_start = {"after": self.since_install, "processes": len(processes), "tasks": tasks}
+        if processes:
+            raise KnownFailure("clean_start_drift:process:" + token(sorted(processes)[0], 60))
+        if tasks:
+            raise KnownFailure("clean_start_drift:task")
 
     def _target_install(self):
         """The earlier install of this very target package on this VM, with the inventory msiexec left: the tree a
@@ -2010,6 +2100,8 @@ class Job:
         self._keep("uac-context.json", (json.dumps({"operationRoot": self.operation_root, "ordinarySid": facts["expectedSid"],
                                                     "ordinarySessionId": facts["console"], "bootFileTimeUtc": value["bootFileTimeUtc"]},
                                                    sort_keys=True) + "\n").encode())
+        if self.since_install:
+            self._clean_start_census()
 
     # Stage 3.
     def _publisher(self, label, action, *, unknown=None, **fields):
@@ -3767,6 +3859,17 @@ class Job:
                         "bootFileTimeUtc": self.context["bootFileTimeUtc"], "allowanceSha256": _sha(data),
                         "declaredProcesses": len(declaration["processes"])}
 
+    def _keep_timing(self):
+        """timing.json beside the receipt: the job's own seconds per stage and guest program, read by collect and kept
+        beside the program record on the coordinator. It decides nothing and is no evidence; a failed write is ignored."""
+        try:
+            value = dict(self.timing, seconds=round(self.rt.monotonic() - self.started, 3))
+            raw = (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+            if len(raw) <= 16384:
+                self._keep("timing.json", raw)
+        except Exception:
+            pass
+
     # Stage 7 and the end of the job.
     def _finish(self, code, failure):
         try:
@@ -3793,6 +3896,9 @@ class Job:
                                         reboot=self._reboot_receipt(code) if self.row.get("reboot") else None)
                 if self.document:
                     receipt["document"] = {"variant": self.document["variant"], "principal": self.principal}
+                if self.since_install:
+                    # Run with no reset since its prior install: the jobs since then and what the census found of the start.
+                    receipt["cleanStart"] = self.clean_start or {"after": self.since_install, "processes": None, "tasks": None}
                 if self.update:
                     prior = self.plan.get("prior") or {}
                     # The base install this row started from (installed above is what it found there before its task), the
@@ -3833,6 +3939,7 @@ class Job:
                 raw = (json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
                 if len(raw) > RECEIPT_BYTES:
                     raise ValueError("receipt_bound")
+                self._keep_timing()
                 self._keep("scenario-receipt.json", raw)
                 self._keep("job-exit.json", (json.dumps({"schemaVersion": 1, "operationId": self.op, "exitCode": code,
                                                          "fenceAnchored": self.anchored}, sort_keys=True) + "\n").encode())
@@ -3854,7 +3961,11 @@ class Job:
                 if name not in stages:
                     break
                 self.stage = name
-                stages[name]()
+                began = self.rt.monotonic()
+                try:
+                    stages[name]()
+                finally:
+                    self._timed("stages", name, began)
                 if stop == name:
                     break
         except Refused as error:
@@ -3889,6 +4000,7 @@ class Job:
             # new file is the zip in the workspace.
             before, stage = code, self.stage
             self.stage = "evidence"
+            began = self.rt.monotonic()
             try:
                 self.stage_evidence()
             except KnownFailure as error:
@@ -3897,10 +4009,12 @@ class Job:
             except Exception as error:
                 code = EXIT_UNKNOWN
                 failure = failure or token(error if isinstance(error, Unknown) else "unexpected:" + type(error).__name__)
+            self._timed("stages", "evidence", began)
             if before != EXIT_PASSED:
                 self.stage = stage
         if code == EXIT_PASSED and stop is None and "declare" in self.row["stages"]:
             self.stage = "declare"
+            began = self.rt.monotonic()
             try:
                 self.stage_declare()
             except KnownFailure as error:
@@ -3908,6 +4022,7 @@ class Job:
             except Exception as error:
                 code = EXIT_UNKNOWN
                 failure = token(error if isinstance(error, Unknown) else "unexpected:" + type(error).__name__)
+            self._timed("stages", "declare", began)
         if code == EXIT_PASSED and stop is None:
             self.stage = "receipt"
         return self._finish(code, failure)

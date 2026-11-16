@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import types
 import unittest
@@ -76,6 +77,21 @@ def receipt_bytes(operation, *, exit_code=0, evidence=None, **changes):
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
 
 
+def submitted_bindings(source):
+    """The literal assignments a submitted program binds: the loader's deflated bindings, or a single program's own."""
+    import zlib
+    assigned = {}
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+            try:
+                assigned[node.targets[0].id] = ast.literal_eval(node.value)
+            except ValueError:
+                pass
+    if "BINDINGS" in assigned:
+        return submitted_bindings(zlib.decompress(base64.b64decode(assigned["BINDINGS"])).decode("utf-8"))
+    return assigned
+
+
 class FakeSsh:
     """Answers the driver's fixed programs by what they are; nothing else may arrive."""
 
@@ -100,6 +116,9 @@ class FakeSsh:
         self.job_files = {}
         self.decision = None
         self.decision_reads = []
+        self.cache_states = {}  # digest -> a state the target read reports instead of what is staged
+        self.waits = []
+        self.wait_reply = {"state": "read", "ended": True, "why": "terminal", "observedAt": 1.0}
 
     def _marker(self, operation):
         return json.dumps({"schemaVersion": 1, "operationId": operation, "scenarioExit": self.exit_code, "failure": None}).encode() + b"\n"
@@ -110,6 +129,15 @@ class FakeSsh:
         program = ast.literal_eval(command[4][5:-1])
         if program == windows._TARGET:
             return "target", TARGET
+        if program == getattr(windows, "_TARGET_STAGED", None):
+            copies = [word.partition(":") for word in command[5:]]
+            states = {digest: ("present" if digest in self.staged and len(self.staged[digest]) == int(size) else "absent")
+                      for digest, _, size in copies}
+            states.update({digest: state for digest, state in self.cache_states.items() if digest in states})
+            return "target", {**TARGET, "staged": states}
+        if program == getattr(windows, "_WAIT_JOB", None):
+            self.waits.append(tuple(command[5:]))
+            return "wait-job", self.wait_reply
         if program == windows._COLLECT:
             return "collect", self.collect_reply
         if program == windows._STAGE:
@@ -602,6 +630,11 @@ class DriverBase(Base):
                         mock.patch.object(transport, "run_ssh", side_effect=lambda argv, **options: self.ssh.run(argv, **options))):
             patcher.start()
             self.addCleanup(patcher.stop)
+        # This checkout's job body is already in the host's cache, as after any earlier row of the same bundle:
+        # call lists below are those of an unchanged bundle. CachedBodyTests start from an empty cache.
+        if hasattr(windows, "render_job_body"):
+            self.body = windows.render_job_body(*windows.verified_bundle(self.root, self.plan(), self.resolver))
+            self.ssh.staged[hashlib.sha256(self.body).hexdigest()] = self.body
 
     def driver(self, **options):
         return windows.NativeScenarioWindowsDriver(self.root, self.resolver, **options)
@@ -727,7 +760,7 @@ class SubmitTests(DriverBase):
     def test_direct_stop_after_reaches_the_job_plan(self):
         self.executor(self.driver(stop_after="context")).start(self.request())
         program = json.loads(self.root.joinpath(*windows._LOCAL_STATE, self.operation, "program.json").read_text())
-        self.assertIn("'stopAfter': 'context'", program["program"]["source"])
+        self.assertEqual("context", submitted_bindings(program["program"]["source"])["PLAN"]["stopAfter"])
 
 
 class ObservationTests(DriverBase):
@@ -1161,14 +1194,12 @@ def native_scenario_execution_plan(case, scenario):
 class PackageSubmitTests(FamilyDriverBase):
     def program_plan(self):
         program = json.loads(self.root.joinpath(*windows._LOCAL_STATE, self.operation, "program.json").read_text())
-        for node in ast.parse(program["program"]["source"]).body:
-            if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "PLAN":
-                return ast.literal_eval(node.value)
+        return submitted_bindings(program["program"]["source"])["PLAN"]
 
     def test_the_package_is_staged_once_before_the_job_and_the_job_names_only_digests(self):
         started = self.executor().start(self.family_request("windows-msi-base-install"))
         self.assertEqual("submitted", started["state"])
-        self.assertEqual(["target", "stage-check", "stage-write", "prepare", "submit"], self.ssh.calls)
+        self.assertEqual(["target", "stage-write", "prepare", "submit"], self.ssh.calls, "the target read finds the package absent")
         digest = self.msi["artifactId"].removeprefix("sha256-")
         self.assertEqual(self.msi["path"].read_bytes(), self.ssh.staged[digest])
         plan = self.program_plan()
@@ -1180,7 +1211,7 @@ class PackageSubmitTests(FamilyDriverBase):
         self.operation = str(uuid.uuid4())
         self.ssh.calls.clear()
         self.executor().start(self.family_request("windows-msi-base-install"))
-        self.assertEqual(["target", "stage-check", "prepare", "submit"], self.ssh.calls, "a staged copy is never sent again")
+        self.assertEqual(["target", "prepare", "submit"], self.ssh.calls, "a staged copy is never sent again")
 
     def test_product_rows_send_no_package_and_name_their_prior_install(self):
         for scenario in ("windows-packaged-cli-smoke", "windows-proxy-lifecycle.commit-readiness-failure", "windows-disconnected-cli-config.ssh-import-routing",
@@ -1201,7 +1232,8 @@ class PackageSubmitTests(FamilyDriverBase):
         # A slow but in-budget staging must not clip the prepare or submit after it into an unknown outcome.
         admissions, budgets = [], []
         run = self.ssh.run
-        clock = types.SimpleNamespace(monotonic=lambda: 5000.0)  # The driver's only clock read is the admission deadline.
+        # The monotonic clock sets the admission deadline; the wall clock only stamps the (non-evidence) timing lines.
+        clock = types.SimpleNamespace(monotonic=lambda: 5000.0, time=lambda: 1_800_000_000.0)
 
         @contextmanager
         def admitted(root, host, operation, *, deadline=None, requirements=None):
@@ -1214,7 +1246,7 @@ class PackageSubmitTests(FamilyDriverBase):
             return run(argv, **options)
         self.ssh.run = timed
         with mock.patch.object(transport, "admitted_transport", admitted), mock.patch.object(windows, "time", clock):
-            for scenario, calls in (("windows-msi-base-install", 5), (SCENARIO, 3)):
+            for scenario, calls in (("windows-msi-base-install", 4), (SCENARIO, 3)):
                 with self.subTest(scenario=scenario):
                     admissions.clear()
                     budgets.clear()
@@ -1370,8 +1402,10 @@ raise SystemExit(0)
                     losses.append(reply)
                     return None
                 return reply
-        rendered = mock.patch.object(windows, "render_program", return_value=(self.job_source(), str(self.data)))
-        with rendered:
+        # The submitted program is this harmless job; the real body is still staged, into a throwaway home's cache.
+        rendered = mock.patch.object(windows, "render_loader", return_value=(self.job_source(), str(self.data)))
+        home = mock.patch.dict(os.environ, {"HOME": str(self.work / "host-home")})
+        with rendered, home:
             first = execution.ScenarioExecutor(self.journal, LosingDriver(self.root, self.resolver, ssh_binary=fake_binary)).start(self.request())
         self.assertEqual(("submitting", "submit_response_unavailable"), (first["state"], first["reason"]))
         self.assertEqual(1, len(losses), "the submit command really ran and its reply was dropped")
@@ -1925,13 +1959,11 @@ class SecondAdministratorAdmissionTests(UpdateBase):
 class UpdateSubmitTests(UpdateBase):
     def program_plan(self):
         program = json.loads(self.root.joinpath(*windows._LOCAL_STATE, self.operation, "program.json").read_text())
-        for node in ast.parse(program["program"]["source"]).body:
-            if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "PLAN":
-                return ast.literal_eval(node.value)
+        return submitted_bindings(program["program"]["source"])["PLAN"]
 
     def test_target_and_receipt_are_staged_and_the_job_names_its_base_and_target_install(self):
         self.assertEqual("submitted", self.executor().start(self.update_request("public-ready"))["state"])
-        self.assertEqual(["target", "stage-check", "stage-write", "stage-check", "stage-write", "prepare", "submit"], self.ssh.calls)
+        self.assertEqual(["target", "stage-write", "stage-write", "prepare", "submit"], self.ssh.calls)
         plan = self.program_plan()
         self.assertEqual({"targetPackage", "fixtureReceipt"}, set(plan["packages"]))
         for role, artifact in (("targetPackage", self.msi), ("fixtureReceipt", self.receipt)):
@@ -2001,6 +2033,339 @@ class UpdateCollectionTests(UpdateBase):
         result = self.executor().status(self.operation)
         self.assertEqual(("terminal", "complete", "failed"), (result["state"], result["collectionState"], result["scenarioEvidence"]["result"]))
         self.assertEqual([], self.ssh.decision_reads)
+
+
+def run_plain(source, cwd):
+    """A submitted program as the durable owner runs it: plain python3, isolated, no VM anywhere."""
+    return subprocess.run([sys.executable, "-I", "-B", "-c", "import sys;exec(compile(sys.stdin.buffer.read(),'job','exec'),{'__name__':'__main__'})"],
+                          input=source.encode(), cwd=cwd, capture_output=True, env={"PATH": os.defpath}, timeout=120)
+
+
+class CachedBodyTests(DriverBase):
+    """S6: the job body every row of one bundle runs waits in the host's artifact cache; only a small loader travels.
+
+    Natively the 1.2 MB program went through the saved-program route on every row (median 47 s for its submit: bind,
+    stage, custody, run) and stage-check was its own contact. RED on a34e07cb: the driver has no cached body.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.ssh.staged.clear()  # An empty host cache: the first row of a bundle.
+
+    def test_an_unchanged_body_is_staged_once_per_host_and_every_submit_fits_one_inline_child(self):
+        self.assertEqual("submitted", self.executor().start(self.request())["state"])
+        self.assertEqual(["target", "stage-write", "prepare", "submit"], self.ssh.calls, "one read finds the body absent, one write stages it")
+        local = self.root.joinpath(*windows._LOCAL_STATE, self.operation)
+        body = (local / "job-body.py").read_bytes()
+        self.assertEqual(body, self.ssh.staged[hashlib.sha256(body).hexdigest()], "the host holds the exact local bytes")
+        self.assertEqual(0o600, (local / "job-body.py").stat().st_mode & 0o777)
+        program = json.loads((local / "program.json").read_text())["program"]
+        self.assertNotIn("FILES_GZ", program["source"], "the bundle is in the cached body, not in the program")
+        self.assertEqual({"SPEC", "SETUP", "CONTEXT", "PLAN"}, set(submitted_bindings(program["source"])))
+        packet = json.loads((local / "admission.json").read_text())
+        submit = carrier.durable_command(self.operation, program, packet, mode="submit", wait_seconds=2)
+        self.assertLess(sum(len(part.encode()) + 1 for part in submit), 60000 // 2,
+                        "under ssh_transport's inline bound with room for a nested route's quoting")
+        for _ in range(2):
+            self.operation = str(uuid.uuid4())
+            self.ssh.calls.clear()
+            self.assertEqual("submitted", self.executor().start(self.request())["state"])
+            self.assertEqual(["target", "prepare", "submit"], self.ssh.calls, "an unchanged body is never sent again")
+        self.assertEqual(1, len(self.ssh.staged))
+
+    def test_a_cached_copy_that_differs_refuses_before_any_preparation(self):
+        digest = hashlib.sha256(self.body).hexdigest()
+        for state in ("differs", "unsafe", None):
+            with self.subTest(state=state):
+                self.operation = str(uuid.uuid4())
+                self.ssh.calls.clear()
+                self.ssh.cache_states = {digest: state}
+                started = self.executor().start(self.request())
+                self.assertEqual(("submitting", "submit_response_unavailable"), (started["state"], started["reason"]))
+                self.assertEqual(["target"], self.ssh.calls)
+                self.assertEqual(0, self.ssh.submits)
+
+    def test_the_loader_over_the_cached_body_runs_what_the_single_program_runs(self):
+        home = self.work / "host-home"
+        cache = home / ".cache/vpn-control-windows-scenarios/artifacts"
+        cache.mkdir(parents=True, mode=0o700)
+        target = dict(TARGET, home=str(home))
+        plan = self.plan()
+        bundle, verified = windows.verified_bundle(self.root, plan, self.resolver)
+        binding = windows._binding(self.root, plan)
+        single, data = windows.render_program(plan, binding, bundle, verified, target)
+        body = windows.render_job_body(bundle, verified)
+        loader, loader_data = windows.render_loader(plan, binding, verified, target, body)
+        self.assertEqual(data, loader_data)
+        self.assertEqual(set(windows._BINDING_NAMES), set(submitted_bindings(loader)))
+        for name in windows._BINDING_NAMES:
+            self.assertEqual(submitted_bindings(single)[name], submitted_bindings(loader)[name])
+        assigned = {target.id for node in ast.parse(body.decode()).body if isinstance(node, ast.Assign)
+                    for target in node.targets if isinstance(target, ast.Name)}
+        self.assertFalse(assigned & set(windows._BINDING_NAMES), "the body never rebinds what the loader bound first")
+        self.assertEqual(single, body.decode().replace("\nFILES_GZ=", "\n" + "".join(
+            name + "=" + repr(submitted_bindings(single)[name]) + "\n" for name in windows._BINDING_NAMES) + "FILES_GZ=", 1)
+            + "raise SystemExit(_host_main())\n", "the single program is the body with the bindings and the last line in place")
+        path = cache / hashlib.sha256(body).hexdigest()
+        path.write_bytes(body)
+        path.chmod(0o600)
+        isolated = self.work / "isolated"
+        isolated.mkdir()
+        ran = {name: run_plain(source, isolated) for name, source in (("single", single), ("loader", loader))}
+        for name, done in ran.items():
+            self.assertEqual(2, done.returncode, name + ": " + done.stderr.decode("utf-8", "replace"))
+        self.assertEqual(ran["single"].stdout, ran["loader"].stdout, "the same refusal, from the same code, without a VM")
+        self.assertTrue(windows._exit_marker(ran["loader"].stdout, self.operation)["failure"].startswith("host_setup:"))
+        self.assertEqual([], list(isolated.iterdir()))
+        self.assertFalse(Path(data).exists())
+        for change, failure in ((lambda: path.write_bytes(body[:-1] + b"#"), "host_setup:job_body_changed"),
+                                (lambda: path.chmod(0o644), "host_setup:job_body_unsafe"),
+                                (lambda: path.unlink(), "host_setup:job_body_unavailable")):
+            with self.subTest(failure=failure):
+                path.unlink(missing_ok=True)
+                path.write_bytes(body)
+                path.chmod(0o600)
+                change()
+                done = run_plain(loader, isolated)
+                self.assertEqual(2, done.returncode, done.stderr.decode("utf-8", "replace"))
+                self.assertEqual({"schemaVersion": 1, "operationId": self.operation, "scenarioExit": 2, "failure": failure},
+                                 windows._exit_marker(done.stdout, self.operation), "refused before a byte of the body ran")
+
+
+class CleanStartWiringTests(FamilyDriverBase):
+    """S6: only the direct script's wiring asks a product row to prove its own start (host_job Job._since_install).
+    RED on a34e07cb: the driver has no clean_start wiring."""
+
+    def plan_of(self, driver, scenario):
+        self.operation = str(uuid.uuid4())
+        self.assertEqual("submitted", self.executor(driver).start(self.family_request(scenario))["state"])
+        program = json.loads(self.root.joinpath(*windows._LOCAL_STATE, self.operation, "program.json").read_text())
+        return submitted_bindings(program["program"]["source"])["PLAN"]
+
+    def test_a_product_row_after_no_reset_asks_for_its_proof_and_nothing_else_does(self):
+        self.assertIs(True, self.plan_of(self.driver(clean_start=True), "windows-packaged-cli-smoke")["cleanStart"])
+        self.assertNotIn("cleanStart", self.plan_of(self.driver(), "windows-packaged-cli-smoke"), "the default plan is unchanged")
+        self.assertNotIn("cleanStart", self.plan_of(self.driver(clean_start=True), "windows-msi-base-reset"), "a setup row is the reset")
+        binding = {"spec": {}, "setup": {"user": "recovery", "administrator": "recoveryadmin"}, "context": {}}
+        value = {"sourceSha": self.head, "productVersion": "2.2.15", "priorInstall": self.prior, "priorPreboot": str(uuid.uuid4())}
+        post = execution.ScenarioPlan.from_mapping(self.request(scenarioId="windows-reboot-reconnect.post"))
+        bindings, _ = windows._job_bindings(post, binding, {"files": []}, TARGET, stop_after=None, value=value, packages={}, clean_start=True)
+        self.assertNotIn("cleanStart", bindings, "a postboot keeps its own chain rules")
+        delegate = ssh_driver.NativeScenarioSshDriver(self.root, self.resolver)._windows(self.plan())
+        self.assertIs(False, delegate.clean_start, "the MCP route never asks")
+        with self.assertRaisesRegex(ValueError, "windows_scenario_clean_start_invalid"):
+            self.driver(clean_start="yes")
+
+
+class CountedAdmissions:
+    """admitted_transport as a counter: each entry is one readiness admission."""
+
+    def __init__(self):
+        self.entered = 0
+        self.open = 0
+
+    @contextmanager
+    def __call__(self, root, host, operation, *, deadline=None, requirements=None):
+        self.entered += 1
+        self.open += 1
+        try:
+            yield
+        finally:
+            self.open -= 1
+
+
+class RowAdmissionTests(DriverBase):
+    """S6: one readiness admission per row; each call still revalidates at its dispatch (ssh_transport, unchanged).
+
+    Natively every target, prepare, submit, status, wait and collect call entered its own admission. RED on a34e07cb:
+    the driver has no row admission.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.admissions = CountedAdmissions()
+        patcher = mock.patch.object(transport, "admitted_transport", self.admissions)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_row(self, driver):
+        executor = self.executor(driver)
+        executor.start(self.request())
+        for _ in range(3):
+            executor.status(self.operation)
+        self.finished()
+        return executor.status(self.operation)
+
+    def test_one_admission_carries_every_call_of_a_row(self):
+        driver = self.driver()
+        with driver.row_admission(self.plan()):
+            result = self.run_row(driver)
+            self.assertEqual(1, self.admissions.open, "held for the whole row")
+        self.assertEqual(("terminal", "complete"), (result["state"], result["collectionState"]))
+        self.assertEqual((1, 0), (self.admissions.entered, self.admissions.open))
+        self.assertEqual(["target", "prepare", "submit", "observe", "observe", "observe", "observe", "collect"], self.ssh.calls)
+
+    def test_without_a_row_admission_each_call_admits_as_before(self):
+        self.run_row(self.driver())
+        self.assertEqual(6, self.admissions.entered, "submit, three status rounds, the terminal round and its collect")
+
+    def test_a_call_that_got_no_reply_makes_the_next_admit_afresh(self):
+        driver = self.driver()
+        executor = self.executor(driver)
+        with driver.row_admission(self.plan()):
+            executor.start(self.request())
+            self.ssh.lost = {"observe"}
+            result = executor.status(self.operation)
+            self.assertEqual(("unknown", "observer_unavailable"), (result["state"], result["reason"]))
+            self.assertEqual(1, self.admissions.entered)
+            self.assertEqual("submitted", executor.status(self.operation)["state"])
+            self.assertEqual(2, self.admissions.entered, "the stale admission was replaced before the next contact")
+            self.assertEqual(1, self.admissions.open)
+        self.assertEqual(1, self.ssh.submits)
+
+    def test_a_refused_admission_sends_nothing_and_the_next_call_tries_again(self):
+        driver = self.driver()
+        executor = self.executor(driver)
+        refusals = []
+        counted = self.admissions
+
+        @contextmanager
+        def flaky(root, host, operation, *, deadline=None, requirements=None):
+            if refusals:
+                raise refusals.pop()
+            with counted(root, host, operation, deadline=deadline):
+                yield
+        with mock.patch.object(transport, "admitted_transport", flaky), driver.row_admission(self.plan()):
+            executor.start(self.request())
+            self.ssh.lost = {"observe"}
+            executor.status(self.operation)
+            calls = list(self.ssh.calls)
+            refusals.append(ValueError("readiness_deadline"))
+            result = executor.status(self.operation)
+            self.assertEqual(("unknown", "observer_unavailable"), (result["state"], result["reason"]))
+            self.assertEqual(calls, self.ssh.calls, "no admission, no contact")
+            self.assertEqual("submitted", executor.status(self.operation)["state"])
+        self.assertEqual((2, 1), (counted.entered, self.ssh.submits))
+
+    def test_admissions_are_one_row_at_a_time(self):
+        driver = self.driver()
+        with driver.row_admission(self.plan()), self.assertRaisesRegex(ValueError, "windows_scenario_row_admission_nested"):
+            with driver.row_admission(self.plan()):
+                pass
+
+
+class JobWaitSsh(FakeSsh):
+    """Runs the driver's real job wait over a local stand-in for the durable owner's job directory."""
+
+    def __init__(self, directory, job):
+        super().__init__(directory)
+        self.job_directory = job
+
+    def respond(self, command):
+        if command[:4] == ("python3", "-I", "-B", "-c") and ast.literal_eval(command[4][5:-1]) == getattr(windows, "_WAIT_JOB", None):
+            self.waits.append(tuple(command[5:]))
+            done = subprocess.run([sys.executable, "-I", "-B", "-c", windows._WAIT_JOB, str(self.job_directory), *command[6:]],
+                                  capture_output=True, timeout=200)
+            return "wait-job", json.loads(done.stdout)
+        return super().respond(command)
+
+
+class JobWaitTests(DriverBase):
+    """S6: a client waits on the host for the job's end instead of sleeping and asking status a round late.
+
+    Natively each status round took 39-61 s, so the end was seen up to a round late and every round was a contact.
+    RED on a34e07cb: the driver has no job wait.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.job = self.work / "durable-job"
+        self.job.mkdir(mode=0o700)
+        body = self.body
+        self.ssh = JobWaitSsh(self.work, self.job)
+        self.ssh.staged[hashlib.sha256(body).hexdigest()] = body
+        self.assertEqual("submitted", self.executor().start(self.request())["state"])
+
+    def owner(self, pid, birth):
+        (self.job / "owner.json").write_text(json.dumps({"operationId": self.operation, "owner": {"pid": pid, "birth": birth}}))
+
+    def test_the_end_comes_back_when_the_owner_records_its_terminal(self):
+        self.owner(os.getpid(), "darwin:0:0")
+        landed = threading.Timer(1.0, (self.job / "terminal.json").write_text, ("{}",))
+        landed.start()
+        self.addCleanup(landed.cancel)
+        began = time.monotonic()
+        found = self.driver().wait_job(self.plan(), 100)
+        took = time.monotonic() - began
+        self.assertEqual((True, "terminal"), (found["ended"], found["why"]))
+        self.assertGreaterEqual(took, 1.0)
+        self.assertLess(took, 30.0, "it returns when the terminal lands, well before its bound")
+        packet = json.loads(self.root.joinpath(*windows._LOCAL_STATE, self.operation, "admission.json").read_text())
+        self.assertEqual([(packet["remoteRoot"] + "/" + self.operation, "100")], self.ssh.waits, "the original's own job directory")
+        self.assertEqual(1, self.ssh.submits)
+
+    def test_an_owner_gone_without_a_terminal_ends_the_wait(self):
+        gone = subprocess.Popen([sys.executable, "-c", "pass"])
+        gone.wait()
+        self.owner(gone.pid, "darwin:0:0")
+        found = self.driver().wait_job(self.plan(), 100)
+        self.assertEqual((True, "owner-gone"), (found["ended"], found["why"]))
+        result = self.executor().status(self.operation)
+        self.assertEqual("submitted", result["state"], "the wait decides nothing: status reads the original")
+
+    def test_a_running_owner_holds_the_wait_to_its_bound_and_a_failed_read_proves_nothing(self):
+        self.owner(os.getpid(), "darwin:0:0")
+        began = time.monotonic()
+        found = self.driver().wait_job(self.plan(), 1)
+        self.assertEqual((False, None), (found["ended"], found["why"]))
+        self.assertGreaterEqual(time.monotonic() - began, 1.0)
+        for seconds in (-1, windows._JOB_WAIT_SECONDS + 1, 1.5, True, "5"):
+            with self.subTest(seconds=seconds), self.assertRaisesRegex(ValueError, "windows_scenario_job_wait_invalid"):
+                self.driver().wait_job(self.plan(), seconds)
+        self.ssh.lost.add("wait-job")
+        self.assertIsNone(self.driver().wait_job(self.plan(), 0))
+        with self.assertRaisesRegex(ValueError, "windows_scenario_job_unknown"):
+            self.driver().wait_job(execution.ScenarioPlan.from_mapping(self.request(correlationId=str(uuid.uuid4()))), 1)
+        self.assertEqual(1, self.ssh.submits)
+
+
+class DriverTimingTests(DriverBase):
+    """Every driver call and admission is timed beside the job's program record, and the job's own stage times are kept
+    from its collect; neither is evidence. RED on a34e07cb: nothing records how long a call took."""
+
+    def test_a_row_measures_itself(self):
+        self.executor().start(self.request())
+        self.executor().status(self.operation)
+        self.finished()
+        self.ssh.collect_reply["timing"] = {"schemaVersion": 1, "stages": [{"name": "anchor", "at": 0.0, "seconds": 1.5}], "programs": [],
+                                            "seconds": 300.25}
+        result = self.executor().status(self.operation)
+        self.assertEqual(("terminal", "complete"), (result["state"], result["collectionState"]))
+        local = self.root.joinpath(*windows._LOCAL_STATE, self.operation)
+        lines = [json.loads(line) for line in (local / "timing.jsonl").read_text().splitlines()]
+        self.assertEqual(["admission", "target", "prepare", "submit", "admission", "observe", "admission", "observe", "admission", "collect"],
+                         [line["phase"] for line in lines])
+        for line in lines:
+            self.assertEqual(1, line["schemaVersion"])
+            self.assertIsInstance(line["seconds"], float)
+            self.assertIsInstance(line["startedAt"], float)
+        self.assertEqual(0o600, (local / "timing.jsonl").stat().st_mode & 0o777)
+        kept = json.loads((local / "host-timing.json").read_text())
+        self.assertEqual(300.25, kept["seconds"])
+        record = json.loads((self.journal / (self.operation + ".json")).read_text())
+        self.assertNotIn("300.25", record["collection"]["rawJson"], "timing is no part of the collected evidence")
+
+    def test_a_timing_line_that_cannot_be_written_changes_nothing(self):
+        local = self.root.joinpath(*windows._LOCAL_STATE, self.operation)
+        original = os.open
+
+        def refusing(path, *arguments, **options):
+            if str(path).endswith("timing.jsonl"):
+                raise PermissionError("read-only")
+            return original(path, *arguments, **options)
+        with mock.patch.object(windows.os, "open", refusing):
+            self.assertEqual("submitted", self.executor().start(self.request())["state"])
+        self.assertFalse((local / "timing.jsonl").exists())
 
 
 if __name__ == "__main__":

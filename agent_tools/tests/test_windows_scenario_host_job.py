@@ -276,6 +276,7 @@ class FakeQga:
         self.runtime_bytes = b"MZ bundled sing-box"
         self.read_pin_records = {}
         self.runtime_reply = None
+        self.census = {"processes": [], "tasks": 0}  # What the clean-start census finds: nothing left behind.
 
     def file_security(self):
         return {"ownerSid": "S-1-5-18", "sddl": "O:SYD:" + self.endpoint_form + "(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;" + SID + ")"}
@@ -308,7 +309,9 @@ class FakeQga:
         self.next_pid += 1
         pid = self.next_pid
         m = program_input(source)
-        if m is None:
+        if m is None and "Win32_Process" in source and "VpnControlOrdinary-*" in source:
+            kind, terminal = "clean-start-census", {"exited": True, "exitcode": 0, "out-data": out_data(self.census)}
+        elif m is None:
             kind, terminal = "context", self._context()
         elif "taskName" in m:
             kind, terminal = "system-run", self._system_run(m, pid)
@@ -1737,13 +1740,14 @@ class FamilyBase(Base):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def family_plan(self, scenario, *, prior=None, operation=None, stop=None):
+    def family_plan(self, scenario, *, prior=None, operation=None, stop=None, clean_start=False):
         row = json.loads(json.dumps(driver.RECIPES[scenario]))
         keys = [key for key in row["artifactKeys"] if key in driver.PACKAGE_KINDS]
         product = {"sourceSha": "a" * 40, "productVersion": VERSION} if "scenarioInput" in row["artifactKeys"] else None
         return self.plan(operation, scenarioId=scenario, row=row, artifactDirectory=str(self.artifacts),
                          packages={key: self.packages[key] for key in keys}, product=product,
-                         prior={} if prior is None else {"install": prior}, stopAfter=stop)
+                         prior={} if prior is None else {"install": prior}, stopAfter=stop,
+                         **({"cleanStart": True} if clean_start else {}))
 
     def run_family(self, scenario, **options):
         plan = self.family_plan(scenario, **options)
@@ -2062,6 +2066,131 @@ class ProductAdmissionTests(FamilyBase):
                 self.assertEqual((0, stop, stop), (code, receipt["stoppedAfter"], receipt["stage"]))
                 self.assertNotIn("system-run", kinds)
                 self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+
+
+class JobTimingTests(FamilyBase):
+    """The job times its own stages and guest programs in timing.json beside the receipt, which stays exactly as it was.
+    RED on a34e07cb: nothing on the host says where a row's time went."""
+
+    def test_the_job_times_its_stages_and_programs_and_the_receipt_does_not_change(self):
+        install, _ = self.install_base()
+        self.rt.sleep(5)  # The fake clock: a job's times are differences of it.
+        plan, code, receipt, kinds = self.run_family("windows-packaged-cli-smoke", prior=install)
+        self.assertEqual(0, code)
+        path = Path(plan["dataDirectory"]) / "timing.json"
+        timing = json.loads(path.read_bytes())
+        self.assertEqual(0o600, path.stat().st_mode & 0o777)
+        ran = []
+        for name in plan["row"]["stages"]:
+            if name not in ("anchor", "context", "publish", "requests", "run", "installed"):
+                break
+            ran.append(name)
+        self.assertEqual([*ran, "evidence"], [row["name"] for row in timing["stages"]])
+        self.assertEqual(receipt["guestPrograms"], len(timing["programs"]))
+        self.assertEqual("context", timing["programs"][0]["name"])
+        self.assertTrue(all(row["seconds"] >= 0 and row["at"] >= 0 for row in timing["stages"] + timing["programs"]))
+        self.assertGreaterEqual(timing["seconds"], sum(row["seconds"] for row in timing["stages"]) - 1e-6)
+        built = job.build_receipt(plan, exit_code=0, stage="receipt", failure=None)
+        self.assertEqual(set(built), set(receipt), "timing is no field of the receipt")
+
+    def test_a_timing_file_that_cannot_be_written_changes_nothing(self):
+        install, _ = self.install_base()
+        original = job.Job._keep
+
+        def keep(instance, relative, raw):
+            if relative == "timing.json":
+                raise OSError("disk full")
+            return original(instance, relative, raw)
+        with mock.patch.object(job.Job, "_keep", keep):
+            plan, code, receipt, _ = self.run_family("windows-packaged-cli-smoke", prior=install)
+        self.assertEqual((0, "passed"), (code, receipt["result"]))
+        self.assertFalse((Path(plan["dataDirectory"]) / "timing.json").exists())
+
+
+class CleanStartTests(FamilyBase):
+    """S6: a caller that ran no reset after a passed row asks the job to prove the row's start (plan cleanStart).
+
+    Natively every discovery row ran after its own 7.0-7.6 min reset. Now a reset follows only a failed or unknown row or
+    a drift: with jobs since its install the row first refuses unless all passed, then runs a read-only census before
+    any publish, and its publish stage checks the registration and the complete installed tree as always. RED on
+    a34e07cb: the job knows no clean-start request.
+    """
+
+    def baseline(self):
+        if getattr(self, "installed_once", False):
+            plan, code, receipt, _ = self.run_family("windows-msi-base-reset")
+            self.assertEqual((0, None), (code, receipt["failure"]))
+            return plan["operationId"]
+        self.installed_once = True
+        return self.install_base()[0]
+
+    def test_right_after_its_install_a_row_runs_as_after_a_reset_and_records_nothing_new(self):
+        install = self.baseline()
+        plan, code, receipt, kinds = self.run_family("windows-packaged-cli-smoke", prior=install, clean_start=True)
+        self.assertEqual((0, "passed"), (code, receipt["result"]))
+        self.assertNotIn("clean-start-census", kinds)
+        self.assertEqual(["context", "initialize"], kinds[:2])
+        self.assertNotIn("cleanStart", receipt, "the same evidence as a row run right after its reset")
+
+    def test_after_passed_rows_a_census_proves_the_start_before_any_publish(self):
+        install = self.baseline()
+        for _ in range(2):
+            self.assertEqual(0, self.run_family("windows-packaged-cli-smoke", prior=install)[1])
+        plan, code, receipt, kinds = self.run_family("windows-disconnected-cli-config", prior=install, clean_start=True)
+        self.assertEqual((0, "passed"), (code, receipt["result"]))
+        self.assertEqual(["context", "clean-start-census", "initialize"], kinds[:3])
+        self.assertEqual({"after": 2, "processes": 0, "tasks": 0}, receipt["cleanStart"])
+        self.assertEqual({"installedPackage": True, "packageSha256": self.packages["targetPackage"]["sha256"]}, receipt["windows"])
+        census = [source for kind, source in self.qga.programs if kind == "clean-start-census"][-1]
+        for word in ("vpn-control.exe", "vpn-control-cli.exe", "sing-box.exe", "vpn-control-install-helper.exe", "vpn-control-vpn-broker.exe",
+                     INSTALLED_ROOT + "\\", PYTHON_ROOT + "\\", "VpnControlOrdinary-*"):
+            self.assertIn("'" + word + "'", census)
+        for verb in ("Stop-", "Remove-", "Set-", "New-", "Unregister-", "Start-"):
+            self.assertNotIn(verb, census.split("$protocolResult= & {", 1)[1].split("\n}\n", 1)[0], "read only")
+
+    def test_what_the_census_finds_left_behind_is_drift_before_any_file_effect(self):
+        cases = (({"processes": ["vpn-control.exe"], "tasks": 0}, "clean_start_drift:process:vpn-control.exe", 1),
+                 ({"processes": "sing-box.exe", "tasks": 0}, "clean_start_drift:process:sing-box.exe", 1),
+                 ({"processes": [], "tasks": 2}, "clean_start_drift:task", 0),
+                 ({"processes": ["C:\\Users\\x\\vpn-control.exe"], "tasks": 0}, "clean_start_census_unreadable", None),
+                 ({"processes": [], "tasks": -1}, "clean_start_census_unreadable", None),
+                 ({"processes": [], "tasks": 0, "other": 1}, "clean_start_census_unreadable", None))
+        for census, failure, processes in cases:
+            with self.subTest(failure=failure, census=census):
+                install = self.baseline()
+                self.assertEqual(0, self.run_family("windows-packaged-cli-smoke", prior=install)[1])
+                self.qga.census = census
+                plan, code, receipt, kinds = self.run_family("windows-packaged-cli-smoke", prior=install, clean_start=True)
+                self.qga.census = {"processes": [], "tasks": 0}
+                self.assertEqual((1, failure, "context"), (code, receipt["failure"], receipt["stage"]))
+                self.assertEqual(["context", "clean-start-census"], kinds, "no publish, no task")
+                self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+                self.assertEqual(processes, receipt["cleanStart"]["processes"])
+                self.assertEqual(1, receipt["cleanStart"]["after"])
+                self.assertEqual({"exited": True, "exitcode": 1}, json.loads(self.fence(plan, ".terminal.json").read_bytes()))
+
+    def test_a_failed_job_since_the_install_leaves_only_a_reset(self):
+        install = self.baseline()
+        self.qga.task_exit = 1
+        self.assertEqual(1, self.run_family("windows-packaged-cli-smoke", prior=install)[1])
+        self.qga.task_exit = None
+        pings = self.qga.count("guest-ping")
+        plan, code, receipt, kinds = self.run_family("windows-packaged-cli-smoke", prior=install, clean_start=True)
+        self.assertEqual((2, "clean_start_unclean_job", []), (code, receipt["failure"], kinds))
+        self.assertEqual(pings, self.qga.count("guest-ping"), "refused before any guest contact")
+        self.assertFalse(self.fence(plan, ".intent.json").exists())
+        reset = self.baseline()
+        plan, code, receipt, kinds = self.run_family("windows-packaged-cli-smoke", prior=reset, clean_start=True)
+        self.assertEqual((0, "passed"), (code, receipt["result"]), "after the reset the row runs as after any reset")
+        self.assertNotIn("cleanStart", receipt)
+
+    def test_without_the_request_nothing_changes(self):
+        install = self.baseline()
+        self.assertEqual(0, self.run_family("windows-packaged-cli-smoke", prior=install)[1])
+        plan, code, receipt, kinds = self.run_family("windows-packaged-cli-smoke", prior=install)
+        self.assertEqual(0, code)
+        self.assertNotIn("clean-start-census", kinds)
+        self.assertNotIn("cleanStart", receipt)
 
 
 class PinBoundTests(FamilyBase):

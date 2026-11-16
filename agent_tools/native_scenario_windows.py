@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 import ast
 import base64
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import gzip
 import hashlib
 import inspect
@@ -26,6 +26,7 @@ import sys
 import tempfile
 import time
 import uuid
+import zlib
 from typing import Any, Callable, Mapping
 
 try:
@@ -821,19 +822,77 @@ def _instance_definitions() -> str:
 
 def render_program(plan: native_scenario_execution.ScenarioPlan, binding: Mapping[str, Any], bundle: Path,
                    verified: Mapping[str, Any], target: Mapping[str, Any], *, stop_after: str | None = None,
-                   value: Mapping[str, Any] | None = None, packages: Mapping[str, Mapping[str, Any]] | None = None) -> tuple[str, str]:
+                   value: Mapping[str, Any] | None = None, packages: Mapping[str, Mapping[str, Any]] | None = None,
+                   clean_start: bool = False) -> tuple[str, str]:
     """One fixed job source: host module, canonical guards, closed plan and the frozen files.
 
     Package rows carry only admitted digests and sizes; the bytes wait in the host's
     artifact cache, staged before submit, and the job reads nothing a caller named.
+    Submit sends render_loader's program over render_job_body's cached bytes instead: the same code, run the same way.
     """
     from . import windows_vm_deploy_remote as deployment
-    row = _row(plan.scenario_id)
-    data = str(PurePosixPath(target["home"]) / _DATA_PARENT / plan.environment / plan.correlation_id)
+    text, files = _job_text(bundle, verified)
+    bindings, data = _job_bindings(plan, binding, verified, target, stop_after=stop_after, value=value, packages=packages,
+                                   clean_start=clean_start)
+    source = (text + "\n" + bindings + "FILES_GZ=" + repr(files) + "\n"
+              + deployment.guest_rpc_definitions() + "\nwire=partial_wire=-1\nQGA_PEER_PID=QGA_GUARD=None\n"
+              + "raise SystemExit(_host_main())\n")
+    compile(source, "windows scenario job", "exec")
+    return source, data
+
+
+def _job_text(bundle: Path, verified: Mapping[str, Any]) -> tuple[str, str]:
+    """The host job's text with the canonical definitions in place, and the frozen bundle, gzip and base64."""
     entries = {entry["path"]: {"sha256": entry["sha256"], "sizeBytes": entry["sizeBytes"]} for entry in verified["files"]}
     raw_files = {path: (bundle / path).read_bytes() for path in entries}
     _need(all(hashlib.sha256(raw_files[path]).hexdigest() == entry["sha256"] for path, entry in entries.items()),
           "windows_scenario_bundle_changed")
+    payload = gzip.compress(json.dumps({path: base64.b64encode(raw).decode("ascii") for path, raw in raw_files.items()},
+                                       sort_keys=True).encode("ascii"), mtime=0)
+    text = raw_files[_HOST_JOB_PATH].decode("utf-8")
+    marker = "    _CANONICAL_INSTANCE_DEFINITIONS()\n"
+    _need(text.count(marker) == 1, "windows_scenario_host_source")
+    text = text.replace(marker, "".join("    " + line + "\n" for line in _instance_definitions().splitlines()))
+    return text, base64.b64encode(payload).decode("ascii")
+
+
+def render_job_body(bundle: Path, verified: Mapping[str, Any]) -> bytes:
+    """What every row of one bundle runs, byte for byte: render_program's source without the row's bindings and last line.
+
+    It names no operation, VM or package, so its digest is the cache key, and an unchanged bundle is staged once per host.
+    """
+    from . import windows_vm_deploy_remote as deployment
+    text, files = _job_text(bundle, verified)
+    source = (text + "\nFILES_GZ=" + repr(files) + "\n" + deployment.guest_rpc_definitions()
+              + "\nwire=partial_wire=-1\nQGA_PEER_PID=QGA_GUARD=None\n")
+    compile(source, "windows scenario job", "exec")
+    return source.encode("utf-8")
+
+
+def render_loader(plan: native_scenario_execution.ScenarioPlan, binding: Mapping[str, Any], verified: Mapping[str, Any],
+                  target: Mapping[str, Any], body: bytes, *, stop_after: str | None = None,
+                  value: Mapping[str, Any] | None = None, packages: Mapping[str, Mapping[str, Any]] | None = None,
+                  clean_start: bool = False) -> tuple[str, str]:
+    """The program a row submits: its bindings (render_program's exactly), the body's digest and size, and _LOADER.
+
+    Run with that body in the host's artifact cache it executes what render_program's source executes; the body
+    defines none of the binding names, which a test holds. Base64 keeps the bindings out of the carrier's escaping.
+    """
+    bindings, data = _job_bindings(plan, binding, verified, target, stop_after=stop_after, value=value, packages=packages,
+                                   clean_start=clean_start)
+    deflated = base64.b64encode(zlib.compress(bindings.encode("utf-8"), 9)).decode("ascii")
+    source = "BINDINGS=" + repr(deflated) + "\nBODY=(" + repr(hashlib.sha256(body).hexdigest()) + "," + str(len(body)) + ")\n" + _LOADER
+    compile(source, "windows scenario loader", "exec")
+    return source, data
+
+
+def _job_bindings(plan: native_scenario_execution.ScenarioPlan, binding: Mapping[str, Any], verified: Mapping[str, Any],
+                  target: Mapping[str, Any], *, stop_after: str | None, value: Mapping[str, Any] | None,
+                  packages: Mapping[str, Mapping[str, Any]] | None, clean_start: bool = False) -> tuple[str, str]:
+    """SPEC, SETUP, CONTEXT and the closed job plan as Python assignments, and the job's data directory."""
+    row = _row(plan.scenario_id)
+    data = str(PurePosixPath(target["home"]) / _DATA_PARENT / plan.environment / plan.correlation_id)
+    entries = {entry["path"]: {"sha256": entry["sha256"], "sizeBytes": entry["sizeBytes"]} for entry in verified["files"]}
     job_plan = {"schemaVersion": 1, "operationId": plan.correlation_id, "scenarioId": plan.scenario_id, "machine": plan.environment,
                 "bundleHash": plan.bundle_hash, "user": binding["setup"]["user"], "dataDirectory": data,
                 "row": row, "files": entries, "stopAfter": stop_after,
@@ -849,19 +908,11 @@ def render_program(plan: native_scenario_execution.ScenarioPlan, binding: Mappin
         if row.get("approver") == "second-administrator":
             # Another Administrators account approves this grant: the job reads its SID too and grants with it.
             job_plan["approvingAdministrator"] = binding["setup"]["secondAdministrator"]
-    payload = gzip.compress(json.dumps({path: base64.b64encode(raw).decode("ascii") for path, raw in raw_files.items()},
-                                       sort_keys=True).encode("ascii"), mtime=0)
-    text = raw_files[_HOST_JOB_PATH].decode("utf-8")
-    marker = "    _CANONICAL_INSTANCE_DEFINITIONS()\n"
-    _need(text.count(marker) == 1, "windows_scenario_host_source")
-    text = text.replace(marker, "".join("    " + line + "\n" for line in _instance_definitions().splitlines()))
-    bindings = {"SPEC": binding["spec"], "SETUP": binding["setup"], "CONTEXT": binding["context"], "PLAN": _plain(job_plan),
-                "FILES_GZ": base64.b64encode(payload).decode("ascii")}
-    source = (text + "\n" + "\n".join(key + "=" + repr(value) for key, value in bindings.items()) + "\n"
-              + deployment.guest_rpc_definitions() + "\nwire=partial_wire=-1\nQGA_PEER_PID=QGA_GUARD=None\n"
-              + "raise SystemExit(_host_main())\n")
-    compile(source, "windows scenario job", "exec")
-    return source, data
+    if clean_start and row["priorInstall"] and (row.get("reboot") or {}).get("phase") != "post":
+        # The caller ran no reset before this row: the job proves the start itself (host_job Job._since_install).
+        job_plan["cleanStart"] = True
+    bindings = {"SPEC": binding["spec"], "SETUP": binding["setup"], "CONTEXT": binding["context"], "PLAN": _plain(job_plan)}
+    return "".join(key + "=" + repr(item) + "\n" for key, item in bindings.items()), data
 
 
 def _plain(value: Any) -> Any:
@@ -891,8 +942,13 @@ def read(name,limit):
   if len(raw)!=info.st_size: raise ValueError()
   return raw
  finally: os.close(fd)
+def timing():
+ try:
+  value=json.loads(read("timing.json",16384))
+  return value if type(value) is dict else None
+ except Exception: return None
 try:
- print(json.dumps({"state":"collected","receipt":base64.b64encode(read("scenario-receipt.json",8192)).decode(),"jobExit":json.loads(read("job-exit.json",1024))},separators=(",",":")))
+ print(json.dumps({"state":"collected","receipt":base64.b64encode(read("scenario-receipt.json",8192)).decode(),"jobExit":json.loads(read("job-exit.json",1024)),"timing":timing()},separators=(",",":")))
 except Exception: print(json.dumps({"state":"unknown"},separators=(",",":")))'''
 
 # Stage one admitted package into the host's artifact cache: digest and size are the only arguments,
@@ -1003,6 +1059,115 @@ print(json.dumps({"state":"read","status":status,"context":read("uac-context.jso
 _UAC_WAIT_SECONDS = 60
 _UAC_CONTEXT_FIELDS = frozenset({"operationRoot", "ordinarySid", "ordinarySessionId", "bootFileTimeUtc"})
 
+# One host read for a client waiting on a job's end: the durable owner's own job directory, polled every half second
+# until its terminal record exists, the owner it recorded is gone, or the bound ends. Host files only, as _WAIT_UAC reads
+# them: no lock, QMP, QGA or guest, so the job never waits on it. "ended" decides nothing: it tells the client to ask
+# status now, and status reads the original as it always did. A wrong "not ended" costs one bound, never a replay.
+_WAIT_JOB = r'''import json,os,stat,sys,time
+job,seconds=sys.argv[1],int(sys.argv[2])
+def read(name):
+ try:
+  fd=os.open(os.path.join(job,name),os.O_RDONLY|getattr(os,"O_NOFOLLOW",0))
+  try:
+   info=os.fstat(fd)
+   if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or info.st_size>16384: return None
+   raw=os.read(fd,16385)
+  finally: os.close(fd)
+  value=json.loads(raw)
+  return value if type(value) is dict else None
+ except Exception: return None
+def gone(owner):
+ if type(owner) is not dict or type(owner.get("pid")) is not int or owner["pid"]<=0 or type(owner.get("birth")) is not str: return False
+ if owner["birth"].startswith("linux:"):
+  try:
+   tail=open("/proc/%d/stat"%owner["pid"]).read().rsplit(")",1)[1].split()
+   return tail[0]=="Z" or "linux:"+str(int(tail[19]))!=owner["birth"]
+  except FileNotFoundError: return True
+  except (OSError,IndexError,ValueError): return False
+ try: os.kill(owner["pid"],0)
+ except ProcessLookupError: return True
+ except OSError: return False
+ return False
+limit=time.monotonic()+seconds
+why=None
+while True:
+ if os.path.lexists(os.path.join(job,"terminal.json")):
+  why="terminal";break
+ record=read("owner.json")
+ if record is not None and gone(record.get("owner")):
+  why="owner-gone";break
+ if time.monotonic()>=limit: break
+ time.sleep(.5)
+print(json.dumps({"state":"read","ended":why is not None,"why":why,"observedAt":round(time.time(),3)},separators=(",",":")))'''
+_JOB_WAIT_SECONDS = 110
+
+# The target's identity, as _TARGET prints it, and the state of each named copy in the host's artifact cache, with the
+# check _STAGE makes, in one read: a submit needs no separate check per copy. Arguments are <sha256>:<bytes> tokens. It
+# creates nothing: an absent cache is every copy absent, and a cache folder others can open refuses as _STAGE refuses.
+_TARGET_STAGED = r'''import hashlib,json,os,pwd,stat,subprocess,sys
+e=pwd.getpwuid(os.geteuid())
+if sys.platform.startswith('linux'):
+ b=open('/proc/sys/kernel/random/boot_id').read(128).strip()
+else:b=subprocess.run(['/usr/sbin/sysctl','-n','kern.bootsessionuuid'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=3,check=True).stdout.decode('ascii').strip().lower()
+copies=[]
+for word in sys.argv[1:]:
+ digest,_,size=word.partition(":")
+ if len(digest)!=64 or any(c not in "0123456789abcdef" for c in digest) or not size.isdigit() or not 0<int(size)<=1073741824:raise SystemExit(2)
+ copies.append((digest,int(size)))
+parent=os.path.join(os.path.expanduser("~"),".cache","vpn-control-windows-scenarios");directory=os.path.join(parent,"artifacts")
+for path in (parent,directory):
+ try:info=os.lstat(path)
+ except FileNotFoundError:continue
+ if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)&0o077:raise SystemExit(3)
+def state(digest,size):
+ try:fd=os.open(os.path.join(directory,digest),os.O_RDONLY|os.O_NOFOLLOW)
+ except FileNotFoundError:return "absent"
+ try:
+  info=os.fstat(fd)
+  if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size!=size:return "differs"
+  h=hashlib.sha256()
+  while True:
+   block=os.read(fd,1048576)
+   if not block:break
+   h.update(block)
+  return "present" if h.hexdigest()==digest else "differs"
+ finally:os.close(fd)
+print(json.dumps({'kind':'ssh','uid':os.geteuid(),'principal':e.pw_name,'home':e.pw_dir,'bootId':b,'staged':{d:state(d,s) for d,s in copies}},sort_keys=True))'''
+_TARGET_FIELDS = frozenset({"kind", "uid", "principal", "home", "bootId"})
+
+# The submitted program of a row: its own bindings, deflated, and the digest and size of the job body it runs. The body
+# (this checkout's host job, the canonical definitions and the frozen bundle) is the same bytes for every row of one
+# bundle, so it waits in the host's artifact cache, staged as a package is, and only this program travels per row: small
+# enough for one inline SSH child. The body is read without following links, owned by the account, private, of its
+# size and digest, before a byte of it runs; otherwise the job refuses before any guest effect, as a host setup does.
+_LOADER = r'''import base64,hashlib,json,os,stat,zlib
+exec(zlib.decompress(base64.b64decode(BINDINGS)).decode("utf-8"))
+def _job_body(digest,size):
+ fd=os.open(os.path.join(PLAN["artifactDirectory"],digest),os.O_RDONLY|getattr(os,"O_NOFOLLOW",0))
+ try:
+  info=os.fstat(fd)
+  if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)&0o077 or info.st_size!=size:raise ValueError("job_body_unsafe")
+  parts=[];total=0
+  while total<=size:
+   part=os.read(fd,1048576)
+   if not part:break
+   parts.append(part);total+=len(part)
+ finally:os.close(fd)
+ raw=b"".join(parts)
+ if len(raw)!=size or hashlib.sha256(raw).hexdigest()!=digest:raise ValueError("job_body_changed")
+ return raw
+try:_body=compile(_job_body(*BODY),"windows scenario job","exec")
+except Exception as error:
+ print(json.dumps({"failure":"host_setup:"+(str(error) if str(error) in ("job_body_unsafe","job_body_changed") else "job_body_unavailable"),"operationId":PLAN["operationId"],"scenarioExit":2,"schemaVersion":1},separators=(",",":"),sort_keys=True))
+ raise SystemExit(2)
+exec(_body)
+del _body
+raise SystemExit(_host_main())
+'''
+_BINDING_NAMES = ("SPEC", "SETUP", "CONTEXT", "PLAN")
+_TIMING_NAME = "timing.jsonl"
+_HOST_TIMING_NAME = "host-timing.json"
+
 
 def _private_directory(path: Path) -> Path:
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -1063,13 +1228,16 @@ class NativeScenarioWindowsDriver:
 
     ``route`` is wiring too: ``mcp`` only from native_scenario_ssh, the delegate mcp_server builds, and
     ``direct`` for a script that builds this driver itself. Submit records it before any connection.
+    ``clean_start`` is wiring of a caller that ran no reset before a product row: the job then proves its start
+    (host_job Job._since_install and its census) instead. The MCP route never sets it.
     """
 
     def __init__(self, repository_root: Path | str, bundle_resolver: Callable[[native_scenario_execution.ScenarioPlan], Path | str],
                  timeout_seconds: int = 30, ssh_binary: str = "ssh", configuration_root: Path | str | None = None,
-                 *, stop_after: str | None = None, route: str = "direct"):
+                 *, stop_after: str | None = None, route: str = "direct", clean_start: bool = False):
         _need(stop_after is None or stop_after in host_job.STOP_AFTER, "windows_scenario_stop_after_invalid")
         _need(route in ROUTES, "windows_scenario_route_invalid")
+        _need(type(clean_start) is bool, "windows_scenario_clean_start_invalid")
         self.root = Path(repository_root).resolve()
         self.configuration_root = Path(configuration_root).resolve() if configuration_root is not None else self.root
         self.bundle_resolver = bundle_resolver
@@ -1077,40 +1245,126 @@ class NativeScenarioWindowsDriver:
         self.ssh_binary = ssh_binary
         self.stop_after = stop_after
         self.route = route
+        self.clean_start = clean_start
+        self._row: dict[str, Any] | None = None
 
     def _local(self, plan: native_scenario_execution.ScenarioPlan) -> Path:
         return self.configuration_root.joinpath(*_LOCAL_STATE, plan.correlation_id)
 
+    def _timing(self, plan: native_scenario_execution.ScenarioPlan | None, value: Mapping[str, Any]) -> None:
+        """One line of how long a call took, appended beside the job's program record. It decides nothing, and a line
+        that cannot be written is simply missing."""
+        if plan is None:
+            return
+        try:
+            directory = self._local(plan)
+            if not directory.is_dir():
+                return
+            line = (json.dumps({"schemaVersion": 1, **value}, sort_keys=True, separators=(",", ":")) + "\n").encode()
+            descriptor = os.open(directory / _TIMING_NAME, os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            try:
+                os.write(descriptor, line)
+            finally:
+                os.close(descriptor)
+        except (OSError, TypeError, ValueError):
+            pass
+
+    @contextmanager
+    def row_admission(self, plan: native_scenario_execution.ScenarioPlan, seconds: int | None = None):
+        """One transport admission for every call of one row: submit, waits, status and collect.
+
+        Each call made inside it skips its own readiness admission; every SSH child still revalidates the admitted
+        transport at its dispatch (connection, boot and account), as each call's own admission did. A call whose
+        transport failed leaves the admission stale, and the next call admits afresh before it sends anything. The
+        public dispatch boundary admits its own calls: inside one, this changes nothing.
+        """
+        row = _row(plan.scenario_id)
+        _need(self._row is None, "windows_scenario_row_admission_nested")
+        seconds = row["deadlineSeconds"] + 3600 if seconds is None else seconds
+        _need(type(seconds) is int and 0 < seconds <= 7 * 86400, "windows_scenario_row_admission_invalid")
+        state = {"plan": plan, "deadline": time.monotonic() + seconds, "stack": None, "stale": True, "admissions": 0}
+        self._row = state
+        try:
+            yield state
+        finally:
+            self._row = None
+            if state["stack"] is not None:
+                state["stack"].close()
+
+    def _row_ready(self, state: dict[str, Any]) -> None:
+        if not state["stale"]:
+            return
+        if state["stack"] is not None:
+            stack, state["stack"] = state["stack"], None
+            stack.close()
+        plan, began = state["plan"], time.monotonic()
+        stack = ExitStack()
+        try:
+            stack.enter_context(ssh_transport.admitted_transport(self.configuration_root, plan.host, plan.correlation_id,
+                                                                 deadline=state["deadline"]))
+        except BaseException:
+            stack.close()
+            raise
+        finally:
+            self._timing(plan, {"phase": "admission", "scope": "row", "startedAt": round(time.time() - (time.monotonic() - began), 3),
+                                "seconds": round(time.monotonic() - began, 3)})
+        state.update(stack=stack, stale=False, admissions=state["admissions"] + 1)
+
     @contextmanager
     def _admitted(self, config: Any, plan: native_scenario_execution.ScenarioPlan, seconds: int):
         """Send pattern of readiness_windows: an explicit transport admission around the SSH child."""
+        state = self._row
+        if state is not None and state["plan"] == plan:
+            self._row_ready(state)
+            try:
+                yield
+            except BaseException:
+                state["stale"] = True  # A refused or failed call: the next one admits afresh.
+                raise
+            return
         if ssh_transport._dispatch_binding(config, plan.host) is not None:
             yield  # The public dispatch boundary already admitted this host.
             return
-        with ssh_transport.admitted_transport(self.configuration_root, plan.host, plan.correlation_id, deadline=time.monotonic() + seconds):
+        began = time.monotonic()
+        with ssh_transport.admitted_transport(self.configuration_root, plan.host, plan.correlation_id, deadline=began + seconds):
+            self._timing(plan, {"phase": "admission", "scope": "call", "startedAt": round(time.time() - (time.monotonic() - began), 3),
+                                "seconds": round(time.monotonic() - began, 3)})
             yield
 
     def _send(self, config: Any, host: str, command: tuple[str, ...], *, seconds: int, keep: Path | None = None,
-              stdin_path: Path | None = None) -> dict[str, Any] | None:
-        argv = ssh_transport.build_ssh_argv(config, host, self.timeout_seconds, command=command, ssh_binary=self.ssh_binary)
-        connection = ssh_transport.connection_host(config, host)
-
-        def run(environment=None):
-            if stdin_path is None:
-                return ssh_transport.run_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                             timeout=seconds, env=environment, check=False)
-            with stdin_path.open("rb") as source:
-                return ssh_transport.run_ssh(argv, stdin=source, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                             timeout=seconds, env=environment, check=False)
+              stdin_path: Path | None = None, plan: native_scenario_execution.ScenarioPlan | None = None,
+              label: str | None = None) -> dict[str, Any] | None:
+        began, wall = time.monotonic(), time.time()
+        done = None
         try:
-            if connection.password is not None:
-                with tempfile.TemporaryDirectory(prefix="vpn-control-askpass-") as directory:
-                    _, environment = ssh_transport._askpass_environment(connection.password, Path(directory))
-                    done = run(environment)
-            else:
-                done = run()
-        except (OSError, subprocess.TimeoutExpired):
-            return None
+            argv = ssh_transport.build_ssh_argv(config, host, self.timeout_seconds, command=command, ssh_binary=self.ssh_binary)
+            connection = ssh_transport.connection_host(config, host)
+
+            def run(environment=None):
+                if stdin_path is None:
+                    return ssh_transport.run_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                                 timeout=seconds, env=environment, check=False)
+                with stdin_path.open("rb") as source:
+                    return ssh_transport.run_ssh(argv, stdin=source, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                                 timeout=seconds, env=environment, check=False)
+            try:
+                if connection.password is not None:
+                    with tempfile.TemporaryDirectory(prefix="vpn-control-askpass-") as directory:
+                        _, environment = ssh_transport._askpass_environment(connection.password, Path(directory))
+                        done = run(environment)
+                else:
+                    done = run()
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+        finally:
+            if done is None or done.returncode != 0:
+                if self._row is not None:
+                    self._row["stale"] = True  # No reply: the next call admits afresh, as it always did.
+            self._timing(plan, {"phase": label or (keep.name if keep is not None else "call"), "startedAt": round(wall, 3),
+                                "seconds": round(time.monotonic() - began, 3),
+                                "returnCode": None if done is None else done.returncode,
+                                "argvBytes": sum(len(part.encode("utf-8")) + 1 for part in command),
+                                "replyBytes": None if done is None else len(done.stdout)})
         if keep is not None:  # A first contact's only record of what the host said.
             _create_private(keep.with_name(keep.name + ".stdout.private"), done.stdout)
             _create_private(keep.with_name(keep.name + ".stderr.private"), done.stderr)
@@ -1138,18 +1392,26 @@ class NativeScenarioWindowsDriver:
                                                      ticks if type(pid) is int else None, receipt)
 
     def _stage(self, config: Any, plan: native_scenario_execution.ScenarioPlan, package: Mapping[str, Any], directory: Path,
-               role: str = "package") -> None:
-        """The package reaches the host's artifact cache before the job exists; a matching copy is kept, never resent."""
-        arguments = (package["sha256"], str(package["bytes"]))
+               role: str, state: Any) -> None:
+        """A copy reaches the host's artifact cache before the job exists; a matching copy is kept, never resent.
+
+        ``state`` is what the target read found for this digest: present, absent, or anything else, which refuses.
+        """
+        _need(state in ("present", "absent"), "windows_scenario_stage_unavailable")
+        if state == "present":
+            return
         # The first role keeps the names a single package always had.
         suffix = "" if role in ("package", "basePackage", "pythonInstaller", "targetPackage") else "-" + role
-        found = self._send(config, plan.host, _py(_STAGE, *arguments, "check"), seconds=_OBSERVE_SECONDS, keep=directory / ("stage-check" + suffix))
-        _need(found is not None and found.get("state") in ("present", "absent"), "windows_scenario_stage_unavailable")
-        if found["state"] == "present":
-            return
-        staged = self._send(config, plan.host, _py(_STAGE, *arguments, "write"), seconds=_STAGE_SECONDS, keep=directory / ("stage-write" + suffix),
-                            stdin_path=Path(package["localPath"]))
+        staged = self._send(config, plan.host, _py(_STAGE, package["sha256"], str(package["bytes"]), "write"), seconds=_STAGE_SECONDS,
+                            keep=directory / ("stage-write" + suffix), stdin_path=Path(package["localPath"]), plan=plan)
         _need(staged is not None and staged.get("state") == "staged", "windows_scenario_stage_unavailable")
+
+    @staticmethod
+    def _target_staged(reply: Any, copies: Mapping[str, Mapping[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+        """The target read's identity, exactly _TARGET's fields, and one cache state for each copy it was asked about."""
+        _need(isinstance(reply, dict) and set(reply) == _TARGET_FIELDS | {"staged"} and isinstance(reply["staged"], dict)
+              and set(reply["staged"]) == {copy["sha256"] for copy in copies.values()}, "windows_scenario_target_unavailable")
+        return {key: reply[key] for key in sorted(_TARGET_FIELDS)}, reply["staged"]
 
     def submit(self, plan: native_scenario_execution.ScenarioPlan) -> native_scenario_execution.JobIdentity:
         row, _, value, packages = _admit(self.root, plan.as_dict(), self.bundle_resolver)
@@ -1165,26 +1427,33 @@ class NativeScenarioWindowsDriver:
         _create_private(directory / ROUTE_NAME, json.dumps({"schemaVersion": 1, "correlationId": plan.correlation_id,
                                                             "route": self.route}, sort_keys=True).encode())
         config = ssh_transport.load_config(self.configuration_root)
+        # The job body every row of this bundle runs, kept here as the exact bytes the host's cached copy must be.
+        body = render_job_body(bundle, verified)
+        _create_private(directory / "job-body.py", body)
+        copies = {"jobBody": {"sha256": hashlib.sha256(body).hexdigest(), "bytes": len(body), "localPath": str(directory / "job-body.py")},
+                  **{role: packages[role] for role in staged_roles(row)}}
         # The admission deadline clips every call under it, so it is the sum of their own budgets:
         # a slow but in-budget staging never shortens the prepare or submit into an unknown outcome.
-        roles = staged_roles(row)
-        seconds = self.timeout_seconds + 2 * _SUBMIT_SECONDS + (_OBSERVE_SECONDS + _STAGE_SECONDS) * len(roles)
+        seconds = _OBSERVE_SECONDS + 2 * _SUBMIT_SECONDS + _STAGE_SECONDS * len(copies)
         with self._admitted(config, plan, seconds):
-            target = self._send(config, plan.host, _py(_TARGET), seconds=self.timeout_seconds, keep=directory / "target")
-            _need(target is not None, "windows_scenario_target_unavailable")
-            for role in roles:
-                self._stage(config, plan, packages[role], directory, role)
-            source, data = render_program(plan, binding, bundle, verified, target, stop_after=self.stop_after,
-                                          value=value, packages=packages)
+            # One read: who the target is, and which copies its cache already holds byte for byte.
+            found = self._send(config, plan.host, _py(_TARGET_STAGED, *sorted({copy["sha256"] + ":" + str(copy["bytes"]) for copy in copies.values()})),
+                               seconds=_OBSERVE_SECONDS, keep=directory / "target", plan=plan)
+            _need(found is not None, "windows_scenario_target_unavailable")
+            target, staged = self._target_staged(found, copies)
+            for role, copy in copies.items():
+                self._stage(config, plan, copy, directory, role, staged[copy["sha256"]])
+            source, data = render_loader(plan, binding, verified, target, body, stop_after=self.stop_after,
+                                         value=value, packages=packages, clean_start=self.clean_start)
             program = {"language": "python3", "source": source, "args": [], "cwd": target["home"], "targetContext": target}
             _create_private(directory / "program.json", json.dumps({"program": program, "dataDirectory": data}, sort_keys=True).encode())
             packet = self._send(config, plan.host, carrier.prepare_command(plan.correlation_id, program, durable_remote_job.owner_source()),
-                                seconds=_SUBMIT_SECONDS, keep=directory / "prepare")
+                                seconds=_SUBMIT_SECONDS, keep=directory / "prepare", plan=plan)
             _need(packet is not None, "windows_scenario_preparation_unavailable")
             carrier.durable_command(plan.correlation_id, program, packet, mode="observe")  # Validate with an inert render.
             _create_private(directory / "admission.json", json.dumps(packet, sort_keys=True).encode())
             reply = self._send(config, plan.host, carrier.durable_command(plan.correlation_id, program, packet, mode="submit", wait_seconds=2),
-                               seconds=_SUBMIT_SECONDS, keep=directory / "submit")
+                               seconds=_SUBMIT_SECONDS, keep=directory / "submit", plan=plan)
         _need(reply is not None, "windows_scenario_submit_unavailable")
         status = reply.get("status")
         _need(isinstance(status, Mapping) and status.get("operationId") == plan.correlation_id, "windows_scenario_submit_unavailable")
@@ -1199,7 +1468,7 @@ class NativeScenarioWindowsDriver:
             config = ssh_transport.load_config(self.configuration_root)
             with self._admitted(config, plan, _OBSERVE_SECONDS):
                 reply = self._send(config, plan.host, carrier.durable_command(plan.correlation_id, program, retained["packet"], mode="observe", wait_seconds=0),
-                                   seconds=_OBSERVE_SECONDS)
+                                   seconds=_OBSERVE_SECONDS, plan=plan, label="observe")
         except (OSError, ValueError, ssh_transport.SshConfigError):
             return None
         if (reply is None or reply.get("schemaVersion") != 1 or reply.get("operationId") != plan.correlation_id
@@ -1250,7 +1519,8 @@ class NativeScenarioWindowsDriver:
     def _read_job_file(self, plan: native_scenario_execution.ScenarioPlan, data: str, name: str) -> Any:
         config = ssh_transport.load_config(self.configuration_root)
         with self._admitted(config, plan, _OBSERVE_SECONDS):
-            reply = self._send(config, plan.host, _py(_READ_JOB_FILE, data, name), seconds=_OBSERVE_SECONDS)
+            reply = self._send(config, plan.host, _py(_READ_JOB_FILE, data, name), seconds=_OBSERVE_SECONDS, plan=plan,
+                                label="read-" + name)
         return reply["value"] if isinstance(reply, Mapping) and reply.get("state") == "read" else None
 
     def _uac_pending(self, plan: native_scenario_execution.ScenarioPlan, program: Mapping[str, Any]) -> str | None:
@@ -1309,7 +1579,7 @@ class NativeScenarioWindowsDriver:
             config = ssh_transport.load_config(self.configuration_root)
             with self._admitted(config, plan, seconds + _OBSERVE_SECONDS):
                 reply = self._send(config, plan.host, _py(_WAIT_UAC, retained["program"]["dataDirectory"], uac["event"], str(seconds)),
-                                   seconds=seconds + _OBSERVE_SECONDS)
+                                   seconds=seconds + _OBSERVE_SECONDS, plan=plan, label="wait-uac")
         except (OSError, ValueError, ssh_transport.SshConfigError):
             return None
         if not isinstance(reply, Mapping) or reply.get("state") != "read" or type(reply.get("ended")) is not bool:
@@ -1319,6 +1589,46 @@ class NativeScenarioWindowsDriver:
         return {"token": _uac_token(uac, reply.get("status")), "ended": reply["ended"],
                 "observedAt": observed if type(observed) in (int, float) else None}
 
+    def wait_job(self, plan: native_scenario_execution.ScenarioPlan, seconds: int) -> dict[str, Any] | None:
+        """One host read that returns as soon as this job's durable owner has ended, for a client to ask status at once.
+
+        A client that slept and asked status saw the end up to one status round late (39 to 61 s each, natively), and
+        each round spent a contact. This read waits on the host beside the owner's own job directory instead: its
+        terminal record, or the owner it recorded gone. It reads only; status still decides from the original job, and
+        nothing is ever submitted again. None means the read failed and proves nothing: ask status instead.
+        """
+        _need(type(seconds) is int and 0 <= seconds <= _JOB_WAIT_SECONDS, "windows_scenario_job_wait_invalid")
+        retained = self._retained(plan)
+        _need(retained is not None, "windows_scenario_job_unknown")
+        root = retained["packet"].get("remoteRoot") if isinstance(retained["packet"], Mapping) else None
+        expected = "/tmp/vpn-control-program-" + str(retained["program"]["program"]["targetContext"]["uid"]) + "-" + plan.correlation_id
+        _need(root in (expected, "/private" + expected), "windows_scenario_job_unknown")
+        try:
+            config = ssh_transport.load_config(self.configuration_root)
+            with self._admitted(config, plan, seconds + _OBSERVE_SECONDS):
+                reply = self._send(config, plan.host, _py(_WAIT_JOB, root + "/" + plan.correlation_id, str(seconds)),
+                                   seconds=seconds + _OBSERVE_SECONDS, plan=plan, label="wait-job")
+        except (OSError, ValueError, ssh_transport.SshConfigError):
+            return None
+        if not isinstance(reply, Mapping) or reply.get("state") != "read" or type(reply.get("ended")) is not bool:
+            return None
+        why = reply.get("why") if reply.get("why") in ("terminal", "owner-gone") else None
+        observed = reply.get("observedAt")
+        if reply["ended"] is not (why is not None):
+            return None
+        return {"ended": reply["ended"], "why": why, "observedAt": observed if type(observed) in (int, float) else None}
+
+    def _retain_host_timing(self, plan: native_scenario_execution.ScenarioPlan, value: Any) -> None:
+        """The job's own stage and program times, kept create-only beside its program record. Never evidence."""
+        if not isinstance(value, dict):
+            return
+        try:
+            raw = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+            if len(raw) <= 16384:
+                _create_private(_private_directory(self._local(plan)) / _HOST_TIMING_NAME, raw)
+        except (OSError, TypeError, ValueError):
+            pass
+
     def collect(self, plan: native_scenario_execution.ScenarioPlan, identity: native_scenario_execution.JobIdentity) -> Mapping[str, Any] | None:
         retained = self._retained(plan)
         if retained is None or identity.pid is None:
@@ -1327,9 +1637,10 @@ class NativeScenarioWindowsDriver:
         try:
             config = ssh_transport.load_config(self.configuration_root)
             with self._admitted(config, plan, _OBSERVE_SECONDS):
-                reply = self._send(config, plan.host, _py(_COLLECT, data), seconds=_OBSERVE_SECONDS)
+                reply = self._send(config, plan.host, _py(_COLLECT, data), seconds=_OBSERVE_SECONDS, plan=plan, label="collect")
                 if reply is None or reply.get("state") != "collected":
                     return None
+                self._retain_host_timing(plan, reply.get("timing"))
                 raw = base64.b64decode(reply["receipt"], validate=True)
                 summary = self._summary(plan, raw, reply.get("jobExit"))
                 if summary is not None and not self._decision_joined(config, plan, summary, json.loads(raw)):
@@ -1363,7 +1674,8 @@ class NativeScenarioWindowsDriver:
             return True
         decision = str(uuid.uuid5(uuid.UUID(plan.correlation_id), "windows-uac-decision"))
         root = _binding(self.root, plan)["spec"]["root"]
-        reply = self._send(config, plan.host, _py(_READ_DECISION, root, decision), seconds=_OBSERVE_SECONDS)
+        reply = self._send(config, plan.host, _py(_READ_DECISION, root, decision), seconds=_OBSERVE_SECONDS, plan=plan,
+                           label="read-decision")
         value = reply.get("value") if isinstance(reply, Mapping) and reply.get("state") == "read" else None
         joined = (isinstance(value, Mapping) and set(value) == _DECISION_FIELDS and value["state"] == "input-ack-only"
                   and value["operationId"] == decision and value["decision"] == uac["decision"] and value["prompt"] == uac["prompt"]
@@ -1405,7 +1717,8 @@ class NativeScenarioWindowsDriver:
         parts = []
         offset = 0
         while offset < evidence["bytes"]:
-            reply = self._send(config, plan.host, _py(_PULL, data, evidence["name"], str(offset), str(_EVIDENCE_CHUNK)), seconds=_OBSERVE_SECONDS)
+            reply = self._send(config, plan.host, _py(_PULL, data, evidence["name"], str(offset), str(_EVIDENCE_CHUNK)), seconds=_OBSERVE_SECONDS,
+                               plan=plan, label="pull")
             _need(reply is not None and reply.get("size") == evidence["bytes"], "windows_scenario_evidence_unavailable")
             part = base64.b64decode(reply["data"], validate=True)
             _need(0 < len(part) <= _EVIDENCE_CHUNK, "windows_scenario_evidence_unavailable")

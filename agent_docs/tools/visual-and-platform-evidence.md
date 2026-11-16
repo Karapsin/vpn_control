@@ -817,16 +817,74 @@ a substituted one: the registry and the set record what their caller registered.
 
 Submit stages an admitted package before the job exists. It goes over SSH stdin
 into the host's artifact cache,
-`~/.cache/vpn-control-windows-scenarios/artifacts/<sha256>`: a check, then a write
-into a private temporary file that is hashed and linked create-only, within 900 s.
-A present, matching copy is never sent again. The staging program sets umask 077
-itself and refuses an existing cache folder that other users can open. The job
-plan names only digests and sizes, and the job pushes the bytes to the guest in
-32,768-byte chunks. One transport admission covers every call of a submit and is
-the sum of their budgets: 390 s without a package, 1,350 s with one. A lost reply
-anywhere in submit, staging included, ends the start as
-`submit_response_unavailable`; status and resume only look for it by
-correlation, and nothing submits it again.
+`~/.cache/vpn-control-windows-scenarios/artifacts/<sha256>`: a write into a private
+temporary file that is hashed and linked create-only, within 900 s. A present,
+matching copy is never sent again. The staging program sets umask 077 itself and
+refuses an existing cache folder that other users can open. The job plan names
+only digests and sizes, and the job pushes the bytes to the guest in 32,768-byte
+chunks.
+
+The job's own code is cached the same way. `render_job_body` is the host job with
+the canonical definitions and the frozen bundle: the same bytes for every row of
+one bundle, about 1.2 MB, kept beside the program record as `job-body.py`. The
+submitted program is `render_loader`'s: the row's own `SPEC`, `SETUP`, `CONTEXT`
+and `PLAN`, deflated, the body's digest and size, and a loader that opens the
+cached body without following links, requires it owned by the account, private,
+of that size and digest, and only then runs it. A body that is missing, changed
+or open to others ends the job with exit 2 and `host_setup:job_body_unavailable`,
+`host_setup:job_body_changed` or `host_setup:job_body_unsafe` before any guest
+effect. Run that way it executes exactly what `render_program`'s single program
+executes, which a test holds without a VM; the body binds none of the loader's
+names. The submit is about 14 kB, so it goes in one inline SSH child instead of
+the saved-program route the 1.2 MB program needed on every row.
+
+The first contact of a submit is one read: the target's identity, exactly as
+`_TARGET` prints it, and the cache state of every copy the row needs (the body
+and its packages), checked as staging checks a copy. Only an absent copy is
+written; a copy that differs, or a cache folder others can open, refuses before
+any preparation. One transport admission covers every call of a submit and is the
+sum of their budgets: 1,320 s for the body and none, 2,220 s with one package. A
+lost reply anywhere in submit, staging included, ends the start as
+`submit_response_unavailable`; status and resume only look for it by correlation,
+and nothing submits it again.
+
+The direct script holds one readiness admission for a whole row with
+`driver.row_admission(plan)`: submit, waits, status and collect then enter no
+admission of their own, and every SSH child still revalidates the admitted
+transport at its dispatch (connection, boot and account), as each call's own
+admission did. A call that got no reply, or whose readiness was refused, leaves
+the admission stale, and the next call admits afresh before it sends anything.
+The MCP route's dispatch boundary admits each of its calls as before.
+
+`driver.wait_job(plan, seconds)` is one host read of at most 110 s over the
+durable owner's own job directory, polled every half second: it returns when the
+owner's terminal record exists or the owner it recorded is gone. It reads host
+files only (no lock, QMP, QGA or guest) and decides nothing: its caller asks
+status then, and status reads the original job as always. A failed read returns
+none and proves nothing. The direct script waits this way instead of sleeping and
+asking status, and still asks status at least every 10 minutes.
+
+Each driver call and admission appends a line to `timing.jsonl` beside the
+program record (phase, start, seconds, return code, argv and reply bytes), and the
+job writes `timing.json` beside its receipt (each stage's and guest program's
+seconds), which collect keeps as `host-timing.json`. Neither is evidence or part
+of the collection, and a line that cannot be written is simply missing.
+
+A product row may run after passed rows without a reset in between. The direct
+script then constructs the driver with `clean_start=True`, which puts
+`cleanStart` into the plan of a product row (never a setup row, a postboot or the
+MCP route). The job counts the jobs on this VM whose `job-exit.json` is not older
+than the prior install's. With none, the row runs exactly as right after its
+reset and records nothing new. Otherwise it refuses with
+`clean_start_unclean_job` before any guest contact unless each of them passed or
+was refused; then, after its context, it runs a read-only SYSTEM census: no
+process of the product, its helpers or the bundled runtime, none running from
+the install or Python folder, and no `VpnControlOrdinary-*` task. Anything found
+is the known failure `clean_start_drift:process:<image>` or `clean_start_drift:task`
+before any publish, and the receipt records `cleanStart` (jobs since the install,
+processes and tasks found). The publish stage then checks the registration and
+the complete installed tree against the install as always. Its caller resets and
+runs the row again as a new operation.
 
 A product row pushes no MSI. Before its fence the job reads the named install's
 receipt on the host and exits 2 unless that job passed on this VM with the same
