@@ -1025,12 +1025,14 @@ internal class RetryingTrayRegistration<T>(
 
 /**
  * The Windows tray icon's registration, decided by the notification area and not by what AWT lists (see
- * [WindowsNotificationArea]). An attempt offers the icon only while [area] is present, and the attempts end as
- * [RetryingTrayRegistration]'s do, with [onUnavailable] after the last. Once the icon is in, [area] is read again
- * every [watchDelayMillis] for as long as the registration lives, and the tray is available only while it is
- * present: [onLost] when it went away (Explorer ended or is restarting), [onAvailable] again once it is back. AWT
- * keeps its icon meanwhile and adds it again when the new Explorer broadcasts TaskbarCreated (awt_TrayIcon.cpp,
- * AwtTrayIcon::WmTaskbarCreated).
+ * [WindowsNotificationArea]). Until [area] is present it is read every [watchDelayMillis], for as long as the
+ * registration lives: no icon is offered and nothing is reported, so the window stays visible and the tray can still
+ * come (an autostarted GUI starts at logon, independently of Explorer's taskbar). The first read that finds it starts
+ * the attempts, which count only AWT's refusals and end as [RetryingTrayRegistration]'s do, with [onUnavailable]
+ * after the last. Once the icon is in, [area] is read again every [watchDelayMillis] as well, and the tray is
+ * available only while it is present: [onLost] when it went away (Explorer ended or is restarting), [onAvailable]
+ * again once it is back. AWT keeps its icon meanwhile and adds it again when the new Explorer broadcasts
+ * TaskbarCreated (awt_TrayIcon.cpp, AwtTrayIcon::WmTaskbarCreated).
  */
 internal class NotificationAreaTrayRegistration<T>(
     target: TrayRegistrationTarget<T>,
@@ -1048,15 +1050,7 @@ internal class NotificationAreaTrayRegistration<T>(
     private var available = false
     private var watch: TrayRetryHandle? = null
     private val registration = RetryingTrayRegistration(
-        target = object : TrayRegistrationTarget<T> {
-            override fun install(): TrayInstallResult<T> {
-                return if (areaPresent()) target.install() else TrayInstallResult.RetryableFailure
-            }
-
-            override fun remove(icon: T) {
-                target.remove(icon)
-            }
-        },
+        target = target,
         scheduler = scheduler,
         retryPolicy = retryPolicy,
         onInstalled = { icon ->
@@ -1070,7 +1064,7 @@ internal class NotificationAreaTrayRegistration<T>(
         get() = registration.installedIcon
 
     fun start() {
-        registration.start()
+        awaitArea()
     }
 
     fun dispose() {
@@ -1082,6 +1076,22 @@ internal class NotificationAreaTrayRegistration<T>(
 
     private fun areaPresent(): Boolean = runCatching { area.present() }.getOrDefault(false)
 
+    private fun awaitArea() {
+        if (disposed) return
+        if (areaPresent()) {
+            watch = null
+            registration.start()
+            return
+        }
+        readAgain { awaitArea() }
+    }
+
+    private fun readAgain(action: () -> Unit) {
+        val next = scheduler.schedule(watchDelayMillis, action)
+        watch = next
+        if (disposed) next.cancel()
+    }
+
     private fun follow() {
         if (disposed) return
         val present = areaPresent()
@@ -1089,9 +1099,7 @@ internal class NotificationAreaTrayRegistration<T>(
             available = present
             runCatching { if (present) onAvailable() else onLost() }
         }
-        val next = scheduler.schedule(watchDelayMillis) { follow() }
-        watch = next
-        if (disposed) next.cancel()
+        readAgain { follow() }
     }
 }
 

@@ -26,10 +26,28 @@ class DesktopTrayNotificationAreaTest {
         }
         assertEquals(emptyList(), hideable, "seconds at which gui hide or a close would have hidden the window")
         assertTrue(world.state.windowVisible)
-        assertEquals(listOf(59_000L to "unavailable"), world.reports, "unavailable at the 60th attempt, never available")
+        assertEquals(emptyList(), world.reports, "never available, and not given up either: the area may still come")
         assertEquals(emptyList(), world.offered, "no icon is offered where there is no notification area")
-        assertFalse(world.state.traySupported)
-        assertEquals(0, world.clock.pending, "nothing runs after the last attempt")
+        assertTrue(world.state.traySupported)
+        assertEquals(1, world.clock.pending, "the notification area is still read every second")
+    }
+
+    @Test
+    fun aNotificationAreaThatAppearsLongAfterTheGuiStartedStillGetsTheTray() {
+        // Autostart is an ONLOGON task that does not wait for Explorer; its taskbar can come minutes later.
+        val world = WindowsTrayWorld(areaPresent = false, startInTray = true)
+        world.registration.start()
+        world.clock.advanceTo(89_000)
+        assertEquals(emptyList(), world.reports, "no tray yet, and none given up")
+        assertTrue(world.state.traySupported)
+        assertTrue(world.state.windowVisible)
+        assertFalse(world.closeHides())
+        world.areaPresent = true
+        world.clock.advanceTo(90_000)
+        assertEquals(listOf(90_000L), world.offered, "the icon is offered at the first read that finds the area")
+        assertEquals(listOf(90_000L to "available"), world.reports)
+        assertFalse(world.state.windowVisible, "the autostart hides once the tray is there")
+        assertTrue(world.closeHides())
     }
 
     @Test

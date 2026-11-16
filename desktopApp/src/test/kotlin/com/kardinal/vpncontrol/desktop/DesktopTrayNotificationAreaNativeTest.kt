@@ -64,8 +64,8 @@ class DesktopTrayNotificationAreaNativeTest {
             val result = runChild(root, windowStation() + "\\" + name)
             assertEquals("true", result.getProperty("awtSupported"), "AWT supports a tray there, as it did on 2.2.17")
             assertEquals("false", result.getProperty("area"))
-            assertEquals("unavailable", result.getProperty("first"), "the product's own AWT backend: ${result}")
-            assertEquals("", result.getProperty("later"), "never available afterwards either")
+            assertEquals("none", result.getProperty("first"), "the product's own AWT backend reports nothing yet: ${result}")
+            assertEquals("", result.getProperty("later"), "neither available nor given up afterwards")
             assertEquals("0", result.getProperty("awtIcons"), "no icon was offered to a desktop without a notification area")
         } finally {
             root.toFile().deleteRecursively()
@@ -80,7 +80,7 @@ class DesktopTrayNotificationAreaNativeTest {
             val taskbar = TASKBAR in topLevelClasses()
             val result = runChild(root, desktop = null)
             assertEquals(taskbar.toString(), result.getProperty("area"))
-            assertEquals(if (taskbar) "available" else "unavailable", result.getProperty("first"), "result: $result")
+            assertEquals(if (taskbar) "available" else "none", result.getProperty("first"), "result: $result")
             assertEquals("", result.getProperty("later"))
         } finally {
             root.toFile().deleteRecursively()
@@ -204,6 +204,9 @@ class DesktopTrayNotificationAreaNativeTest {
  * it, with three attempts 200 ms apart instead of sixty a second apart, reporting what it decided.
  */
 internal object DesktopTrayNotificationAreaNativeChild {
+    /** Far beyond a first read of the area and three attempts 200 ms apart where the area exists. */
+    private const val FIRST_REPORT_SECONDS = 10L
+
     @JvmStatic
     fun main(arguments: Array<String>) {
         val result = Path.of(arguments[0])
@@ -239,7 +242,8 @@ internal object DesktopTrayNotificationAreaNativeChild {
             onUnavailable = { reports.offer("unavailable") },
             onComplete = handle::set,
         )
-        val first = reports.poll(60, TimeUnit.SECONDS) ?: "none"
+        // Without a notification area the product waits for one and reports nothing: a bounded wait answers "none".
+        val first = reports.poll(FIRST_REPORT_SECONDS, TimeUnit.SECONDS) ?: "none"
         Thread.sleep(2_500) // Two reads of the notification area after the first answer: nothing changes.
         val later = generateSequence { reports.poll() }.toList()
         val icons = runCatching { AwtSystemTray.getSystemTray().trayIcons.size }.getOrDefault(-1)

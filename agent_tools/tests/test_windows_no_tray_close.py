@@ -5,8 +5,8 @@ through declared user32, advapi32 and kernel32 peers. A window lives on the desk
 moves only through SetThreadDesktop, an empty desktop lists no window (EnumDesktopWindows answers FALSE without an
 error), and a window message passes only between threads of one desktop. The product gains what the row reads from
 the Kotlin source: the GUI's tray decision (DesktopTray.kt: on Windows an attempt offers the icon only while the GUI's
-own desktop has a Shell_TrayWnd, attempts are retried every TrayInstallRetryDelayMillis up to TrayInstallMaxAttempts,
-and the tray is available only while that window is there), Main.kt's close and its gui hide handler, which ask for it
+own desktop has a Shell_TrayWnd, which it waits for without limit, an icon AWT refuses is retried every
+TrayInstallRetryDelayMillis up to TrayInstallMaxAttempts, and the tray is available only while that window is there), Main.kt's close and its gui hide handler, which ask for it
 again, and the owner's frontend lease, which a detaching GUI releases. What AWT does with an icon on a desktop with no
 Shell_TrayWnd is the switch icon_without_tray_host: run 6c7250f6 saw it taken. The decision of 2.2.17, available once
 AWT takes the icon, stays as the product switch tray_decision "awt-list" for the oracle's controls. Every row runs
@@ -46,7 +46,8 @@ PROBED = (r"internal object WindowsNotificationArea : DesktopTrayHost \{\n\s+ove
           r"\s+return runCatching \{\n\s+User32\.INSTANCE\.FindWindow\(WindowsNotificationAreaClass, null\) != null\n")
 WINDOWS = (r"if \(desktopTrayPlatform\(\) == DesktopTrayPlatform\.Windows\) \{\n\s+val notificationArea = "
            r"NotificationAreaTrayRegistration\(\n\s+target = target,\n\s+area = WindowsNotificationArea,\n")
-GATED = r"return if \(areaPresent\(\)\) target\.install\(\) else TrayInstallResult\.RetryableFailure\n"
+GATED = (r"private fun awaitArea\(\) \{\n\s+if \(disposed\) return\n\s+if \(areaPresent\(\)\) \{\n\s+watch = null\n"
+         r"\s+registration\.start\(\)\n\s+return\n\s+\}\n\s+readAgain \{ awaitArea\(\) \}\n")
 INSTALL = (r"fun installTrayIcon\(icon: TrayIcon\) \{\n\s+if \(disposed\) return\n\s+trayIcon = icon\n"
            r"\s+when \(desktopTrayPlatform\(\)\) \{\n\s+DesktopTrayPlatform\.Linux -> \{\n\s+startLinuxTrayMonitor\(\)\n"
            r"\s+checkLinuxTrayVisibility\(\)\n\s+\}\n\s+//[^\n]*\n\s+DesktopTrayPlatform\.Windows -> Unit\n")
