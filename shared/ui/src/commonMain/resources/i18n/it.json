@@ -29,7 +29,7 @@
   "STATUS": "Stato",
   "SELECTED_PROFILE": "Profilo selezionato: {0}",
   "SELECTED_LOCATION": "Posizione selezionata: {0}",
-  "SERVER": "Servitore: {0}",
+  "SERVER": "Server: {0}",
   "MISMATCH_TITLE": "La posizione selezionata appartiene a un altro abbonamento",
   "MISMATCH_ACTIVE_PROFILE": "Profilo attivo: {0}",
   "MISMATCH_ACTION": "Esegui Trova migliore o riconnetti per passare a una posizione dell’abbonamento corrente.",

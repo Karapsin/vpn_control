@@ -71,7 +71,7 @@
     "DESKTOP_VPN_CAPABILITY_READY": "VPN เดสก์ท็อปพร้อม",
     "DESKTOP_VPN_CAPABILITY_ERROR": "VPN เดสก์ท็อป: {valueOrNotReady}",
     "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "VPN เดสก์ท็อป: ยังไม่พร้อม",
-    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "อัปเดตตำแหน่งแล้ว",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "ไม่มีตำแหน่งให้ทดสอบ",
     "BEST_LOCATION_SEARCH_TIMED_OUT": "การค้นหาตำแหน่งที่ดีที่สุดหมดเวลา จะคงการเชื่อมต่อปัจจุบันไว้",
     "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
     "LOCATION_SEARCH_CANCELLED": "ตำแหน่ง ค้นหา ยกเลิกแล้ว",
@@ -86,8 +86,8 @@
     "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "เริ่ม VPN แล้ว แต่บันทึกตำแหน่งที่ดีที่สุดไม่สำเร็จ",
     "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "เริ่มพร็อกซีแล้ว แต่บันทึกตำแหน่งที่ดีที่สุดไม่สำเร็จ",
     "BACKGROUND_REFRESH_FINDING_BEST": "รีเฟรชการสมัครเสร็จแล้ว กำลังค้นหาตำแหน่งที่ดีที่สุด...",
-    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "อัปเดตการสมัครสมาชิกแล้ว",
-    "NO_SUITABLE_LOCATION_FOUND": "อัปเดตตำแหน่งแล้ว",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "รีเฟรชการสมัครสมาชิกเสร็จแล้ว แต่ต้องมีสิทธิ์ VPN เพื่อสลับในพื้นหลัง คงตำแหน่ง VPN ก่อนหน้าไว้เป็นตัวสำรอง",
+    "NO_SUITABLE_LOCATION_FOUND": "ไม่พบตำแหน่งที่เหมาะสม",
     "BEST_LOCATION_NOT_MAPPED": "จับคู่ตำแหน่งที่ดีที่สุดกับรายการเดสก์ท็อปไม่ได้",
     "ACTIVATED_ALL_SUBSCRIPTIONS": "เปิดใช้งานการสมัครสมาชิกทั้งหมดแล้ว",
     "ACTIVATED_SUBSCRIPTION": "เปิดใช้แล้ว {0}",
@@ -115,7 +115,7 @@
     "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "ซ่อนเครื่องมือทดสอบการเชื่อมต่อแล้ว",
     "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "ตำแหน่งจากการสมัครสมาชิกเป็นแบบอ่านอย่างเดียว สลับไปยังตำแหน่งที่บันทึกเพื่อบันทึกการแก้ไข",
     "INVALID_LOCATION_CONFIG": "การตั้งค่าตำแหน่งไม่ถูกต้อง",
-    "LOCATION_ALREADY_SAVED": "ตำแหน่ง alพร้อม บันทึกแล้ว: {0}",
+    "LOCATION_ALREADY_SAVED": "บันทึกตำแหน่งนี้ไว้แล้ว: {0}",
     "LOCATION_EDIT_UNAVAILABLE": "ตำแหน่งที่จะแก้ไขไม่พร้อมใช้งานแล้ว",
     "LOCATION_ADDED": "เพิ่มตำแหน่งแล้ว: {0}",
     "LOCATION_UPDATED_AND_MERGED": "อัปเดตและรวมตำแหน่งแล้ว: {0}",
@@ -128,7 +128,7 @@
     "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "ย้อนกลับการเปลี่ยนตำแหน่งเพราะหยุด VPN ไม่ได้",
     "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "ย้อนกลับการเปลี่ยนตำแหน่งเพราะหยุดพร็อกซีไม่ได้",
     "IMPORT_LOCATIONS_BLOCKED": "สลับไปยังตำแหน่งที่บันทึกเพื่ออิมพอร์ตตำแหน่ง",
-    "IMPORT_LOCATIONS_FAILED": "การดำเนินการล้มเหลว",
+    "IMPORT_LOCATIONS_FAILED": "นำเข้าตำแหน่งไม่สำเร็จ",
     "LOCATIONS_IMPORTED": "ตำแหน่ง นำเข้าแล้ว",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "ตำแหน่งที่เลือกไม่พร้อมใช้งานแล้ว",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "อิมพอร์ตตำแหน่งแล้ว ตำแหน่งที่เลือกไม่พร้อมใช้งาน จึงหยุด VPN",
@@ -148,36 +148,36 @@
     "HISTORY_ENTRY_DELETED": "ลบรายการประวัติแล้ว",
     "SELECTED_LOCATION_UNCHANGED": "ตำแหน่งที่เลือกไม่เปลี่ยนแปลง: {0}",
     "SELECTED_LOCATION_SET": "ตั้งค่าตำแหน่งที่เลือกแล้ว: {0}",
-    "LOCATION_CHECKED": "Location รายการตรวจสอบed: {0}",
-    "LOCATION_CHECK_FAILED": "อัปเดตตำแหน่งแล้ว",
+    "LOCATION_CHECKED": "ตรวจสอบตำแหน่งแล้ว: {0}",
+    "LOCATION_CHECK_FAILED": "ตรวจสอบตำแหน่งไม่สำเร็จ",
     "LOCATION_EDITED": "แก้ไขแล้ว ตำแหน่ง #{0}",
-    "SAMPLE_RULE_SET_ADDED": "เพิ่มแล้ว a sample rule-set",
-    "RULE_SET_DELETED": "ลบแล้ว rule-set {0}",
-    "ROUTING_RULES_SAVED": "การกำหนดเส้นทาง กฎ บันทึกแล้ว",
+    "SAMPLE_RULE_SET_ADDED": "เพิ่มชุดกฎตัวอย่างแล้ว",
+    "RULE_SET_DELETED": "ลบชุดกฎ {0} แล้ว",
+    "ROUTING_RULES_SAVED": "บันทึกกฎการกำหนดเส้นทางแล้ว",
     "ROUTING_RULES_IMPORTED": "การกำหนดเส้นทาง กฎ นำเข้าแล้ว",
-    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "อัปเดตกฎแล้ว",
-    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "อัปเดตกฎแล้ว",
-    "ROUTING_RULES_IMPORT_FAILED": "การดำเนินการล้มเหลว",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "นำเข้ากฎการกำหนดเส้นทางแล้ว รีสตาร์ท VPN เพื่อใช้งาน",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "นำเข้ากฎการกำหนดเส้นทางแล้ว รีสตาร์ทพร็อกซีเพื่อใช้งาน",
+    "ROUTING_RULES_IMPORT_FAILED": "นำเข้ากฎการกำหนดเส้นทางไม่สำเร็จ",
     "ROUTING_RULES_COPIED_TO_CLIPBOARD": "คัดลอกกฎการกำหนดเส้นทางไปยังคลิปบอร์ดแล้ว",
     "ROUTING_RULES_EXPORT_CANCELED": "ยกเลิกการส่งออกกฎแล้ว",
     "ROUTING_RULES_EXPORTED_TO": "ส่งออกกฎการกำหนดเส้นทางไปยัง {0}",
-    "ROUTING_RULES_EXPORT_FAILED": "การดำเนินการล้มเหลว",
+    "ROUTING_RULES_EXPORT_FAILED": "ส่งออกกฎการกำหนดเส้นทางไม่สำเร็จ",
     "ROUTING_RULES_FILE_OPEN_FAILED": "เปิดไฟล์กฎการกำหนดเส้นทางไม่สำเร็จ",
     "LOCATIONS_COPIED_TO_CLIPBOARD": "คัดลอกตำแหน่งไปยังคลิปบอร์ดแล้ว",
     "LOCATIONS_EXPORT_CANCELED": "ยกเลิกการส่งออกตำแหน่งแล้ว",
     "LOCATIONS_EXPORTED_TO": "ส่งออกตำแหน่งไปยัง {0}",
-    "LOCATIONS_EXPORT_FAILED": "การดำเนินการล้มเหลว",
+    "LOCATIONS_EXPORT_FAILED": "ส่งออกตำแหน่งไม่สำเร็จ",
     "LOCATIONS_FILE_OPEN_FAILED": "เปิดไฟล์ตำแหน่งไม่สำเร็จ",
     "LOCATIONS_FILE_READ_FAILED": "อ่านไฟล์ตำแหน่งไม่สำเร็จ",
     "DIAGNOSTICS_EXPORT_CANCELED": "ยกเลิกการส่งออกข้อมูลวินิจฉัยแล้ว",
     "DIAGNOSTICS_EXPORTED_TO": "ส่งออกการวินิจฉัยไปยัง {0}",
-    "DIAGNOSTICS_EXPORT_FAILED": "การดำเนินการล้มเหลว",
-    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "การดำเนินการล้มเหลว",
+    "DIAGNOSTICS_EXPORT_FAILED": "ส่งออกข้อมูลวินิจฉัยไม่สำเร็จ",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "เปิดปลายทางของข้อมูลวินิจฉัยไม่สำเร็จ",
     "NO_SUBSCRIPTIONS_TO_REFRESH": "ไม่มีการสมัครสมาชิกให้รีเฟรช",
     "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
     "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
-    "STARTUP_SETTING_UPDATE_FAILED": "การดำเนินการล้มเหลว",
-    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "การดำเนินการล้มเหลว: {0}",
+    "STARTUP_SETTING_UPDATE_FAILED": "อัปเดตการตั้งค่าเริ่มเมื่อเข้าสู่ระบบไม่สำเร็จ",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "อัปเดตการตั้งค่าเริ่มเมื่อเข้าสู่ระบบไม่สำเร็จ: {0}",
     "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
     "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
     "REFRESH_SETTINGS_SAVE_FAILED": "บันทึกการตั้งค่ารีเฟรชไม่สำเร็จ",
@@ -216,8 +216,8 @@
     "AUTO_REFRESHING_SUBSCRIPTIONS": "กำลังรีเฟรชการสมัครสมาชิกอัตโนมัติ...",
     "ACTIVE_SUBSCRIPTION_REFRESHED": "รีเฟรชการสมัครสมาชิกที่ใช้งานอยู่แล้ว",
     "ALL_SUBSCRIPTIONS_REFRESHED": "รีเฟรชการสมัครสมาชิกทั้งหมดแล้ว",
-    "SUBSCRIPTION_REFRESHED": "การสมัครสมาชิก รีเฟรชed",
-    "SUBSCRIPTIONS_REFRESHED": "การสมัครสมาชิกs รีเฟรชed",
+    "SUBSCRIPTION_REFRESHED": "รีเฟรชการสมัครสมาชิกแล้ว",
+    "SUBSCRIPTIONS_REFRESHED": "รีเฟรชรายการสมัครสมาชิกแล้ว",
     "SUBSCRIPTIONS_REFRESHED_COUNT": "รีเฟรชรายการสมัครสมาชิกแล้ว: {0}/{1}",
     "SUBSCRIPTIONS_REFRESHED_PARTIAL": "รีเฟรชรายการสมัครสมาชิกแล้ว: {0}/{1} ไม่สำเร็จ: {2}",
     "FAILED_TO_REFRESH": "รีเฟรชไม่สำเร็จ: {0}",
@@ -227,7 +227,7 @@
     "SUBSCRIPTION_REFRESH_PREPARATION_FAILED": "การเตรียมการสำหรับการรีเฟรชล้มเหลว: {0}",
     "SUBSCRIPTION_REFRESH_PERSISTENCE_FAILED": "การบันทึกผลการรีเฟรชล้มเหลว: {0}",
     "SUBSCRIPTION_REFRESH_OTHER_FAILED": "การรีเฟรชล้มเหลว: {0}",
-    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "การดำเนินการล้มเหลว",
+    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "รีเฟรชการสมัครสมาชิกที่ใช้งานอยู่ไม่สำเร็จ",
     "FAILED_TO_REFRESH_SUBSCRIPTIONS": "รีเฟรชการสมัครสมาชิกไม่สำเร็จ",
     "LOADING_SAVED_LOCATIONS": "กำลังโหลดตำแหน่งที่บันทึกไว้...",
     "DOWNLOADING_REMOTE_SOURCE": "กำลังดาวน์โหลดแหล่งข้อมูลระยะไกล...",
@@ -242,8 +242,8 @@
     "SELECTED_LOCATION_APPLYING": "กำลังใช้ตำแหน่งที่เลือก...",
     "UPDATED_SELECTED_LOCATION_APPLYING": "กำลังใช้ตำแหน่งที่เลือกที่อัปเดตแล้ว...",
     "SELECTED_LOCATION_APPLY_FAILED": "ใช้ตำแหน่งที่เลือกไม่สำเร็จ",
-    "SELECTED_LOCATION_SELECT_FAILED": "การดำเนินการล้มเหลว",
-    "UPDATED_SELECTED_LOCATION_APPLY_FAILED": "การดำเนินการล้มเหลว",
+    "SELECTED_LOCATION_SELECT_FAILED": "เลือกตำแหน่งไม่สำเร็จ",
+    "UPDATED_SELECTED_LOCATION_APPLY_FAILED": "ใช้ตำแหน่งที่เลือกที่อัปเดตแล้วไม่สำเร็จ",
     "UPDATED_SELECTED_LOCATION_SAVE_FAILED": "บันทึกตำแหน่งที่เลือกที่อัปเดตแล้วไม่สำเร็จ",
     "UPDATED_SELECTED_LOCATION_APPLIED_SAVE_FAILED": "ใช้ตำแหน่งที่เลือกที่อัปเดตแล้ว แต่บันทึกไม่สำเร็จ",
     "CONNECTION_STOPPED_KEEP_STATE_CONSISTENT": "หยุด {connectionLabel:0} แล้วเพื่อให้สถานะสอดคล้องกัน",
@@ -252,7 +252,7 @@
     "PREVIOUS_CONNECTION_RESTORE_FAILED_STOPPED": "กู้คืนตำแหน่ง {connectionLabel:0} ก่อนหน้าไม่สำเร็จ: {1} หยุด {connectionLabel:0} แล้วเพื่อให้สถานะสอดคล้องกัน",
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "กู้คืนตำแหน่ง {connectionLabel:0} ก่อนหน้าไม่สำเร็จ: {1} หยุด {connectionLabel:0} ไม่สำเร็จ: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "บันทึกกฎการกำหนดเส้นทางแล้ว รีสตาร์ท {connectionLabel:0} เพื่อใช้งาน",
-    "ROUTING_RULES_SAVE_FAILED": "การดำเนินการล้มเหลว",
+    "ROUTING_RULES_SAVE_FAILED": "บันทึกกฎการกำหนดเส้นทางไม่สำเร็จ",
     "ROUTING_RULES_OUTCOME_UNKNOWN": "ไม่ทราบผลของการเปลี่ยนแปลงการกำหนดเส้นทาง ลองอีกครั้งด้วยข้อมูลเดิม",
     "ROUTING_RULES_STALE_DRAFT": "การตั้งค่าการกำหนดเส้นทางเปลี่ยนไปแล้ว เปิดตัวแก้ไขอีกครั้งก่อนบันทึก",
     "DIAGNOSTICS_EXPORT_OPENED": "เปิดการส่งออกข้อมูลวินิจฉัยแล้ว",
@@ -294,9 +294,9 @@
     "BACKGROUND_REFRESH_REPLACEMENT_STOPPED": "หยุด {connectionLabel:0} แล้วเพราะไม่สามารถเปิดใช้ตำแหน่งทดแทนได้",
     "BACKGROUND_REFRESH_RESTORE_OR_STOP_FAILED": "กู้คืนหรือหยุด {connectionLabel:0} อย่างถูกต้องไม่สำเร็จ: {1}",
     "BACKGROUND_REFRESH_FAILED": "รีเฟรชในพื้นหลังไม่สำเร็จ",
-    "REPLACEMENT_LOCATION_SEARCH_FAILED": "การดำเนินการล้มเหลว",
+    "REPLACEMENT_LOCATION_SEARCH_FAILED": "ค้นหาตำแหน่งทดแทนไม่สำเร็จ",
     "REPLACEMENT_LOCATION_SAVE_FAILED": "บันทึกตำแหน่งทดแทนไม่สำเร็จ",
-    "INVALID_SUBSCRIPTION_URL": "อัปเดตการสมัครสมาชิกแล้ว",
+    "INVALID_SUBSCRIPTION_URL": "URL การสมัครสมาชิกไม่ถูกต้อง",
     "SUBSCRIPTION_DELETE_REMOVED_SELECTED_STOPPED": "หยุด {connectionLabel:0} แล้ว การลบรายการสมัครสมาชิกลบตำแหน่งที่เลือกออกไป",
     "RESOLVING_REMOTE_SOURCE": "กำลังระบุที่อยู่ {0}...",
     "SUBSCRIPTION_SOURCE_LOAD_FAILED": "โหลด {0} ไม่สำเร็จ",
@@ -494,31 +494,31 @@
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "การดำเนินการล้มเหลว"
+      "target": "ใช้ตำแหน่งที่เลือกที่อัปเดตแล้วไม่สำเร็จ"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "การดำเนินการล้มเหลว"
+      "target": "ส่งออกข้อมูลวินิจฉัยไม่สำเร็จ"
     },
     {
       "source": "Failed to export locations",
-      "target": "การดำเนินการล้มเหลว"
+      "target": "ส่งออกตำแหน่งไม่สำเร็จ"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "การดำเนินการล้มเหลว"
+      "target": "ส่งออกกฎการกำหนดเส้นทางไม่สำเร็จ"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "การดำเนินการล้มเหลว"
+      "target": "ค้นหาตำแหน่งทดแทนไม่สำเร็จ"
     },
     {
       "source": "Failed to import file",
-      "target": "การดำเนินการล้มเหลว"
+      "target": "นำเข้าไฟล์ไม่สำเร็จ"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "การดำเนินการล้มเหลว"
+      "target": "เปิดปลายทางของข้อมูลวินิจฉัยไม่สำเร็จ"
     },
     {
       "source": "Failed to save refresh settings",
@@ -526,7 +526,7 @@
     },
     {
       "source": "Failed to update startup setting",
-      "target": "การดำเนินการล้มเหลว"
+      "target": "อัปเดตการตั้งค่าเริ่มเมื่อเข้าสู่ระบบไม่สำเร็จ"
     },
     {
       "source": "Import canceled",
@@ -534,7 +534,7 @@
     },
     {
       "source": "Invalid subscription URL",
-      "target": "อัปเดตการสมัครสมาชิกแล้ว"
+      "target": "URL การสมัครสมาชิกไม่ถูกต้อง"
     },
     {
       "source": "Latency history enabled",
@@ -554,11 +554,11 @@
     },
     {
       "source": "Location check cancelled",
-      "target": "อัปเดตตำแหน่งแล้ว"
+      "target": "ยกเลิกการตรวจสอบตำแหน่งแล้ว"
     },
     {
       "source": "Location check failed",
-      "target": "อัปเดตตำแหน่งแล้ว"
+      "target": "ตรวจสอบตำแหน่งไม่สำเร็จ"
     },
     {
       "source": "Locations exported",
@@ -566,11 +566,11 @@
     },
     {
       "source": "Locations import canceled",
-      "target": "อัปเดตตำแหน่งแล้ว"
+      "target": "ยกเลิกการนำเข้าตำแหน่งแล้ว"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "อัปเดตตำแหน่งแล้ว"
+      "target": "ไม่มีตำแหน่งให้ทดสอบ"
     },
     {
       "source": "No subscriptions to refresh",
@@ -578,7 +578,7 @@
     },
     {
       "source": "No suitable location found",
-      "target": "อัปเดตตำแหน่งแล้ว"
+      "target": "ไม่พบตำแหน่งที่เหมาะสม"
     },
     {
       "source": "Per-profile totals enabled",
@@ -602,11 +602,11 @@
     },
     {
       "source": "Routing rules import canceled",
-      "target": "อัปเดตกฎแล้ว"
+      "target": "ยกเลิกการนำเข้ากฎการกำหนดเส้นทางแล้ว"
     },
     {
       "source": "Saved routing rules",
-      "target": "อัปเดตกฎแล้ว"
+      "target": "บันทึกกฎการกำหนดเส้นทางแล้ว"
     },
     {
       "source": "Session stats enabled",
@@ -626,7 +626,7 @@
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "อัปเดตการสมัครสมาชิกแล้ว"
+      "target": "รีเฟรชการสมัครสมาชิกเสร็จแล้ว แต่ต้องมีสิทธิ์ VPN เพื่อสลับในพื้นหลัง คงตำแหน่ง VPN ก่อนหน้าไว้เป็นตัวสำรอง"
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
@@ -710,7 +710,7 @@
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "อัปเดตกฎแล้ว"
+      "target": "ข้อผิดพลาดเครื่องมือเส้นทาง/DNS: "
     },
     {
       "source": "TUN device",
@@ -722,7 +722,7 @@
     },
     {
       "source": "route/DNS tooling",
-      "target": "อัปเดตกฎแล้ว"
+      "target": "เครื่องมือเส้นทาง/DNS"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
@@ -734,7 +734,7 @@
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "อัปเดตกฎแล้ว"
+      "target": "เครื่องมือเส้นทาง/DNS ของ Windows ไม่พร้อมใช้งาน โหมด VPN ต้องใช้ netsh.exe และ cmdlet ไคลเอนต์ DNS ของ PowerShell"
     },
     {
       "source": "VPN ready on this computer",
@@ -844,11 +844,11 @@
     },
     {
       "source": "Subscription refreshed",
-      "target": "การสมัครสมาชิก รีเฟรชed"
+      "target": "รีเฟรชการสมัครสมาชิกแล้ว"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "การสมัครสมาชิกs รีเฟรชed"
+      "target": "รีเฟรชรายการสมัครสมาชิกแล้ว"
     },
     {
       "source": "Active subscription refreshed",
@@ -908,7 +908,7 @@
     },
     {
       "source": "Routing rules saved",
-      "target": "การกำหนดเส้นทาง กฎ บันทึกแล้ว"
+      "target": "บันทึกกฎการกำหนดเส้นทางแล้ว"
     },
     {
       "source": "Routing rules imported",
@@ -1046,7 +1046,7 @@
     },
     {
       "source": "Selected location applied, but failed to save it",
-      "target": "อัปเดตตำแหน่งแล้ว"
+      "target": "ใช้ตำแหน่งที่เลือกแล้ว แต่บันทึกไม่สำเร็จ"
     },
     {
       "source": "Location removal rolled back because the proxy could not be stopped",
@@ -1082,19 +1082,19 @@
     },
     {
       "source": "Routing rules saved. Restart VPN to apply",
-      "target": "อัปเดตกฎแล้ว"
+      "target": "บันทึกกฎการกำหนดเส้นทางแล้ว รีสตาร์ท VPN เพื่อใช้งาน"
     },
     {
       "source": "Routing rules saved. Restart proxy to apply",
-      "target": "อัปเดตกฎแล้ว"
+      "target": "บันทึกกฎการกำหนดเส้นทางแล้ว รีสตาร์ทพร็อกซีเพื่อใช้งาน"
     },
     {
       "source": "Routing rules imported. Restart VPN to apply",
-      "target": "อัปเดตกฎแล้ว"
+      "target": "นำเข้ากฎการกำหนดเส้นทางแล้ว รีสตาร์ท VPN เพื่อใช้งาน"
     },
     {
       "source": "Routing rules imported. Restart proxy to apply",
-      "target": "อัปเดตกฎแล้ว"
+      "target": "นำเข้ากฎการกำหนดเส้นทางแล้ว รีสตาร์ทพร็อกซีเพื่อใช้งาน"
     },
     {
       "source": "Selected location removed. VPN stopped: ",
@@ -1154,7 +1154,7 @@
     },
     {
       "source": "Failed to select location",
-      "target": "การดำเนินการล้มเหลว"
+      "target": "เลือกตำแหน่งไม่สำเร็จ"
     },
     {
       "source": "Failed to stop VPN before exit",
@@ -1254,11 +1254,11 @@
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "การสมัครสมาชิกs รีเฟรชed"
+      "target": "รีเฟรชรายการสมัครสมาชิกแล้ว"
     },
     {
       "source": "Subscription refreshed",
-      "target": "การสมัครสมาชิก รีเฟรชed"
+      "target": "รีเฟรชการสมัครสมาชิกแล้ว"
     },
     {
       "source": "Refresh failed",
@@ -1338,7 +1338,7 @@
     },
     {
       "source": "Routing rules saved",
-      "target": "การกำหนดเส้นทาง กฎ บันทึกแล้ว"
+      "target": "บันทึกกฎการกำหนดเส้นทางแล้ว"
     },
     {
       "source": "Routing rules imported",
@@ -1422,7 +1422,7 @@
     },
     {
       "source": "No locations to export",
-      "target": "อัปเดตตำแหน่งแล้ว"
+      "target": "ไม่มีตำแหน่งให้ส่งออก"
     },
     {
       "source": "Failed to load apps",
@@ -1434,19 +1434,19 @@
     },
     {
       "source": "Failed to refresh the active subscription",
-      "target": "การดำเนินการล้มเหลว"
+      "target": "รีเฟรชการสมัครสมาชิกที่ใช้งานอยู่ไม่สำเร็จ"
     },
     {
       "source": "Failed to import routing rules",
-      "target": "การดำเนินการล้มเหลว"
+      "target": "นำเข้ากฎการกำหนดเส้นทางไม่สำเร็จ"
     },
     {
       "source": "Failed to save routing rules",
-      "target": "การดำเนินการล้มเหลว"
+      "target": "บันทึกกฎการกำหนดเส้นทางไม่สำเร็จ"
     },
     {
       "source": "Failed to import locations",
-      "target": "การดำเนินการล้มเหลว"
+      "target": "นำเข้าตำแหน่งไม่สำเร็จ"
     },
     {
       "source": "Failed to open locations file",
@@ -1526,7 +1526,7 @@
     },
     {
       "source": "Location already saved: ",
-      "target": "ตำแหน่ง alพร้อม บันทึกแล้ว: "
+      "target": "บันทึกตำแหน่งนี้ไว้แล้ว: "
     },
     {
       "source": "Location updated: ",
@@ -1542,7 +1542,7 @@
     },
     {
       "source": "Subscriptions refreshed: ",
-      "target": "การสมัครสมาชิกs รีเฟรชed: "
+      "target": "รีเฟรชรายการสมัครสมาชิกแล้ว: "
     },
     {
       "source": "Failed: ",

@@ -71,7 +71,7 @@
     "DESKTOP_VPN_CAPABILITY_READY": "ডেস্কটপ VPN প্রস্তুত",
     "DESKTOP_VPN_CAPABILITY_ERROR": "ডেস্কটপ VPN: {valueOrNotReady}",
     "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "ডেস্কটপ VPN: প্রস্তুত নয়",
-    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "লোকেশনগুলো আপডেট হয়েছে",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "পরীক্ষার জন্য কোনো লোকেশন উপলব্ধ নেই",
     "BEST_LOCATION_SEARCH_TIMED_OUT": "সেরা লোকেশন খোঁজার সময় শেষ; বর্তমান সংযোগ রাখা হচ্ছে",
     "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
     "LOCATION_SEARCH_CANCELLED": "লোকেশন অনুসন্ধান বাতিল",
@@ -86,8 +86,8 @@
     "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN চালু হয়েছে, কিন্তু সেরা লোকেশন সংরক্ষণ করা যায়নি",
     "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "প্রক্সি চালু হয়েছে, কিন্তু সেরা লোকেশন সংরক্ষণ করা যায়নি",
     "BACKGROUND_REFRESH_FINDING_BEST": "সাবস্ক্রিপশন রিফ্রেশ শেষ। সেরা অবস্থান খোঁজা হচ্ছে...",
-    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "সাবস্ক্রিপশন আপডেট হয়েছে",
-    "NO_SUITABLE_LOCATION_FOUND": "লোকেশন আপডেট হয়েছে",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "সাবস্ক্রিপশন রিফ্রেশ শেষ, কিন্তু পটভূমিতে লোকেশন পরিবর্তন করতে VPN অনুমতি প্রয়োজন। আগের VPN লোকেশন বিকল্প হিসেবে রাখা হয়েছে।",
+    "NO_SUITABLE_LOCATION_FOUND": "কোনো উপযুক্ত লোকেশন পাওয়া যায়নি",
     "BEST_LOCATION_NOT_MAPPED": "সেরা লোকেশন ডেস্কটপ তালিকার সঙ্গে মেলানো যায়নি",
     "ACTIVATED_ALL_SUBSCRIPTIONS": "সব সাবস্ক্রিপশন সক্রিয়",
     "ACTIVATED_SUBSCRIPTION": "সক্রিয় করা হয়েছে {0}",
@@ -128,7 +128,7 @@
     "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "VPN বন্ধ করা যায়নি বলে লোকেশন পরিবর্তন ফিরিয়ে দেওয়া হয়েছে",
     "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "প্রॉক্সি বন্ধ করা যায়নি বলে লোকেশন পরিবর্তন ফিরিয়ে দেওয়া হয়েছে",
     "IMPORT_LOCATIONS_BLOCKED": "লোকেশন আমদানি করতে সংরক্ষিত লোকেশনে যান",
-    "IMPORT_LOCATIONS_FAILED": "কাজটি ব্যর্থ হয়েছে",
+    "IMPORT_LOCATIONS_FAILED": "লোকেশন আমদানি করা যায়নি",
     "LOCATIONS_IMPORTED": "লোকেশন ইম্পোর্ট হয়েছে",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "নির্বাচিত লোকেশন আর উপলব্ধ নয়",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "লোকেশন আমদানি হয়েছে। নির্বাচিত লোকেশন আর নেই, VPN বন্ধ হয়েছে",
@@ -148,36 +148,36 @@
     "HISTORY_ENTRY_DELETED": "ইতিহাসের এন্ট্রি মুছে ফেলা হয়েছে",
     "SELECTED_LOCATION_UNCHANGED": "নির্বাচিত লোকেশন অপরিবর্তিত: {0}",
     "SELECTED_LOCATION_SET": "নির্বাচিত লোকেশন সেট করা হয়েছে: {0}",
-    "LOCATION_CHECKED": "Locationটি পরীক্ষাed: {0}",
-    "LOCATION_CHECK_FAILED": "লোকেশন আপডেট হয়েছে",
+    "LOCATION_CHECKED": "লোকেশন পরীক্ষা করা হয়েছে: {0}",
+    "LOCATION_CHECK_FAILED": "লোকেশন পরীক্ষা ব্যর্থ হয়েছে",
     "LOCATION_EDITED": "সম্পাদিত লোকেশন #{0}",
-    "SAMPLE_RULE_SET_ADDED": "যোগ করা হয়েছে a sample rule-set",
-    "RULE_SET_DELETED": "মুছে ফেলা হয়েছে rule-set {0}",
+    "SAMPLE_RULE_SET_ADDED": "নমুনা নিয়ম-সেট যোগ করা হয়েছে",
+    "RULE_SET_DELETED": "নিয়ম-সেট {0} মুছে ফেলা হয়েছে",
     "ROUTING_RULES_SAVED": "রাউটিং নিয়ম সংরক্ষিত",
     "ROUTING_RULES_IMPORTED": "রাউটিং নিয়ম ইম্পোর্ট হয়েছে",
     "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "রাউটিং নিয়ম আমদানি হয়েছে। প্রয়োগ করতে VPN পুনরায় চালু করুন",
     "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "রাউটিং নিয়ম আমদানি হয়েছে। প্রয়োগ করতে প্রক্সি পুনরায় চালু করুন",
-    "ROUTING_RULES_IMPORT_FAILED": "কাজটি ব্যর্থ হয়েছে",
+    "ROUTING_RULES_IMPORT_FAILED": "রাউটিং নিয়ম আমদানি করা যায়নি",
     "ROUTING_RULES_COPIED_TO_CLIPBOARD": "রাউটিং নিয়ম ক্লিপবোর্ডে কপি হয়েছে",
     "ROUTING_RULES_EXPORT_CANCELED": "নিয়ম এক্সপোর্ট বাতিল",
     "ROUTING_RULES_EXPORTED_TO": "রাউটিং নিয়ম এক্সপোর্ট হয়েছে: {0}",
-    "ROUTING_RULES_EXPORT_FAILED": "কাজটি ব্যর্থ হয়েছে",
+    "ROUTING_RULES_EXPORT_FAILED": "রাউটিং নিয়ম এক্সপোর্ট করা যায়নি",
     "ROUTING_RULES_FILE_OPEN_FAILED": "রাউটিং নিয়ম ফাইল খোলা যায়নি",
     "LOCATIONS_COPIED_TO_CLIPBOARD": "লোকেশন ক্লিপবোর্ডে কপি হয়েছে",
     "LOCATIONS_EXPORT_CANCELED": "লোকেশন এক্সপোর্ট বাতিল",
     "LOCATIONS_EXPORTED_TO": "লোকেশন এক্সপোর্ট হয়েছে: {0}",
-    "LOCATIONS_EXPORT_FAILED": "কাজটি ব্যর্থ হয়েছে",
+    "LOCATIONS_EXPORT_FAILED": "লোকেশন এক্সপোর্ট করা যায়নি",
     "LOCATIONS_FILE_OPEN_FAILED": "লোকেশন ফাইল খোলা যায়নি",
     "LOCATIONS_FILE_READ_FAILED": "লোকেশন ফাইল পড়া যায়নি",
     "DIAGNOSTICS_EXPORT_CANCELED": "ডায়াগনস্টিক এক্সপোর্ট বাতিল",
     "DIAGNOSTICS_EXPORTED_TO": "ডায়াগনস্টিক্স এক্সপোর্ট হয়েছে: {0}",
-    "DIAGNOSTICS_EXPORT_FAILED": "কাজটি ব্যর্থ হয়েছে",
-    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "কাজটি ব্যর্থ হয়েছে",
+    "DIAGNOSTICS_EXPORT_FAILED": "ডায়াগনস্টিক এক্সপোর্ট করা যায়নি",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "ডায়াগনস্টিক সংরক্ষণের স্থান খোলা যায়নি",
     "NO_SUBSCRIPTIONS_TO_REFRESH": "রিফ্রেশ করার মতো কোনো সাবস্ক্রিপশন নেই",
     "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
     "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
-    "STARTUP_SETTING_UPDATE_FAILED": "কাজটি ব্যর্থ হয়েছে",
-    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "কাজটি ব্যর্থ হয়েছে: {0}",
+    "STARTUP_SETTING_UPDATE_FAILED": "লগইনে শুরু করার সেটিং আপডেট করা যায়নি",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "লগইনে শুরু করার সেটিং আপডেট করা যায়নি: {0}",
     "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
     "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
     "REFRESH_SETTINGS_SAVE_FAILED": "রিফ্রেশ সেটিংস সংরক্ষণ করা যায়নি",
@@ -227,7 +227,7 @@
     "SUBSCRIPTION_REFRESH_PREPARATION_FAILED": "রিফ্রেশ করার সময় প্রস্তুতি ব্যর্থ হয়েছে: {0}",
     "SUBSCRIPTION_REFRESH_PERSISTENCE_FAILED": "রিফ্রেশের ফলাফল সংরক্ষণ ব্যর্থ হয়েছে: {0}",
     "SUBSCRIPTION_REFRESH_OTHER_FAILED": "রিফ্রেশ ব্যর্থ হয়েছে: {0}",
-    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "কাজটি ব্যর্থ হয়েছে",
+    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "সক্রিয় সাবস্ক্রিপশন রিফ্রেশ করা যায়নি",
     "FAILED_TO_REFRESH_SUBSCRIPTIONS": "সাবস্ক্রিপশন রিফ্রেশ করা যায়নি",
     "LOADING_SAVED_LOCATIONS": "সংরক্ষিত লোকেশন লোড হচ্ছে...",
     "DOWNLOADING_REMOTE_SOURCE": "রিমোট সোর্স ডাউনলোড হচ্ছে...",
@@ -242,8 +242,8 @@
     "SELECTED_LOCATION_APPLYING": "নির্বাচিত লোকেশন প্রয়োগ করা হচ্ছে...",
     "UPDATED_SELECTED_LOCATION_APPLYING": "আপডেট করা নির্বাচিত লোকেশন প্রয়োগ করা হচ্ছে...",
     "SELECTED_LOCATION_APPLY_FAILED": "নির্বাচিত লোকেশন প্রয়োগ করা যায়নি",
-    "SELECTED_LOCATION_SELECT_FAILED": "কাজটি ব্যর্থ হয়েছে",
-    "UPDATED_SELECTED_LOCATION_APPLY_FAILED": "কাজটি ব্যর্থ হয়েছে",
+    "SELECTED_LOCATION_SELECT_FAILED": "লোকেশন নির্বাচন করা যায়নি",
+    "UPDATED_SELECTED_LOCATION_APPLY_FAILED": "আপডেট করা নির্বাচিত লোকেশন প্রয়োগ করা যায়নি",
     "UPDATED_SELECTED_LOCATION_SAVE_FAILED": "আপডেট করা নির্বাচিত লোকেশন সংরক্ষণ করতে ব্যর্থ",
     "UPDATED_SELECTED_LOCATION_APPLIED_SAVE_FAILED": "আপডেট করা নির্বাচিত লোকেশন প্রয়োগ করা হয়েছে, কিন্তু সংরক্ষণ করতে ব্যর্থ",
     "CONNECTION_STOPPED_KEEP_STATE_CONSISTENT": "অবস্থা সামঞ্জস্যপূর্ণ রাখতে {connectionLabel:0} বন্ধ করা হয়েছে।",
@@ -252,7 +252,7 @@
     "PREVIOUS_CONNECTION_RESTORE_FAILED_STOPPED": "আগের {connectionLabel:0} লোকেশন পুনরুদ্ধার করতে ব্যর্থ: {1}। অবস্থা সামঞ্জস্যপূর্ণ রাখতে {connectionLabel:0} বন্ধ করা হয়েছে।",
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "আগের {connectionLabel:0} লোকেশন পুনরুদ্ধার করতে ব্যর্থ: {1}। {connectionLabel:0} বন্ধ করতে ব্যর্থ: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "রাউটিং নিয়ম সংরক্ষিত হয়েছে। প্রয়োগ করতে {connectionLabel:0} পুনরায় চালু করুন",
-    "ROUTING_RULES_SAVE_FAILED": "কাজটি ব্যর্থ হয়েছে",
+    "ROUTING_RULES_SAVE_FAILED": "রাউটিং নিয়ম সংরক্ষণ করা যায়নি",
     "ROUTING_RULES_OUTCOME_UNKNOWN": "রাউটিং পরিবর্তনের ফলাফল অজানা। একই তথ্য দিয়ে আবার চেষ্টা করুন।",
     "ROUTING_RULES_STALE_DRAFT": "রাউটিং সেটিংস পরিবর্তিত হয়েছে। সংরক্ষণের আগে সম্পাদকটি আবার খুলুন।",
     "DIAGNOSTICS_EXPORT_OPENED": "ডায়াগনস্টিক এক্সপোর্ট খোলা হয়েছে",
@@ -294,9 +294,9 @@
     "BACKGROUND_REFRESH_REPLACEMENT_STOPPED": "বিকল্প লোকেশন সক্রিয় করা যায়নি বলে {connectionLabel:0} বন্ধ করা হয়েছে।",
     "BACKGROUND_REFRESH_RESTORE_OR_STOP_FAILED": "{connectionLabel:0} সঠিকভাবে পুনরুদ্ধার বা বন্ধ করতে ব্যর্থ: {1}।",
     "BACKGROUND_REFRESH_FAILED": "ব্যাকগ্রাউন্ড রিফ্রেশ ব্যর্থ হয়েছে",
-    "REPLACEMENT_LOCATION_SEARCH_FAILED": "কাজটি ব্যর্থ হয়েছে",
+    "REPLACEMENT_LOCATION_SEARCH_FAILED": "বিকল্প লোকেশন খুঁজে পাওয়া যায়নি",
     "REPLACEMENT_LOCATION_SAVE_FAILED": "বিকল্প লোকেশন সংরক্ষণ করতে ব্যর্থ",
-    "INVALID_SUBSCRIPTION_URL": "সাবস্ক্রিপশন আপডেট হয়েছে",
+    "INVALID_SUBSCRIPTION_URL": "অবৈধ সাবস্ক্রিপশন URL",
     "SUBSCRIPTION_DELETE_REMOVED_SELECTED_STOPPED": "{connectionLabel:0} বন্ধ করা হয়েছে। মুছে ফেলা সাবস্ক্রিপশন নির্বাচিত লোকেশন সরিয়ে দিয়েছে।",
     "RESOLVING_REMOTE_SOURCE": "{0} রিজলভ করা হচ্ছে...",
     "SUBSCRIPTION_SOURCE_LOAD_FAILED": "{0} লোড করতে ব্যর্থ",
@@ -494,31 +494,31 @@
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "কাজটি ব্যর্থ হয়েছে"
+      "target": "আপডেট করা নির্বাচিত লোকেশন প্রয়োগ করা যায়নি"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "কাজটি ব্যর্থ হয়েছে"
+      "target": "ডায়াগনস্টিক এক্সপোর্ট করা যায়নি"
     },
     {
       "source": "Failed to export locations",
-      "target": "কাজটি ব্যর্থ হয়েছে"
+      "target": "লোকেশন এক্সপোর্ট করা যায়নি"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "কাজটি ব্যর্থ হয়েছে"
+      "target": "রাউটিং নিয়ম এক্সপোর্ট করা যায়নি"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "কাজটি ব্যর্থ হয়েছে"
+      "target": "বিকল্প লোকেশন খুঁজে পাওয়া যায়নি"
     },
     {
       "source": "Failed to import file",
-      "target": "কাজটি ব্যর্থ হয়েছে"
+      "target": "ফাইল আমদানি করা যায়নি"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "কাজটি ব্যর্থ হয়েছে"
+      "target": "ডায়াগনস্টিক সংরক্ষণের স্থান খোলা যায়নি"
     },
     {
       "source": "Failed to save refresh settings",
@@ -526,7 +526,7 @@
     },
     {
       "source": "Failed to update startup setting",
-      "target": "কাজটি ব্যর্থ হয়েছে"
+      "target": "লগইনে শুরু করার সেটিং আপডেট করা যায়নি"
     },
     {
       "source": "Import canceled",
@@ -534,7 +534,7 @@
     },
     {
       "source": "Invalid subscription URL",
-      "target": "সাবস্ক্রিপশন আপডেট হয়েছে"
+      "target": "অবৈধ সাবস্ক্রিপশন URL"
     },
     {
       "source": "Latency history enabled",
@@ -554,11 +554,11 @@
     },
     {
       "source": "Location check cancelled",
-      "target": "লোকেশন আপডেট হয়েছে"
+      "target": "লোকেশন পরীক্ষা বাতিল হয়েছে"
     },
     {
       "source": "Location check failed",
-      "target": "লোকেশন আপডেট হয়েছে"
+      "target": "লোকেশন পরীক্ষা ব্যর্থ হয়েছে"
     },
     {
       "source": "Locations exported",
@@ -566,11 +566,11 @@
     },
     {
       "source": "Locations import canceled",
-      "target": "লোকেশনগুলো আপডেট হয়েছে"
+      "target": "লোকেশন আমদানি বাতিল হয়েছে"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "লোকেশনগুলো আপডেট হয়েছে"
+      "target": "পরীক্ষার জন্য কোনো লোকেশন উপলব্ধ নেই"
     },
     {
       "source": "No subscriptions to refresh",
@@ -578,7 +578,7 @@
     },
     {
       "source": "No suitable location found",
-      "target": "লোকেশন আপডেট হয়েছে"
+      "target": "কোনো উপযুক্ত লোকেশন পাওয়া যায়নি"
     },
     {
       "source": "Per-profile totals enabled",
@@ -602,11 +602,11 @@
     },
     {
       "source": "Routing rules import canceled",
-      "target": "নিয়ম আপডেট হয়েছে"
+      "target": "রাউটিং নিয়ম আমদানি বাতিল হয়েছে"
     },
     {
       "source": "Saved routing rules",
-      "target": "নিয়ম আপডেট হয়েছে"
+      "target": "রাউটিং নিয়ম সংরক্ষিত হয়েছে"
     },
     {
       "source": "Session stats enabled",
@@ -626,7 +626,7 @@
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "সাবস্ক্রিপশন আপডেট হয়েছে"
+      "target": "সাবস্ক্রিপশন রিফ্রেশ শেষ, কিন্তু পটভূমিতে লোকেশন পরিবর্তন করতে VPN অনুমতি প্রয়োজন। আগের VPN লোকেশন বিকল্প হিসেবে রাখা হয়েছে।"
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
@@ -710,7 +710,7 @@
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "নিয়ম আপডেট হয়েছে"
+      "target": "রাউট/DNS টুল ত্রুটি: "
     },
     {
       "source": "TUN device",
@@ -722,11 +722,11 @@
     },
     {
       "source": "route/DNS tooling",
-      "target": "নিয়ম আপডেট হয়েছে"
+      "target": "রাউট/DNS টুল"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "লোকেশন আপডেট হয়েছে"
+      "target": "Linux TUN ডিভাইস /dev/net/tun-এ পাওয়া যায়নি। চেষ্টা করুন: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
@@ -734,7 +734,7 @@
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "নিয়ম আপডেট হয়েছে"
+      "target": "Windows রাউট/DNS টুল উপলব্ধ নয়। VPN মোডে netsh.exe এবং DNS ক্লায়েন্ট PowerShell cmdlet প্রয়োজন।"
     },
     {
       "source": "VPN ready on this computer",
@@ -1046,7 +1046,7 @@
     },
     {
       "source": "Selected location applied, but failed to save it",
-      "target": "লোকেশন আপডেট হয়েছে"
+      "target": "নির্বাচিত লোকেশন প্রয়োগ করা হয়েছে, কিন্তু সংরক্ষণ করা যায়নি"
     },
     {
       "source": "Location removal rolled back because the proxy could not be stopped",
@@ -1154,7 +1154,7 @@
     },
     {
       "source": "Failed to select location",
-      "target": "কাজটি ব্যর্থ হয়েছে"
+      "target": "লোকেশন নির্বাচন করা যায়নি"
     },
     {
       "source": "Failed to stop VPN before exit",
@@ -1422,7 +1422,7 @@
     },
     {
       "source": "No locations to export",
-      "target": "লোকেশনগুলো আপডেট হয়েছে"
+      "target": "এক্সপোর্ট করার মতো কোনো লোকেশন নেই"
     },
     {
       "source": "Failed to load apps",
@@ -1434,19 +1434,19 @@
     },
     {
       "source": "Failed to refresh the active subscription",
-      "target": "কাজটি ব্যর্থ হয়েছে"
+      "target": "সক্রিয় সাবস্ক্রিপশন রিফ্রেশ করা যায়নি"
     },
     {
       "source": "Failed to import routing rules",
-      "target": "কাজটি ব্যর্থ হয়েছে"
+      "target": "রাউটিং নিয়ম আমদানি করা যায়নি"
     },
     {
       "source": "Failed to save routing rules",
-      "target": "কাজটি ব্যর্থ হয়েছে"
+      "target": "রাউটিং নিয়ম সংরক্ষণ করা যায়নি"
     },
     {
       "source": "Failed to import locations",
-      "target": "কাজটি ব্যর্থ হয়েছে"
+      "target": "লোকেশন আমদানি করা যায়নি"
     },
     {
       "source": "Failed to open locations file",

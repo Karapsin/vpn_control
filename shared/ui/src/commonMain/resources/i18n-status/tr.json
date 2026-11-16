@@ -71,7 +71,7 @@
     "DESKTOP_VPN_CAPABILITY_READY": "Masaüstü VPN hazır",
     "DESKTOP_VPN_CAPABILITY_ERROR": "Masaüstü VPN: {valueOrNotReady}",
     "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "Masaüstü VPN: hazır değil",
-    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Konumlar güncellendi",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Hız ölçümü için kullanılabilir konum yok",
     "BEST_LOCATION_SEARCH_TIMED_OUT": "En iyi konum araması zaman aşımına uğradı; geçerli bağlantı korunuyor",
     "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
     "LOCATION_SEARCH_CANCELLED": "Konum arama iptal edildi",
@@ -86,8 +86,8 @@
     "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN başlatıldı, ancak en iyi konum kaydedilemedi",
     "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy başlatıldı, ancak en iyi konum kaydedilemedi",
     "BACKGROUND_REFRESH_FINDING_BEST": "Abonelik yenilemesi tamamlandı. En iyi konum aranıyor...",
-    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Abonelik güncellendi",
-    "NO_SUITABLE_LOCATION_FOUND": "Konum güncellendi",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Abonelik yenilemesi tamamlandı, ancak arka planda geçiş yapmak için VPN izni gerekiyor. Önceki VPN konumu yedek olarak korundu.",
+    "NO_SUITABLE_LOCATION_FOUND": "Uygun konum bulunamadı",
     "BEST_LOCATION_NOT_MAPPED": "En iyi konum masaüstü listesiyle eşleştirilemedi",
     "ACTIVATED_ALL_SUBSCRIPTIONS": "Etkinleştirildi all abonelikler",
     "ACTIVATED_SUBSCRIPTION": "Etkinleştirildi {0}",
@@ -115,7 +115,7 @@
     "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Bağlantı test araçları gizlendi",
     "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Abonelik konumları salt okunur. Düzenlemeleri kaydetmek için Kayıtlı Konumlara geçin.",
     "INVALID_LOCATION_CONFIG": "Konum yapılandırması geçersiz",
-    "LOCATION_ALREADY_SAVED": "Konum alhazır kaydedildi: {0}",
+    "LOCATION_ALREADY_SAVED": "Konum zaten kayıtlı: {0}",
     "LOCATION_EDIT_UNAVAILABLE": "Düzenlenecek konum artık kullanılamıyor",
     "LOCATION_ADDED": "Konum eklendi: {0}",
     "LOCATION_UPDATED_AND_MERGED": "Konum güncellendi ve birleştirildi: {0}",
@@ -128,7 +128,7 @@
     "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "VPN durdurulamadığı için konum değişikliği geri alındı",
     "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Proxy durdurulamadığı için konum değişikliği geri alındı",
     "IMPORT_LOCATIONS_BLOCKED": "Konumları içe aktarmak için Kayıtlı Konumlara geçin",
-    "IMPORT_LOCATIONS_FAILED": "İşlem başarısız",
+    "IMPORT_LOCATIONS_FAILED": "Konumlar içe aktarılamadı",
     "LOCATIONS_IMPORTED": "Konumlar içe aktarıldı",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Seçili konum artık kullanılamıyor",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Konumlar içe aktarıldı. Seçili konum artık yok, VPN durduruldu",
@@ -148,36 +148,36 @@
     "HISTORY_ENTRY_DELETED": "Geçmiş girdisi silindi",
     "SELECTED_LOCATION_UNCHANGED": "Seçili konum değişmedi: {0}",
     "SELECTED_LOCATION_SET": "Seçili konum set: {0}",
-    "LOCATION_CHECKED": "Location denetimed: {0}",
-    "LOCATION_CHECK_FAILED": "Konum güncellendi",
+    "LOCATION_CHECKED": "Konum kontrol edildi: {0}",
+    "LOCATION_CHECK_FAILED": "Konum denetimi başarısız oldu",
     "LOCATION_EDITED": "Düzenlendi konum #{0}",
-    "SAMPLE_RULE_SET_ADDED": "Eklendi a sample rule-set",
-    "RULE_SET_DELETED": "Silindi rule-set {0}",
-    "ROUTING_RULES_SAVED": "Yönlendirme kurallar kaydedildi",
+    "SAMPLE_RULE_SET_ADDED": "Örnek bir kural seti eklendi",
+    "RULE_SET_DELETED": "Kural seti {0} silindi",
+    "ROUTING_RULES_SAVED": "Yönlendirme kuralları kaydedildi",
     "ROUTING_RULES_IMPORTED": "Yönlendirme kurallar içe aktarıldı",
-    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Kurallar güncellendi",
-    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Kurallar güncellendi",
-    "ROUTING_RULES_IMPORT_FAILED": "İşlem başarısız",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Yönlendirme kuralları içe aktarıldı. Uygulamak için VPN'i yeniden başlatın",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Yönlendirme kuralları içe aktarıldı. Uygulamak için proxy'yi yeniden başlatın",
+    "ROUTING_RULES_IMPORT_FAILED": "Yönlendirme kuralları içe aktarılamadı",
     "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Kurallar panoya kopyalandı",
     "ROUTING_RULES_EXPORT_CANCELED": "Kural dışa aktarımı iptal edildi",
-    "ROUTING_RULES_EXPORTED_TO": "Kurallar güncellendi{0}",
-    "ROUTING_RULES_EXPORT_FAILED": "İşlem başarısız",
-    "ROUTING_RULES_FILE_OPEN_FAILED": "İşlem başarısız",
+    "ROUTING_RULES_EXPORTED_TO": "Yönlendirme kuralları dışa aktarıldı: {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "Yönlendirme kuralları dışa aktarılamadı",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Yönlendirme kuralları dosyası açılamadı",
     "LOCATIONS_COPIED_TO_CLIPBOARD": "Konumlar panoya kopyalandı",
     "LOCATIONS_EXPORT_CANCELED": "Konum dışa aktarımı iptal edildi",
-    "LOCATIONS_EXPORTED_TO": "Konumlar güncellendi{0}",
-    "LOCATIONS_EXPORT_FAILED": "İşlem başarısız",
-    "LOCATIONS_FILE_OPEN_FAILED": "İşlem başarısız",
-    "LOCATIONS_FILE_READ_FAILED": "İşlem başarısız",
+    "LOCATIONS_EXPORTED_TO": "Konumlar dışa aktarıldı: {0}",
+    "LOCATIONS_EXPORT_FAILED": "Konumlar dışa aktarılamadı",
+    "LOCATIONS_FILE_OPEN_FAILED": "Konum dosyası açılamadı",
+    "LOCATIONS_FILE_READ_FAILED": "Konum dosyası okunamadı",
     "DIAGNOSTICS_EXPORT_CANCELED": "Tanılama dışa aktarımı iptal edildi",
     "DIAGNOSTICS_EXPORTED_TO": "Tanılama dışa aktarıldı: {0}",
-    "DIAGNOSTICS_EXPORT_FAILED": "İşlem başarısız",
-    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "İşlem başarısız",
-    "NO_SUBSCRIPTIONS_TO_REFRESH": "Abonelik güncellendi",
+    "DIAGNOSTICS_EXPORT_FAILED": "Tanılama dışa aktarılamadı",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Tanılama hedefi açılamadı",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "Yenilenecek abonelik yok",
     "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
     "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
-    "STARTUP_SETTING_UPDATE_FAILED": "İşlem başarısız",
-    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "İşlem başarısız: {0}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Başlangıç ayarı güncellenemedi",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Başlangıç ayarı güncellenemedi: {0}",
     "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
     "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
     "REFRESH_SETTINGS_SAVE_FAILED": "Yenileme ayarları kaydedilemedi",
@@ -193,15 +193,15 @@
     "RESTORING_PREVIOUS_CONNECTION": "VPN geri yükleniyor: {0}...",
     "CONNECTION_STARTED_ON_TARGET.VPN": "VPN başlatıldı: {1}",
     "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Vekil başlatıldı: {1}",
-    "CONNECTION_START_FAILED.VPN": "İşlem başarısız",
-    "CONNECTION_START_FAILED.PROXY_ONLY": "İşlem başarısız",
-    "CONNECTION_STOP_FAILED.VPN": "İşlem başarısız",
-    "CONNECTION_STOP_FAILED.PROXY_ONLY": "İşlem başarısız",
+    "CONNECTION_START_FAILED.VPN": "VPN başlatılamadı",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Proxy başlatılamadı",
+    "CONNECTION_STOP_FAILED.VPN": "VPN durdurulamadı",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Proxy durdurulamadı",
     "APP_CLOSED_CONNECTION_WAS_OFF": "Uygulama kapandı. VPN kapalıydı.",
     "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN durdu. Sonraki açılışta yeniden bağlanacak.",
     "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Vekil durdu. Sonraki açılışta yeniden bağlanacak.",
-    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "İşlem başarısız",
-    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "İşlem başarısız",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "VPN çıkıştan önce durdurulamadı",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Proxy çıkıştan önce durdurulamadı",
     "CONNECTION_START_CANCELLED.VPN": "VPN başlatma işlemi iptal edildi",
     "CONNECTION_START_CANCELLED.PROXY_ONLY": "Proxy başlatma işlemi iptal edildi",
     "CONNECTION_STOP_CANCELLED.VPN": "VPN durdurma işlemi iptal edildi",
@@ -214,10 +214,10 @@
     "REFRESHING_SUBSCRIPTIONS": "Yenileniyor abonelikler...",
     "AUTO_REFRESHING_SUBSCRIPTION": "Abonelik otomatik yenileniyor...",
     "AUTO_REFRESHING_SUBSCRIPTIONS": "Abonelikler otomatik yenileniyor...",
-    "ACTIVE_SUBSCRIPTION_REFRESHED": "Abonelik güncellendi",
-    "ALL_SUBSCRIPTIONS_REFRESHED": "Abonelik güncellendi",
+    "ACTIVE_SUBSCRIPTION_REFRESHED": "Etkin abonelik yenilendi",
+    "ALL_SUBSCRIPTIONS_REFRESHED": "Tüm abonelikler yenilendi",
     "SUBSCRIPTION_REFRESHED": "Abonelik güncellendi",
-    "SUBSCRIPTIONS_REFRESHED": "Abonelik güncellendi",
+    "SUBSCRIPTIONS_REFRESHED": "Abonelikler yenilendi",
     "SUBSCRIPTIONS_REFRESHED_COUNT": "Abonelikler yenilendi: {0}/{1}",
     "SUBSCRIPTIONS_REFRESHED_PARTIAL": "Abonelikler yenilendi: {0}/{1}. Yenilenemedi: {2}",
     "FAILED_TO_REFRESH": "Yenilenemedi: {0}",
@@ -227,8 +227,8 @@
     "SUBSCRIPTION_REFRESH_PREPARATION_FAILED": "Yenileme hazırlığı başarısız oldu: {0}",
     "SUBSCRIPTION_REFRESH_PERSISTENCE_FAILED": "Yenileme sonuçları kaydedilemedi: {0}",
     "SUBSCRIPTION_REFRESH_OTHER_FAILED": "Yenileme başarısız oldu: {0}",
-    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "İşlem başarısız",
-    "FAILED_TO_REFRESH_SUBSCRIPTIONS": "İşlem başarısız",
+    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "Etkin abonelik yenilenemedi",
+    "FAILED_TO_REFRESH_SUBSCRIPTIONS": "Abonelikler yenilenemedi",
     "LOADING_SAVED_LOCATIONS": "Kayıtlı konumlar yükleniyor...",
     "DOWNLOADING_REMOTE_SOURCE": "Uzak kaynak indiriliyor...",
     "CHECKING_TCP_SPEED": "{0} için TCP hızı kontrol ediliyor...",
@@ -241,9 +241,9 @@
     "BEST_LOCATION_SUMMARY": "En iyi: {0} • {1}",
     "SELECTED_LOCATION_APPLYING": "Seçili konum uygulanıyor...",
     "UPDATED_SELECTED_LOCATION_APPLYING": "Güncellenen seçili konum uygulanıyor...",
-    "SELECTED_LOCATION_APPLY_FAILED": "İşlem başarısız",
-    "SELECTED_LOCATION_SELECT_FAILED": "İşlem başarısız",
-    "UPDATED_SELECTED_LOCATION_APPLY_FAILED": "İşlem başarısız",
+    "SELECTED_LOCATION_APPLY_FAILED": "Seçili konum uygulanamadı",
+    "SELECTED_LOCATION_SELECT_FAILED": "Konum seçilemedi",
+    "UPDATED_SELECTED_LOCATION_APPLY_FAILED": "Güncellenen seçili konum uygulanamadı",
     "UPDATED_SELECTED_LOCATION_SAVE_FAILED": "Güncellenen seçili konum kaydedilemedi",
     "UPDATED_SELECTED_LOCATION_APPLIED_SAVE_FAILED": "Güncellenen seçili konum uygulandı, ancak kaydedilemedi",
     "CONNECTION_STOPPED_KEEP_STATE_CONSISTENT": "Durumu tutarlı tutmak için {connectionLabel:0} durduruldu.",
@@ -252,11 +252,11 @@
     "PREVIOUS_CONNECTION_RESTORE_FAILED_STOPPED": "Önceki {connectionLabel:0} konumu geri yüklenemedi: {1}. Durumu tutarlı tutmak için {connectionLabel:0} durduruldu.",
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Önceki {connectionLabel:0} konumu geri yüklenemedi: {1}. {connectionLabel:0} durdurulamadı: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Yönlendirme kuralları kaydedildi. Uygulamak için {connectionLabel:0} yeniden başlatın",
-    "ROUTING_RULES_SAVE_FAILED": "İşlem başarısız",
+    "ROUTING_RULES_SAVE_FAILED": "Yönlendirme kuralları kaydedilemedi",
     "ROUTING_RULES_OUTCOME_UNKNOWN": "Yönlendirme değişikliğinin sonucu bilinmiyor. Aynı girdilerle yeniden deneyin.",
     "ROUTING_RULES_STALE_DRAFT": "Yönlendirme ayarları değişti. Kaydetmeden önce düzenleyiciyi yeniden açın.",
     "DIAGNOSTICS_EXPORT_OPENED": "Tanılama dışa aktarımı açıldı",
-    "APPS_LOAD_FAILED": "İşlem başarısız",
+    "APPS_LOAD_FAILED": "Uygulamalar yüklenemedi",
     "SUBSCRIPTION_RECEIVED": "Abonelik alındı. Profil sekmesinde gözden geçirip kaydedin.",
     "SUBSCRIPTION_LINK_RECEIVED": "Abonelik bağlantısı alındı. Profil sekmesinde gözden geçirip kaydedin.",
     "LOCATION_CONFIG_RECEIVED": "Konum yapılandırması alındı. Konumlar sekmesinde gözden geçirip kaydedin.",
@@ -294,9 +294,9 @@
     "BACKGROUND_REFRESH_REPLACEMENT_STOPPED": "Yerine geçecek konum etkinleştirilemediği için {connectionLabel:0} durduruldu.",
     "BACKGROUND_REFRESH_RESTORE_OR_STOP_FAILED": "{connectionLabel:0} düzgün şekilde geri yüklenemedi veya durdurulamadı: {1}.",
     "BACKGROUND_REFRESH_FAILED": "Arka plan yenilemesi başarısız oldu",
-    "REPLACEMENT_LOCATION_SEARCH_FAILED": "İşlem başarısız",
+    "REPLACEMENT_LOCATION_SEARCH_FAILED": "Yerine geçecek konum bulunamadı",
     "REPLACEMENT_LOCATION_SAVE_FAILED": "Yerine geçecek konum kaydedilemedi",
-    "INVALID_SUBSCRIPTION_URL": "Abonelik güncellendi",
+    "INVALID_SUBSCRIPTION_URL": "Geçersiz abonelik URL'si",
     "SUBSCRIPTION_DELETE_REMOVED_SELECTED_STOPPED": "{connectionLabel:0} durduruldu. Silinen abonelik seçili konumu kaldırdı.",
     "RESOLVING_REMOTE_SOURCE": "{0} çözümleniyor...",
     "SUBSCRIPTION_SOURCE_LOAD_FAILED": "{0} yüklenemedi",
@@ -494,31 +494,31 @@
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "İşlem başarısız"
+      "target": "Güncellenen seçili konum uygulanamadı"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "İşlem başarısız"
+      "target": "Tanılama dışa aktarılamadı"
     },
     {
       "source": "Failed to export locations",
-      "target": "İşlem başarısız"
+      "target": "Konumlar dışa aktarılamadı"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "İşlem başarısız"
+      "target": "Yönlendirme kuralları dışa aktarılamadı"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "İşlem başarısız"
+      "target": "Yerine geçecek konum bulunamadı"
     },
     {
       "source": "Failed to import file",
-      "target": "İşlem başarısız"
+      "target": "Dosya içe aktarılamadı"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "İşlem başarısız"
+      "target": "Tanılama hedefi açılamadı"
     },
     {
       "source": "Failed to save refresh settings",
@@ -526,7 +526,7 @@
     },
     {
       "source": "Failed to update startup setting",
-      "target": "İşlem başarısız"
+      "target": "Başlangıç ayarı güncellenemedi"
     },
     {
       "source": "Import canceled",
@@ -534,7 +534,7 @@
     },
     {
       "source": "Invalid subscription URL",
-      "target": "Abonelik güncellendi"
+      "target": "Geçersiz abonelik URL’si"
     },
     {
       "source": "Latency history enabled",
@@ -554,11 +554,11 @@
     },
     {
       "source": "Location check cancelled",
-      "target": "Konum güncellendi"
+      "target": "Konum denetimi iptal edildi"
     },
     {
       "source": "Location check failed",
-      "target": "Konum güncellendi"
+      "target": "Konum denetimi başarısız oldu"
     },
     {
       "source": "Locations exported",
@@ -566,19 +566,19 @@
     },
     {
       "source": "Locations import canceled",
-      "target": "Konumlar güncellendi"
+      "target": "Konum içe aktarımı iptal edildi"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "Konumlar güncellendi"
+      "target": "Hız ölçümü için kullanılabilir konum yok"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "Abonelik güncellendi"
+      "target": "Yenilenecek abonelik yok"
     },
     {
       "source": "No suitable location found",
-      "target": "Konum güncellendi"
+      "target": "Uygun konum bulunamadı"
     },
     {
       "source": "Per-profile totals enabled",
@@ -602,7 +602,7 @@
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Kurallar güncellendi"
+      "target": "Yönlendirme kurallarının içe aktarımı iptal edildi"
     },
     {
       "source": "Saved routing rules",
@@ -626,7 +626,7 @@
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Abonelik güncellendi"
+      "target": "Abonelik yenilemesi tamamlandı, ancak arka planda geçiş yapmak için VPN izni gerekiyor. Önceki VPN konumu yedek olarak korundu."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
@@ -820,7 +820,7 @@
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Abonelik güncellendi"
+      "target": "Tüm abonelikler yenileniyor..."
     },
     {
       "source": "Refreshing active subscription...",
@@ -848,15 +848,15 @@
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Abonelikler yenilendi"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Etkin abonelik yenilendi"
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Tüm abonelikler yenilendi"
     },
     {
       "source": "Refresh failed",
@@ -908,7 +908,7 @@
     },
     {
       "source": "Routing rules saved",
-      "target": "Yönlendirme kurallar kaydedildi"
+      "target": "Yönlendirme kuralları kaydedildi"
     },
     {
       "source": "Routing rules imported",
@@ -1046,7 +1046,7 @@
     },
     {
       "source": "Selected location applied, but failed to save it",
-      "target": "Konum güncellendi"
+      "target": "Seçili konum uygulandı, ancak kaydedilemedi"
     },
     {
       "source": "Location removal rolled back because the proxy could not be stopped",
@@ -1082,19 +1082,19 @@
     },
     {
       "source": "Routing rules saved. Restart VPN to apply",
-      "target": "Kurallar güncellendi"
+      "target": "Yönlendirme kuralları kaydedildi. Uygulamak için VPN'i yeniden başlatın"
     },
     {
       "source": "Routing rules saved. Restart proxy to apply",
-      "target": "Kurallar güncellendi"
+      "target": "Yönlendirme kuralları kaydedildi. Uygulamak için proxy'yi yeniden başlatın"
     },
     {
       "source": "Routing rules imported. Restart VPN to apply",
-      "target": "Kurallar güncellendi"
+      "target": "Yönlendirme kuralları içe aktarıldı. Uygulamak için VPN'i yeniden başlatın"
     },
     {
       "source": "Routing rules imported. Restart proxy to apply",
-      "target": "Kurallar güncellendi"
+      "target": "Yönlendirme kuralları içe aktarıldı. Uygulamak için proxy'yi yeniden başlatın"
     },
     {
       "source": "Selected location removed. VPN stopped: ",
@@ -1150,35 +1150,35 @@
     },
     {
       "source": "Failed to apply selected location",
-      "target": "İşlem başarısız"
+      "target": "Seçili konum uygulanamadı"
     },
     {
       "source": "Failed to select location",
-      "target": "İşlem başarısız"
+      "target": "Konum seçilemedi"
     },
     {
       "source": "Failed to stop VPN before exit",
-      "target": "İşlem başarısız"
+      "target": "VPN çıkıştan önce durdurulamadı"
     },
     {
       "source": "Failed to stop Proxy before exit",
-      "target": "İşlem başarısız"
+      "target": "Proxy çıkıştan önce durdurulamadı"
     },
     {
       "source": "Failed to stop VPN",
-      "target": "İşlem başarısız"
+      "target": "VPN durdurulamadı"
     },
     {
       "source": "Failed to stop proxy",
-      "target": "İşlem başarısız"
+      "target": "Proxy durdurulamadı"
     },
     {
       "source": "Failed to start VPN",
-      "target": "İşlem başarısız"
+      "target": "VPN başlatılamadı"
     },
     {
       "source": "Failed to start proxy",
-      "target": "İşlem başarısız"
+      "target": "Proxy başlatılamadı"
     },
     {
       "source": "Could not prepare VPN",
@@ -1222,7 +1222,7 @@
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Abonelik güncellendi"
+      "target": "Tüm abonelikler yenileniyor..."
     },
     {
       "source": "Refreshing active subscription...",
@@ -1246,15 +1246,15 @@
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Tüm abonelikler yenilendi"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Etkin abonelik yenilendi"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Abonelik güncellendi"
+      "target": "Abonelikler yenilendi"
     },
     {
       "source": "Subscription refreshed",
@@ -1338,7 +1338,7 @@
     },
     {
       "source": "Routing rules saved",
-      "target": "Yönlendirme kurallar kaydedildi"
+      "target": "Yönlendirme kuralları kaydedildi"
     },
     {
       "source": "Routing rules imported",
@@ -1422,43 +1422,43 @@
     },
     {
       "source": "No locations to export",
-      "target": "Konumlar güncellendi"
+      "target": "Dışa aktarılacak konum yok"
     },
     {
       "source": "Failed to load apps",
-      "target": "İşlem başarısız"
+      "target": "Uygulamalar yüklenemedi"
     },
     {
       "source": "Failed to refresh subscriptions",
-      "target": "İşlem başarısız"
+      "target": "Abonelikler yenilenemedi"
     },
     {
       "source": "Failed to refresh the active subscription",
-      "target": "İşlem başarısız"
+      "target": "Etkin abonelik yenilenemedi"
     },
     {
       "source": "Failed to import routing rules",
-      "target": "İşlem başarısız"
+      "target": "Yönlendirme kuralları içe aktarılamadı"
     },
     {
       "source": "Failed to save routing rules",
-      "target": "İşlem başarısız"
+      "target": "Yönlendirme kuralları kaydedilemedi"
     },
     {
       "source": "Failed to import locations",
-      "target": "İşlem başarısız"
+      "target": "Konumlar içe aktarılamadı"
     },
     {
       "source": "Failed to open locations file",
-      "target": "İşlem başarısız"
+      "target": "Konum dosyası açılamadı"
     },
     {
       "source": "Failed to read locations file",
-      "target": "İşlem başarısız"
+      "target": "Konum dosyası okunamadı"
     },
     {
       "source": "Failed to open routing rules file",
-      "target": "İşlem başarısız"
+      "target": "Yönlendirme kuralları dosyası açılamadı"
     },
     {
       "source": "Best location could not be mapped to the desktop list",
@@ -1526,7 +1526,7 @@
     },
     {
       "source": "Location already saved: ",
-      "target": "Konum alhazır kaydedildi: "
+      "target": "Konum zaten kayıtlı: "
     },
     {
       "source": "Location updated: ",
@@ -1542,7 +1542,7 @@
     },
     {
       "source": "Subscriptions refreshed: ",
-      "target": "Abonelik güncellendi"
+      "target": "Abonelikler yenilendi: "
     },
     {
       "source": "Failed: ",
@@ -1558,11 +1558,11 @@
     },
     {
       "source": "Locations exported to ",
-      "target": "Konumlar güncellendi"
+      "target": "Konumlar dışa aktarıldı: "
     },
     {
       "source": "Routing rules exported to ",
-      "target": "Kurallar güncellendi"
+      "target": "Yönlendirme kuralları dışa aktarıldı: "
     },
     {
       "source": "Diagnostics exported to ",
@@ -1570,7 +1570,7 @@
     },
     {
       "source": "Failed to benchmark ",
-      "target": "İşlem başarısız"
+      "target": "Hız ölçümü yapılamadı: "
     },
     {
       "source": "Activated ",

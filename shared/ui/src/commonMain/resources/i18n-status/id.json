@@ -148,15 +148,15 @@
     "HISTORY_ENTRY_DELETED": "Entri riwayat dihapus",
     "SELECTED_LOCATION_UNCHANGED": "Lokasi terpilih tidak berubah: {0}",
     "SELECTED_LOCATION_SET": "Terpilih lokasi set: {0}",
-    "LOCATION_CHECKED": "Location pemeriksaaned: {0}",
+    "LOCATION_CHECKED": "Lokasi diperiksa: {0}",
     "LOCATION_CHECK_FAILED": "Lokasi pemeriksaan gagal",
     "LOCATION_EDITED": "Diedit lokasi #{0}",
-    "SAMPLE_RULE_SET_ADDED": "Ditambahkan a sample rule-set",
-    "RULE_SET_DELETED": "Dihapus rule-set {0}",
+    "SAMPLE_RULE_SET_ADDED": "Contoh rule-set ditambahkan",
+    "RULE_SET_DELETED": "Rule-set {0} dihapus",
     "ROUTING_RULES_SAVED": "Perutean aturan tersimpan",
     "ROUTING_RULES_IMPORTED": "Perutean aturan diimpor",
-    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Aturan diperbarui",
-    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Aturan diperbarui",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Aturan perutean diimpor. Mulai ulang VPN untuk menerapkannya",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Aturan perutean diimpor. Mulai ulang proksi untuk menerapkannya",
     "ROUTING_RULES_IMPORT_FAILED": "Gagal mengimpor aturan perutean",
     "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Aturan perutean disalin ke clipboard",
     "ROUTING_RULES_EXPORT_CANCELED": "Perutean aturan export dibatalkan",
@@ -214,8 +214,8 @@
     "REFRESHING_SUBSCRIPTIONS": "Menyegarkan langganan...",
     "AUTO_REFRESHING_SUBSCRIPTION": "Menyegarkan langganan secara otomatis...",
     "AUTO_REFRESHING_SUBSCRIPTIONS": "Menyegarkan langganan secara otomatis...",
-    "ACTIVE_SUBSCRIPTION_REFRESHED": "Langganan diperbarui",
-    "ALL_SUBSCRIPTIONS_REFRESHED": "Langganan diperbarui",
+    "ACTIVE_SUBSCRIPTION_REFRESHED": "Langganan aktif diperbarui",
+    "ALL_SUBSCRIPTIONS_REFRESHED": "Semua langganan diperbarui",
     "SUBSCRIPTION_REFRESHED": "Langganan diperbarui",
     "SUBSCRIPTIONS_REFRESHED": "Langganan diperbarui",
     "SUBSCRIPTIONS_REFRESHED_COUNT": "Langganan disegarkan: {0}/{1}",
@@ -820,7 +820,7 @@
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Langganan diperbarui"
+      "target": "Menyegarkan semua langganan..."
     },
     {
       "source": "Refreshing active subscription...",
@@ -852,11 +852,11 @@
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Langganan diperbarui"
+      "target": "Langganan aktif diperbarui"
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Langganan diperbarui"
+      "target": "Semua langganan diperbarui"
     },
     {
       "source": "Refresh failed",
@@ -1082,19 +1082,19 @@
     },
     {
       "source": "Routing rules saved. Restart VPN to apply",
-      "target": "Aturan diperbarui"
+      "target": "Aturan perutean disimpan. Mulai ulang VPN untuk menerapkannya"
     },
     {
       "source": "Routing rules saved. Restart proxy to apply",
-      "target": "Aturan diperbarui"
+      "target": "Aturan perutean disimpan. Mulai ulang proksi untuk menerapkannya"
     },
     {
       "source": "Routing rules imported. Restart VPN to apply",
-      "target": "Aturan diperbarui"
+      "target": "Aturan perutean diimpor. Mulai ulang VPN untuk menerapkannya"
     },
     {
       "source": "Routing rules imported. Restart proxy to apply",
-      "target": "Aturan diperbarui"
+      "target": "Aturan perutean diimpor. Mulai ulang proksi untuk menerapkannya"
     },
     {
       "source": "Selected location removed. VPN stopped: ",
@@ -1222,7 +1222,7 @@
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Langganan diperbarui"
+      "target": "Menyegarkan semua langganan..."
     },
     {
       "source": "Refreshing active subscription...",
@@ -1246,11 +1246,11 @@
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Langganan diperbarui"
+      "target": "Semua langganan diperbarui"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Langganan diperbarui"
+      "target": "Langganan aktif diperbarui"
     },
     {
       "source": "Subscriptions refreshed",

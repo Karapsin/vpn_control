@@ -71,7 +71,7 @@
     "DESKTOP_VPN_CAPABILITY_READY": "VPN سطح المكتب جاهز",
     "DESKTOP_VPN_CAPABILITY_ERROR": "قدرة VPN سطح المكتب: {valueOrNotReady}",
     "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "قدرة VPN سطح المكتب: غير جاهز",
-    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "تم تحديث المواقع",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "لا توجد مواقع متاحة لقياس الأداء",
     "BEST_LOCATION_SEARCH_TIMED_OUT": "انتهت مهلة البحث عن أفضل موقع؛ سيبقى الاتصال الحالي",
     "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
     "LOCATION_SEARCH_CANCELLED": "الموقع بحث أُلغي",
@@ -86,14 +86,14 @@
     "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "بدأ VPN، لكن فشل حفظ أفضل موقع",
     "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "بدأ الوكيل، لكن فشل حفظ أفضل موقع",
     "BACKGROUND_REFRESH_FINDING_BEST": "اكتمل تحديث الاشتراك. جارٍ العثور على أفضل موقع...",
-    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "تم تحديث الاشتراك",
-    "NO_SUITABLE_LOCATION_FOUND": "تم تحديث الموقع",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "اكتمل تحديث الاشتراك، لكن يلزم إذن VPN للتبديل في الخلفية. تم الاحتفاظ بموقع VPN السابق كخيار احتياطي.",
+    "NO_SUITABLE_LOCATION_FOUND": "لم يتم العثور على موقع مناسب",
     "BEST_LOCATION_NOT_MAPPED": "تعذر مطابقة أفضل موقع مع قائمة سطح المكتب",
     "ACTIVATED_ALL_SUBSCRIPTIONS": "تم تفعيل كل الاشتراكات",
     "ACTIVATED_SUBSCRIPTION": "تم تفعيل {0}",
     "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
     "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
-    "SUBSCRIPTION_NAME_RESET": "تم تحديث الاشتراك",
+    "SUBSCRIPTION_NAME_RESET": "تمت إعادة تعيين اسم الاشتراك",
     "SUBSCRIPTION_NAME_SAVED": "الاشتراك الاسم محفوظ",
     "SUBSCRIPTION_DELETED": "تم حذف الاشتراك",
     "SELECT_LOCATION_FIRST": "اختر موقعًا أولاً",
@@ -117,18 +117,18 @@
     "INVALID_LOCATION_CONFIG": "إعداد الموقع غير صالح",
     "LOCATION_ALREADY_SAVED": "الموقع محفوظ بالفعل: {0}",
     "LOCATION_EDIT_UNAVAILABLE": "الموقع المطلوب تعديله لم يعد متاحاً",
-    "LOCATION_ADDED": "تم تحديث الموقع{0}",
-    "LOCATION_UPDATED_AND_MERGED": "تم تحديث الموقع{0}",
-    "LOCATION_UPDATED": "تم تحديث الموقع{0}",
+    "LOCATION_ADDED": "أُضيف الموقع: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "تم تحديث الموقع ودمجه: {0}",
+    "LOCATION_UPDATED": "تم تحديث الموقع: {0}",
     "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "مواقع الاشتراك للقراءة فقط. انتقل إلى المواقع المحفوظة لحذفها.",
     "SELECTED_LOCATION_REMOVED": "أزيل الموقع المحدد: {0}",
-    "LOCATION_REMOVED": "تم تحديث الموقع{0}",
+    "LOCATION_REMOVED": "أزيل الموقع: {0}",
     "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "أزيل الموقع المحدد. توقف VPN: {1}",
     "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "أزيل الموقع المحدد. توقف الوكيل: {1}",
     "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "تم التراجع عن تغيير الموقع لأن VPN لم يتوقف",
     "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "تم التراجع عن تغيير الموقع لأن الوكيل لم يتوقف",
     "IMPORT_LOCATIONS_BLOCKED": "انتقل إلى المواقع المحفوظة لاستيراد المواقع",
-    "IMPORT_LOCATIONS_FAILED": "فشلت العملية",
+    "IMPORT_LOCATIONS_FAILED": "فشل استيراد المواقع",
     "LOCATIONS_IMPORTED": "المواقع تم الاستيراد",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "الموقع المحدد لم يعد متاحاً",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "تم استيراد المواقع. الموقع المحدد لم يعد متاحاً، وتم إيقاف VPN",
@@ -148,36 +148,36 @@
     "HISTORY_ENTRY_DELETED": "تم حذف إدخال السجل",
     "SELECTED_LOCATION_UNCHANGED": "الموقع المحدد لم يتغير: {0}",
     "SELECTED_LOCATION_SET": "تم ضبط الموقع المحدد: {0}",
-    "LOCATION_CHECKED": "Location فحصed: {0}",
-    "LOCATION_CHECK_FAILED": "تم تحديث الموقع",
+    "LOCATION_CHECKED": "تم فحص الموقع: {0}",
+    "LOCATION_CHECK_FAILED": "فشل فحص الموقع",
     "LOCATION_EDITED": "عُدّل الموقع #{0}",
-    "SAMPLE_RULE_SET_ADDED": "أُضيف a sample rule-set",
-    "RULE_SET_DELETED": "حُذف rule-set {0}",
-    "ROUTING_RULES_SAVED": "التوجيه القواعد محفوظ",
+    "SAMPLE_RULE_SET_ADDED": "تمت إضافة مجموعة قواعد نموذجية",
+    "RULE_SET_DELETED": "تم حذف مجموعة القواعد {0}",
+    "ROUTING_RULES_SAVED": "تم حفظ قواعد التوجيه",
     "ROUTING_RULES_IMPORTED": "التوجيه القواعد تم الاستيراد",
     "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "تم استيراد قواعد التوجيه. أعد تشغيل VPN لتطبيقها",
     "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "تم استيراد قواعد التوجيه. أعد تشغيل الوكيل لتطبيقها",
-    "ROUTING_RULES_IMPORT_FAILED": "فشلت العملية",
+    "ROUTING_RULES_IMPORT_FAILED": "فشل استيراد قواعد التوجيه",
     "ROUTING_RULES_COPIED_TO_CLIPBOARD": "تم نسخ القواعد إلى الحافظة",
     "ROUTING_RULES_EXPORT_CANCELED": "أُلغي تصدير القواعد",
     "ROUTING_RULES_EXPORTED_TO": "تم تصدير قواعد التوجيه إلى {0}",
-    "ROUTING_RULES_EXPORT_FAILED": "فشلت العملية",
-    "ROUTING_RULES_FILE_OPEN_FAILED": "فشلت العملية",
+    "ROUTING_RULES_EXPORT_FAILED": "فشل تصدير قواعد التوجيه",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "فشل فتح ملف قواعد التوجيه",
     "LOCATIONS_COPIED_TO_CLIPBOARD": "تم نسخ المواقع إلى الحافظة",
     "LOCATIONS_EXPORT_CANCELED": "أُلغي تصدير المواقع",
     "LOCATIONS_EXPORTED_TO": "تم تصدير المواقع إلى {0}",
-    "LOCATIONS_EXPORT_FAILED": "فشلت العملية",
+    "LOCATIONS_EXPORT_FAILED": "فشل تصدير المواقع",
     "LOCATIONS_FILE_OPEN_FAILED": "فشل فتح ملف المواقع",
     "LOCATIONS_FILE_READ_FAILED": "فشل قراءة ملف المواقع",
     "DIAGNOSTICS_EXPORT_CANCELED": "أُلغي تصدير التشخيص",
     "DIAGNOSTICS_EXPORTED_TO": "تم تصدير التشخيصات إلى {0}",
-    "DIAGNOSTICS_EXPORT_FAILED": "فشلت العملية",
-    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "فشلت العملية",
+    "DIAGNOSTICS_EXPORT_FAILED": "فشل تصدير التشخيص",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "فشل فتح وجهة تصدير التشخيص",
     "NO_SUBSCRIPTIONS_TO_REFRESH": "لا توجد اشتراكات للتحديث",
     "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
     "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
-    "STARTUP_SETTING_UPDATE_FAILED": "فشلت العملية",
-    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "فشلت العملية: {0}",
+    "STARTUP_SETTING_UPDATE_FAILED": "فشل تحديث إعداد البدء عند تسجيل الدخول",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "فشل تحديث إعداد البدء عند تسجيل الدخول: {0}",
     "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
     "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
     "REFRESH_SETTINGS_SAVE_FAILED": "فشل حفظ إعدادات التحديث",
@@ -200,8 +200,8 @@
     "APP_CLOSED_CONNECTION_WAS_OFF": "أُغلق التطبيق. كان VPN متوقفاً.",
     "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "توقف VPN. سيعاد الاتصال عند التشغيل التالي.",
     "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "توقف الوسيط. سيعاد الاتصال عند التشغيل التالي.",
-    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "فشلت العملية",
-    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "فشلت العملية",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "فشل إيقاف VPN قبل الخروج",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "فشل إيقاف الوكيل قبل الخروج",
     "CONNECTION_START_CANCELLED.VPN": "تم إلغاء بدء VPN",
     "CONNECTION_START_CANCELLED.PROXY_ONLY": "تم إلغاء بدء الوكيل",
     "CONNECTION_STOP_CANCELLED.VPN": "تم إلغاء إيقاف VPN",
@@ -252,11 +252,11 @@
     "PREVIOUS_CONNECTION_RESTORE_FAILED_STOPPED": "فشلت استعادة موقع {connectionLabel:0} السابق: {1}. تم إيقاف {connectionLabel:0} للحفاظ على اتساق الحالة.",
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "فشلت استعادة موقع {connectionLabel:0} السابق: {1}. فشل إيقاف {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "تم حفظ قواعد التوجيه. أعد تشغيل {connectionLabel:0} لتطبيقها",
-    "ROUTING_RULES_SAVE_FAILED": "فشلت العملية",
+    "ROUTING_RULES_SAVE_FAILED": "فشل حفظ قواعد التوجيه",
     "ROUTING_RULES_OUTCOME_UNKNOWN": "نتيجة تغيير التوجيه غير معروفة. أعد المحاولة باستخدام المدخلات نفسها.",
     "ROUTING_RULES_STALE_DRAFT": "تغيّرت إعدادات التوجيه. أعد فتح المحرر قبل الحفظ.",
     "DIAGNOSTICS_EXPORT_OPENED": "تم فتح تصدير التشخيص",
-    "APPS_LOAD_FAILED": "فشلت العملية",
+    "APPS_LOAD_FAILED": "فشل تحميل التطبيقات",
     "SUBSCRIPTION_RECEIVED": "تم استلام الاشتراك. راجعه واحفظه في تبويب الملف.",
     "SUBSCRIPTION_LINK_RECEIVED": "تم استلام رابط الاشتراك. راجعه واحفظه في تبويب الملف.",
     "LOCATION_CONFIG_RECEIVED": "تم استلام إعداد الموقع. راجعه واحفظه في تبويب المواقع.",
@@ -296,7 +296,7 @@
     "BACKGROUND_REFRESH_FAILED": "فشل التحديث في الخلفية",
     "REPLACEMENT_LOCATION_SEARCH_FAILED": "فشل البحث عن موقع بديل",
     "REPLACEMENT_LOCATION_SAVE_FAILED": "فشل حفظ الموقع البديل",
-    "INVALID_SUBSCRIPTION_URL": "تم تحديث الاشتراك",
+    "INVALID_SUBSCRIPTION_URL": "عنوان URL للاشتراك غير صالح",
     "SUBSCRIPTION_DELETE_REMOVED_SELECTED_STOPPED": "تم إيقاف {connectionLabel:0}. أزال الاشتراك المحذوف الموقع المحدد.",
     "RESOLVING_REMOTE_SOURCE": "جارٍ تجهيز {0}...",
     "SUBSCRIPTION_SOURCE_LOAD_FAILED": "فشل تحميل {0}",
@@ -494,31 +494,31 @@
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "فشلت العملية"
+      "target": "فشل تطبيق الموقع المحدد المحدّث"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "فشلت العملية"
+      "target": "فشل تصدير التشخيص"
     },
     {
       "source": "Failed to export locations",
-      "target": "فشلت العملية"
+      "target": "فشل تصدير المواقع"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "فشلت العملية"
+      "target": "فشل تصدير قواعد التوجيه"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "فشلت العملية"
+      "target": "فشل البحث عن موقع بديل"
     },
     {
       "source": "Failed to import file",
-      "target": "فشلت العملية"
+      "target": "فشل استيراد الملف"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "فشلت العملية"
+      "target": "فشل فتح وجهة تصدير التشخيص"
     },
     {
       "source": "Failed to save refresh settings",
@@ -526,7 +526,7 @@
     },
     {
       "source": "Failed to update startup setting",
-      "target": "فشلت العملية"
+      "target": "فشل تحديث إعداد البدء عند تسجيل الدخول"
     },
     {
       "source": "Import canceled",
@@ -534,7 +534,7 @@
     },
     {
       "source": "Invalid subscription URL",
-      "target": "تم تحديث الاشتراك"
+      "target": "عنوان URL للاشتراك غير صالح"
     },
     {
       "source": "Latency history enabled",
@@ -554,11 +554,11 @@
     },
     {
       "source": "Location check cancelled",
-      "target": "تم تحديث الموقع"
+      "target": "تم إلغاء فحص الموقع"
     },
     {
       "source": "Location check failed",
-      "target": "تم تحديث الموقع"
+      "target": "فشل فحص الموقع"
     },
     {
       "source": "Locations exported",
@@ -566,11 +566,11 @@
     },
     {
       "source": "Locations import canceled",
-      "target": "تم تحديث المواقع"
+      "target": "أُلغي استيراد المواقع"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "تم تحديث المواقع"
+      "target": "لا توجد مواقع متاحة لقياس الأداء"
     },
     {
       "source": "No subscriptions to refresh",
@@ -578,7 +578,7 @@
     },
     {
       "source": "No suitable location found",
-      "target": "تم تحديث الموقع"
+      "target": "لم يتم العثور على موقع مناسب"
     },
     {
       "source": "Per-profile totals enabled",
@@ -602,11 +602,11 @@
     },
     {
       "source": "Routing rules import canceled",
-      "target": "تم تحديث القواعد"
+      "target": "أُلغي استيراد قواعد التوجيه"
     },
     {
       "source": "Saved routing rules",
-      "target": "تم تحديث القواعد"
+      "target": "تم حفظ قواعد التوجيه"
     },
     {
       "source": "Session stats enabled",
@@ -626,7 +626,7 @@
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "تم تحديث الاشتراك"
+      "target": "اكتمل تحديث الاشتراك، لكن يلزم إذن VPN للتبديل في الخلفية. تم الاحتفاظ بموقع VPN السابق كخيار احتياطي."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
@@ -710,7 +710,7 @@
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "تم تحديث القواعد"
+      "target": "فشل أدوات التوجيه/DNS: "
     },
     {
       "source": "TUN device",
@@ -722,7 +722,7 @@
     },
     {
       "source": "route/DNS tooling",
-      "target": "تم تحديث القواعد"
+      "target": "أدوات التوجيه/DNS"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
@@ -734,7 +734,7 @@
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "تم تحديث القواعد"
+      "target": "أدوات التوجيه/DNS في Windows غير متاحة. يحتاج وضع VPN إلى netsh.exe وأوامر PowerShell الخاصة بعميل DNS."
     },
     {
       "source": "VPN ready on this computer",
@@ -888,7 +888,7 @@
     },
     {
       "source": "Subscription name reset",
-      "target": "تم تحديث الاشتراك"
+      "target": "تمت إعادة تعيين اسم الاشتراك"
     },
     {
       "source": "Subscription name saved",
@@ -908,7 +908,7 @@
     },
     {
       "source": "Routing rules saved",
-      "target": "التوجيه القواعد محفوظ"
+      "target": "تم حفظ قواعد التوجيه"
     },
     {
       "source": "Routing rules imported",
@@ -1046,7 +1046,7 @@
     },
     {
       "source": "Selected location applied, but failed to save it",
-      "target": "تم تحديث الموقع"
+      "target": "تم تطبيق الموقع المحدد، لكن فشل حفظه"
     },
     {
       "source": "Location removal rolled back because the proxy could not be stopped",
@@ -1154,15 +1154,15 @@
     },
     {
       "source": "Failed to select location",
-      "target": "فشلت العملية"
+      "target": "فشل اختيار الموقع"
     },
     {
       "source": "Failed to stop VPN before exit",
-      "target": "فشلت العملية"
+      "target": "فشل إيقاف VPN قبل الخروج"
     },
     {
       "source": "Failed to stop Proxy before exit",
-      "target": "فشلت العملية"
+      "target": "فشل إيقاف الوكيل قبل الخروج"
     },
     {
       "source": "Failed to stop VPN",
@@ -1318,7 +1318,7 @@
     },
     {
       "source": "Subscription name reset",
-      "target": "تم تحديث الاشتراك"
+      "target": "تمت إعادة تعيين اسم الاشتراك"
     },
     {
       "source": "Subscription name saved",
@@ -1338,7 +1338,7 @@
     },
     {
       "source": "Routing rules saved",
-      "target": "التوجيه القواعد محفوظ"
+      "target": "تم حفظ قواعد التوجيه"
     },
     {
       "source": "Routing rules imported",
@@ -1422,11 +1422,11 @@
     },
     {
       "source": "No locations to export",
-      "target": "تم تحديث المواقع"
+      "target": "لا توجد مواقع للتصدير"
     },
     {
       "source": "Failed to load apps",
-      "target": "فشلت العملية"
+      "target": "فشل تحميل التطبيقات"
     },
     {
       "source": "Failed to refresh subscriptions",
@@ -1434,19 +1434,19 @@
     },
     {
       "source": "Failed to refresh the active subscription",
-      "target": "فشلت العملية"
+      "target": "فشل تحديث الاشتراك النشط"
     },
     {
       "source": "Failed to import routing rules",
-      "target": "فشلت العملية"
+      "target": "فشل استيراد قواعد التوجيه"
     },
     {
       "source": "Failed to save routing rules",
-      "target": "فشلت العملية"
+      "target": "فشل حفظ قواعد التوجيه"
     },
     {
       "source": "Failed to import locations",
-      "target": "فشلت العملية"
+      "target": "فشل استيراد المواقع"
     },
     {
       "source": "Failed to open locations file",
@@ -1458,7 +1458,7 @@
     },
     {
       "source": "Failed to open routing rules file",
-      "target": "فشلت العملية"
+      "target": "فشل فتح ملف قواعد التوجيه"
     },
     {
       "source": "Best location could not be mapped to the desktop list",
@@ -1522,7 +1522,7 @@
     },
     {
       "source": "Location updated and merged: ",
-      "target": "تم تحديث الموقع"
+      "target": "تم تحديث الموقع ودمجه: "
     },
     {
       "source": "Location already saved: ",
@@ -1530,15 +1530,15 @@
     },
     {
       "source": "Location updated: ",
-      "target": "تم تحديث الموقع"
+      "target": "تم تحديث الموقع: "
     },
     {
       "source": "Location removed: ",
-      "target": "تم تحديث الموقع"
+      "target": "أزيل الموقع: "
     },
     {
       "source": "Location added: ",
-      "target": "تم تحديث الموقع"
+      "target": "أُضيف الموقع: "
     },
     {
       "source": "Subscriptions refreshed: ",
@@ -1570,7 +1570,7 @@
     },
     {
       "source": "Failed to benchmark ",
-      "target": "فشلت العملية"
+      "target": "فشل قياس أداء "
     },
     {
       "source": "Activated ",

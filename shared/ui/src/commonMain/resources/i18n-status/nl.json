@@ -129,10 +129,10 @@
     "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Locatieverwijdering teruggedraaid omdat de proxy niet kon worden gestopt",
     "IMPORT_LOCATIONS_BLOCKED": "Schakel over naar Opgeslagen locaties om locaties te importeren",
     "IMPORT_LOCATIONS_FAILED": "Locaties importeren mislukt",
-    "LOCATIONS_IMPORTED": "Locaties geimporteerd",
-    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Locaties geimporteerd. Geselecteerde locatie is niet meer beschikbaar",
-    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Locaties geimporteerd. Geselecteerde locatie is niet meer beschikbaar, VPN gestopt",
-    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Locaties geimporteerd. Geselecteerde locatie is niet meer beschikbaar, proxy gestopt",
+    "LOCATIONS_IMPORTED": "Locaties geïmporteerd",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Locaties geïmporteerd. Geselecteerde locatie is niet meer beschikbaar",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Locaties geïmporteerd. Geselecteerde locatie is niet meer beschikbaar, VPN gestopt",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Locaties geïmporteerd. Geselecteerde locatie is niet meer beschikbaar, proxy gestopt",
     "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Locatie-import teruggedraaid omdat de VPN niet kon worden gestopt",
     "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Locatie-import teruggedraaid omdat de proxy niet kon worden gestopt",
     "CLIPBOARD_EMPTY": "Klembord is leeg",
@@ -148,29 +148,29 @@
     "HISTORY_ENTRY_DELETED": "Geschiedenisitem verwijderd",
     "SELECTED_LOCATION_UNCHANGED": "Geselecteerde locatie ongewijzigd: {0}",
     "SELECTED_LOCATION_SET": "Geselecteerde locatie ingesteld: {0}",
-    "LOCATION_CHECKED": "Location controleed: {0}",
+    "LOCATION_CHECKED": "Locatie gecontroleerd: {0}",
     "LOCATION_CHECK_FAILED": "Locatiecontrole mislukt",
     "LOCATION_EDITED": "Locatie bewerkt #{0}",
-    "SAMPLE_RULE_SET_ADDED": "Toegevoegd a sample rule-set",
-    "RULE_SET_DELETED": "Verwijderd rule-set {0}",
+    "SAMPLE_RULE_SET_ADDED": "Voorbeeldregelset toegevoegd",
+    "RULE_SET_DELETED": "Regelset {0} verwijderd",
     "ROUTING_RULES_SAVED": "Routeringsregels opgeslagen",
-    "ROUTING_RULES_IMPORTED": "Routeringsregels geimporteerd",
-    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Routeringsregels geimporteerd. Herstart VPN om toe te passen",
-    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Routeringsregels geimporteerd. Herstart proxy om toe te passen",
+    "ROUTING_RULES_IMPORTED": "Routeringsregels geïmporteerd",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Routeringsregels geïmporteerd. Herstart VPN om toe te passen",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Routeringsregels geïmporteerd. Herstart proxy om toe te passen",
     "ROUTING_RULES_IMPORT_FAILED": "Routeringsregels importeren mislukt",
     "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Routeringsregels naar klembord gekopieerd",
     "ROUTING_RULES_EXPORT_CANCELED": "Export van routeringsregels geannuleerd",
-    "ROUTING_RULES_EXPORTED_TO": "Routeringsregels geexporteerd naar {0}",
+    "ROUTING_RULES_EXPORTED_TO": "Routeringsregels geëxporteerd naar {0}",
     "ROUTING_RULES_EXPORT_FAILED": "Exporteren van routeringsregels mislukt",
     "ROUTING_RULES_FILE_OPEN_FAILED": "Bestand met routeringsregels openen mislukt",
     "LOCATIONS_COPIED_TO_CLIPBOARD": "Locaties naar klembord gekopieerd",
     "LOCATIONS_EXPORT_CANCELED": "Locatie-export geannuleerd",
-    "LOCATIONS_EXPORTED_TO": "Locaties geexporteerd naar {0}",
+    "LOCATIONS_EXPORTED_TO": "Locaties geëxporteerd naar {0}",
     "LOCATIONS_EXPORT_FAILED": "Exporteren van locaties mislukt",
     "LOCATIONS_FILE_OPEN_FAILED": "Locatiebestand openen mislukt",
     "LOCATIONS_FILE_READ_FAILED": "Locatiebestand lezen mislukt",
     "DIAGNOSTICS_EXPORT_CANCELED": "Diagnostiekexport geannuleerd",
-    "DIAGNOSTICS_EXPORTED_TO": "Diagnostiek geexporteerd naar {0}",
+    "DIAGNOSTICS_EXPORTED_TO": "Diagnostiek geëxporteerd naar {0}",
     "DIAGNOSTICS_EXPORT_FAILED": "Exporteren van diagnostiek mislukt",
     "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Kon diagnostiekbestemming niet openen",
     "NO_SUBSCRIPTIONS_TO_REFRESH": "Geen abonnementen om te vernieuwen",
@@ -562,7 +562,7 @@
     },
     {
       "source": "Locations exported",
-      "target": "Locaties geexporteerd"
+      "target": "Locaties geëxporteerd"
     },
     {
       "source": "Locations import canceled",
@@ -598,7 +598,7 @@
     },
     {
       "source": "Routing rules exported",
-      "target": "Routeringsregels geexporteerd"
+      "target": "Routeringsregels geëxporteerd"
     },
     {
       "source": "Routing rules import canceled",
@@ -912,15 +912,15 @@
     },
     {
       "source": "Routing rules imported",
-      "target": "Routeringsregels geimporteerd"
+      "target": "Routeringsregels geïmporteerd"
     },
     {
       "source": "Locations imported",
-      "target": "Locaties geimporteerd"
+      "target": "Locaties geïmporteerd"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Locaties geimporteerd. Geselecteerde locatie is niet meer beschikbaar"
+      "target": "Locaties geïmporteerd. Geselecteerde locatie is niet meer beschikbaar"
     },
     {
       "source": "Switch to Saved Locations to import locations",
@@ -1062,15 +1062,15 @@
     },
     {
       "source": "Locations imported. Selected location is no longer available, proxy stopped",
-      "target": "Locaties geimporteerd. Geselecteerde locatie is niet meer beschikbaar, proxy gestopt"
+      "target": "Locaties geïmporteerd. Geselecteerde locatie is niet meer beschikbaar, proxy gestopt"
     },
     {
       "source": "Locations imported. Selected location is no longer available, vpn stopped",
-      "target": "Locaties geimporteerd. Geselecteerde locatie is niet meer beschikbaar, VPN gestopt"
+      "target": "Locaties geïmporteerd. Geselecteerde locatie is niet meer beschikbaar, VPN gestopt"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Locaties geimporteerd. Geselecteerde locatie is niet meer beschikbaar"
+      "target": "Locaties geïmporteerd. Geselecteerde locatie is niet meer beschikbaar"
     },
     {
       "source": "Selected location applied, but failed to save it",
@@ -1118,11 +1118,11 @@
     },
     {
       "source": "Routing rules imported. Restart VPN to apply",
-      "target": "Routeringsregels geimporteerd. Herstart VPN om toe te passen"
+      "target": "Routeringsregels geïmporteerd. Herstart VPN om toe te passen"
     },
     {
       "source": "Routing rules imported. Restart proxy to apply",
-      "target": "Routeringsregels geimporteerd. Herstart proxy om toe te passen"
+      "target": "Routeringsregels geïmporteerd. Herstart proxy om toe te passen"
     },
     {
       "source": "Selected location removed. VPN stopped: ",
@@ -1370,11 +1370,11 @@
     },
     {
       "source": "Routing rules imported",
-      "target": "Routeringsregels geimporteerd"
+      "target": "Routeringsregels geïmporteerd"
     },
     {
       "source": "Locations imported",
-      "target": "Locaties geimporteerd"
+      "target": "Locaties geïmporteerd"
     },
     {
       "source": "Switch to Saved Locations to import locations",
@@ -1586,15 +1586,15 @@
     },
     {
       "source": "Locations exported to ",
-      "target": "Locaties geexporteerd naar "
+      "target": "Locaties geëxporteerd naar "
     },
     {
       "source": "Routing rules exported to ",
-      "target": "Routeringsregels geexporteerd naar "
+      "target": "Routeringsregels geëxporteerd naar "
     },
     {
       "source": "Diagnostics exported to ",
-      "target": "Diagnostiek geexporteerd naar "
+      "target": "Diagnostiek geëxporteerd naar "
     },
     {
       "source": "Failed to benchmark ",

@@ -71,7 +71,7 @@
     "DESKTOP_VPN_CAPABILITY_READY": "VPN دسکتاپ آماده است",
     "DESKTOP_VPN_CAPABILITY_ERROR": "توانایی VPN دسکتاپ: {valueOrNotReady}",
     "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "توانایی VPN دسکتاپ: آماده نیست",
-    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "مکان‌ها به‌روزرسانی شدند",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "هیچ مکانی برای بنچمارک در دسترس نیست",
     "BEST_LOCATION_SEARCH_TIMED_OUT": "جستجوی بهترین مکان زمان‌بر شد؛ اتصال فعلی حفظ می‌شود",
     "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
     "LOCATION_SEARCH_CANCELLED": "مکان جستجو لغو شد",
@@ -86,8 +86,8 @@
     "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN شروع شد، اما بهترین مکان ذخیره نشد",
     "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "پروکسی شروع شد، اما بهترین مکان ذخیره نشد",
     "BACKGROUND_REFRESH_FINDING_BEST": "نوسازی اشتراک پایان یافت. در حال یافتن بهترین مکان...",
-    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "اشتراک به‌روزرسانی شد",
-    "NO_SUITABLE_LOCATION_FOUND": "مکان به‌روزرسانی شد",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "به‌روزرسانی اشتراک پایان یافت، اما برای جابه‌جایی در پس‌زمینه مجوز VPN لازم است. مکان قبلی VPN به‌عنوان گزینه جایگزین حفظ شد.",
+    "NO_SUITABLE_LOCATION_FOUND": "مکان مناسبی پیدا نشد",
     "BEST_LOCATION_NOT_MAPPED": "بهترین مکان با فهرست دسکتاپ تطبیق داده نشد",
     "ACTIVATED_ALL_SUBSCRIPTIONS": "همهٔ اشتراک‌ها فعال شدند",
     "ACTIVATED_SUBSCRIPTION": "فعال شد {0}",
@@ -115,7 +115,7 @@
     "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "ابزار آزمون اتصال پنهان شد",
     "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "مکان‌های اشتراک فقط خواندنی هستند. برای ذخیرهٔ ویرایش‌ها به مکان‌های ذخیره‌شده بروید.",
     "INVALID_LOCATION_CONFIG": "پیکربندی مکان نامعتبر است",
-    "LOCATION_ALREADY_SAVED": "مکان alآماده ذخیره‌شده: {0}",
+    "LOCATION_ALREADY_SAVED": "مکان از قبل ذخیره شده است: {0}",
     "LOCATION_EDIT_UNAVAILABLE": "مکان مورد ویرایش دیگر در دسترس نیست",
     "LOCATION_ADDED": "مکان افزوده شد: {0}",
     "LOCATION_UPDATED_AND_MERGED": "مکان به‌روزرسانی و ادغام شد: {0}",
@@ -128,7 +128,7 @@
     "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "تغییر مکان بازگردانده شد چون VPN متوقف نشد",
     "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "تغییر مکان بازگردانده شد چون پروکسی متوقف نشد",
     "IMPORT_LOCATIONS_BLOCKED": "برای وارد کردن مکان‌ها به مکان‌های ذخیره‌شده بروید",
-    "IMPORT_LOCATIONS_FAILED": "عملیات ناموفق بود",
+    "IMPORT_LOCATIONS_FAILED": "وارد کردن مکان‌ها ناموفق بود",
     "LOCATIONS_IMPORTED": "مکان‌ها وارد شد",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "مکان انتخاب‌شده دیگر در دسترس نیست",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "مکان‌ها وارد شدند. مکان انتخاب‌شده دیگر در دسترس نیست، VPN متوقف شد",
@@ -148,36 +148,36 @@
     "HISTORY_ENTRY_DELETED": "ورودی تاریخچه حذف شد",
     "SELECTED_LOCATION_UNCHANGED": "مکان انتخاب‌شده تغییر نکرد: {0}",
     "SELECTED_LOCATION_SET": "مکان انتخاب‌شده تنظیم شد: {0}",
-    "LOCATION_CHECKED": "Location بررسیed: {0}",
-    "LOCATION_CHECK_FAILED": "مکان به‌روزرسانی شد",
+    "LOCATION_CHECKED": "مکان بررسی شد: {0}",
+    "LOCATION_CHECK_FAILED": "بررسی مکان ناموفق بود",
     "LOCATION_EDITED": "ویرایش شد مکان #{0}",
-    "SAMPLE_RULE_SET_ADDED": "افزوده شد a sample rule-set",
-    "RULE_SET_DELETED": "حذف شد rule-set {0}",
-    "ROUTING_RULES_SAVED": "مسیریابی قوانین ذخیره‌شده",
+    "SAMPLE_RULE_SET_ADDED": "یک مجموعه قوانین نمونه اضافه شد",
+    "RULE_SET_DELETED": "مجموعه قوانین {0} حذف شد",
+    "ROUTING_RULES_SAVED": "قوانین مسیریابی ذخیره شدند",
     "ROUTING_RULES_IMPORTED": "مسیریابی قوانین وارد شد",
     "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "قوانین مسیریابی وارد شد. برای اعمال، VPN را دوباره راه‌اندازی کنید",
     "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "قوانین مسیریابی وارد شد. برای اعمال، پروکسی را دوباره راه‌اندازی کنید",
-    "ROUTING_RULES_IMPORT_FAILED": "عملیات ناموفق بود",
+    "ROUTING_RULES_IMPORT_FAILED": "وارد کردن قوانین مسیریابی ناموفق بود",
     "ROUTING_RULES_COPIED_TO_CLIPBOARD": "قوانین مسیریابی در کلیپ‌بورد کپی شدند",
     "ROUTING_RULES_EXPORT_CANCELED": "خروجی قوانین لغو شد",
     "ROUTING_RULES_EXPORTED_TO": "قوانین مسیریابی صادر شدند: {0}",
-    "ROUTING_RULES_EXPORT_FAILED": "عملیات ناموفق بود",
+    "ROUTING_RULES_EXPORT_FAILED": "خروجی قوانین مسیریابی ناموفق بود",
     "ROUTING_RULES_FILE_OPEN_FAILED": "باز کردن فایل قوانین مسیریابی ناموفق بود",
     "LOCATIONS_COPIED_TO_CLIPBOARD": "مکان‌ها در کلیپ‌بورد کپی شدند",
     "LOCATIONS_EXPORT_CANCELED": "خروجی مکان‌ها لغو شد",
     "LOCATIONS_EXPORTED_TO": "مکان‌ها صادر شدند: {0}",
-    "LOCATIONS_EXPORT_FAILED": "عملیات ناموفق بود",
+    "LOCATIONS_EXPORT_FAILED": "خروجی مکان‌ها ناموفق بود",
     "LOCATIONS_FILE_OPEN_FAILED": "باز کردن فایل مکان‌ها ناموفق بود",
     "LOCATIONS_FILE_READ_FAILED": "خواندن فایل مکان‌ها ناموفق بود",
     "DIAGNOSTICS_EXPORT_CANCELED": "خروجی تشخیص لغو شد",
     "DIAGNOSTICS_EXPORTED_TO": "عیب‌یابی صادر شد: {0}",
-    "DIAGNOSTICS_EXPORT_FAILED": "عملیات ناموفق بود",
-    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "عملیات ناموفق بود",
+    "DIAGNOSTICS_EXPORT_FAILED": "خروجی تشخیص ناموفق بود",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "باز کردن محل ذخیره تشخیص ناموفق بود",
     "NO_SUBSCRIPTIONS_TO_REFRESH": "اشتراکی برای نوسازی وجود ندارد",
     "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
     "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
-    "STARTUP_SETTING_UPDATE_FAILED": "عملیات ناموفق بود",
-    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "عملیات ناموفق بود: {0}",
+    "STARTUP_SETTING_UPDATE_FAILED": "به‌روزرسانی تنظیم شروع هنگام ورود ناموفق بود",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "به‌روزرسانی تنظیم شروع هنگام ورود ناموفق بود: {0}",
     "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
     "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
     "REFRESH_SETTINGS_SAVE_FAILED": "ذخیره تنظیمات نوسازی ناموفق بود",
@@ -216,8 +216,8 @@
     "AUTO_REFRESHING_SUBSCRIPTIONS": "در حال به‌روزرسانی خودکار اشتراک‌ها...",
     "ACTIVE_SUBSCRIPTION_REFRESHED": "اشتراک فعال به‌روزرسانی شد",
     "ALL_SUBSCRIPTIONS_REFRESHED": "همهٔ اشتراک‌ها به‌روزرسانی شدند",
-    "SUBSCRIPTION_REFRESHED": "اشتراک نوسازیed",
-    "SUBSCRIPTIONS_REFRESHED": "اشتراکs نوسازیed",
+    "SUBSCRIPTION_REFRESHED": "اشتراک به‌روزرسانی شد",
+    "SUBSCRIPTIONS_REFRESHED": "اشتراک‌ها به‌روزرسانی شدند",
     "SUBSCRIPTIONS_REFRESHED_COUNT": "اشتراک‌ها به‌روزرسانی شدند: {0}/{1}",
     "SUBSCRIPTIONS_REFRESHED_PARTIAL": "اشتراک‌ها به‌روزرسانی شدند: {0}/{1}. موارد ناموفق: {2}",
     "FAILED_TO_REFRESH": "به‌روزرسانی ناموفق بود: {0}",
@@ -227,7 +227,7 @@
     "SUBSCRIPTION_REFRESH_PREPARATION_FAILED": "آماده‌سازی هنگام به‌روزرسانی ناموفق بود: {0}",
     "SUBSCRIPTION_REFRESH_PERSISTENCE_FAILED": "ذخیره نتایج به‌روزرسانی ناموفق بود: {0}",
     "SUBSCRIPTION_REFRESH_OTHER_FAILED": "به‌روزرسانی ناموفق بود: {0}",
-    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "عملیات ناموفق بود",
+    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "نوسازی اشتراک فعال ناموفق بود",
     "FAILED_TO_REFRESH_SUBSCRIPTIONS": "نوسازی اشتراک‌ها ناموفق بود",
     "LOADING_SAVED_LOCATIONS": "در حال بارگذاری مکان‌های ذخیره‌شده...",
     "DOWNLOADING_REMOTE_SOURCE": "در حال دانلود منبع از راه دور...",
@@ -242,8 +242,8 @@
     "SELECTED_LOCATION_APPLYING": "در حال اعمال مکان انتخاب‌شده...",
     "UPDATED_SELECTED_LOCATION_APPLYING": "در حال اعمال مکان انتخاب‌شدهٔ به‌روزشده...",
     "SELECTED_LOCATION_APPLY_FAILED": "اعمال مکان انتخاب‌شده ناموفق بود",
-    "SELECTED_LOCATION_SELECT_FAILED": "عملیات ناموفق بود",
-    "UPDATED_SELECTED_LOCATION_APPLY_FAILED": "عملیات ناموفق بود",
+    "SELECTED_LOCATION_SELECT_FAILED": "انتخاب مکان ناموفق بود",
+    "UPDATED_SELECTED_LOCATION_APPLY_FAILED": "اعمال مکان انتخاب‌شده به‌روزشده ناموفق بود",
     "UPDATED_SELECTED_LOCATION_SAVE_FAILED": "ذخیره مکان انتخاب‌شده به‌روزشده ناموفق بود",
     "UPDATED_SELECTED_LOCATION_APPLIED_SAVE_FAILED": "مکان انتخاب‌شده به‌روزشده اعمال شد، اما ذخیره آن ناموفق بود",
     "CONNECTION_STOPPED_KEEP_STATE_CONSISTENT": "{connectionLabel:0} برای حفظ سازگاری وضعیت متوقف شد.",
@@ -252,7 +252,7 @@
     "PREVIOUS_CONNECTION_RESTORE_FAILED_STOPPED": "بازیابی مکان قبلی {connectionLabel:0} ناموفق بود: {1}. {connectionLabel:0} برای حفظ سازگاری وضعیت متوقف شد.",
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "بازیابی مکان قبلی {connectionLabel:0} ناموفق بود: {1}. توقف {connectionLabel:0} ناموفق بود: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "قوانین مسیریابی ذخیره شدند. برای اعمال، {connectionLabel:0} را دوباره راه‌اندازی کنید",
-    "ROUTING_RULES_SAVE_FAILED": "عملیات ناموفق بود",
+    "ROUTING_RULES_SAVE_FAILED": "ذخیره قوانین مسیریابی ناموفق بود",
     "ROUTING_RULES_OUTCOME_UNKNOWN": "نتیجهٔ تغییر مسیریابی نامشخص است. با همان ورودی دوباره تلاش کنید.",
     "ROUTING_RULES_STALE_DRAFT": "تنظیمات مسیریابی تغییر کرده‌اند. پیش از ذخیره، ویرایشگر را دوباره باز کنید.",
     "DIAGNOSTICS_EXPORT_OPENED": "خروجی تشخیص باز شد",
@@ -294,9 +294,9 @@
     "BACKGROUND_REFRESH_REPLACEMENT_STOPPED": "{connectionLabel:0} متوقف شد، چون مکان جایگزین فعال نشد.",
     "BACKGROUND_REFRESH_RESTORE_OR_STOP_FAILED": "بازیابی یا توقف درست {connectionLabel:0} ناموفق بود: {1}.",
     "BACKGROUND_REFRESH_FAILED": "به‌روزرسانی در پس‌زمینه ناموفق بود",
-    "REPLACEMENT_LOCATION_SEARCH_FAILED": "عملیات ناموفق بود",
+    "REPLACEMENT_LOCATION_SEARCH_FAILED": "یافتن مکان جایگزین ناموفق بود",
     "REPLACEMENT_LOCATION_SAVE_FAILED": "ذخیره مکان جایگزین ناموفق بود",
-    "INVALID_SUBSCRIPTION_URL": "اشتراک به‌روزرسانی شد",
+    "INVALID_SUBSCRIPTION_URL": "URL اشتراک نامعتبر است",
     "SUBSCRIPTION_DELETE_REMOVED_SELECTED_STOPPED": "{connectionLabel:0} متوقف شد. با حذف اشتراک، مکان انتخاب‌شده حذف شد.",
     "RESOLVING_REMOTE_SOURCE": "در حال یافتن {0}...",
     "SUBSCRIPTION_SOURCE_LOAD_FAILED": "بارگذاری {0} ناموفق بود",
@@ -494,31 +494,31 @@
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "عملیات ناموفق بود"
+      "target": "اعمال مکان انتخاب‌شده به‌روزشده ناموفق بود"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "عملیات ناموفق بود"
+      "target": "خروجی تشخیص ناموفق بود"
     },
     {
       "source": "Failed to export locations",
-      "target": "عملیات ناموفق بود"
+      "target": "خروجی مکان‌ها ناموفق بود"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "عملیات ناموفق بود"
+      "target": "خروجی قوانین مسیریابی ناموفق بود"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "عملیات ناموفق بود"
+      "target": "یافتن مکان جایگزین ناموفق بود"
     },
     {
       "source": "Failed to import file",
-      "target": "عملیات ناموفق بود"
+      "target": "وارد کردن فایل ناموفق بود"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "عملیات ناموفق بود"
+      "target": "باز کردن محل ذخیره تشخیص ناموفق بود"
     },
     {
       "source": "Failed to save refresh settings",
@@ -526,7 +526,7 @@
     },
     {
       "source": "Failed to update startup setting",
-      "target": "عملیات ناموفق بود"
+      "target": "به‌روزرسانی تنظیم شروع هنگام ورود ناموفق بود"
     },
     {
       "source": "Import canceled",
@@ -534,7 +534,7 @@
     },
     {
       "source": "Invalid subscription URL",
-      "target": "اشتراک به‌روزرسانی شد"
+      "target": "URL اشتراک نامعتبر است"
     },
     {
       "source": "Latency history enabled",
@@ -554,11 +554,11 @@
     },
     {
       "source": "Location check cancelled",
-      "target": "مکان به‌روزرسانی شد"
+      "target": "بررسی مکان لغو شد"
     },
     {
       "source": "Location check failed",
-      "target": "مکان به‌روزرسانی شد"
+      "target": "بررسی مکان ناموفق بود"
     },
     {
       "source": "Locations exported",
@@ -566,11 +566,11 @@
     },
     {
       "source": "Locations import canceled",
-      "target": "مکان‌ها به‌روزرسانی شدند"
+      "target": "وارد کردن مکان‌ها لغو شد"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "مکان‌ها به‌روزرسانی شدند"
+      "target": "هیچ مکانی برای بنچمارک در دسترس نیست"
     },
     {
       "source": "No subscriptions to refresh",
@@ -578,7 +578,7 @@
     },
     {
       "source": "No suitable location found",
-      "target": "مکان به‌روزرسانی شد"
+      "target": "مکان مناسبی پیدا نشد"
     },
     {
       "source": "Per-profile totals enabled",
@@ -602,11 +602,11 @@
     },
     {
       "source": "Routing rules import canceled",
-      "target": "قوانین به‌روزرسانی شدند"
+      "target": "وارد کردن قوانین مسیریابی لغو شد"
     },
     {
       "source": "Saved routing rules",
-      "target": "قوانین به‌روزرسانی شدند"
+      "target": "قوانین مسیریابی ذخیره شدند"
     },
     {
       "source": "Session stats enabled",
@@ -626,7 +626,7 @@
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "اشتراک به‌روزرسانی شد"
+      "target": "به‌روزرسانی اشتراک پایان یافت، اما برای جابه‌جایی در پس‌زمینه مجوز VPN لازم است. مکان قبلی VPN به‌عنوان گزینه جایگزین حفظ شد."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
@@ -710,7 +710,7 @@
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "قوانین به‌روزرسانی شدند"
+      "target": "خطای ابزارهای مسیریابی/DNS: "
     },
     {
       "source": "TUN device",
@@ -722,7 +722,7 @@
     },
     {
       "source": "route/DNS tooling",
-      "target": "قوانین به‌روزرسانی شدند"
+      "target": "ابزارهای مسیریابی/DNS"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
@@ -734,7 +734,7 @@
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "قوانین به‌روزرسانی شدند"
+      "target": "ابزارهای مسیریابی/DNS در Windows در دسترس نیست. حالت VPN به netsh.exe و cmdletهای PowerShell کلاینت DNS نیاز دارد."
     },
     {
       "source": "VPN ready on this computer",
@@ -844,11 +844,11 @@
     },
     {
       "source": "Subscription refreshed",
-      "target": "اشتراک نوسازیed"
+      "target": "اشتراک به‌روزرسانی شد"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "اشتراکs نوسازیed"
+      "target": "اشتراک‌ها به‌روزرسانی شدند"
     },
     {
       "source": "Active subscription refreshed",
@@ -908,7 +908,7 @@
     },
     {
       "source": "Routing rules saved",
-      "target": "مسیریابی قوانین ذخیره‌شده"
+      "target": "قوانین مسیریابی ذخیره شدند"
     },
     {
       "source": "Routing rules imported",
@@ -1046,7 +1046,7 @@
     },
     {
       "source": "Selected location applied, but failed to save it",
-      "target": "مکان به‌روزرسانی شد"
+      "target": "مکان انتخاب‌شده اعمال شد، اما ذخیره آن ناموفق بود"
     },
     {
       "source": "Location removal rolled back because the proxy could not be stopped",
@@ -1154,7 +1154,7 @@
     },
     {
       "source": "Failed to select location",
-      "target": "عملیات ناموفق بود"
+      "target": "انتخاب مکان ناموفق بود"
     },
     {
       "source": "Failed to stop VPN before exit",
@@ -1254,11 +1254,11 @@
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "اشتراکs نوسازیed"
+      "target": "اشتراک‌ها به‌روزرسانی شدند"
     },
     {
       "source": "Subscription refreshed",
-      "target": "اشتراک نوسازیed"
+      "target": "اشتراک به‌روزرسانی شد"
     },
     {
       "source": "Refresh failed",
@@ -1338,7 +1338,7 @@
     },
     {
       "source": "Routing rules saved",
-      "target": "مسیریابی قوانین ذخیره‌شده"
+      "target": "قوانین مسیریابی ذخیره شدند"
     },
     {
       "source": "Routing rules imported",
@@ -1422,7 +1422,7 @@
     },
     {
       "source": "No locations to export",
-      "target": "مکان‌ها به‌روزرسانی شدند"
+      "target": "مکانی برای خروجی گرفتن نیست"
     },
     {
       "source": "Failed to load apps",
@@ -1434,19 +1434,19 @@
     },
     {
       "source": "Failed to refresh the active subscription",
-      "target": "عملیات ناموفق بود"
+      "target": "نوسازی اشتراک فعال ناموفق بود"
     },
     {
       "source": "Failed to import routing rules",
-      "target": "عملیات ناموفق بود"
+      "target": "وارد کردن قوانین مسیریابی ناموفق بود"
     },
     {
       "source": "Failed to save routing rules",
-      "target": "عملیات ناموفق بود"
+      "target": "ذخیره قوانین مسیریابی ناموفق بود"
     },
     {
       "source": "Failed to import locations",
-      "target": "عملیات ناموفق بود"
+      "target": "وارد کردن مکان‌ها ناموفق بود"
     },
     {
       "source": "Failed to open locations file",
@@ -1526,7 +1526,7 @@
     },
     {
       "source": "Location already saved: ",
-      "target": "مکان alآماده ذخیره‌شده: "
+      "target": "مکان از قبل ذخیره شده است: "
     },
     {
       "source": "Location updated: ",
@@ -1542,7 +1542,7 @@
     },
     {
       "source": "Subscriptions refreshed: ",
-      "target": "اشتراکs نوسازیed: "
+      "target": "اشتراک‌ها به‌روزرسانی شدند: "
     },
     {
       "source": "Failed: ",

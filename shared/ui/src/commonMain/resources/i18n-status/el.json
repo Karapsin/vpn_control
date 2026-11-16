@@ -43,7 +43,7 @@
     "IDLE": "Αδράνεια",
     "LANGUAGE_SET": "{ui:SETTINGS_LANGUAGE}: {0}",
     "LANGUAGE_SET.SYSTEM": "{ui:SETTINGS_LANGUAGE}: {ui:SETTINGS_LANGUAGE_SYSTEM}",
-    "SUBSCRIPTION_AUTO_REFRESH_SET": "Η συνδρομή ενημερώθηκε{refreshInterval}",
+    "SUBSCRIPTION_AUTO_REFRESH_SET": "Αυτόματη ανανέωση συνδρομών: {refreshInterval}",
     "VALIDATION_SETTINGS_SAVED": "Validation settings saved: {0} • batch {1} • refresh {2} • retries {3} • window {4}",
     "CUSTOM_DNS_SAVED": "Το προσαρμοσμένο DNS αποθηκεύτηκε",
     "CUSTOM_DNS_DISABLED": "Το προσαρμοσμένο DNS απενεργοποιήθηκε",
@@ -67,117 +67,117 @@
     "PREFLIGHT_PASSED.VPN": "Οι έλεγχοι VPN πέρασαν",
     "PREFLIGHT_PASSED.PROXY_ONLY": "Οι έλεγχοι διαμεσολαβητή πέρασαν",
     "PREFLIGHT_FAILED.VPN": "Οι έλεγχοι VPN απέτυχαν: {checkCount}",
-    "PREFLIGHT_FAILED.PROXY_ONLY": "Η ενέργεια απέτυχε{checkCount}",
+    "PREFLIGHT_FAILED.PROXY_ONLY": "Οι έλεγχοι διαμεσολαβητή απέτυχαν: {checkCount}",
     "DESKTOP_VPN_CAPABILITY_READY": "VPN υπολογιστή: έτοιμο",
     "DESKTOP_VPN_CAPABILITY_ERROR": "VPN υπολογιστή: {valueOrNotReady}",
     "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "VPN υπολογιστή: Η κατάσταση ενημερώθηκε",
-    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Οι τοποθεσίες ενημερώθηκαν",
-    "BEST_LOCATION_SEARCH_TIMED_OUT": "Η τοποθεσία ενημερώθηκε",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "Δεν υπάρχουν διαθέσιμες τοποθεσίες για μέτρηση απόδοσης",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "Το χρονικό όριο αναζήτησης καλύτερης τοποθεσίας έληξε· διατηρείται η τρέχουσα σύνδεση",
     "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
-    "LOCATION_SEARCH_CANCELLED": "Η τοποθεσία ενημερώθηκε",
-    "LOCATION_SEARCH_FAILED": "Η ενέργεια απέτυχε",
-    "VPN_PERMISSION_REQUIRED": "Η κατάσταση ενημερώθηκε",
-    "SELECTED_LOCATION_SAVE_FAILED": "Η ενέργεια απέτυχε",
-    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "Η ενέργεια απέτυχε",
-    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Η ενέργεια απέτυχε",
-    "BEST_LOCATION_START_FAILED.VPN": "Η ενέργεια απέτυχε",
-    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Η ενέργεια απέτυχε",
-    "BEST_LOCATION_SAVE_FAILED": "Η ενέργεια απέτυχε",
-    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "Η ενέργεια απέτυχε",
-    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Η ενέργεια απέτυχε",
+    "LOCATION_SEARCH_CANCELLED": "Η αναζήτηση τοποθεσίας ακυρώθηκε",
+    "LOCATION_SEARCH_FAILED": "Η αναζήτηση τοποθεσίας απέτυχε",
+    "VPN_PERMISSION_REQUIRED": "Παραχωρήστε άδεια VPN και δοκιμάστε ξανά",
+    "SELECTED_LOCATION_SAVE_FAILED": "Αποτυχία αποθήκευσης της επιλεγμένης τοποθεσίας",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "Το VPN ξεκίνησε, αλλά η αποθήκευση της επιλεγμένης τοποθεσίας απέτυχε",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Ο διαμεσολαβητής ξεκίνησε, αλλά η αποθήκευση της επιλεγμένης τοποθεσίας απέτυχε",
+    "BEST_LOCATION_START_FAILED.VPN": "Αποτυχία έναρξης VPN με την καλύτερη τοποθεσία",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Αποτυχία έναρξης διαμεσολαβητή με την καλύτερη τοποθεσία",
+    "BEST_LOCATION_SAVE_FAILED": "Αποτυχία αποθήκευσης της καλύτερης τοποθεσίας",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "Το VPN ξεκίνησε, αλλά η αποθήκευση της καλύτερης τοποθεσίας απέτυχε",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Ο διαμεσολαβητής ξεκίνησε, αλλά η αποθήκευση της καλύτερης τοποθεσίας απέτυχε",
     "BACKGROUND_REFRESH_FINDING_BEST": "Η ανανέωση συνδρομής ολοκληρώθηκε. Εύρεση καλύτερης τοποθεσίας...",
-    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Η συνδρομή ενημερώθηκε",
-    "NO_SUITABLE_LOCATION_FOUND": "Η τοποθεσία ενημερώθηκε",
-    "BEST_LOCATION_NOT_MAPPED": "Η ενέργεια απέτυχε",
-    "ACTIVATED_ALL_SUBSCRIPTIONS": "Η συνδρομή ενημερώθηκε",
-    "ACTIVATED_SUBSCRIPTION": "Η κατάσταση ενημερώθηκε{0}",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Η ανανέωση συνδρομών ολοκληρώθηκε, αλλά απαιτείται άδεια VPN για αλλαγή στο παρασκήνιο. Η προηγούμενη τοποθεσία VPN διατηρήθηκε ως εφεδρική.",
+    "NO_SUITABLE_LOCATION_FOUND": "Δεν βρέθηκε κατάλληλη τοποθεσία",
+    "BEST_LOCATION_NOT_MAPPED": "Δεν ήταν δυνατή η αντιστοίχιση της καλύτερης τοποθεσίας με τη λίστα του υπολογιστή",
+    "ACTIVATED_ALL_SUBSCRIPTIONS": "Ενεργοποιήθηκαν όλες οι συνδρομές",
+    "ACTIVATED_SUBSCRIPTION": "Ενεργοποιήθηκε: {0}",
     "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
     "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
-    "SUBSCRIPTION_NAME_RESET": "Η συνδρομή ενημερώθηκε",
-    "SUBSCRIPTION_NAME_SAVED": "Η συνδρομή ενημερώθηκε",
-    "SUBSCRIPTION_DELETED": "Η συνδρομή ενημερώθηκε",
+    "SUBSCRIPTION_NAME_RESET": "Το όνομα συνδρομής επαναφέρθηκε",
+    "SUBSCRIPTION_NAME_SAVED": "Το όνομα συνδρομής αποθηκεύτηκε",
+    "SUBSCRIPTION_DELETED": "Η συνδρομή διαγράφηκε",
     "SELECT_LOCATION_FIRST": "Επιλέξτε πρώτα τοποθεσία",
     "CHECKING_LOCATION": "Έλεγχος {0}...",
     "TESTING_LOCATION": "Δοκιμή {0}...",
     "LOCATION_CHECK_CANCELLED": "Ο έλεγχος τοποθεσίας ακυρώθηκε",
     "NO_LOCATIONS_TO_EXPORT": "Δεν υπάρχουν τοποθεσίες για εξαγωγή",
-    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Η κατάσταση ενημερώθηκε",
-    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Η κατάσταση ενημερώθηκε",
-    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Η κατάσταση ενημερώθηκε",
-    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Η κατάσταση ενημερώθηκε",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "Στατιστικά συνεδρίας ενεργά",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "Στατιστικά συνεδρίας κρυφά",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "Στατιστικά κίνησης σε πραγματικό χρόνο ενεργά",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "Στατιστικά κίνησης σε πραγματικό χρόνο κρυφά",
     "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "Σύνολα ανά προφίλ ενεργά",
     "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "Σύνολα ανά προφίλ κρυφά",
-    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Η κατάσταση ενημερώθηκε",
-    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Η κατάσταση ενημερώθηκε",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "Ιστορικό καθυστέρησης ενεργό",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "Ιστορικό καθυστέρησης κρυφό",
     "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "Ιστορικό σύνδεσης ενεργό",
     "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "Ιστορικό σύνδεσης κρυφό",
     "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "Εργαλεία ελέγχου σύνδεσης ενεργά",
     "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Εργαλεία ελέγχου σύνδεσης κρυφά",
-    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Η συνδρομή ενημερώθηκε",
-    "INVALID_LOCATION_CONFIG": "Η τοποθεσία ενημερώθηκε",
-    "LOCATION_ALREADY_SAVED": "Η τοποθεσία ενημερώθηκε{0}",
-    "LOCATION_EDIT_UNAVAILABLE": "Η τοποθεσία ενημερώθηκε",
-    "LOCATION_ADDED": "Η τοποθεσία ενημερώθηκε{0}",
-    "LOCATION_UPDATED_AND_MERGED": "Η τοποθεσία ενημερώθηκε{0}",
-    "LOCATION_UPDATED": "Η τοποθεσία ενημερώθηκε{0}",
-    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Η συνδρομή ενημερώθηκε",
-    "SELECTED_LOCATION_REMOVED": "Η τοποθεσία ενημερώθηκε{0}",
-    "LOCATION_REMOVED": "Η τοποθεσία ενημερώθηκε{0}",
-    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Η τοποθεσία ενημερώθηκε{1}",
-    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Η τοποθεσία ενημερώθηκε{1}",
-    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "Η ενέργεια απέτυχε",
-    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Η ενέργεια απέτυχε",
-    "IMPORT_LOCATIONS_BLOCKED": "Οι τοποθεσίες ενημερώθηκαν",
-    "IMPORT_LOCATIONS_FAILED": "Η ενέργεια απέτυχε",
-    "LOCATIONS_IMPORTED": "Οι τοποθεσίες ενημερώθηκαν",
-    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Οι τοποθεσίες ενημερώθηκαν",
-    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Οι τοποθεσίες ενημερώθηκαν",
-    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Οι τοποθεσίες ενημερώθηκαν",
-    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Η ενέργεια απέτυχε",
-    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Η ενέργεια απέτυχε",
+    "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Οι τοποθεσίες συνδρομής είναι μόνο για ανάγνωση. Μεταβείτε στις Αποθηκευμένες τοποθεσίες για να αποθηκεύσετε τις αλλαγές.",
+    "INVALID_LOCATION_CONFIG": "Μη έγκυρη ρύθμιση τοποθεσίας",
+    "LOCATION_ALREADY_SAVED": "Η τοποθεσία είναι ήδη αποθηκευμένη: {0}",
+    "LOCATION_EDIT_UNAVAILABLE": "Η τοποθεσία προς επεξεργασία δεν είναι πλέον διαθέσιμη",
+    "LOCATION_ADDED": "Η τοποθεσία προστέθηκε: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "Η τοποθεσία ενημερώθηκε και συγχωνεύθηκε: {0}",
+    "LOCATION_UPDATED": "Η τοποθεσία ενημερώθηκε: {0}",
+    "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Οι τοποθεσίες συνδρομής είναι μόνο για ανάγνωση. Μεταβείτε στις Αποθηκευμένες τοποθεσίες για να τις διαγράψετε.",
+    "SELECTED_LOCATION_REMOVED": "Η επιλεγμένη τοποθεσία αφαιρέθηκε: {0}",
+    "LOCATION_REMOVED": "Η τοποθεσία αφαιρέθηκε: {0}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Η επιλεγμένη τοποθεσία αφαιρέθηκε. Το VPN σταμάτησε: {1}",
+    "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Η επιλεγμένη τοποθεσία αφαιρέθηκε. Ο διαμεσολαβητής σταμάτησε: {1}",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "Η αφαίρεση της τοποθεσίας αναιρέθηκε επειδή δεν ήταν δυνατή η διακοπή του VPN",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Η αφαίρεση της τοποθεσίας αναιρέθηκε επειδή δεν ήταν δυνατή η διακοπή του διαμεσολαβητή",
+    "IMPORT_LOCATIONS_BLOCKED": "Μεταβείτε στις Αποθηκευμένες τοποθεσίες για να εισαγάγετε τοποθεσίες",
+    "IMPORT_LOCATIONS_FAILED": "Αποτυχία εισαγωγής τοποθεσιών",
+    "LOCATIONS_IMPORTED": "Οι τοποθεσίες εισήχθησαν",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Οι τοποθεσίες εισήχθησαν. Η επιλεγμένη τοποθεσία δεν είναι πλέον διαθέσιμη",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Οι τοποθεσίες εισήχθησαν. Η επιλεγμένη τοποθεσία δεν είναι πλέον διαθέσιμη, το VPN σταμάτησε",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Οι τοποθεσίες εισήχθησαν. Η επιλεγμένη τοποθεσία δεν είναι πλέον διαθέσιμη, ο διαμεσολαβητής σταμάτησε",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Η εισαγωγή τοποθεσιών αναιρέθηκε επειδή δεν ήταν δυνατή η διακοπή του VPN",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Η εισαγωγή τοποθεσιών αναιρέθηκε επειδή δεν ήταν δυνατή η διακοπή του διαμεσολαβητή",
     "CLIPBOARD_EMPTY": "Το πρόχειρο είναι άδειο",
-    "CLIPBOARD_READ_FAILED": "Δεν ήταν δυνατό το άνοιγμα του αρχείου",
+    "CLIPBOARD_READ_FAILED": "Η ανάγνωση του προχείρου απέτυχε",
     "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "Το κείμενο της συνδρομής φορτώθηκε στην καρτέλα Προφίλ",
     "PROFILE_SOURCE_SET.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
     "PROFILE_SOURCE_SET.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
-    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "Η κατάσταση ενημερώθηκε",
+    "DISCONNECT_FIRST_CHANGE_CONNECTION_MODE": "Αποσυνδεθείτε πρώτα για να αλλάξετε τη λειτουργία σύνδεσης",
     "CONNECTION_MODE_SET.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
     "CONNECTION_MODE_SET.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
     "RULE_SET_REMOVED": "Το σύνολο κανόνων αφαιρέθηκε",
-    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Οι τοποθεσίες ενημερώθηκαν",
-    "HISTORY_ENTRY_DELETED": "Η κατάσταση ενημερώθηκε",
-    "SELECTED_LOCATION_UNCHANGED": "Η τοποθεσία ενημερώθηκε{0}",
-    "SELECTED_LOCATION_SET": "Η τοποθεσία ενημερώθηκε{0}",
-    "LOCATION_CHECKED": "LocationΗ κατάσταση ενημερώθηκεed: {0}",
-    "LOCATION_CHECK_FAILED": "Η ενέργεια απέτυχε",
-    "LOCATION_EDITED": "Η τοποθεσία ενημερώθηκε{0}",
-    "SAMPLE_RULE_SET_ADDED": "Η κατάσταση ενημερώθηκεa sample rule-set",
-    "RULE_SET_DELETED": "Η κατάσταση ενημερώθηκεrule-set {0}",
-    "ROUTING_RULES_SAVED": "Οι κανόνες ενημερώθηκαν",
-    "ROUTING_RULES_IMPORTED": "Οι κανόνες ενημερώθηκαν",
-    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Οι κανόνες ενημερώθηκαν",
-    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Οι κανόνες ενημερώθηκαν",
-    "ROUTING_RULES_IMPORT_FAILED": "Η ενέργεια απέτυχε",
-    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Οι κανόνες ενημερώθηκαν",
-    "ROUTING_RULES_EXPORT_CANCELED": "Οι κανόνες ενημερώθηκαν",
-    "ROUTING_RULES_EXPORTED_TO": "Οι κανόνες ενημερώθηκαν{0}",
-    "ROUTING_RULES_EXPORT_FAILED": "Η ενέργεια απέτυχε",
-    "ROUTING_RULES_FILE_OPEN_FAILED": "Δεν ήταν δυνατό το άνοιγμα του αρχείου",
-    "LOCATIONS_COPIED_TO_CLIPBOARD": "Οι τοποθεσίες ενημερώθηκαν",
-    "LOCATIONS_EXPORT_CANCELED": "Οι τοποθεσίες ενημερώθηκαν",
-    "LOCATIONS_EXPORTED_TO": "Οι τοποθεσίες ενημερώθηκαν{0}",
-    "LOCATIONS_EXPORT_FAILED": "Η ενέργεια απέτυχε",
-    "LOCATIONS_FILE_OPEN_FAILED": "Δεν ήταν δυνατό το άνοιγμα του αρχείου",
-    "LOCATIONS_FILE_READ_FAILED": "Η ενέργεια απέτυχε",
-    "DIAGNOSTICS_EXPORT_CANCELED": "Η κατάσταση ενημερώθηκε",
-    "DIAGNOSTICS_EXPORTED_TO": "Η κατάσταση ενημερώθηκε{0}",
-    "DIAGNOSTICS_EXPORT_FAILED": "Η ενέργεια απέτυχε",
-    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Η ενέργεια απέτυχε",
-    "NO_SUBSCRIPTIONS_TO_REFRESH": "Η συνδρομή ενημερώθηκε",
+    "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Μεταβείτε στις Αποθηκευμένες τοποθεσίες για να προσθέσετε τοποθεσίες χειροκίνητα",
+    "HISTORY_ENTRY_DELETED": "Η εγγραφή ιστορικού διαγράφηκε",
+    "SELECTED_LOCATION_UNCHANGED": "Η επιλεγμένη τοποθεσία δεν άλλαξε: {0}",
+    "SELECTED_LOCATION_SET": "Ορίστηκε επιλεγμένη τοποθεσία: {0}",
+    "LOCATION_CHECKED": "Η τοποθεσία ελέγχθηκε: {0}",
+    "LOCATION_CHECK_FAILED": "Ο έλεγχος τοποθεσίας απέτυχε",
+    "LOCATION_EDITED": "Επεξεργάστηκε η τοποθεσία #{0}",
+    "SAMPLE_RULE_SET_ADDED": "Προστέθηκε ένα παράδειγμα συνόλου κανόνων",
+    "RULE_SET_DELETED": "Το σύνολο κανόνων {0} διαγράφηκε",
+    "ROUTING_RULES_SAVED": "Οι κανόνες δρομολόγησης αποθηκεύτηκαν",
+    "ROUTING_RULES_IMPORTED": "Οι κανόνες δρομολόγησης εισήχθησαν",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Οι κανόνες δρομολόγησης εισήχθησαν. Επανεκκινήστε το VPN για να εφαρμοστούν",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Οι κανόνες δρομολόγησης εισήχθησαν. Επανεκκινήστε τον διαμεσολαβητή για να εφαρμοστούν",
+    "ROUTING_RULES_IMPORT_FAILED": "Αποτυχία εισαγωγής κανόνων δρομολόγησης",
+    "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Οι κανόνες δρομολόγησης αντιγράφηκαν στο πρόχειρο",
+    "ROUTING_RULES_EXPORT_CANCELED": "Η εξαγωγή κανόνων δρομολόγησης ακυρώθηκε",
+    "ROUTING_RULES_EXPORTED_TO": "Οι κανόνες δρομολόγησης εξήχθησαν στο {0}",
+    "ROUTING_RULES_EXPORT_FAILED": "Αποτυχία εξαγωγής κανόνων δρομολόγησης",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Αποτυχία ανοίγματος του αρχείου κανόνων δρομολόγησης",
+    "LOCATIONS_COPIED_TO_CLIPBOARD": "Οι τοποθεσίες αντιγράφηκαν στο πρόχειρο",
+    "LOCATIONS_EXPORT_CANCELED": "Η εξαγωγή τοποθεσιών ακυρώθηκε",
+    "LOCATIONS_EXPORTED_TO": "Οι τοποθεσίες εξήχθησαν στο {0}",
+    "LOCATIONS_EXPORT_FAILED": "Αποτυχία εξαγωγής τοποθεσιών",
+    "LOCATIONS_FILE_OPEN_FAILED": "Αποτυχία ανοίγματος του αρχείου τοποθεσιών",
+    "LOCATIONS_FILE_READ_FAILED": "Αποτυχία ανάγνωσης του αρχείου τοποθεσιών",
+    "DIAGNOSTICS_EXPORT_CANCELED": "Η εξαγωγή διαγνωστικών ακυρώθηκε",
+    "DIAGNOSTICS_EXPORTED_TO": "Τα διαγνωστικά εξήχθησαν στο {0}",
+    "DIAGNOSTICS_EXPORT_FAILED": "Αποτυχία εξαγωγής διαγνωστικών",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Αποτυχία ανοίγματος του προορισμού διαγνωστικών",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "Δεν υπάρχουν συνδρομές για ανανέωση",
     "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
     "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
-    "STARTUP_SETTING_UPDATE_FAILED": "Η ενέργεια απέτυχε",
-    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Η ενέργεια απέτυχε: {0}",
+    "STARTUP_SETTING_UPDATE_FAILED": "Αποτυχία ενημέρωσης της ρύθμισης εκκίνησης",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Αποτυχία ενημέρωσης της ρύθμισης εκκίνησης: {0}",
     "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
     "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
     "REFRESH_SETTINGS_SAVE_FAILED": "Αποτυχία αποθήκευσης των ρυθμίσεων ανανέωσης",
@@ -188,36 +188,36 @@
     "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
     "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
     "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
-    "PREVIOUS_CONNECTION_RESTORE_PENDING": "Η κατάσταση ενημερώθηκε",
-    "PREVIOUS_LOCATION_UNAVAILABLE": "Η τοποθεσία ενημερώθηκε",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "Η προηγούμενη συνεδρία VPN θα αποκατασταθεί",
+    "PREVIOUS_LOCATION_UNAVAILABLE": "Η προηγούμενη τοποθεσία VPN δεν είναι πλέον διαθέσιμη",
     "RESTORING_PREVIOUS_CONNECTION": "Επαναφορά VPN: {0}...",
     "CONNECTION_STARTED_ON_TARGET.VPN": "Το VPN ξεκίνησε στο {1}",
     "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Ο διαμεσολαβητής ξεκίνησε στο {1}",
-    "CONNECTION_START_FAILED.VPN": "Η ενέργεια απέτυχε",
-    "CONNECTION_START_FAILED.PROXY_ONLY": "Η ενέργεια απέτυχε",
-    "CONNECTION_STOP_FAILED.VPN": "Η ενέργεια απέτυχε",
-    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Η ενέργεια απέτυχε",
-    "APP_CLOSED_CONNECTION_WAS_OFF": "Η κατάσταση ενημερώθηκε",
+    "CONNECTION_START_FAILED.VPN": "Αποτυχία έναρξης VPN",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Αποτυχία έναρξης διαμεσολαβητή",
+    "CONNECTION_STOP_FAILED.VPN": "Αποτυχία διακοπής VPN",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Αποτυχία διακοπής διαμεσολαβητή",
+    "APP_CLOSED_CONNECTION_WAS_OFF": "Η εφαρμογή έκλεισε. Το VPN ήταν ανενεργό.",
     "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "Το VPN σταμάτησε. Θα συνδεθεί στην επόμενη εκκίνηση.",
     "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Ο διαμεσολαβητής σταμάτησε. Θα συνδεθεί στην επόμενη εκκίνηση.",
-    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "Η ενέργεια απέτυχε",
-    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Η ενέργεια απέτυχε",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "Αποτυχία διακοπής VPN πριν από την έξοδο",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Αποτυχία διακοπής διαμεσολαβητή πριν από την έξοδο",
     "CONNECTION_START_CANCELLED.VPN": "Η εκκίνηση του VPN ακυρώθηκε",
     "CONNECTION_START_CANCELLED.PROXY_ONLY": "Η εκκίνηση του proxy ακυρώθηκε",
     "CONNECTION_STOP_CANCELLED.VPN": "Η διακοπή του VPN ακυρώθηκε",
     "CONNECTION_STOP_CANCELLED.PROXY_ONLY": "Η διακοπή του proxy ακυρώθηκε",
     "LOCATION_SEARCH_CANCELLED_STOP_FAILED": "Η αναζήτηση τοποθεσίας ακυρώθηκε. Αποτυχία διακοπής {connectionLabel:0}: {1}",
-    "NO_SUBSCRIPTIONS_SAVED": "Η συνδρομή ενημερώθηκε",
-    "NO_REMOTE_SOURCE": "Η απομακρυσμένη πηγή δεν είναι έγκυρη",
-    "ADD_SAVED_LOCATION_FIRST": "Η τοποθεσία ενημερώθηκε",
-    "REFRESHING_SUBSCRIPTION": "Η συνδρομή ενημερώθηκε",
-    "REFRESHING_SUBSCRIPTIONS": "Η συνδρομή ενημερώθηκε",
-    "AUTO_REFRESHING_SUBSCRIPTION": "Η συνδρομή ενημερώθηκε",
-    "AUTO_REFRESHING_SUBSCRIPTIONS": "Η συνδρομή ενημερώθηκε",
-    "ACTIVE_SUBSCRIPTION_REFRESHED": "Η συνδρομή ενημερώθηκε",
-    "ALL_SUBSCRIPTIONS_REFRESHED": "Η συνδρομή ενημερώθηκε",
-    "SUBSCRIPTION_REFRESHED": "Η συνδρομή ενημερώθηκε",
-    "SUBSCRIPTIONS_REFRESHED": "Η συνδρομή ενημερώθηκε",
+    "NO_SUBSCRIPTIONS_SAVED": "Δεν υπάρχουν ακόμη αποθηκευμένες συνδρομές",
+    "NO_REMOTE_SOURCE": "Ορίστε πρώτα μια απομακρυσμένη πηγή",
+    "ADD_SAVED_LOCATION_FIRST": "Προσθέστε πρώτα τουλάχιστον μία αποθηκευμένη τοποθεσία",
+    "REFRESHING_SUBSCRIPTION": "Ανανέωση συνδρομής...",
+    "REFRESHING_SUBSCRIPTIONS": "Ανανέωση συνδρομών...",
+    "AUTO_REFRESHING_SUBSCRIPTION": "Αυτόματη ανανέωση συνδρομής...",
+    "AUTO_REFRESHING_SUBSCRIPTIONS": "Αυτόματη ανανέωση συνδρομών...",
+    "ACTIVE_SUBSCRIPTION_REFRESHED": "Η ενεργή συνδρομή ανανεώθηκε",
+    "ALL_SUBSCRIPTIONS_REFRESHED": "Όλες οι συνδρομές ανανεώθηκαν",
+    "SUBSCRIPTION_REFRESHED": "Η συνδρομή ανανεώθηκε",
+    "SUBSCRIPTIONS_REFRESHED": "Οι συνδρομές ανανεώθηκαν",
     "SUBSCRIPTIONS_REFRESHED_COUNT": "Οι συνδρομές ανανεώθηκαν: {0}/{1}",
     "SUBSCRIPTIONS_REFRESHED_PARTIAL": "Οι συνδρομές ανανεώθηκαν: {0}/{1}. Απέτυχαν: {2}",
     "FAILED_TO_REFRESH": "Αποτυχία ανανέωσης: {0}",
@@ -227,8 +227,8 @@
     "SUBSCRIPTION_REFRESH_PREPARATION_FAILED": "Αποτυχία προετοιμασίας κατά την ανανέωση: {0}",
     "SUBSCRIPTION_REFRESH_PERSISTENCE_FAILED": "Αποτυχία αποθήκευσης των αποτελεσμάτων ανανέωσης: {0}",
     "SUBSCRIPTION_REFRESH_OTHER_FAILED": "Αποτυχία ανανέωσης: {0}",
-    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "Η ενέργεια απέτυχε",
-    "FAILED_TO_REFRESH_SUBSCRIPTIONS": "Η ενέργεια απέτυχε",
+    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "Αποτυχία ανανέωσης της ενεργής συνδρομής",
+    "FAILED_TO_REFRESH_SUBSCRIPTIONS": "Αποτυχία ανανέωσης συνδρομών",
     "LOADING_SAVED_LOCATIONS": "Φόρτωση αποθηκευμένων τοποθεσιών...",
     "DOWNLOADING_REMOTE_SOURCE": "Λήψη απομακρυσμένης πηγής...",
     "CHECKING_TCP_SPEED": "Έλεγχος ταχύτητας TCP για {0}...",
@@ -239,11 +239,11 @@
     "FIND_BEST_TESTING_FASTEST.SUBSCRIPTION": "Εύρεση της καλύτερης τοποθεσίας από τη συνδρομή... Δοκιμή των ταχύτερων υποψηφίων σε παρτίδες...",
     "FIND_BEST_TESTING_FASTEST.CURRENT_LOCATIONS": "Εύρεση της καλύτερης τοποθεσίας από τις αποθηκευμένες τοποθεσίες... Δοκιμή των ταχύτερων υποψηφίων σε παρτίδες...",
     "BEST_LOCATION_SUMMARY": "Καλύτερη: {0} • {1}",
-    "SELECTED_LOCATION_APPLYING": "Η τοποθεσία ενημερώθηκε",
-    "UPDATED_SELECTED_LOCATION_APPLYING": "Η τοποθεσία ενημερώθηκε",
-    "SELECTED_LOCATION_APPLY_FAILED": "Η ενέργεια απέτυχε",
-    "SELECTED_LOCATION_SELECT_FAILED": "Η ενέργεια απέτυχε",
-    "UPDATED_SELECTED_LOCATION_APPLY_FAILED": "Η ενέργεια απέτυχε",
+    "SELECTED_LOCATION_APPLYING": "Εφαρμογή επιλεγμένης τοποθεσίας...",
+    "UPDATED_SELECTED_LOCATION_APPLYING": "Εφαρμογή ενημερωμένης επιλεγμένης τοποθεσίας...",
+    "SELECTED_LOCATION_APPLY_FAILED": "Αποτυχία εφαρμογής της επιλεγμένης τοποθεσίας",
+    "SELECTED_LOCATION_SELECT_FAILED": "Αποτυχία επιλογής τοποθεσίας",
+    "UPDATED_SELECTED_LOCATION_APPLY_FAILED": "Αποτυχία εφαρμογής της ενημερωμένης επιλεγμένης τοποθεσίας",
     "UPDATED_SELECTED_LOCATION_SAVE_FAILED": "Αποτυχία αποθήκευσης της ενημερωμένης επιλεγμένης τοποθεσίας",
     "UPDATED_SELECTED_LOCATION_APPLIED_SAVE_FAILED": "Η ενημερωμένη επιλεγμένη τοποθεσία εφαρμόστηκε, αλλά δεν ήταν δυνατή η αποθήκευσή της",
     "CONNECTION_STOPPED_KEEP_STATE_CONSISTENT": "Το {connectionLabel:0} διακόπηκε για να διατηρηθεί συνεπής η κατάσταση.",
@@ -252,23 +252,23 @@
     "PREVIOUS_CONNECTION_RESTORE_FAILED_STOPPED": "Αποτυχία αποκατάστασης της προηγούμενης τοποθεσίας για {connectionLabel:0}: {1}. Το {connectionLabel:0} διακόπηκε για να διατηρηθεί συνεπής η κατάσταση.",
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Αποτυχία αποκατάστασης της προηγούμενης τοποθεσίας για {connectionLabel:0}: {1}. Αποτυχία διακοπής {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Οι κανόνες δρομολόγησης αποθηκεύτηκαν. Επανεκκινήστε το {connectionLabel:0} για να εφαρμοστούν",
-    "ROUTING_RULES_SAVE_FAILED": "Η ενέργεια απέτυχε",
+    "ROUTING_RULES_SAVE_FAILED": "Αποτυχία αποθήκευσης κανόνων δρομολόγησης",
     "ROUTING_RULES_OUTCOME_UNKNOWN": "Το αποτέλεσμα της αλλαγής δρομολόγησης είναι άγνωστο. Δοκιμάστε ξανά με τα ίδια δεδομένα.",
     "ROUTING_RULES_STALE_DRAFT": "Οι ρυθμίσεις δρομολόγησης άλλαξαν. Ανοίξτε ξανά τον επεξεργαστή πριν αποθηκεύσετε.",
-    "DIAGNOSTICS_EXPORT_OPENED": "Η κατάσταση ενημερώθηκε",
-    "APPS_LOAD_FAILED": "Η ενέργεια απέτυχε",
-    "SUBSCRIPTION_RECEIVED": "Η συνδρομή ενημερώθηκε",
-    "SUBSCRIPTION_LINK_RECEIVED": "Η συνδρομή ενημερώθηκε",
-    "LOCATION_CONFIG_RECEIVED": "Οι τοποθεσίες ενημερώθηκαν",
-    "SHARED_TEXT_UNSUPPORTED_IMPORT": "Η κατάσταση ενημερώθηκε",
+    "DIAGNOSTICS_EXPORT_OPENED": "Η εξαγωγή διαγνωστικών άνοιξε",
+    "APPS_LOAD_FAILED": "Αποτυχία φόρτωσης εφαρμογών",
+    "SUBSCRIPTION_RECEIVED": "Η συνδρομή ελήφθη. Ελέγξτε την και αποθηκεύστε την στην καρτέλα Προφίλ.",
+    "SUBSCRIPTION_LINK_RECEIVED": "Ο σύνδεσμος συνδρομής ελήφθη. Ελέγξτε τον και αποθηκεύστε τον στην καρτέλα Προφίλ.",
+    "LOCATION_CONFIG_RECEIVED": "Η ρύθμιση τοποθεσίας ελήφθη. Ελέγξτε την και αποθηκεύστε την στην καρτέλα Τοποθεσίες.",
+    "SHARED_TEXT_UNSUPPORTED_IMPORT": "Το κοινόχρηστο κείμενο δεν είναι υποστηριζόμενο περιεχόμενο εισαγωγής",
     "PASTE_SUBSCRIPTION_REQUIRED": "Επικολλήστε ένα URL συνδρομής ή επιλέξτε ένα από τη λίστα",
-    "SUBSCRIPTION_SAVED": "Η συνδρομή ενημερώθηκε",
+    "SUBSCRIPTION_SAVED": "Η συνδρομή αποθηκεύτηκε",
     "INVALID_REMOTE_SOURCE": "Μη έγκυρη απομακρυσμένη πηγή",
     "INVALID_RULE_SET": "Μη έγκυρο σύνολο κανόνων",
     "RULE_SET_ADDED": "Το σύνολο κανόνων προστέθηκε",
     "RULE_SET_UPDATED": "Το σύνολο κανόνων ενημερώθηκε",
-    "ALL_SUBSCRIPTIONS_SELECTED": "Η συνδρομή ενημερώθηκε",
-    "SUBSCRIPTION_SELECTED": "Η συνδρομή ενημερώθηκε",
+    "ALL_SUBSCRIPTIONS_SELECTED": "Επιλέχθηκαν όλες οι συνδρομές",
+    "SUBSCRIPTION_SELECTED": "Η συνδρομή επιλέχθηκε",
     "SUBSCRIPTION_REFRESH_REMOVED_SELECTED_STOPPED": "Το {connectionLabel:0} διακόπηκε. Η ανανέωση συνδρομών αφαίρεσε την επιλεγμένη τοποθεσία.",
     "BENCHMARKED_LOCATION": "Μετρήθηκε η απόδοση του {0}: {1}",
     "BENCHMARK_LOCATION_FAILED": "Αποτυχία μέτρησης απόδοσης για {0}",
@@ -294,9 +294,9 @@
     "BACKGROUND_REFRESH_REPLACEMENT_STOPPED": "Το {connectionLabel:0} διακόπηκε επειδή δεν ήταν δυνατή η ενεργοποίηση τοποθεσίας αντικατάστασης.",
     "BACKGROUND_REFRESH_RESTORE_OR_STOP_FAILED": "Αποτυχία ομαλής αποκατάστασης ή διακοπής {connectionLabel:0}: {1}.",
     "BACKGROUND_REFRESH_FAILED": "Η ανανέωση στο παρασκήνιο απέτυχε",
-    "REPLACEMENT_LOCATION_SEARCH_FAILED": "Η ενέργεια απέτυχε",
+    "REPLACEMENT_LOCATION_SEARCH_FAILED": "Αποτυχία εύρεσης τοποθεσίας αντικατάστασης",
     "REPLACEMENT_LOCATION_SAVE_FAILED": "Αποτυχία αποθήκευσης της τοποθεσίας αντικατάστασης",
-    "INVALID_SUBSCRIPTION_URL": "Η συνδρομή ενημερώθηκε",
+    "INVALID_SUBSCRIPTION_URL": "Μη έγκυρο URL συνδρομής",
     "SUBSCRIPTION_DELETE_REMOVED_SELECTED_STOPPED": "Το {connectionLabel:0} διακόπηκε. Η διαγραμμένη συνδρομή αφαίρεσε την επιλεγμένη τοποθεσία.",
     "RESOLVING_REMOTE_SOURCE": "Επίλυση {0}...",
     "SUBSCRIPTION_SOURCE_LOAD_FAILED": "Αποτυχία φόρτωσης {0}",
@@ -414,7 +414,7 @@
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
-      "target": "Η απομακρυσμένη πηγή δεν είναι έγκυρη"
+      "target": "Η απομακρυσμένη πηγή πρέπει να είναι URL https:// ή υποστηριζόμενος σύνδεσμος εισαγωγής"
     },
     {
       "source": "Remote source is empty",
@@ -422,23 +422,23 @@
     },
     {
       "source": "Remote source must be a valid https:// URL with a host.",
-      "target": "Η απομακρυσμένη πηγή δεν είναι έγκυρη"
+      "target": "Η απομακρυσμένη πηγή πρέπει να είναι έγκυρο URL https:// με host."
     },
     {
       "source": "This sing-box import resolves to an invalid or non-HTTPS URL. Use a valid https:// URL instead.",
-      "target": "Η απομακρυσμένη πηγή δεν είναι έγκυρη"
+      "target": "Αυτή η εισαγωγή sing-box οδηγεί σε μη έγκυρο ή μη HTTPS URL. Χρησιμοποιήστε έγκυρο URL https://."
     },
     {
       "source": "Applying selected location...",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Εφαρμογή επιλεγμένης τοποθεσίας..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Εφαρμογή ενημερωμένης επιλεγμένης τοποθεσίας..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Το χρονικό όριο αναζήτησης καλύτερης τοποθεσίας έληξε· διατηρείται η τρέχουσα σύνδεση"
     },
     {
       "source": "Clipboard is empty",
@@ -462,19 +462,19 @@
     },
     {
       "source": "Could not open export destination",
-      "target": "Δεν ήταν δυνατό το άνοιγμα του αρχείου"
+      "target": "Δεν ήταν δυνατό το άνοιγμα του προορισμού εξαγωγής"
     },
     {
       "source": "Could not open selected file",
-      "target": "Δεν ήταν δυνατό το άνοιγμα του αρχείου"
+      "target": "Δεν ήταν δυνατό το άνοιγμα του επιλεγμένου αρχείου"
     },
     {
       "source": "Could not open selected locations file",
-      "target": "Δεν ήταν δυνατό το άνοιγμα του αρχείου"
+      "target": "Δεν ήταν δυνατό το άνοιγμα του επιλεγμένου αρχείου τοποθεσιών"
     },
     {
       "source": "Could not open selected rules file",
-      "target": "Δεν ήταν δυνατό το άνοιγμα του αρχείου"
+      "target": "Δεν ήταν δυνατό το άνοιγμα του επιλεγμένου αρχείου κανόνων"
     },
     {
       "source": "Desktop shell: Netherlands from Whitelists",
@@ -490,35 +490,35 @@
     },
     {
       "source": "Export Locations",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Εξαγωγή τοποθεσιών"
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία εφαρμογής της ενημερωμένης επιλεγμένης τοποθεσίας"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία εξαγωγής διαγνωστικών"
     },
     {
       "source": "Failed to export locations",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία εξαγωγής τοποθεσιών"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία εξαγωγής κανόνων δρομολόγησης"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία εύρεσης τοποθεσίας αντικατάστασης"
     },
     {
       "source": "Failed to import file",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία εισαγωγής αρχείου"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία ανοίγματος του προορισμού διαγνωστικών"
     },
     {
       "source": "Failed to save refresh settings",
@@ -526,7 +526,7 @@
     },
     {
       "source": "Failed to update startup setting",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία ενημέρωσης της ρύθμισης εκκίνησης"
     },
     {
       "source": "Import canceled",
@@ -534,51 +534,51 @@
     },
     {
       "source": "Invalid subscription URL",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Μη έγκυρο URL συνδρομής"
     },
     {
       "source": "Latency history enabled",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Ιστορικό καθυστέρησης ενεργό"
     },
     {
       "source": "Latency history hidden",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Ιστορικό καθυστέρησης κρυφό"
     },
     {
       "source": "Live traffic stats enabled",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Στατιστικά κίνησης σε πραγματικό χρόνο ενεργά"
     },
     {
       "source": "Live traffic stats hidden",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Στατιστικά κίνησης σε πραγματικό χρόνο κρυφά"
     },
     {
       "source": "Location check cancelled",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Ο έλεγχος τοποθεσίας ακυρώθηκε"
     },
     {
       "source": "Location check failed",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Ο έλεγχος τοποθεσίας απέτυχε"
     },
     {
       "source": "Locations exported",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Οι τοποθεσίες εξήχθησαν"
     },
     {
       "source": "Locations import canceled",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Η εισαγωγή τοποθεσιών ακυρώθηκε"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Δεν υπάρχουν διαθέσιμες τοποθεσίες για μέτρηση απόδοσης"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Δεν υπάρχουν συνδρομές για ανανέωση"
     },
     {
       "source": "No suitable location found",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Δεν βρέθηκε κατάλληλη τοποθεσία"
     },
     {
       "source": "Per-profile totals enabled",
@@ -590,7 +590,7 @@
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η προηγούμενη συνεδρία VPN θα αποκατασταθεί"
     },
     {
       "source": "QR scan canceled",
@@ -598,35 +598,35 @@
     },
     {
       "source": "Routing rules exported",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Οι κανόνες δρομολόγησης εξήχθησαν"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Η εισαγωγή κανόνων δρομολόγησης ακυρώθηκε"
     },
     {
       "source": "Saved routing rules",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Οι κανόνες δρομολόγησης αποθηκεύτηκαν"
     },
     {
       "source": "Session stats enabled",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Στατιστικά συνεδρίας ενεργά"
     },
     {
       "source": "Session stats hidden",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Στατιστικά συνεδρίας κρυφά"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Το κοινόχρηστο κείμενο δεν είναι υποστηριζόμενο περιεχόμενο εισαγωγής"
     },
     {
       "source": "Subscription deleted",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η συνδρομή διαγράφηκε"
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η ανανέωση συνδρομών ολοκληρώθηκε, αλλά απαιτείται άδεια VPN για αλλαγή στο παρασκήνιο. Η προηγούμενη τοποθεσία VPN διατηρήθηκε ως εφεδρική."
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
@@ -634,7 +634,7 @@
     },
     {
       "source": "Subscription refresh finished. ",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η ανανέωση συνδρομών ολοκληρώθηκε. "
     },
     {
       "source": "Runtime mode: ",
@@ -662,7 +662,7 @@
     },
     {
       "source": "Proxy-only mode preflight failed: ",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Οι έλεγχοι διαμεσολαβητή απέτυχαν: "
     },
     {
       "source": "VPN mode unavailable: ",
@@ -670,7 +670,7 @@
     },
     {
       "source": "Proxy-only mode unavailable: ",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η λειτουργία μόνο διαμεσολαβητή δεν είναι διαθέσιμη: "
     },
     {
       "source": "Desktop VPN capability: ready",
@@ -682,23 +682,23 @@
     },
     {
       "source": "VPN mode available",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η λειτουργία VPN είναι διαθέσιμη"
     },
     {
       "source": "Proxy mode available",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η λειτουργία διαμεσολαβητή είναι διαθέσιμη"
     },
     {
       "source": "not ready",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "μη έτοιμο"
     },
     {
       "source": " checks",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": " έλεγχοι"
     },
     {
       "source": " check",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": " έλεγχος"
     },
     {
       "source": "fail TUN device: ",
@@ -714,27 +714,27 @@
     },
     {
       "source": "TUN device",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "συσκευή TUN"
     },
     {
       "source": "network privileges",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "δικαιώματα δικτύου"
     },
     {
       "source": "route/DNS tooling",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "εργαλεία route/DNS"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η συσκευή TUN του Linux λείπει από το /dev/net/tun. Δοκιμάστε: sudo modprobe tun"
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η λειτουργία VPN υπολογιστή απαιτεί CAP_NET_ADMIN. Εκτελέστε ως root ή παραχωρήστε δικαιώματα στο sing-box: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Τα εργαλεία route/DNS των Windows δεν είναι διαθέσιμα. Η λειτουργία VPN απαιτεί το netsh.exe και τα cmdlet PowerShell του προγράμματος-πελάτη DNS."
     },
     {
       "source": "VPN ready on this computer",
@@ -792,107 +792,107 @@
     },
     {
       "source": "Location search cancelled",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η αναζήτηση τοποθεσίας ακυρώθηκε"
     },
     {
       "source": "Location search failed",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Η αναζήτηση τοποθεσίας απέτυχε"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Παραχωρήστε άδεια VPN και δοκιμάστε ξανά"
     },
     {
       "source": "Set a remote source first",
-      "target": "Η απομακρυσμένη πηγή δεν είναι έγκυρη"
+      "target": "Ορίστε πρώτα μια απομακρυσμένη πηγή"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Προσθέστε πρώτα τουλάχιστον μία αποθηκευμένη τοποθεσία"
     },
     {
       "source": "Select a location first",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Επιλέξτε πρώτα τοποθεσία"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Δεν υπάρχουν ακόμη αποθηκευμένες συνδρομές"
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Ανανέωση όλων των συνδρομών..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Ανανέωση ενεργής συνδρομής..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Ανανέωση συνδρομής..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Ανανέωση συνδρομών..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Αυτόματη ανανέωση συνδρομής..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Αυτόματη ανανέωση συνδρομών..."
     },
     {
       "source": "Subscription refreshed",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η συνδρομή ανανεώθηκε"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Οι συνδρομές ανανεώθηκαν"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η ενεργή συνδρομή ανανεώθηκε"
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Όλες οι συνδρομές ανανεώθηκαν"
     },
     {
       "source": "Refresh failed",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Η ανανέωση απέτυχε"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η πηγή προφίλ ορίστηκε σε συνδρομή"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η πηγή προφίλ ορίστηκε σε αποθηκευμένες τοποθεσίες"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η λειτουργία σύνδεσης ορίστηκε σε VPN"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η λειτουργία σύνδεσης ορίστηκε σε μόνο διαμεσολαβητή"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Αποσυνδεθείτε πρώτα για να αλλάξετε τη λειτουργία σύνδεσης"
     },
     {
       "source": "History entry deleted",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η εγγραφή ιστορικού διαγράφηκε"
     },
     {
       "source": "Subscription name reset",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Το όνομα συνδρομής επαναφέρθηκε"
     },
     {
       "source": "Subscription name saved",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Το όνομα συνδρομής αποθηκεύτηκε"
     },
     {
       "source": "Language set to system default",
@@ -908,113 +908,113 @@
     },
     {
       "source": "Routing rules saved",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Οι κανόνες δρομολόγησης αποθηκεύτηκαν"
     },
     {
       "source": "Routing rules imported",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Οι κανόνες δρομολόγησης εισήχθησαν"
     },
     {
       "source": "Locations imported",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Οι τοποθεσίες εισήχθησαν"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Οι τοποθεσίες εισήχθησαν. Η επιλεγμένη τοποθεσία δεν είναι πλέον διαθέσιμη"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Μεταβείτε στις Αποθηκευμένες τοποθεσίες για να εισαγάγετε τοποθεσίες"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Μεταβείτε στις Αποθηκευμένες τοποθεσίες για να προσθέσετε τοποθεσίες χειροκίνητα"
     },
     {
       "source": "Invalid location config",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Μη έγκυρη ρύθμιση τοποθεσίας"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η τοποθεσία προς επεξεργασία δεν είναι πλέον διαθέσιμη"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η εξαγωγή διαγνωστικών άνοιξε"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Η εξαγωγή διαγνωστικών απέτυχε"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η εξαγωγή διαγνωστικών ακυρώθηκε"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η προηγούμενη τοποθεσία VPN δεν είναι πλέον διαθέσιμη"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η εφαρμογή έκλεισε. Το VPN ήταν ανενεργό."
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Ενεργοποιήθηκαν όλες οι συνδρομές"
     },
     {
       "source": "All subscriptions selected",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Επιλέχθηκαν όλες οι συνδρομές"
     },
     {
       "source": "Subscription selected",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η συνδρομή επιλέχθηκε"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Οι τοποθεσίες αντιγράφηκαν στο πρόχειρο"
     },
     {
       "source": "Locations export canceled",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Η εξαγωγή τοποθεσιών ακυρώθηκε"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Οι κανόνες δρομολόγησης αντιγράφηκαν στο πρόχειρο"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Η εξαγωγή κανόνων δρομολόγησης ακυρώθηκε"
     },
     {
       "source": "Profile source mode: SUBSCRIPTION",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Πηγή προφίλ: Συνδρομή"
     },
     {
       "source": "Profile source mode: CURRENT_LOCATIONS",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Πηγή προφίλ: Αποθηκευμένες τοποθεσίες"
     }
   ],
   "legacyReplacements": [
     {
       "source": "Subscription locations are read-only. Switch to Saved Locations to save edits.",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Οι τοποθεσίες συνδρομής είναι μόνο για ανάγνωση. Μεταβείτε στις Αποθηκευμένες τοποθεσίες για να αποθηκεύσετε τις αλλαγές."
     },
     {
       "source": "Subscription locations are read-only. Switch to Saved Locations to delete them.",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Οι τοποθεσίες συνδρομής είναι μόνο για ανάγνωση. Μεταβείτε στις Αποθηκευμένες τοποθεσίες για να τις διαγράψετε."
     },
     {
       "source": "Subscription received. Review and save it on the Profile tab.",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η συνδρομή ελήφθη. Ελέγξτε την και αποθηκεύστε την στην καρτέλα Προφίλ."
     },
     {
       "source": "Subscription link received. Review and save it on the Profile tab.",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Ο σύνδεσμος συνδρομής ελήφθη. Ελέγξτε τον και αποθηκεύστε τον στην καρτέλα Προφίλ."
     },
     {
       "source": "Location config received. Review and save it on the Locations tab.",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Η ρύθμιση τοποθεσίας ελήφθη. Ελέγξτε την και αποθηκεύστε την στην καρτέλα Τοποθεσίες."
     },
     {
       "source": "Starting local proxy with the best location...",
@@ -1034,43 +1034,43 @@
     },
     {
       "source": "Locations imported. Selected location is no longer available, proxy stopped",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Οι τοποθεσίες εισήχθησαν. Η επιλεγμένη τοποθεσία δεν είναι πλέον διαθέσιμη, ο διαμεσολαβητής σταμάτησε"
     },
     {
       "source": "Locations imported. Selected location is no longer available, vpn stopped",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Οι τοποθεσίες εισήχθησαν. Η επιλεγμένη τοποθεσία δεν είναι πλέον διαθέσιμη, το VPN σταμάτησε"
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Οι τοποθεσίες εισήχθησαν. Η επιλεγμένη τοποθεσία δεν είναι πλέον διαθέσιμη"
     },
     {
       "source": "Selected location applied, but failed to save it",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Η επιλεγμένη τοποθεσία εφαρμόστηκε, αλλά δεν ήταν δυνατή η αποθήκευσή της"
     },
     {
       "source": "Location removal rolled back because the proxy could not be stopped",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Η αφαίρεση της τοποθεσίας αναιρέθηκε επειδή δεν ήταν δυνατή η διακοπή του διαμεσολαβητή"
     },
     {
       "source": "Location removal rolled back because the VPN could not be stopped",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Η αφαίρεση της τοποθεσίας αναιρέθηκε επειδή δεν ήταν δυνατή η διακοπή του VPN"
     },
     {
       "source": "Locations import rolled back because the proxy could not be stopped",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Η εισαγωγή τοποθεσιών αναιρέθηκε επειδή δεν ήταν δυνατή η διακοπή του διαμεσολαβητή"
     },
     {
       "source": "Locations import rolled back because the VPN could not be stopped",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Η εισαγωγή τοποθεσιών αναιρέθηκε επειδή δεν ήταν δυνατή η διακοπή του VPN"
     },
     {
       "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Το VPN διακόπηκε. Η ανανέωση συνδρομών αφαίρεσε την επιλεγμένη τοποθεσία."
     },
     {
       "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Ο διαμεσολαβητής διακόπηκε. Η ανανέωση συνδρομών αφαίρεσε την επιλεγμένη τοποθεσία."
     },
     {
       "source": "VPN stopped. Will reconnect on next launch.",
@@ -1082,135 +1082,135 @@
     },
     {
       "source": "Routing rules saved. Restart VPN to apply",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Οι κανόνες δρομολόγησης αποθηκεύτηκαν. Επανεκκινήστε το VPN για να εφαρμοστούν"
     },
     {
       "source": "Routing rules saved. Restart proxy to apply",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Οι κανόνες δρομολόγησης αποθηκεύτηκαν. Επανεκκινήστε τον διαμεσολαβητή για να εφαρμοστούν"
     },
     {
       "source": "Routing rules imported. Restart VPN to apply",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Οι κανόνες δρομολόγησης εισήχθησαν. Επανεκκινήστε το VPN για να εφαρμοστούν"
     },
     {
       "source": "Routing rules imported. Restart proxy to apply",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Οι κανόνες δρομολόγησης εισήχθησαν. Επανεκκινήστε τον διαμεσολαβητή για να εφαρμοστούν"
     },
     {
       "source": "Selected location removed. VPN stopped: ",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η επιλεγμένη τοποθεσία αφαιρέθηκε. Το VPN σταμάτησε: "
     },
     {
       "source": "Selected location removed. Proxy stopped: ",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η επιλεγμένη τοποθεσία αφαιρέθηκε. Ο διαμεσολαβητής σταμάτησε: "
     },
     {
       "source": "Best location selected and vpn started: ",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Επιλέχθηκε η καλύτερη τοποθεσία και το VPN ξεκίνησε: "
     },
     {
       "source": "Best location selected and proxy started: ",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Επιλέχθηκε η καλύτερη τοποθεσία και ο διαμεσολαβητής ξεκίνησε: "
     },
     {
       "source": "VPN started, but failed to save the selected location",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Το VPN ξεκίνησε, αλλά η αποθήκευση της επιλεγμένης τοποθεσίας απέτυχε"
     },
     {
       "source": "Proxy started, but failed to save the selected location",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Ο διαμεσολαβητής ξεκίνησε, αλλά η αποθήκευση της επιλεγμένης τοποθεσίας απέτυχε"
     },
     {
       "source": "VPN started, but failed to save the best location",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Το VPN ξεκίνησε, αλλά η αποθήκευση της καλύτερης τοποθεσίας απέτυχε"
     },
     {
       "source": "Proxy started, but failed to save the best location",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Ο διαμεσολαβητής ξεκίνησε, αλλά η αποθήκευση της καλύτερης τοποθεσίας απέτυχε"
     },
     {
       "source": "Failed to start VPN with the best location",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία έναρξης VPN με την καλύτερη τοποθεσία"
     },
     {
       "source": "Failed to start proxy with the best location",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία έναρξης διαμεσολαβητή με την καλύτερη τοποθεσία"
     },
     {
       "source": "Failed to save the selected location",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία αποθήκευσης της επιλεγμένης τοποθεσίας"
     },
     {
       "source": "Failed to save selected location",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία αποθήκευσης της επιλεγμένης τοποθεσίας"
     },
     {
       "source": "Failed to save the best location",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία αποθήκευσης της καλύτερης τοποθεσίας"
     },
     {
       "source": "Failed to apply selected location",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία εφαρμογής της επιλεγμένης τοποθεσίας"
     },
     {
       "source": "Failed to select location",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία επιλογής τοποθεσίας"
     },
     {
       "source": "Failed to stop VPN before exit",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία διακοπής VPN πριν από την έξοδο"
     },
     {
       "source": "Failed to stop Proxy before exit",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία διακοπής διαμεσολαβητή πριν από την έξοδο"
     },
     {
       "source": "Failed to stop VPN",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία διακοπής VPN"
     },
     {
       "source": "Failed to stop proxy",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία διακοπής διαμεσολαβητή"
     },
     {
       "source": "Failed to start VPN",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία έναρξης VPN"
     },
     {
       "source": "Failed to start proxy",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία έναρξης διαμεσολαβητή"
     },
     {
       "source": "Could not prepare VPN",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Δεν ήταν δυνατή η προετοιμασία του VPN"
     },
     {
       "source": "Could not prepare proxy",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Δεν ήταν δυνατή η προετοιμασία του διαμεσολαβητή"
     },
     {
       "source": "Preparing VPN",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Προετοιμασία VPN"
     },
     {
       "source": "Preparing proxy",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Προετοιμασία διαμεσολαβητή"
     },
     {
       "source": "VPN start cancelled",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η εκκίνηση του VPN ακυρώθηκε"
     },
     {
       "source": "Proxy start cancelled",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η εκκίνηση του διαμεσολαβητή ακυρώθηκε"
     },
     {
       "source": "VPN stop cancelled",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η διακοπή του VPN ακυρώθηκε"
     },
     {
       "source": "Proxy stop cancelled",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η διακοπή του διαμεσολαβητή ακυρώθηκε"
     },
     {
       "source": "Starting local proxy...",
@@ -1222,107 +1222,107 @@
     },
     {
       "source": "Refreshing all subscriptions...",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Ανανέωση όλων των συνδρομών..."
     },
     {
       "source": "Refreshing active subscription...",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Ανανέωση ενεργής συνδρομής..."
     },
     {
       "source": "Refreshing subscriptions...",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Ανανέωση συνδρομών..."
     },
     {
       "source": "Refreshing subscription...",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Ανανέωση συνδρομής..."
     },
     {
       "source": "Auto-refreshing subscriptions...",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Αυτόματη ανανέωση συνδρομών..."
     },
     {
       "source": "Auto-refreshing subscription...",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Αυτόματη ανανέωση συνδρομής..."
     },
     {
       "source": "All subscriptions refreshed",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Όλες οι συνδρομές ανανεώθηκαν"
     },
     {
       "source": "Active subscription refreshed",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η ενεργή συνδρομή ανανεώθηκε"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Οι συνδρομές ανανεώθηκαν"
     },
     {
       "source": "Subscription refreshed",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η συνδρομή ανανεώθηκε"
     },
     {
       "source": "Refresh failed",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Η ανανέωση απέτυχε"
     },
     {
       "source": "Location search cancelled",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η αναζήτηση τοποθεσίας ακυρώθηκε"
     },
     {
       "source": "Location search failed",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Η αναζήτηση τοποθεσίας απέτυχε"
     },
     {
       "source": "Grant VPN permission and try again",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Παραχωρήστε άδεια VPN και δοκιμάστε ξανά"
     },
     {
       "source": "Set a remote source first",
-      "target": "Η απομακρυσμένη πηγή δεν είναι έγκυρη"
+      "target": "Ορίστε πρώτα μια απομακρυσμένη πηγή"
     },
     {
       "source": "Add at least one saved location first",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Προσθέστε πρώτα τουλάχιστον μία αποθηκευμένη τοποθεσία"
     },
     {
       "source": "Select a location first",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Επιλέξτε πρώτα τοποθεσία"
     },
     {
       "source": "No subscriptions saved yet",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Δεν υπάρχουν ακόμη αποθηκευμένες συνδρομές"
     },
     {
       "source": "Profile source set to subscription",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η πηγή προφίλ ορίστηκε σε συνδρομή"
     },
     {
       "source": "Profile source set to saved locations",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η πηγή προφίλ ορίστηκε σε αποθηκευμένες τοποθεσίες"
     },
     {
       "source": "Connection mode set to VPN",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η λειτουργία σύνδεσης ορίστηκε σε VPN"
     },
     {
       "source": "Connection mode set to proxy only",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η λειτουργία σύνδεσης ορίστηκε σε μόνο διαμεσολαβητή"
     },
     {
       "source": "Disconnect first to change connection mode",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Αποσυνδεθείτε πρώτα για να αλλάξετε τη λειτουργία σύνδεσης"
     },
     {
       "source": "History entry deleted",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η εγγραφή ιστορικού διαγράφηκε"
     },
     {
       "source": "Subscription name reset",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Το όνομα συνδρομής επαναφέρθηκε"
     },
     {
       "source": "Subscription name saved",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Το όνομα συνδρομής αποθηκεύτηκε"
     },
     {
       "source": "Language set to system default",
@@ -1338,131 +1338,131 @@
     },
     {
       "source": "Routing rules saved",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Οι κανόνες δρομολόγησης αποθηκεύτηκαν"
     },
     {
       "source": "Routing rules imported",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Οι κανόνες δρομολόγησης εισήχθησαν"
     },
     {
       "source": "Locations imported",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Οι τοποθεσίες εισήχθησαν"
     },
     {
       "source": "Switch to Saved Locations to import locations",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Μεταβείτε στις Αποθηκευμένες τοποθεσίες για να εισαγάγετε τοποθεσίες"
     },
     {
       "source": "Switch to Saved Locations to add locations manually",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Μεταβείτε στις Αποθηκευμένες τοποθεσίες για να προσθέσετε τοποθεσίες χειροκίνητα"
     },
     {
       "source": "Invalid location config",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Μη έγκυρη ρύθμιση τοποθεσίας"
     },
     {
       "source": "Location to edit is no longer available",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η τοποθεσία προς επεξεργασία δεν είναι πλέον διαθέσιμη"
     },
     {
       "source": "Diagnostics export opened",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η εξαγωγή διαγνωστικών άνοιξε"
     },
     {
       "source": "Diagnostics export failed",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Η εξαγωγή διαγνωστικών απέτυχε"
     },
     {
       "source": "Diagnostics export canceled",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η εξαγωγή διαγνωστικών ακυρώθηκε"
     },
     {
       "source": "Previous VPN location is no longer available",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η προηγούμενη τοποθεσία VPN δεν είναι πλέον διαθέσιμη"
     },
     {
       "source": "App closed. VPN was off.",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Η εφαρμογή έκλεισε. Το VPN ήταν ανενεργό."
     },
     {
       "source": "Activated all subscriptions",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Ενεργοποιήθηκαν όλες οι συνδρομές"
     },
     {
       "source": "All subscriptions selected",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Επιλέχθηκαν όλες οι συνδρομές"
     },
     {
       "source": "Subscription selected",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η συνδρομή επιλέχθηκε"
     },
     {
       "source": "Subscription saved",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η συνδρομή αποθηκεύτηκε"
     },
     {
       "source": "Locations copied to clipboard",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Οι τοποθεσίες αντιγράφηκαν στο πρόχειρο"
     },
     {
       "source": "Locations export canceled",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Η εξαγωγή τοποθεσιών ακυρώθηκε"
     },
     {
       "source": "Routing rules copied to clipboard",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Οι κανόνες δρομολόγησης αντιγράφηκαν στο πρόχειρο"
     },
     {
       "source": "Routing rules export canceled",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Η εξαγωγή κανόνων δρομολόγησης ακυρώθηκε"
     },
     {
       "source": "Clipboard read failed",
-      "target": "Δεν ήταν δυνατό το άνοιγμα του αρχείου"
+      "target": "Η ανάγνωση του προχείρου απέτυχε"
     },
     {
       "source": "No locations to export",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Δεν υπάρχουν τοποθεσίες για εξαγωγή"
     },
     {
       "source": "Failed to load apps",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία φόρτωσης εφαρμογών"
     },
     {
       "source": "Failed to refresh subscriptions",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία ανανέωσης συνδρομών"
     },
     {
       "source": "Failed to refresh the active subscription",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία ανανέωσης της ενεργής συνδρομής"
     },
     {
       "source": "Failed to import routing rules",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία εισαγωγής κανόνων δρομολόγησης"
     },
     {
       "source": "Failed to save routing rules",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία αποθήκευσης κανόνων δρομολόγησης"
     },
     {
       "source": "Failed to import locations",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία εισαγωγής τοποθεσιών"
     },
     {
       "source": "Failed to open locations file",
-      "target": "Δεν ήταν δυνατό το άνοιγμα του αρχείου"
+      "target": "Αποτυχία ανοίγματος του αρχείου τοποθεσιών"
     },
     {
       "source": "Failed to read locations file",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία ανάγνωσης του αρχείου τοποθεσιών"
     },
     {
       "source": "Failed to open routing rules file",
-      "target": "Δεν ήταν δυνατό το άνοιγμα του αρχείου"
+      "target": "Αποτυχία ανοίγματος του αρχείου κανόνων δρομολόγησης"
     },
     {
       "source": "Best location could not be mapped to the desktop list",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Δεν ήταν δυνατή η αντιστοίχιση της καλύτερης τοποθεσίας με τη λίστα του υπολογιστή"
     },
     {
       "source": "VPN ready on this computer",
@@ -1474,11 +1474,11 @@
     },
     {
       "source": "Desktop VPN shell ready",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Το VPN είναι έτοιμο σε αυτόν τον υπολογιστή"
     },
     {
       "source": "Desktop Proxy shell ready",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Ο διαμεσολαβητής είναι έτοιμος σε αυτόν τον υπολογιστή"
     },
     {
       "source": "VPN started on ",
@@ -1490,63 +1490,63 @@
     },
     {
       "source": "VPN stopped. App mode: ",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Το VPN σταμάτησε. Λειτουργία εφαρμογής: "
     },
     {
       "source": "Proxy stopped. App mode: ",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Ο διαμεσολαβητής σταμάτησε. Λειτουργία εφαρμογής: "
     },
     {
       "source": "Language set to ",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Γλώσσα: "
     },
     {
       "source": "Subscription auto-refresh set to ",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Αυτόματη ανανέωση συνδρομών: "
     },
     {
       "source": "Validation settings saved: ",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Οι ρυθμίσεις ελέγχου αποθηκεύτηκαν: "
     },
     {
       "source": "Selected location unchanged: ",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η επιλεγμένη τοποθεσία δεν άλλαξε: "
     },
     {
       "source": "Selected location removed: ",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η επιλεγμένη τοποθεσία αφαιρέθηκε: "
     },
     {
       "source": "Selected location set: ",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Ορίστηκε επιλεγμένη τοποθεσία: "
     },
     {
       "source": "Location updated and merged: ",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η τοποθεσία ενημερώθηκε και συγχωνεύθηκε: "
     },
     {
       "source": "Location already saved: ",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η τοποθεσία είναι ήδη αποθηκευμένη: "
     },
     {
       "source": "Location updated: ",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η τοποθεσία ενημερώθηκε: "
     },
     {
       "source": "Location removed: ",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η τοποθεσία αφαιρέθηκε: "
     },
     {
       "source": "Location added: ",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Η τοποθεσία προστέθηκε: "
     },
     {
       "source": "Subscriptions refreshed: ",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Οι συνδρομές ανανεώθηκαν: "
     },
     {
       "source": "Failed: ",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Απέτυχαν: "
     },
     {
       "source": "Restoring VPN: ",
@@ -1558,43 +1558,43 @@
     },
     {
       "source": "Locations exported to ",
-      "target": "Οι τοποθεσίες ενημερώθηκαν"
+      "target": "Οι τοποθεσίες εξήχθησαν στο "
     },
     {
       "source": "Routing rules exported to ",
-      "target": "Οι κανόνες ενημερώθηκαν"
+      "target": "Οι κανόνες δρομολόγησης εξήχθησαν στο "
     },
     {
       "source": "Diagnostics exported to ",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Τα διαγνωστικά εξήχθησαν στο "
     },
     {
       "source": "Failed to benchmark ",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία μέτρησης απόδοσης για "
     },
     {
       "source": "Activated ",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Ενεργοποιήθηκε: "
     },
     {
       "source": "Added ",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Προστέθηκε: "
     },
     {
       "source": "Deleted ",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Διαγράφηκε: "
     },
     {
       "source": "Selected ",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Επιλέχθηκε: "
     },
     {
       "source": "Edited location #",
-      "target": "Η τοποθεσία ενημερώθηκε"
+      "target": "Επεξεργάστηκε η τοποθεσία #"
     },
     {
       "source": "App mode: ",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "Λειτουργία εφαρμογής: "
     },
     {
       "source": " locations refreshed",
@@ -1606,35 +1606,35 @@
     },
     {
       "source": " • batch ",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": " • ομάδα "
     },
     {
       "source": " • retries ",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": " • επαναλήψεις "
     },
     {
       "source": "custom interval",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "προσαρμοσμένο διάστημα"
     },
     {
       "source": "every hour",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "κάθε ώρα"
     },
     {
       "source": "all subscriptions",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "όλες οι συνδρομές"
     },
     {
       "source": "selected subscription",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "επιλεγμένη συνδρομή"
     },
     {
       "source": "proxy only",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "μόνο διαμεσολαβητής"
     },
     {
       "source": "off",
-      "target": "Η κατάσταση ενημερώθηκε"
+      "target": "ανενεργό"
     },
     {
       "source": "Idle",

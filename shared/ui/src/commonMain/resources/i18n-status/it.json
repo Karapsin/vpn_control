@@ -77,20 +77,20 @@
     "LOCATION_SEARCH_CANCELLED": "Ricerca posizione annullata",
     "LOCATION_SEARCH_FAILED": "Ricerca posizione non riuscita",
     "VPN_PERMISSION_REQUIRED": "Concedi il permesso VPN e riprova",
-    "SELECTED_LOCATION_SAVE_FAILED": "Operazione non riuscita",
-    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "Operazione non riuscita",
-    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Operazione non riuscita",
-    "BEST_LOCATION_START_FAILED.VPN": "Operazione non riuscita",
-    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Operazione non riuscita",
-    "BEST_LOCATION_SAVE_FAILED": "Operazione non riuscita",
-    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "Operazione non riuscita",
-    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Operazione non riuscita",
+    "SELECTED_LOCATION_SAVE_FAILED": "Impossibile salvare la posizione selezionata",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN avviata, ma non è stato possibile salvare la posizione selezionata",
+    "SELECTED_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy avviato, ma non è stato possibile salvare la posizione selezionata",
+    "BEST_LOCATION_START_FAILED.VPN": "Impossibile avviare la VPN con la posizione migliore",
+    "BEST_LOCATION_START_FAILED.PROXY_ONLY": "Impossibile avviare il proxy con la posizione migliore",
+    "BEST_LOCATION_SAVE_FAILED": "Impossibile salvare la posizione migliore",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN avviata, ma non è stato possibile salvare la posizione migliore",
+    "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "Proxy avviato, ma non è stato possibile salvare la posizione migliore",
     "BACKGROUND_REFRESH_FINDING_BEST": "Aggiornamento completato. Ricerca della posizione migliore...",
     "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "Aggiornamento abbonamento completato, ma serve autorizzazione VPN per cambiare in background. Mantengo la posizione VPN precedente.",
     "NO_SUITABLE_LOCATION_FOUND": "Nessuna posizione adatta trovata",
     "BEST_LOCATION_NOT_MAPPED": "La posizione migliore non corrisponde alla lista desktop",
     "ACTIVATED_ALL_SUBSCRIPTIONS": "Tutti gli abbonamenti attivati",
-    "ACTIVATED_SUBSCRIPTION": "Stato aggiornato{0}",
+    "ACTIVATED_SUBSCRIPTION": "Abbonamento attivato: {0}",
     "PROFILE_SOURCE_MODE.SUBSCRIPTION": "{ui:PROFILE_SOURCE}: {ui:SUBSCRIPTION}",
     "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
     "SUBSCRIPTION_NAME_RESET": "Nome abbonamento ripristinato",
@@ -115,26 +115,26 @@
     "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "Strumenti test connessione nascosti",
     "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "Le posizioni dell’abbonamento sono in sola lettura. Passa a Posizioni salvate per salvare modifiche.",
     "INVALID_LOCATION_CONFIG": "Configurazione posizione non valida",
-    "LOCATION_ALREADY_SAVED": "Posizione: {0}",
+    "LOCATION_ALREADY_SAVED": "Posizione già salvata: {0}",
     "LOCATION_EDIT_UNAVAILABLE": "La posizione da modificare non è più disponibile",
-    "LOCATION_ADDED": "Posizione: {0}",
-    "LOCATION_UPDATED_AND_MERGED": "Posizione: {0}",
-    "LOCATION_UPDATED": "Posizione: {0}",
+    "LOCATION_ADDED": "Posizione aggiunta: {0}",
+    "LOCATION_UPDATED_AND_MERGED": "Posizione aggiornata e unita: {0}",
+    "LOCATION_UPDATED": "Posizione aggiornata: {0}",
     "SUBSCRIPTION_LOCATION_DELETE_READ_ONLY": "Le posizioni dell’abbonamento sono in sola lettura. Passa a Posizioni salvate per eliminarle.",
-    "SELECTED_LOCATION_REMOVED": "Posizione: {0}",
-    "LOCATION_REMOVED": "Posizione: {0}",
+    "SELECTED_LOCATION_REMOVED": "Posizione selezionata rimossa: {0}",
+    "LOCATION_REMOVED": "Posizione rimossa: {0}",
     "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.VPN": "Posizione selezionata rimossa. VPN fermata: {1}",
     "SELECTED_LOCATION_REMOVED_CONNECTION_STOPPED.PROXY_ONLY": "Posizione selezionata rimossa. Proxy fermato: {1}",
-    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "Modifica posizione annullata perché la VPN non poteva essere fermata",
-    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Modifica posizione annullata perché il proxy non poteva essere fermato",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "Rimozione della posizione annullata perché non è stato possibile fermare la VPN",
+    "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "Rimozione della posizione annullata perché non è stato possibile fermare il proxy",
     "IMPORT_LOCATIONS_BLOCKED": "Passa a Posizioni salvate per importare posizioni",
-    "IMPORT_LOCATIONS_FAILED": "Operazione non riuscita",
+    "IMPORT_LOCATIONS_FAILED": "Impossibile importare le posizioni",
     "LOCATIONS_IMPORTED": "Posizioni importate",
-    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "La posizione selezionata non è più disponibile",
+    "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "Posizioni importate. La posizione selezionata non è più disponibile",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "Posizioni importate. La posizione selezionata non è più disponibile, VPN fermata",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.PROXY_ONLY": "Posizioni importate. La posizione selezionata non è più disponibile, proxy fermato",
-    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Modifica posizione annullata perché la VPN non poteva essere fermata",
-    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Modifica posizione annullata perché il proxy non poteva essere fermato",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.VPN": "Importazione posizioni annullata perché non è stato possibile fermare la VPN",
+    "LOCATIONS_IMPORT_ROLLBACK_FAILED.PROXY_ONLY": "Importazione posizioni annullata perché non è stato possibile fermare il proxy",
     "CLIPBOARD_EMPTY": "Gli appunti sono vuoti",
     "CLIPBOARD_READ_FAILED": "Lettura appunti non riuscita",
     "SUBSCRIPTION_TEXT_LOADED_INTO_PROFILE": "Testo dell'abbonamento caricato nella scheda Profilo",
@@ -147,30 +147,30 @@
     "SWITCH_TO_SAVED_LOCATIONS_TO_ADD_LOCATIONS": "Passa a Posizioni salvate per aggiungere posizioni manualmente",
     "HISTORY_ENTRY_DELETED": "Voce cronologia eliminata",
     "SELECTED_LOCATION_UNCHANGED": "Posizione selezionata invariata: {0}",
-    "SELECTED_LOCATION_SET": "Posizione: {0}",
-    "LOCATION_CHECKED": "Location controlloed: {0}",
+    "SELECTED_LOCATION_SET": "Posizione selezionata impostata: {0}",
+    "LOCATION_CHECKED": "Posizione verificata: {0}",
     "LOCATION_CHECK_FAILED": "Controllo posizione non riuscito",
-    "LOCATION_EDITED": "Stato aggiornato{0}",
-    "SAMPLE_RULE_SET_ADDED": "Stato aggiornatoa sample rule-set",
-    "RULE_SET_DELETED": "Stato aggiornatorule-set {0}",
+    "LOCATION_EDITED": "Posizione modificata #{0}",
+    "SAMPLE_RULE_SET_ADDED": "Aggiunto un set di regole di esempio",
+    "RULE_SET_DELETED": "Set di regole {0} eliminato",
     "ROUTING_RULES_SAVED": "Regole di instradamento salvate",
     "ROUTING_RULES_IMPORTED": "Regole di instradamento importate",
     "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "Regole importate. Riavvia la VPN per applicarle",
     "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "Regole importate. Riavvia il proxy per applicarle",
-    "ROUTING_RULES_IMPORT_FAILED": "Operazione non riuscita",
+    "ROUTING_RULES_IMPORT_FAILED": "Impossibile importare le regole di instradamento",
     "ROUTING_RULES_COPIED_TO_CLIPBOARD": "Regole copiate negli appunti",
     "ROUTING_RULES_EXPORT_CANCELED": "Esportazione regole annullata",
-    "ROUTING_RULES_EXPORTED_TO": "Stato aggiornato{0}",
+    "ROUTING_RULES_EXPORTED_TO": "Regole di instradamento esportate in {0}",
     "ROUTING_RULES_EXPORT_FAILED": "Esportazione regole non riuscita",
-    "ROUTING_RULES_FILE_OPEN_FAILED": "Operazione non riuscita",
+    "ROUTING_RULES_FILE_OPEN_FAILED": "Impossibile aprire il file delle regole di instradamento",
     "LOCATIONS_COPIED_TO_CLIPBOARD": "Posizioni copiate negli appunti",
     "LOCATIONS_EXPORT_CANCELED": "Esportazione posizioni annullata",
-    "LOCATIONS_EXPORTED_TO": "Stato aggiornato{0}",
+    "LOCATIONS_EXPORTED_TO": "Posizioni esportate in {0}",
     "LOCATIONS_EXPORT_FAILED": "Esportazione posizioni non riuscita",
-    "LOCATIONS_FILE_OPEN_FAILED": "Operazione non riuscita",
-    "LOCATIONS_FILE_READ_FAILED": "Operazione non riuscita",
+    "LOCATIONS_FILE_OPEN_FAILED": "Impossibile aprire il file delle posizioni",
+    "LOCATIONS_FILE_READ_FAILED": "Impossibile leggere il file delle posizioni",
     "DIAGNOSTICS_EXPORT_CANCELED": "Esportazione diagnostica annullata",
-    "DIAGNOSTICS_EXPORTED_TO": "Stato aggiornato{0}",
+    "DIAGNOSTICS_EXPORTED_TO": "Diagnostica esportata in {0}",
     "DIAGNOSTICS_EXPORT_FAILED": "Esportazione diagnostica non riuscita",
     "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "Impossibile aprire destinazione diagnostica",
     "NO_SUBSCRIPTIONS_TO_REFRESH": "Nessun abbonamento da aggiornare",
@@ -193,15 +193,15 @@
     "RESTORING_PREVIOUS_CONNECTION": "Ripristino VPN: {0}...",
     "CONNECTION_STARTED_ON_TARGET.VPN": "VPN avviata su {1}",
     "CONNECTION_STARTED_ON_TARGET.PROXY_ONLY": "Proxy avviato su {1}",
-    "CONNECTION_START_FAILED.VPN": "Operazione non riuscita",
-    "CONNECTION_START_FAILED.PROXY_ONLY": "Operazione non riuscita",
-    "CONNECTION_STOP_FAILED.VPN": "Operazione non riuscita",
-    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Operazione non riuscita",
+    "CONNECTION_START_FAILED.VPN": "Impossibile avviare la VPN",
+    "CONNECTION_START_FAILED.PROXY_ONLY": "Impossibile avviare il proxy",
+    "CONNECTION_STOP_FAILED.VPN": "Impossibile arrestare la VPN",
+    "CONNECTION_STOP_FAILED.PROXY_ONLY": "Impossibile arrestare il proxy",
     "APP_CLOSED_CONNECTION_WAS_OFF": "App chiusa. La VPN era spenta.",
     "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN fermata. Riconnessione al prossimo avvio.",
     "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "Proxy fermato. Riconnessione al prossimo avvio.",
-    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "Operazione non riuscita",
-    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Operazione non riuscita",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "Impossibile arrestare la VPN prima dell’uscita",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "Impossibile arrestare il proxy prima dell’uscita",
     "CONNECTION_START_CANCELLED.VPN": "Avvio della VPN annullato",
     "CONNECTION_START_CANCELLED.PROXY_ONLY": "Avvio del proxy annullato",
     "CONNECTION_STOP_CANCELLED.VPN": "Arresto della VPN annullato",
@@ -227,8 +227,8 @@
     "SUBSCRIPTION_REFRESH_PREPARATION_FAILED": "Preparazione non riuscita durante l'aggiornamento: {0}",
     "SUBSCRIPTION_REFRESH_PERSISTENCE_FAILED": "Salvataggio dei risultati dell'aggiornamento non riuscito: {0}",
     "SUBSCRIPTION_REFRESH_OTHER_FAILED": "Aggiornamento non riuscito: {0}",
-    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "Operazione non riuscita",
-    "FAILED_TO_REFRESH_SUBSCRIPTIONS": "Operazione non riuscita",
+    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "Impossibile aggiornare l’abbonamento attivo",
+    "FAILED_TO_REFRESH_SUBSCRIPTIONS": "Impossibile aggiornare gli abbonamenti",
     "LOADING_SAVED_LOCATIONS": "Caricamento delle posizioni salvate...",
     "DOWNLOADING_REMOTE_SOURCE": "Download della fonte remota...",
     "CHECKING_TCP_SPEED": "Verifica della velocità TCP per {0}...",
@@ -241,8 +241,8 @@
     "BEST_LOCATION_SUMMARY": "Migliore: {0} • {1}",
     "SELECTED_LOCATION_APPLYING": "Applicazione posizione selezionata...",
     "UPDATED_SELECTED_LOCATION_APPLYING": "Applicazione posizione aggiornata...",
-    "SELECTED_LOCATION_APPLY_FAILED": "Operazione non riuscita",
-    "SELECTED_LOCATION_SELECT_FAILED": "Operazione non riuscita",
+    "SELECTED_LOCATION_APPLY_FAILED": "Impossibile applicare la posizione selezionata",
+    "SELECTED_LOCATION_SELECT_FAILED": "Impossibile selezionare la posizione",
     "UPDATED_SELECTED_LOCATION_APPLY_FAILED": "Applicazione posizione aggiornata non riuscita",
     "UPDATED_SELECTED_LOCATION_SAVE_FAILED": "Impossibile salvare la posizione selezionata aggiornata",
     "UPDATED_SELECTED_LOCATION_APPLIED_SAVE_FAILED": "La posizione selezionata aggiornata è stata applicata, ma non è stato possibile salvarla",
@@ -252,7 +252,7 @@
     "PREVIOUS_CONNECTION_RESTORE_FAILED_STOPPED": "Impossibile ripristinare la posizione {connectionLabel:0} precedente: {1}. Connessione {connectionLabel:0} arrestata per mantenere coerente lo stato.",
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "Impossibile ripristinare la posizione {connectionLabel:0} precedente: {1}. Impossibile arrestare {connectionLabel:0}: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "Regole di routing salvate. Riavvia {connectionLabel:0} per applicarle",
-    "ROUTING_RULES_SAVE_FAILED": "Operazione non riuscita",
+    "ROUTING_RULES_SAVE_FAILED": "Impossibile salvare le regole di instradamento",
     "ROUTING_RULES_OUTCOME_UNKNOWN": "L’esito della modifica dell’instradamento è sconosciuto. Riprova con gli stessi dati.",
     "ROUTING_RULES_STALE_DRAFT": "Le impostazioni di instradamento sono cambiate. Riapri l’editor prima di salvare.",
     "DIAGNOSTICS_EXPORT_OPENED": "Esportazione diagnostica aperta",
@@ -634,7 +634,7 @@
     },
     {
       "source": "Subscription refresh finished. ",
-      "target": "Stato aggiornato"
+      "target": "Aggiornamento abbonamento completato. "
     },
     {
       "source": "Runtime mode: ",
@@ -920,7 +920,7 @@
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "La posizione selezionata non è più disponibile"
+      "target": "Posizioni importate. La posizione selezionata non è più disponibile"
     },
     {
       "source": "Switch to Saved Locations to import locations",
@@ -1042,35 +1042,35 @@
     },
     {
       "source": "Locations imported. Selected location is no longer available",
-      "target": "La posizione selezionata non è più disponibile"
+      "target": "Posizioni importate. La posizione selezionata non è più disponibile"
     },
     {
       "source": "Selected location applied, but failed to save it",
-      "target": "Posizione: "
+      "target": "Posizione selezionata applicata, ma non è stato possibile salvarla"
     },
     {
       "source": "Location removal rolled back because the proxy could not be stopped",
-      "target": "Modifica posizione annullata perché il proxy non poteva essere fermato"
+      "target": "Rimozione della posizione annullata perché non è stato possibile fermare il proxy"
     },
     {
       "source": "Location removal rolled back because the VPN could not be stopped",
-      "target": "Modifica posizione annullata perché la VPN non poteva essere fermata"
+      "target": "Rimozione della posizione annullata perché non è stato possibile fermare la VPN"
     },
     {
       "source": "Locations import rolled back because the proxy could not be stopped",
-      "target": "Modifica posizione annullata perché il proxy non poteva essere fermato"
+      "target": "Importazione posizioni annullata perché non è stato possibile fermare il proxy"
     },
     {
       "source": "Locations import rolled back because the VPN could not be stopped",
-      "target": "Modifica posizione annullata perché la VPN non poteva essere fermata"
+      "target": "Importazione posizioni annullata perché non è stato possibile fermare la VPN"
     },
     {
       "source": "VPN stopped. Refreshed subscriptions removed the selected location.",
-      "target": "Stato aggiornato"
+      "target": "VPN fermata. L’aggiornamento degli abbonamenti ha rimosso la posizione selezionata."
     },
     {
       "source": "Proxy stopped. Refreshed subscriptions removed the selected location.",
-      "target": "Stato aggiornato"
+      "target": "Proxy fermato. L’aggiornamento degli abbonamenti ha rimosso la posizione selezionata."
     },
     {
       "source": "VPN stopped. Will reconnect on next launch.",
@@ -1114,71 +1114,71 @@
     },
     {
       "source": "VPN started, but failed to save the selected location",
-      "target": "Operazione non riuscita"
+      "target": "VPN avviata, ma non è stato possibile salvare la posizione selezionata"
     },
     {
       "source": "Proxy started, but failed to save the selected location",
-      "target": "Operazione non riuscita"
+      "target": "Proxy avviato, ma non è stato possibile salvare la posizione selezionata"
     },
     {
       "source": "VPN started, but failed to save the best location",
-      "target": "Operazione non riuscita"
+      "target": "VPN avviata, ma non è stato possibile salvare la posizione migliore"
     },
     {
       "source": "Proxy started, but failed to save the best location",
-      "target": "Operazione non riuscita"
+      "target": "Proxy avviato, ma non è stato possibile salvare la posizione migliore"
     },
     {
       "source": "Failed to start VPN with the best location",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile avviare la VPN con la posizione migliore"
     },
     {
       "source": "Failed to start proxy with the best location",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile avviare il proxy con la posizione migliore"
     },
     {
       "source": "Failed to save the selected location",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile salvare la posizione selezionata"
     },
     {
       "source": "Failed to save selected location",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile salvare la posizione selezionata"
     },
     {
       "source": "Failed to save the best location",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile salvare la posizione migliore"
     },
     {
       "source": "Failed to apply selected location",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile applicare la posizione selezionata"
     },
     {
       "source": "Failed to select location",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile selezionare la posizione"
     },
     {
       "source": "Failed to stop VPN before exit",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile arrestare la VPN prima dell’uscita"
     },
     {
       "source": "Failed to stop Proxy before exit",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile arrestare il proxy prima dell’uscita"
     },
     {
       "source": "Failed to stop VPN",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile arrestare la VPN"
     },
     {
       "source": "Failed to stop proxy",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile arrestare il proxy"
     },
     {
       "source": "Failed to start VPN",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile avviare la VPN"
     },
     {
       "source": "Failed to start proxy",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile avviare il proxy"
     },
     {
       "source": "Could not prepare VPN",
@@ -1430,35 +1430,35 @@
     },
     {
       "source": "Failed to refresh subscriptions",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile aggiornare gli abbonamenti"
     },
     {
       "source": "Failed to refresh the active subscription",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile aggiornare l’abbonamento attivo"
     },
     {
       "source": "Failed to import routing rules",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile importare le regole di instradamento"
     },
     {
       "source": "Failed to save routing rules",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile salvare le regole di instradamento"
     },
     {
       "source": "Failed to import locations",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile importare le posizioni"
     },
     {
       "source": "Failed to open locations file",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile aprire il file delle posizioni"
     },
     {
       "source": "Failed to read locations file",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile leggere il file delle posizioni"
     },
     {
       "source": "Failed to open routing rules file",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile aprire il file delle regole di instradamento"
     },
     {
       "source": "Best location could not be mapped to the desktop list",
@@ -1490,11 +1490,11 @@
     },
     {
       "source": "VPN stopped. App mode: ",
-      "target": "Stato aggiornato"
+      "target": "VPN fermata. Modalità app: "
     },
     {
       "source": "Proxy stopped. App mode: ",
-      "target": "Stato aggiornato"
+      "target": "Proxy fermato. Modalità app: "
     },
     {
       "source": "Language set to ",
@@ -1514,39 +1514,39 @@
     },
     {
       "source": "Selected location removed: ",
-      "target": "Posizione: "
+      "target": "Posizione selezionata rimossa: "
     },
     {
       "source": "Selected location set: ",
-      "target": "Posizione: "
+      "target": "Posizione selezionata impostata: "
     },
     {
       "source": "Location updated and merged: ",
-      "target": "Posizione: "
+      "target": "Posizione aggiornata e unita: "
     },
     {
       "source": "Location already saved: ",
-      "target": "Posizione: "
+      "target": "Posizione già salvata: "
     },
     {
       "source": "Location updated: ",
-      "target": "Posizione: "
+      "target": "Posizione aggiornata: "
     },
     {
       "source": "Location removed: ",
-      "target": "Posizione: "
+      "target": "Posizione rimossa: "
     },
     {
       "source": "Location added: ",
-      "target": "Posizione: "
+      "target": "Posizione aggiunta: "
     },
     {
       "source": "Subscriptions refreshed: ",
-      "target": "Stato aggiornato"
+      "target": "Abbonamenti aggiornati: "
     },
     {
       "source": "Failed: ",
-      "target": "Operazione non riuscita"
+      "target": "Non riuscite: "
     },
     {
       "source": "Restoring VPN: ",
@@ -1558,39 +1558,39 @@
     },
     {
       "source": "Locations exported to ",
-      "target": "Stato aggiornato"
+      "target": "Posizioni esportate in "
     },
     {
       "source": "Routing rules exported to ",
-      "target": "Stato aggiornato"
+      "target": "Regole di instradamento esportate in "
     },
     {
       "source": "Diagnostics exported to ",
-      "target": "Stato aggiornato"
+      "target": "Diagnostica esportata in "
     },
     {
       "source": "Failed to benchmark ",
-      "target": "Operazione non riuscita"
+      "target": "Impossibile eseguire il benchmark di "
     },
     {
       "source": "Activated ",
-      "target": "Stato aggiornato"
+      "target": "Attivato: "
     },
     {
       "source": "Added ",
-      "target": "Stato aggiornato"
+      "target": "Aggiunto: "
     },
     {
       "source": "Deleted ",
-      "target": "Stato aggiornato"
+      "target": "Eliminato: "
     },
     {
       "source": "Selected ",
-      "target": "Stato aggiornato"
+      "target": "Selezionato: "
     },
     {
       "source": "Edited location #",
-      "target": "Stato aggiornato"
+      "target": "Posizione modificata #"
     },
     {
       "source": "App mode: ",

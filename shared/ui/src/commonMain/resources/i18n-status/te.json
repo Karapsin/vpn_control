@@ -148,11 +148,11 @@
     "HISTORY_ENTRY_DELETED": "చరిత్ర ఎంట్రీ తొలగించబడింది",
     "SELECTED_LOCATION_UNCHANGED": "ఎంచుకున్న స్థానం మారలేదు: {0}",
     "SELECTED_LOCATION_SET": "ఎంచుకున్న స్థానం సెట్ చేయబడింది: {0}",
-    "LOCATION_CHECKED": "Location తనిఖీed: {0}",
+    "LOCATION_CHECKED": "స్థానం తనిఖీ చేయబడింది: {0}",
     "LOCATION_CHECK_FAILED": "స్థాన తనిఖీ విఫలమైంది",
     "LOCATION_EDITED": "సవరించిన స్థానం #{0}",
-    "SAMPLE_RULE_SET_ADDED": "జోడించబడింది: a sample rule-set",
-    "RULE_SET_DELETED": "తొలగించబడింది: rule-set {0}",
+    "SAMPLE_RULE_SET_ADDED": "నమూనా రూల్-సెట్ జోడించబడింది",
+    "RULE_SET_DELETED": "రూల్-సెట్ {0} తొలగించబడింది",
     "ROUTING_RULES_SAVED": "రూటింగ్ నియమాలు సేవ్ అయ్యాయి",
     "ROUTING_RULES_IMPORTED": "రూటింగ్ నియమాలు దిగుమతి అయ్యాయి",
     "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "రూటింగ్ నియమాలు దిగుమతి అయ్యాయి. వర్తింపజేయడానికి VPNను మళ్లీ ప్రారంభించండి",
@@ -201,7 +201,7 @@
     "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.VPN": "VPN ఆగింది. తదుపరి ప్రారంభంలో మళ్లీ కనెక్ట్ అవుతుంది.",
     "CONNECTION_STOPPED_RECONNECT_ON_NEXT_LAUNCH.PROXY_ONLY": "ప్రాక్సీ ఆగింది. తదుపరి ప్రారంభంలో మళ్లీ కనెక్ట్ అవుతుంది.",
     "CONNECTION_STOP_BEFORE_EXIT_FAILED.VPN": "నిష్క్రమించే ముందు VPNను ఆపడంలో విఫలమైంది",
-    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "నిష్క్రమించే ముందు Proxyను ఆపడంలో విఫలమైంది",
+    "CONNECTION_STOP_BEFORE_EXIT_FAILED.PROXY_ONLY": "నిష్క్రమించే ముందు ప్రాక్సీని ఆపడంలో విఫలమైంది",
     "CONNECTION_START_CANCELLED.VPN": "VPN ప్రారంభించడం రద్దయింది",
     "CONNECTION_START_CANCELLED.PROXY_ONLY": "ప్రాక్సీ ప్రారంభించడం రద్దయింది",
     "CONNECTION_STOP_CANCELLED.VPN": "VPN ఆపడం రద్దయింది",
@@ -1194,7 +1194,7 @@
     },
     {
       "source": "Failed to stop Proxy before exit",
-      "target": "నిష్క్రమించే ముందు Proxyను ఆపడంలో విఫలమైంది"
+      "target": "నిష్క్రమించే ముందు ప్రాక్సీని ఆపడంలో విఫలమైంది"
     },
     {
       "source": "Failed to stop VPN",

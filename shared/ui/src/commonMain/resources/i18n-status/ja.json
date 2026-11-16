@@ -71,8 +71,8 @@
     "DESKTOP_VPN_CAPABILITY_READY": "デスクトップ VPN: 準備完了",
     "DESKTOP_VPN_CAPABILITY_ERROR": "デスクトップ VPN: {valueOrNotReady}",
     "DESKTOP_VPN_CAPABILITY_ERROR.EMPTY": "デスクトップ VPN: 未準備",
-    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "ロケーションを更新しました",
-    "BEST_LOCATION_SEARCH_TIMED_OUT": "ロケーションを更新しました",
+    "NO_LOCATIONS_AVAILABLE_FOR_BENCHMARKING": "ベンチマークできるロケーションがありません",
+    "BEST_LOCATION_SEARCH_TIMED_OUT": "最適なロケーションの検索がタイムアウトしました。現在の接続を維持します",
     "RETRYING_BEST_LOCATION_SEARCH": "{ui:FIND_BEST} ({0}/{1})...",
     "LOCATION_SEARCH_CANCELLED": "ロケーション 検索 キャンセル済み",
     "LOCATION_SEARCH_FAILED": "ロケーション 検索 失敗",
@@ -86,8 +86,8 @@
     "BEST_LOCATION_STARTED_SAVE_FAILED.VPN": "VPN は開始しましたが、最適なロケーションを保存できませんでした",
     "BEST_LOCATION_STARTED_SAVE_FAILED.PROXY_ONLY": "プロキシは開始しましたが、最適なロケーションを保存できませんでした",
     "BACKGROUND_REFRESH_FINDING_BEST": "サブスクリプション更新が完了しました。最適なロケーションを検索中...",
-    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "サブスクリプションを更新しました",
-    "NO_SUITABLE_LOCATION_FOUND": "ロケーションを更新しました",
+    "BACKGROUND_VPN_PERMISSION_REQUIRED_KEEPING_PREVIOUS": "サブスクリプションの更新が完了しましたが、バックグラウンドで切り替えるには VPN 権限が必要です。以前の VPN ロケーションをフォールバックとして維持しました。",
+    "NO_SUITABLE_LOCATION_FOUND": "適切なロケーションが見つかりませんでした",
     "BEST_LOCATION_NOT_MAPPED": "最適なロケーションをデスクトップ一覧に対応付けできませんでした",
     "ACTIVATED_ALL_SUBSCRIPTIONS": "すべてのサブスクリプションを有効化しました",
     "ACTIVATED_SUBSCRIPTION": "有効化しました {0}",
@@ -95,27 +95,27 @@
     "PROFILE_SOURCE_MODE.CURRENT_LOCATIONS": "{ui:PROFILE_SOURCE}: {ui:SAVED_LOCATIONS}",
     "SUBSCRIPTION_NAME_RESET": "購読 名前 リセットしました",
     "SUBSCRIPTION_NAME_SAVED": "購読 名前 保存済み",
-    "SUBSCRIPTION_DELETED": "サブスクリプションを更新しました",
+    "SUBSCRIPTION_DELETED": "サブスクリプションを削除しました",
     "SELECT_LOCATION_FIRST": "先にロケーションを選択してください",
     "CHECKING_LOCATION": "{0} を確認中...",
     "TESTING_LOCATION": "{0} をテスト中...",
     "LOCATION_CHECK_CANCELLED": "ロケーション確認をキャンセルしました",
     "NO_LOCATIONS_TO_EXPORT": "エクスポートするロケーションがありません",
-    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "状態を更新しました",
-    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "状態を更新しました",
-    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "状態を更新しました",
-    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "状態を更新しました",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.TRUE": "セッション統計を有効にしました",
+    "UI_SETTING_VISIBILITY_CHANGED.SESSION_STATS.FALSE": "セッション統計を非表示にしました",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.TRUE": "リアルタイム通信統計を有効にしました",
+    "UI_SETTING_VISIBILITY_CHANGED.LIVE_TRAFFIC_STATS.FALSE": "リアルタイム通信統計を非表示にしました",
     "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.TRUE": "プロファイル別合計を有効にしました",
     "UI_SETTING_VISIBILITY_CHANGED.PROFILE_TOTALS.FALSE": "プロファイル別合計を非表示にしました",
-    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "状態を更新しました",
-    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "状態を更新しました",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.TRUE": "遅延履歴を有効にしました",
+    "UI_SETTING_VISIBILITY_CHANGED.LATENCY_HISTORY.FALSE": "遅延履歴を非表示にしました",
     "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.TRUE": "接続ログを有効にしました",
     "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_LOG.FALSE": "接続ログを非表示にしました",
     "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.TRUE": "接続テストツールを有効にしました",
     "UI_SETTING_VISIBILITY_CHANGED.CONNECTION_TEST_TOOLS.FALSE": "接続テストツールを非表示にしました",
     "SUBSCRIPTION_LOCATION_SAVE_READ_ONLY": "サブスクリプションのロケーションは読み取り専用です。編集を保存するには保存済みロケーションに切り替えてください。",
     "INVALID_LOCATION_CONFIG": "ロケーション設定が無効です",
-    "LOCATION_ALREADY_SAVED": "ロケーション al準備完了 保存済み: {0}",
+    "LOCATION_ALREADY_SAVED": "ロケーションは保存済みです: {0}",
     "LOCATION_EDIT_UNAVAILABLE": "編集対象のロケーションは利用できなくなりました",
     "LOCATION_ADDED": "ロケーションを追加しました: {0}",
     "LOCATION_UPDATED_AND_MERGED": "ロケーションを更新して統合しました: {0}",
@@ -128,7 +128,7 @@
     "LOCATION_REMOVAL_ROLLBACK_FAILED.VPN": "VPN を停止できなかったため、ロケーション変更を元に戻しました",
     "LOCATION_REMOVAL_ROLLBACK_FAILED.PROXY_ONLY": "プロキシを停止できなかったため、ロケーション変更を元に戻しました",
     "IMPORT_LOCATIONS_BLOCKED": "ロケーションをインポートするには保存済みロケーションに切り替えてください",
-    "IMPORT_LOCATIONS_FAILED": "操作に失敗しました",
+    "IMPORT_LOCATIONS_FAILED": "ロケーションをインポートできませんでした",
     "LOCATIONS_IMPORTED": "ロケーション インポート済み",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE": "選択中のロケーションは利用できなくなりました",
     "LOCATIONS_IMPORTED_SELECTED_UNAVAILABLE_CONNECTION_STOPPED.VPN": "ロケーションをインポートしました。選択中のロケーションは利用できなくなったため、VPN を停止しました",
@@ -148,36 +148,36 @@
     "HISTORY_ENTRY_DELETED": "履歴項目を削除しました",
     "SELECTED_LOCATION_UNCHANGED": "選択中のロケーションは変更なし: {0}",
     "SELECTED_LOCATION_SET": "選択中のロケーションを設定しました: {0}",
-    "LOCATION_CHECKED": "Location 件のチェックed: {0}",
-    "LOCATION_CHECK_FAILED": "操作に失敗しました",
+    "LOCATION_CHECKED": "ロケーションを確認しました: {0}",
+    "LOCATION_CHECK_FAILED": "ロケーション確認に失敗しました",
     "LOCATION_EDITED": "編集しました ロケーション #{0}",
-    "SAMPLE_RULE_SET_ADDED": "追加しました a sample rule-set",
-    "RULE_SET_DELETED": "削除しました rule-set {0}",
+    "SAMPLE_RULE_SET_ADDED": "サンプルのルールセットを追加しました",
+    "RULE_SET_DELETED": "ルールセット {0} を削除しました",
     "ROUTING_RULES_SAVED": "ルーティング ルール 保存済み",
     "ROUTING_RULES_IMPORTED": "ルーティング ルール インポート済み",
-    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "ルールを更新しました",
-    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "ルールを更新しました",
-    "ROUTING_RULES_IMPORT_FAILED": "操作に失敗しました",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.VPN": "ルーティングルールをインポートしました。適用するには VPN を再起動してください",
+    "ROUTING_RULES_IMPORTED_RESTART_REQUIRED.PROXY_ONLY": "ルーティングルールをインポートしました。適用するにはプロキシを再起動してください",
+    "ROUTING_RULES_IMPORT_FAILED": "ルーティングルールをインポートできませんでした",
     "ROUTING_RULES_COPIED_TO_CLIPBOARD": "ルーティングルールをクリップボードにコピーしました",
     "ROUTING_RULES_EXPORT_CANCELED": "ルールのエクスポートをキャンセルしました",
     "ROUTING_RULES_EXPORTED_TO": "ルーティングルールのエクスポート先: {0}",
-    "ROUTING_RULES_EXPORT_FAILED": "操作に失敗しました",
+    "ROUTING_RULES_EXPORT_FAILED": "ルーティングルールをエクスポートできませんでした",
     "ROUTING_RULES_FILE_OPEN_FAILED": "ルーティングルールファイルを開けませんでした",
     "LOCATIONS_COPIED_TO_CLIPBOARD": "ロケーションをクリップボードにコピーしました",
     "LOCATIONS_EXPORT_CANCELED": "ロケーションのエクスポートをキャンセルしました",
     "LOCATIONS_EXPORTED_TO": "ロケーションのエクスポート先: {0}",
-    "LOCATIONS_EXPORT_FAILED": "操作に失敗しました",
+    "LOCATIONS_EXPORT_FAILED": "ロケーションをエクスポートできませんでした",
     "LOCATIONS_FILE_OPEN_FAILED": "ロケーションファイルを開けませんでした",
     "LOCATIONS_FILE_READ_FAILED": "ロケーションファイルを読み取れませんでした",
     "DIAGNOSTICS_EXPORT_CANCELED": "診断エクスポートをキャンセルしました",
     "DIAGNOSTICS_EXPORTED_TO": "診断のエクスポート先: {0}",
-    "DIAGNOSTICS_EXPORT_FAILED": "操作に失敗しました",
-    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "操作に失敗しました",
-    "NO_SUBSCRIPTIONS_TO_REFRESH": "サブスクリプションを更新しました",
+    "DIAGNOSTICS_EXPORT_FAILED": "診断をエクスポートできませんでした",
+    "DIAGNOSTICS_DESTINATION_OPEN_FAILED": "診断のエクスポート先を開けませんでした",
+    "NO_SUBSCRIPTIONS_TO_REFRESH": "更新するサブスクリプションがありません",
     "START_ON_LOGIN_ENABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_ENABLED}",
     "START_ON_LOGIN_DISABLED": "{ui:SETTINGS_START_ON_LOGIN}: {ui:SETTINGS_DISABLED}",
-    "STARTUP_SETTING_UPDATE_FAILED": "操作に失敗しました",
-    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "操作に失敗しました: {0}",
+    "STARTUP_SETTING_UPDATE_FAILED": "起動設定を更新できませんでした",
+    "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "起動設定を更新できませんでした: {0}",
     "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
     "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
     "REFRESH_SETTINGS_SAVE_FAILED": "自動更新の設定を保存できませんでした",
@@ -188,7 +188,7 @@
     "CONNECTION_STOPPED_FOR_APP_MODE.VPN.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
     "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
     "CONNECTION_STOPPED_FOR_APP_MODE.PROXY_ONLY.PROXY_ONLY": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
-    "PREVIOUS_CONNECTION_RESTORE_PENDING": "状態を更新しました",
+    "PREVIOUS_CONNECTION_RESTORE_PENDING": "以前の VPN セッションを復元します",
     "PREVIOUS_LOCATION_UNAVAILABLE": "以前の VPN ロケーションは利用できなくなりました",
     "RESTORING_PREVIOUS_CONNECTION": "VPN 復元中: {0}...",
     "CONNECTION_STARTED_ON_TARGET.VPN": "VPN 開始: {1}",
@@ -216,8 +216,8 @@
     "AUTO_REFRESHING_SUBSCRIPTIONS": "サブスクリプションを自動更新中...",
     "ACTIVE_SUBSCRIPTION_REFRESHED": "有効なサブスクリプションを更新しました",
     "ALL_SUBSCRIPTIONS_REFRESHED": "すべてのサブスクリプションを更新しました",
-    "SUBSCRIPTION_REFRESHED": "購読 更新ed",
-    "SUBSCRIPTIONS_REFRESHED": "購読s 更新ed",
+    "SUBSCRIPTION_REFRESHED": "サブスクリプションを更新しました",
+    "SUBSCRIPTIONS_REFRESHED": "サブスクリプションを更新しました",
     "SUBSCRIPTIONS_REFRESHED_COUNT": "サブスクリプションを更新しました: {0}/{1}",
     "SUBSCRIPTIONS_REFRESHED_PARTIAL": "サブスクリプションを更新しました: {0}/{1}。失敗: {2}",
     "FAILED_TO_REFRESH": "更新に失敗しました: {0}",
@@ -227,7 +227,7 @@
     "SUBSCRIPTION_REFRESH_PREPARATION_FAILED": "更新中の準備に失敗しました: {0}",
     "SUBSCRIPTION_REFRESH_PERSISTENCE_FAILED": "更新結果の保存に失敗しました: {0}",
     "SUBSCRIPTION_REFRESH_OTHER_FAILED": "更新に失敗しました: {0}",
-    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "操作に失敗しました",
+    "FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION": "アクティブなサブスクリプションを更新できませんでした",
     "FAILED_TO_REFRESH_SUBSCRIPTIONS": "サブスクリプションを更新できませんでした",
     "LOADING_SAVED_LOCATIONS": "保存済みロケーションを読み込んでいます...",
     "DOWNLOADING_REMOTE_SOURCE": "リモートソースをダウンロードしています...",
@@ -239,11 +239,11 @@
     "FIND_BEST_TESTING_FASTEST.SUBSCRIPTION": "サブスクリプションから最適なロケーションを探しています... 最速の候補をバッチでテストしています...",
     "FIND_BEST_TESTING_FASTEST.CURRENT_LOCATIONS": "保存済みロケーションから最適なロケーションを探しています... 最速の候補をバッチでテストしています...",
     "BEST_LOCATION_SUMMARY": "最適: {0} • {1}",
-    "SELECTED_LOCATION_APPLYING": "ロケーションを更新しました",
-    "UPDATED_SELECTED_LOCATION_APPLYING": "ロケーションを更新しました",
+    "SELECTED_LOCATION_APPLYING": "選択中のロケーションを適用中...",
+    "UPDATED_SELECTED_LOCATION_APPLYING": "更新された選択中のロケーションを適用中...",
     "SELECTED_LOCATION_APPLY_FAILED": "選択したロケーションを適用できませんでした",
-    "SELECTED_LOCATION_SELECT_FAILED": "操作に失敗しました",
-    "UPDATED_SELECTED_LOCATION_APPLY_FAILED": "操作に失敗しました",
+    "SELECTED_LOCATION_SELECT_FAILED": "ロケーションを選択できませんでした",
+    "UPDATED_SELECTED_LOCATION_APPLY_FAILED": "更新された選択中のロケーションを適用できませんでした",
     "UPDATED_SELECTED_LOCATION_SAVE_FAILED": "更新された選択中のロケーションの保存に失敗しました",
     "UPDATED_SELECTED_LOCATION_APPLIED_SAVE_FAILED": "更新された選択中のロケーションを適用しましたが、保存に失敗しました",
     "CONNECTION_STOPPED_KEEP_STATE_CONSISTENT": "状態の整合性を保つため、{connectionLabel:0}を停止しました。",
@@ -252,7 +252,7 @@
     "PREVIOUS_CONNECTION_RESTORE_FAILED_STOPPED": "以前の{connectionLabel:0}のロケーションの復元に失敗しました: {1}。状態の整合性を保つため、{connectionLabel:0}を停止しました。",
     "PREVIOUS_CONNECTION_RESTORE_OR_STOP_FAILED": "以前の{connectionLabel:0}のロケーションの復元に失敗しました: {1}。{connectionLabel:0}の停止に失敗しました: {2}",
     "ROUTING_RULES_SAVED_RESTART_REQUIRED": "ルーティングルールを保存しました。適用するには{connectionLabel:0}を再起動してください",
-    "ROUTING_RULES_SAVE_FAILED": "操作に失敗しました",
+    "ROUTING_RULES_SAVE_FAILED": "ルーティングルールを保存できませんでした",
     "ROUTING_RULES_OUTCOME_UNKNOWN": "ルーティング変更の結果は不明です。同じ入力で再試行してください。",
     "ROUTING_RULES_STALE_DRAFT": "ルーティング設定が変更されました。保存する前にエディターを開き直してください。",
     "DIAGNOSTICS_EXPORT_OPENED": "診断エクスポートを開きました",
@@ -260,7 +260,7 @@
     "SUBSCRIPTION_RECEIVED": "サブスクリプションを受信しました。プロファイルタブで確認して保存してください。",
     "SUBSCRIPTION_LINK_RECEIVED": "サブスクリプションリンクを受信しました。プロファイルタブで確認して保存してください。",
     "LOCATION_CONFIG_RECEIVED": "ロケーション設定を受信しました。ロケーションタブで確認して保存してください。",
-    "SHARED_TEXT_UNSUPPORTED_IMPORT": "状態を更新しました",
+    "SHARED_TEXT_UNSUPPORTED_IMPORT": "共有されたテキストは対応しているインポート内容ではありません",
     "PASTE_SUBSCRIPTION_REQUIRED": "サブスクリプションURLを貼り付けるか、リストから選択してください",
     "SUBSCRIPTION_SAVED": "購読 保存済み",
     "INVALID_REMOTE_SOURCE": "無効なリモートソースです",
@@ -294,9 +294,9 @@
     "BACKGROUND_REFRESH_REPLACEMENT_STOPPED": "代替ロケーションを有効化できなかったため、{connectionLabel:0}を停止しました。",
     "BACKGROUND_REFRESH_RESTORE_OR_STOP_FAILED": "{connectionLabel:0}を正常に復元または停止できませんでした: {1}。",
     "BACKGROUND_REFRESH_FAILED": "バックグラウンド更新に失敗しました",
-    "REPLACEMENT_LOCATION_SEARCH_FAILED": "操作に失敗しました",
+    "REPLACEMENT_LOCATION_SEARCH_FAILED": "代替ロケーションが見つかりませんでした",
     "REPLACEMENT_LOCATION_SAVE_FAILED": "代替ロケーションの保存に失敗しました",
-    "INVALID_SUBSCRIPTION_URL": "サブスクリプションを更新しました",
+    "INVALID_SUBSCRIPTION_URL": "無効なサブスクリプション URL",
     "SUBSCRIPTION_DELETE_REMOVED_SELECTED_STOPPED": "{connectionLabel:0}を停止しました。削除されたサブスクリプションにより、選択中のロケーションが削除されました。",
     "RESOLVING_REMOTE_SOURCE": "{0}を解決しています...",
     "SUBSCRIPTION_SOURCE_LOAD_FAILED": "{0}の読み込みに失敗しました",
@@ -398,7 +398,7 @@
     },
     {
       "source": "Amnezia and other vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "サブスクリプションを更新しました"
+      "target": "Amnezia などの vpn:// インポートには対応していません。通常のサブスクリプション URL を使うか、ロケーションを手動で追加してください。"
     },
     {
       "source": "The import payload could not be decoded",
@@ -406,11 +406,11 @@
     },
     {
       "source": "vpn:// imports are not supported. Use a normal subscription URL or add locations manually.",
-      "target": "サブスクリプションを更新しました"
+      "target": "vpn:// インポートには対応していません。通常のサブスクリプション URL を使うか、ロケーションを手動で追加してください。"
     },
     {
       "source": "HTTP subscription URLs are not supported. Use https:// instead.",
-      "target": "サブスクリプションを更新しました"
+      "target": "HTTP のサブスクリプション URL には対応していません。代わりに https:// を使ってください。"
     },
     {
       "source": "Remote source must be an https:// URL or a supported import link",
@@ -430,15 +430,15 @@
     },
     {
       "source": "Applying selected location...",
-      "target": "ロケーションを更新しました"
+      "target": "選択中のロケーションを適用中..."
     },
     {
       "source": "Applying updated selected location...",
-      "target": "ロケーションを更新しました"
+      "target": "更新された選択中のロケーションを適用中..."
     },
     {
       "source": "Best location search timed out; keeping the current connection",
-      "target": "ロケーションを更新しました"
+      "target": "最適なロケーションの検索がタイムアウトしました。現在の接続を維持します"
     },
     {
       "source": "Clipboard is empty",
@@ -494,31 +494,31 @@
     },
     {
       "source": "Failed to apply updated selected location",
-      "target": "操作に失敗しました"
+      "target": "更新された選択中のロケーションを適用できませんでした"
     },
     {
       "source": "Failed to export diagnostics",
-      "target": "操作に失敗しました"
+      "target": "診断をエクスポートできませんでした"
     },
     {
       "source": "Failed to export locations",
-      "target": "操作に失敗しました"
+      "target": "ロケーションをエクスポートできませんでした"
     },
     {
       "source": "Failed to export routing rules",
-      "target": "操作に失敗しました"
+      "target": "ルーティングルールをエクスポートできませんでした"
     },
     {
       "source": "Failed to find a replacement location",
-      "target": "操作に失敗しました"
+      "target": "代替ロケーションが見つかりませんでした"
     },
     {
       "source": "Failed to import file",
-      "target": "操作に失敗しました"
+      "target": "ファイルをインポートできませんでした"
     },
     {
       "source": "Failed to open diagnostics destination",
-      "target": "操作に失敗しました"
+      "target": "診断のエクスポート先を開けませんでした"
     },
     {
       "source": "Failed to save refresh settings",
@@ -526,7 +526,7 @@
     },
     {
       "source": "Failed to update startup setting",
-      "target": "操作に失敗しました"
+      "target": "起動設定を更新できませんでした"
     },
     {
       "source": "Import canceled",
@@ -534,51 +534,51 @@
     },
     {
       "source": "Invalid subscription URL",
-      "target": "サブスクリプションを更新しました"
+      "target": "無効なサブスクリプション URL"
     },
     {
       "source": "Latency history enabled",
-      "target": "状態を更新しました"
+      "target": "遅延履歴を有効にしました"
     },
     {
       "source": "Latency history hidden",
-      "target": "状態を更新しました"
+      "target": "遅延履歴を非表示にしました"
     },
     {
       "source": "Live traffic stats enabled",
-      "target": "状態を更新しました"
+      "target": "リアルタイム通信統計を有効にしました"
     },
     {
       "source": "Live traffic stats hidden",
-      "target": "状態を更新しました"
+      "target": "リアルタイム通信統計を非表示にしました"
     },
     {
       "source": "Location check cancelled",
-      "target": "ロケーションを更新しました"
+      "target": "ロケーション確認をキャンセルしました"
     },
     {
       "source": "Location check failed",
-      "target": "操作に失敗しました"
+      "target": "ロケーション確認に失敗しました"
     },
     {
       "source": "Locations exported",
-      "target": "ロケーションを更新しました"
+      "target": "ロケーションをエクスポートしました"
     },
     {
       "source": "Locations import canceled",
-      "target": "ロケーションを更新しました"
+      "target": "ロケーションのインポートをキャンセルしました"
     },
     {
       "source": "No locations available for benchmarking",
-      "target": "ロケーションを更新しました"
+      "target": "ベンチマークできるロケーションがありません"
     },
     {
       "source": "No subscriptions to refresh",
-      "target": "サブスクリプションを更新しました"
+      "target": "更新するサブスクリプションがありません"
     },
     {
       "source": "No suitable location found",
-      "target": "ロケーションを更新しました"
+      "target": "適切なロケーションが見つかりませんでした"
     },
     {
       "source": "Per-profile totals enabled",
@@ -590,7 +590,7 @@
     },
     {
       "source": "Previous VPN session will be restored",
-      "target": "状態を更新しました"
+      "target": "以前の VPN セッションを復元します"
     },
     {
       "source": "QR scan canceled",
@@ -598,35 +598,35 @@
     },
     {
       "source": "Routing rules exported",
-      "target": "ルールを更新しました"
+      "target": "ルーティングルールをエクスポートしました"
     },
     {
       "source": "Routing rules import canceled",
-      "target": "ルールを更新しました"
+      "target": "ルーティングルールのインポートをキャンセルしました"
     },
     {
       "source": "Saved routing rules",
-      "target": "ルールを更新しました"
+      "target": "ルーティングルールを保存しました"
     },
     {
       "source": "Session stats enabled",
-      "target": "状態を更新しました"
+      "target": "セッション統計を有効にしました"
     },
     {
       "source": "Session stats hidden",
-      "target": "状態を更新しました"
+      "target": "セッション統計を非表示にしました"
     },
     {
       "source": "Shared text is not a supported import payload",
-      "target": "状態を更新しました"
+      "target": "共有されたテキストは対応しているインポート内容ではありません"
     },
     {
       "source": "Subscription deleted",
-      "target": "サブスクリプションを更新しました"
+      "target": "サブスクリプションを削除しました"
     },
     {
       "source": "Subscription refresh finished, but VPN permission is required to switch in background. Previous VPN location kept as a fallback.",
-      "target": "サブスクリプションを更新しました"
+      "target": "サブスクリプションの更新が完了しましたが、バックグラウンドで切り替えるには VPN 権限が必要です。以前の VPN ロケーションをフォールバックとして維持しました。"
     },
     {
       "source": "Subscription refresh finished. Finding the best location...",
@@ -710,7 +710,7 @@
     },
     {
       "source": "fail route/DNS tooling: ",
-      "target": "ルールを更新しました"
+      "target": "ルート/DNS ツールエラー: "
     },
     {
       "source": "TUN device",
@@ -722,7 +722,7 @@
     },
     {
       "source": "route/DNS tooling",
-      "target": "ルールを更新しました"
+      "target": "ルート/DNS ツール"
     },
     {
       "source": "Linux TUN device is missing at /dev/net/tun. Try: sudo modprobe tun",
@@ -730,11 +730,11 @@
     },
     {
       "source": "Desktop VPN mode needs CAP_NET_ADMIN. Run as root or grant sing-box capabilities: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)",
-      "target": "状態を更新しました"
+      "target": "デスクトップ VPN モードには CAP_NET_ADMIN が必要です。root で実行するか、sing-box に権限を付与してください: sudo setcap cap_net_admin,cap_net_raw+ep $(command -v sing-box)"
     },
     {
       "source": "Windows route/DNS tooling is unavailable. VPN mode needs netsh.exe and DNS client PowerShell cmdlets.",
-      "target": "ルールを更新しました"
+      "target": "Windows のルート/DNS ツールを利用できません。VPN モードには netsh.exe と DNS クライアントの PowerShell コマンドレットが必要です。"
     },
     {
       "source": "VPN ready on this computer",
@@ -844,11 +844,11 @@
     },
     {
       "source": "Subscription refreshed",
-      "target": "購読 更新ed"
+      "target": "サブスクリプションを更新しました"
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "購読s 更新ed"
+      "target": "サブスクリプションを更新しました"
     },
     {
       "source": "Active subscription refreshed",
@@ -1046,7 +1046,7 @@
     },
     {
       "source": "Selected location applied, but failed to save it",
-      "target": "ロケーションを更新しました"
+      "target": "選択中のロケーションを適用しましたが、保存に失敗しました"
     },
     {
       "source": "Location removal rolled back because the proxy could not be stopped",
@@ -1082,19 +1082,19 @@
     },
     {
       "source": "Routing rules saved. Restart VPN to apply",
-      "target": "ルールを更新しました"
+      "target": "ルーティングルールを保存しました。適用するには VPN を再起動してください"
     },
     {
       "source": "Routing rules saved. Restart proxy to apply",
-      "target": "ルールを更新しました"
+      "target": "ルーティングルールを保存しました。適用するにはプロキシを再起動してください"
     },
     {
       "source": "Routing rules imported. Restart VPN to apply",
-      "target": "ルールを更新しました"
+      "target": "ルーティングルールをインポートしました。適用するには VPN を再起動してください"
     },
     {
       "source": "Routing rules imported. Restart proxy to apply",
-      "target": "ルールを更新しました"
+      "target": "ルーティングルールをインポートしました。適用するにはプロキシを再起動してください"
     },
     {
       "source": "Selected location removed. VPN stopped: ",
@@ -1154,7 +1154,7 @@
     },
     {
       "source": "Failed to select location",
-      "target": "操作に失敗しました"
+      "target": "ロケーションを選択できませんでした"
     },
     {
       "source": "Failed to stop VPN before exit",
@@ -1254,11 +1254,11 @@
     },
     {
       "source": "Subscriptions refreshed",
-      "target": "購読s 更新ed"
+      "target": "サブスクリプションを更新しました"
     },
     {
       "source": "Subscription refreshed",
-      "target": "購読 更新ed"
+      "target": "サブスクリプションを更新しました"
     },
     {
       "source": "Refresh failed",
@@ -1422,7 +1422,7 @@
     },
     {
       "source": "No locations to export",
-      "target": "ロケーションを更新しました"
+      "target": "エクスポートするロケーションがありません"
     },
     {
       "source": "Failed to load apps",
@@ -1434,19 +1434,19 @@
     },
     {
       "source": "Failed to refresh the active subscription",
-      "target": "操作に失敗しました"
+      "target": "アクティブなサブスクリプションを更新できませんでした"
     },
     {
       "source": "Failed to import routing rules",
-      "target": "操作に失敗しました"
+      "target": "ルーティングルールをインポートできませんでした"
     },
     {
       "source": "Failed to save routing rules",
-      "target": "操作に失敗しました"
+      "target": "ルーティングルールを保存できませんでした"
     },
     {
       "source": "Failed to import locations",
-      "target": "操作に失敗しました"
+      "target": "ロケーションをインポートできませんでした"
     },
     {
       "source": "Failed to open locations file",
@@ -1526,7 +1526,7 @@
     },
     {
       "source": "Location already saved: ",
-      "target": "ロケーション al準備完了 保存済み: "
+      "target": "ロケーションは保存済みです: "
     },
     {
       "source": "Location updated: ",
@@ -1542,7 +1542,7 @@
     },
     {
       "source": "Subscriptions refreshed: ",
-      "target": "購読s 更新ed: "
+      "target": "サブスクリプションを更新しました: "
     },
     {
       "source": "Failed: ",
