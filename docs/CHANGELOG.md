@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - A workspace file that cannot be read is kept aside as a separate copy with a translated status, instead of being overwritten by the next save.
 - Windows agent tools: in-guest desktop test runner, countable update rows with cancelled, reconnect, explicit-off, copy-lock and second-administrator variants, the document cache row, sign-in readiness fixes, UAC call timing inside the 90 s prompt rule, scoped-TUN grant, Find Best and configuration/fault variants, and CI setup fixes for the ubuntu-26.04 runners.
 - Windows agent tools: the update fault rows (deliberately failing installer, counterfeit protected storage) now produce and settle, the reserved scoped-TUN resource and race cases are admitted, and five Windows-only CI tests use premises the hosted runner keeps.
+- CI and fixtures no longer drift silently: runner images, actions, the Gradle distribution and dependencies, Python tool packages and Linux validator containers are pinned by exact version or hash, every module builds with a JDK 17 toolchain, new Windows test clones refuse an unpinned base image, and a weekly non-blocking canary plus Dependabot surface upgrades as reviewable changes.
 
 ## 2.2.18 - 2026-11-13
 
