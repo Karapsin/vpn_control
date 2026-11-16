@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
-"""Hosted Gradle build-cache policy for one CI job; run it right after `Set up Gradle`.
+"""Hosted Gradle build-cache policy for one CI job.
 
 `setup-gradle` saves the Gradle User Home, which holds the local build cache,
 only in the `Gradle Cache Warm` workflow (.github/workflows/gradle-cache-warm.yml),
 which runs on the default branch so that every branch can restore its entries.
 Every other workflow sets `cache-read-only: true`.
 
-This script decides whether the job's Gradle product steps reuse task outputs:
+Run with `--restore-policy` (step id `gradle-restore`) right before each
+`Set up Gradle` step: it writes `restore=true` to `$GITHUB_OUTPUT` only for a
+development source, and setup-gradle gets
+`cache-disabled: ${{ steps.gradle-restore.outputs.restore != 'true' }}`, so a
+release-ready source never restores the Gradle User Home that dev warm runs
+wrote, and a missing decision restores nothing.
+
+Run without arguments right after `Set up Gradle`, it decides whether the job's
+Gradle product steps reuse task outputs:
 
 - disabled for every release-ready source, that is one passing
   `scripts/check_release_metadata.py --require-release-ready`, which the stable
@@ -61,21 +69,44 @@ def decide(environment: dict[str, str], root: Path = ROOT) -> dict[str, str]:
     return {"mode": "enabled", "reason": "development source"}
 
 
+def install(decision: dict[str, str], environment: dict[str, str]) -> str:
+    """Install the never-cache-tests init script when enabled; return the product build's Gradle options."""
+    if decision["mode"] != "enabled":
+        return ""
+    home = Path(environment.get("GRADLE_USER_HOME") or Path.home() / ".gradle")
+    init = home / "init.d"
+    init.mkdir(parents=True, exist_ok=True)
+    (init / INIT_SCRIPT_NAME).write_text(INIT_SCRIPT, encoding="utf-8")
+    return ENABLED
+
+
 def apply(decision: dict[str, str], environment: dict[str, str]) -> None:
-    if decision["mode"] == "enabled":
-        home = Path(environment.get("GRADLE_USER_HOME") or Path.home() / ".gradle")
-        init = home / "init.d"
-        init.mkdir(parents=True, exist_ok=True)
-        (init / INIT_SCRIPT_NAME).write_text(INIT_SCRIPT, encoding="utf-8")
+    options = install(decision, environment)
     output = environment.get("GITHUB_ENV")
     if not output:
         raise SystemExit("GITHUB_ENV is required")
     with open(output, "a", encoding="utf-8") as stream:
-        stream.write("GRADLE_BUILD_CACHE_OPTS=%s\n" % (ENABLED if decision["mode"] == "enabled" else ""))
+        stream.write("GRADLE_BUILD_CACHE_OPTS=%s\n" % options)
 
 
-def main() -> int:
+def restore_policy(decision: dict[str, str], environment: dict[str, str]) -> None:
+    """Restore the shared Gradle User Home only into development builds."""
+    output = environment.get("GITHUB_OUTPUT")
+    if not output:
+        raise SystemExit("GITHUB_OUTPUT is required")
+    with open(output, "a", encoding="utf-8") as stream:
+        stream.write("restore=%s\n" % ("true" if decision["mode"] == "enabled" else "false"))
+
+
+def main(argv: list[str] | None = None) -> int:
+    arguments = sys.argv[1:] if argv is None else argv
+    if arguments not in ([], ["--restore-policy"]):
+        raise SystemExit("usage: gradle_ci_cache.py [--restore-policy]")
     decision = decide(dict(os.environ))
+    if arguments:
+        restore_policy(decision, dict(os.environ))
+        print("[vpn-control] Gradle cache restore " + json.dumps(decision, sort_keys=True))
+        return 0
     apply(decision, dict(os.environ))
     print("[vpn-control] Gradle build cache " + json.dumps(decision, sort_keys=True))
     return 0

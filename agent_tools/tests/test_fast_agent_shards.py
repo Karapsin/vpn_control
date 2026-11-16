@@ -28,8 +28,10 @@ def hosted_job_keys():
 HYGIENE_DUPLICATES = ('Check documentation hygiene', 'Check whitespace', 'Verify Windows PowerShell command bounds')
 
 
-# Only Gradle Cache Warm writes the hosted Gradle cache (test_gradle_ci_cache).
-GRADLE_CACHE_INPUTS = {'cache-read-only': True}
+# Only Gradle Cache Warm writes the hosted Gradle cache, and release-ready
+# sources never restore it (test_gradle_ci_cache).
+GRADLE_CACHE_INPUTS = {'cache-read-only': True,
+                       'cache-disabled': "${{ steps.gradle-restore.outputs.restore != 'true' }}"}
 # A dev push skips every job when its exact SHA already passed on a ci/* branch (test_ci_run_reuse).
 REUSE_GATE = "needs.reuse.outputs.skip != 'true'"
 GRADLE_CACHE_ENV = {'GRADLE_OPTS': '${{ env.GRADLE_BUILD_CACHE_OPTS }}'}

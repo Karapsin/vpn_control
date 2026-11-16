@@ -55,10 +55,16 @@ jobs:
       - name: Install pinned Android native build tools
         run: bash scripts/prepare_android_native_tools.sh
 
+      - name: Choose Gradle cache restore
+        id: gradle-restore
+        shell: bash
+        run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py --restore-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
         with:
           cache-read-only: true
+          cache-disabled: ${{ steps.gradle-restore.outputs.restore != 'true' }}
 
       - name: Run fixture and integration contract regressions
         run: |
@@ -84,10 +90,16 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Choose Gradle cache restore
+        id: gradle-restore
+        shell: bash
+        run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py --restore-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
         with:
           cache-read-only: true
+          cache-disabled: ${{ steps.gradle-restore.outputs.restore != 'true' }}
 
       - name: Install package tooling
         run: |
@@ -195,10 +207,16 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Choose Gradle cache restore
+        id: gradle-restore
+        shell: bash
+        run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py --restore-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
         with:
           cache-read-only: true
+          cache-disabled: ${{ steps.gradle-restore.outputs.restore != 'true' }}
 
       - name: Install WiX Toolset
         shell: pwsh
@@ -247,10 +265,16 @@ jobs:
       - name: Install pinned Android native build tools
         run: bash scripts/prepare_android_native_tools.sh
 
+      - name: Choose Gradle cache restore
+        id: gradle-restore
+        shell: bash
+        run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py --restore-policy
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
         with:
           cache-read-only: true
+          cache-disabled: ${{ steps.gradle-restore.outputs.restore != 'true' }}
 
       - name: Enable KVM
         run: |

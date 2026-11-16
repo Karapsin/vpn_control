@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,7 +14,6 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gradle_cache_warm as warm  # noqa: E402
-import gradle_cache_warm_source as warm_source  # noqa: E402
 import gradle_ci_cache as subject  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +29,13 @@ CACHED_STEPS = {
     "windows-desktop.yml": ("Build Windows packages", "Run native desktop tests", "Run portable desktop tests"),
 }
 PRESERVED = ROOT / "agent_tools/tests/fixtures/agent_ci_shards/ci-gate.workflow.before.yml"
+RESTORE_STEP = "Choose Gradle cache restore"
+RESTORE_RUN = "run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py --restore-policy\n"
+RESTORE_INPUT = "          cache-disabled: ${{ steps.gradle-restore.outputs.restore != 'true' }}\n"
+# Main's frozen copy of the warm workflow runs a newer dev commit, so these
+# repository paths are its whole interface with dev: renaming one on dev breaks
+# every warm until a release. Change this set only together with a release.
+STABLE_WARM_INTERFACE = {"scripts/gradle_cache_warm.py", "desktopApp/native/windows/toolchain.lock.json"}
 
 
 def jobs(text):
@@ -67,7 +74,41 @@ def wiring_problems(name, text):
     return problems
 
 
+def restore_problems(name, text):
+    """Problems that let a release-ready source restore the dev-written Gradle User Home."""
+    problems = []
+    for job, steps in jobs(text).items():
+        for index, (step, body) in enumerate(steps):
+            if SETUP not in body:
+                continue
+            if RESTORE_INPUT not in body:
+                problems.append(f"{name}:{job}:{step}: setup-gradle restores without the release restore policy")
+            previous_name, previous = steps[index - 1] if index else ("", "")
+            condition = re.search(r"(?m)^        if: (.+)$", body)
+            expected_condition = f"        if: {condition.group(1)}\n" if condition else ""
+            if (previous_name != RESTORE_STEP or "        id: gradle-restore\n" not in previous
+                    or RESTORE_RUN not in previous or "        shell: bash\n" not in previous
+                    or (re.search(r"(?m)^        if: .+\n", previous) or [""])[0] != expected_condition):
+                problems.append(f"{name}:{job}:{step}: the restore policy must run right before setup-gradle")
+    return problems
+
+
 class DecisionTests(unittest.TestCase):
+    def test_restore_policy_restores_only_into_development_builds(self):
+        for ready, restore in ((False, "true"), (True, "false")):
+            with self.subTest(ready=ready), tempfile.TemporaryDirectory() as temporary:
+                output = Path(temporary) / "output"
+                home = Path(temporary) / "gradle-home"
+                environment = {"GITHUB_OUTPUT": str(output), "GRADLE_USER_HOME": str(home)}
+                with mock.patch.object(subject, "release_ready", return_value=ready), \
+                        mock.patch.dict("os.environ", environment, clear=True):
+                    self.assertEqual(0, subject.main(["--restore-policy"]))
+                self.assertEqual(f"restore={restore}\n", output.read_text(encoding="utf-8"))
+                # It runs before setup-gradle: writing the Gradle User Home would stop its restore.
+                self.assertFalse(home.exists())
+        with self.assertRaises(SystemExit):
+            subject.main(["--restore"])
+
     def test_release_ready_sources_never_use_the_build_cache_on_any_ref(self):
         refs = ("refs/heads/main", "refs/heads/dev", "refs/heads/ci/0123456789ab", "refs/pull/1/merge")
         for ready, mode in ((False, "enabled"), (True, "disabled")):
@@ -109,27 +150,34 @@ class WorkflowWiringTests(unittest.TestCase):
             values = re.findall(r"(?m)^\s+cache-read-only:\s*(.+)$", text)
             expected = ["false"] if path.name == WARM else ["true"] * len(values)
             self.assertEqual(expected, values, path.name)
-            self.assertNotIn("cache-disabled:", text, path.name)
+            # Restore is disabled by source readiness only, never by ref.
+            disabled = re.findall(r"(?m)^\s+cache-disabled:.*\n", text)
+            self.assertEqual([] if path.name == WARM else [RESTORE_INPUT] * len(values), disabled, path.name)
             self.assertNotIn("refs/heads/main", text.replace("git/ref/heads/main", ""), path.name)
             if SETUP in text and path.name != WARM:
                 self.assertEqual(text.count(SETUP), len(values), path.name)
+
+    def test_release_ready_sources_never_restore_the_dev_written_gradle_home(self):
+        # Every setup-gradle outside the warm workflow, push or dispatch, takes the restore policy.
+        problems = []
+        for path in sorted(WORKFLOWS.glob("*.yml")):
+            if path.name != WARM:
+                problems += restore_problems(path.name, path.read_text(encoding="utf-8"))
+        self.assertEqual([], problems)
 
     def test_warm_workflow_runs_only_on_dispatch_and_schedule_and_builds_a_dev_commit(self):
         text = (WORKFLOWS / WARM).read_text(encoding="utf-8")
         self.assertEqual("Gradle Cache Warm", re.search(r"(?m)^name: (.+)$", text).group(1))
         triggers = text.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
         self.assertEqual(["workflow_dispatch", "schedule"], re.findall(r"(?m)^  ([a-z_]+):", triggers))
-        self.assertEqual([warm_source.INPUT], re.findall(r"(?m)^      ([a-z_]+):\n", triggers))
-        self.assertEqual(WARM, warm_source.WORKFLOW)
-        self.assertIn("run: python3 scripts/gradle_cache_warm_source.py", text)
+        self.assertEqual(["dev_sha"], re.findall(r"(?m)^      ([a-z_]+):\n", triggers))
         self.assertIn("ref: ${{ needs.resolve.outputs.sha }}", text)
         self.assertIn("GRADLE_BUILD_ACTION_CACHE_KEY_JOB_EXECUTION: ${{ needs.resolve.outputs.sha }}-${{ github.run_id }}-${{ github.run_attempt }}", text)
         warm_jobs = jobs(text)
         names = [step for step, unused in warm_jobs["warm"]]
         self.assertLess(names.index("Checkout dev commit"), names.index("Set up Gradle"))
-        self.assertLess(names.index("Set up Gradle"), names.index("Set up Gradle build cache"))
-        self.assertLess(names.index("Set up Gradle build cache"), names.index("Build the CI Gradle tasks"))
-        self.assertIn("GRADLE_OPTS: ${{ env.GRADLE_BUILD_CACHE_OPTS }}", dict(warm_jobs["warm"])["Build the CI Gradle tasks"])
+        self.assertEqual("Build the CI Gradle tasks", names[-1])
+        self.assertLess(names.index("Set up Gradle"), names.index("Build the CI Gradle tasks"))
         # One warm entry per runner image that a cache-reading push job uses.
         matrix = set(re.search(r"os: \[(.+)\]", text).group(1).replace(" ", "").split(","))
         images = set()
@@ -149,26 +197,81 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertTrue(any("Run fast unit tests" in problem for problem in problems), problems)
 
 
+def warm_interface(text):
+    """Repository paths the warm workflow's non-comment lines name, outside its own path."""
+    code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+    return set(re.findall(r"\b((?:scripts|agent_tools|desktopApp|app|shared|\.github)/[\w./-]+)", code)) - {
+        ".github/workflows/" + WARM}
+
+
 class WarmTests(unittest.TestCase):
-    ENV = {"GITHUB_REF": "refs/heads/main", "GITHUB_REPOSITORY": "owner/repo"}
+    def test_main_frozen_warm_workflow_names_only_the_stable_dev_interface(self):
+        # RED on bf8d2da2: it ran scripts/gradle_cache_warm_source.py, scripts/gradle_ci_cache.py
+        # and scripts/prepare_android_native_tools.sh from the dev checkout by name.
+        text = (WORKFLOWS / WARM).read_text(encoding="utf-8")
+        self.assertEqual(STABLE_WARM_INTERFACE, warm_interface(text))
+        for path in STABLE_WARM_INTERFACE:
+            self.assertTrue((ROOT / path).is_file(), path)
+        self.assertIn("run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_cache_warm.py\n", text)
+        self.assertIn("STABLE INTERFACE", warm.__doc__)
 
-    def git(self, *args):
-        if args[0] == "rev-parse":
-            return "a" * 40
-        if args[2] == "b" * 40:
-            raise subprocess.CalledProcessError(1, "git")
-        return ""
+    def resolve_script(self):
+        steps = dict(jobs((WORKFLOWS / WARM).read_text(encoding="utf-8"))["resolve"])
+        body = steps["Require the default branch and a dev commit"]
+        self.assertIn("        shell: bash\n", body)
+        return "\n".join(line[10:] for line in body.split("        run: |\n", 1)[1].splitlines())
 
-    def test_resolve_writes_only_from_the_default_branch_and_only_dev_commits(self):
-        main = lambda environment: "main"
-        self.assertEqual("a" * 40, warm_source.resolve(dict(self.ENV), branch=main, run_git=self.git))
-        self.assertEqual("c" * 40, warm_source.resolve({**self.ENV, "REQUESTED_SHA": "C" * 40}, branch=main, run_git=self.git))
-        for environment, message in (({**self.ENV, "GITHUB_REF": "refs/heads/dev"}, "only from refs/heads/main"),
-                                     ({**self.ENV, "GITHUB_REF": "refs/heads/ci/0123456789ab"}, "only from"),
-                                     ({**self.ENV, "REQUESTED_SHA": "b" * 40}, "not contained in dev"),
-                                     ({**self.ENV, "REQUESTED_SHA": "abc"}, "full 40-character")):
-            with self.subTest(environment=environment), self.assertRaisesRegex(SystemExit, message):
-                warm_source.resolve(environment, branch=main, run_git=self.git)
+    @unittest.skipIf(os.name == "nt" or not shutil.which("bash") or not shutil.which("git"), "POSIX bash and git")
+    def test_inline_resolve_writes_only_from_the_default_branch_and_only_dev_commits(self):
+        script = self.resolve_script()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo, tools = root / "repo", root / "bin"
+            tools.mkdir()
+            (tools / "gh").write_text("#!/bin/sh\necho main\n", encoding="utf-8")
+            (tools / "gh").chmod(0o755)
+            git = lambda *args: subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True,
+                                               text=True).stdout.strip()
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            for name in ("one", "two"):
+                git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", name)
+            first, head = git("rev-parse", "HEAD~1"), git("rev-parse", "HEAD")
+            git("checkout", "-q", "--orphan", "other")
+            git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "x")
+            foreign = git("rev-parse", "HEAD")
+            git("checkout", "-q", head)
+
+            def run(ref, requested=""):
+                output = root / "output"
+                output.write_text("", encoding="utf-8")
+                result = subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True, env={
+                    "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}", "GITHUB_REF": ref, "GITHUB_OUTPUT": str(output),
+                    "GITHUB_REPOSITORY": "owner/repo", "REQUESTED_SHA": requested})
+                return result.returncode, output.read_text(encoding="utf-8"), result.stderr
+
+            self.assertEqual((0, f"sha={head}\n"), run("refs/heads/main")[:2])
+            self.assertEqual((0, f"sha={first}\n"), run("refs/heads/main", first.upper())[:2])
+            for ref, requested, message in (("refs/heads/dev", "", "only from refs/heads/main"),
+                                            ("refs/heads/ci/0123456789ab", "", "only from"),
+                                            ("refs/heads/main", foreign, "not contained in dev"),
+                                            ("refs/heads/main", "abc", "full 40-character")):
+                with self.subTest(ref=ref, requested=requested):
+                    code, output, stderr = run(ref, requested)
+                    self.assertNotEqual(0, code)
+                    self.assertEqual("", output)
+                    self.assertIn(message, stderr)
+
+    def test_entry_point_prepares_linux_tools_and_applies_the_cache_policy_itself(self):
+        self.assertEqual([["bash", str(ROOT / "scripts/prepare_android_native_tools.sh")]], warm.prepare_commands("Linux"))
+        self.assertEqual([], warm.prepare_commands("macOS"))
+        self.assertEqual([], warm.prepare_commands("Windows"))
+        for ready, options in ((False, "-Dorg.gradle.caching=true"), (True, "")):
+            with self.subTest(ready=ready), tempfile.TemporaryDirectory() as temporary:
+                home = Path(temporary) / "home"
+                with mock.patch.object(subject, "release_ready", return_value=ready):
+                    environment = warm.build_environment({"GRADLE_USER_HOME": str(home), "GRADLE_OPTS": "-Xmx2g"})
+                self.assertEqual(" ".join(part for part in ("-Xmx2g", options) if part), environment["GRADLE_OPTS"])
+                self.assertEqual(not ready, (home / "init.d" / subject.INIT_SCRIPT_NAME).is_file())
 
     def test_build_compiles_the_ci_tasks_without_running_tests(self):
         self.assertEqual({"Linux", "macOS", "Windows"}, set(warm.TASKS))

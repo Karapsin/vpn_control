@@ -8,6 +8,14 @@ name: Gradle Cache Warm
 # local build cache) per runner OS. Every other workflow is cache-read-only;
 # setup-gradle restores by OS prefix, so ci/* and dev runs read these entries.
 # Release-ready sources build without task-output reuse (scripts/gradle_ci_cache.py).
+#
+# Dispatch and schedule always run main's copy of this file, which changes only
+# at a release, while it builds a newer dev commit. So it must not depend on dev
+# helper names: the commit resolution below is inline, and the only repository
+# paths it uses are the stable interface STABLE_WARM_INTERFACE in
+# scripts/test_gradle_ci_cache.py (the no-argument entry point
+# scripts/gradle_cache_warm.py and the Windows SDK pin). Renaming either on dev
+# breaks every warm until the next release; the test refuses it.
 on:
   workflow_dispatch:
     inputs:
@@ -39,12 +47,30 @@ jobs:
           ref: dev
           fetch-depth: 0
 
+      # Inline on purpose: no dev script runs before the commit is chosen.
       - name: Require the default branch and a dev commit
         id: resolve
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_SHA: ${{ inputs.dev_sha }}
-        run: python3 scripts/gradle_cache_warm_source.py
+        run: |
+          set -euo pipefail
+          default_branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)
+          [[ -n "$default_branch" ]] || { echo "Could not read the repository default branch." >&2; exit 1; }
+          if [[ "$GITHUB_REF" != "refs/heads/$default_branch" ]]; then
+            echo "Gradle Cache Warm writes the shared cache only from refs/heads/$default_branch; this run is on '$GITHUB_REF'." >&2
+            exit 1
+          fi
+          sha=$(printf '%s' "${REQUESTED_SHA:-}" | tr -d '[:space:]' | tr 'A-F' 'a-f')
+          [[ -n "$sha" ]] || sha=$(git rev-parse HEAD)
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "dev_sha must be a full 40-character commit SHA: '$sha'" >&2
+            exit 1
+          fi
+          git merge-base --is-ancestor "$sha" HEAD || { echo "$sha is not contained in dev." >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "[vpn-control] Gradle cache warm {\"sha\": \"$sha\"}"
 
   warm:
     name: Warm ${{ matrix.os }} Gradle cache
@@ -71,10 +97,6 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Install pinned Android native build tools
-        if: runner.os == 'Linux'
-        run: bash scripts/prepare_android_native_tools.sh
-
       - name: Read native helper SDK version
         if: runner.os == 'Windows'
         id: native-helper-sdk
@@ -94,12 +116,8 @@ jobs:
         with:
           cache-read-only: false
 
-      - name: Set up Gradle build cache
-        shell: bash
-        run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py
-
+      # The stable entry point installs the Android native tools on Linux and applies
+      # the build-cache policy itself, so dev may rename those helpers freely.
       - name: Build the CI Gradle tasks
         shell: bash
-        env:
-          GRADLE_OPTS: ${{ env.GRADLE_BUILD_CACHE_OPTS }}
         run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_cache_warm.py

@@ -128,11 +128,18 @@ jobs:
           VPN_CONTROL_MAC_INSTALL_GATE_TEST_ROOT="$gate_fixture_dir" python3 scripts/test_macos_install_gate.py
           VPN_CONTROL_MAC_INSTALL_ENOSPC_TEST_ROOT="$gate_fixture_dir" python3 scripts/test_macos_install_enospc.py
 
+      - name: Choose Gradle cache restore
+        id: gradle-restore
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py --restore-policy
+
       - name: Set up Gradle
         if: ${{ !cancelled() }}
         uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
         with:
           cache-read-only: true
+          cache-disabled: ${{ steps.gradle-restore.outputs.restore != 'true' }}
 
       - name: Set up Gradle build cache
         if: ${{ !cancelled() }}
