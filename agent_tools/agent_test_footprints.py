@@ -10,12 +10,15 @@ from the completion gate.
 
 Subcommands:
   merge OUTPUT INPUT...   merge worker footprint files into one table
-  fetch [--run-id ID]     download the newest dev Fast Checks footprints into
+  fetch [--run-id ID]     download the footprints of the newest successful Fast
+                          Checks run that recorded them (normally a ci/* gate run)
+                          and whose head is an ancestor of HEAD into
                           .rag_index/agent-test-footprints.json (needs gh)
 """
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 from pathlib import Path
@@ -204,19 +207,32 @@ def _gh(*args):
     return subprocess.run(["gh", *args], capture_output=True, text=True, check=True).stdout
 
 
+def _has_footprints(run_id):
+    """Whether a run still holds an unexpired agent-test-footprints-* artifact."""
+    listed = json.loads(_gh("api", f"repos/{{owner}}/{{repo}}/actions/runs/{run_id}/artifacts?per_page=100"))
+    return any(fnmatch.fnmatchcase(artifact.get("name", ""), ARTIFACT_PATTERN) and not artifact.get("expired")
+               for artifact in listed.get("artifacts", []))
+
+
 def fetch(root, run_id=None):
-    """Newest successful dev Fast Checks run whose head is an ancestor of HEAD."""
+    """Newest successful Fast Checks run with recorded footprints whose head is an ancestor of HEAD.
+
+    A dev push that reuses its ci/* result, and a push that changed no agent
+    input, runs no agent shard and uploads no footprints, so the newest dev run
+    is usually empty; the ci/* gate run of the same or an earlier SHA has them.
+    """
     root = Path(root).resolve()
     if run_id is None:
-        runs = json.loads(_gh("run", "list", "--workflow", "fast-checks.yml", "--branch", "dev", "--status", "success",
-                              "--limit", "20", "--json", "databaseId,headSha"))
+        runs = json.loads(_gh("run", "list", "--workflow", "fast-checks.yml", "--status", "success",
+                              "--limit", "100", "--json", "databaseId,headSha"))
         for run in runs:
-            ancestor = subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", run["headSha"], "HEAD"])
-            if ancestor.returncode == 0:
+            ancestor = subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", run["headSha"], "HEAD"],
+                                      capture_output=True)
+            if ancestor.returncode == 0 and _has_footprints(run["databaseId"]):
                 run_id, commit = str(run["databaseId"]), run["headSha"]
                 break
         else:
-            raise ValueError("No successful dev Fast Checks run is an ancestor of HEAD")
+            raise ValueError("No successful Fast Checks run with agent test footprints is an ancestor of HEAD")
     else:
         commit = json.loads(_gh("run", "view", str(run_id), "--json", "headSha"))["headSha"]
     with tempfile.TemporaryDirectory(prefix="agent-footprints-") as temporary:

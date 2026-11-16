@@ -299,7 +299,7 @@ After the final non-documentation edit, call `version_bump` once with a concise 
 
 `action="cleanup"` (CLI `git-workflow cleanup --max-age-days N`, default 7) deletes `ci/*` branches that `dev` already contains, or whose runs all finished and whose newest run is older than N days, plus local `ci/*` branches without a remote counterpart. A branch with an unfinished or recent run may be another agent's gate and is kept.
 
-The `dev` fast-forward also triggers the `dev` push workflows for the same SHA. The gate does not wait for them; `VPN Integration` stays advisory and dev-only, and dispatch-only fixture jobs and dev-only cache writes keep their exact `refs/heads/dev` conditions, which a `ci/*` push never satisfies.
+The `dev` fast-forward also triggers the `dev` push workflows for the same SHA; each starts with a `Reuse ci/* result` job and skips its other jobs when a successful exact-SHA `ci/*` push run of the same workflow exists. The gate does not wait for them. `VPN Integration` has no push trigger and stays an advisory dispatch, and dispatch-only fixture jobs keep their exact `refs/heads/dev` conditions, which a `ci/*` push never satisfies. After each fast-forward the gate dispatches the Gradle cache warm for the new `dev` SHA (`gh workflow run gradle-cache-warm.yml --ref main -f dev_sha=<sha>`). The dispatch is best effort: its result is recorded as `cacheWarm` in the gate ledger and in the tool result, and a failed dispatch never fails the gate.
 
 `main` is not a development branch. Only an explicit user release command authorizes `release_workflow` to fast-forward `main`, require exhaustive VPN integration, and dispatch the manual publisher. Ordinary completion and push requests stop after verified `origin/dev`.
 

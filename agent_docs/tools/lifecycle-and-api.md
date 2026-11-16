@@ -53,7 +53,7 @@ For implementation, testing, release, or commit work:
 2. Read the returned instruction files. Use `docs` and `change_impact` instead of broad exploratory searches when repository documentation can answer the question.
 3. Use `workflow_status` while working to re-check routing, dirty paths, index freshness, and validation requirements.
 4. Run `version_bump` once after the final non-documentation content change. The complete `run_checks(level="prepush")` tier is optional; a successful pass writes a content fingerprint to `.rag_index/prepush_receipt.json`, but delivery does not require it.
-5. Use `git_workflow(action="commit"|"push")` to gate work into `dev`: it pushes the exact SHA to `origin/ci/<sha12>`, waits until every development workflow in `.github/required-workflows.json` has finished for that SHA, fast-forwards `origin/dev` to it only when all succeeded and `dev` is still its ancestor (otherwise it reports that a rebase is needed), records the result in `.rag_index/ci-gate/`, and deletes the `ci/*` branch on origin and locally. A documentation-only difference from a SHA with successful exact runs reuses that result after the docs checks; `exact=True` (always for a release) never does. `action="checkpoint"` pushes the `ci/*` branch without waiting and returns `requiredWorkflowsVerified: false`; gate it later with `action="push"`. `action="checks"` queries only runs attached to a full SHA and returns at the first failure. `action="abandon"` cancels unfinished runs of a candidate, records it and deletes its branch; `action="cleanup"` deletes `ci/*` branches that `dev` contains or whose finished runs are older than `max_age_days` (default 7). The [pre-merge CI gate](../development.md#pre-merge-ci-gate) lists every rule.
+5. Use `git_workflow(action="commit"|"push")` to gate work into `dev`: it pushes the exact SHA to `origin/ci/<sha12>`, waits until every development workflow in `.github/required-workflows.json` has finished for that SHA, fast-forwards `origin/dev` to it only when all succeeded and `dev` is still its ancestor (otherwise it reports that a rebase is needed), records the result in `.rag_index/ci-gate/`, and deletes the `ci/*` branch on origin and locally. After a fast-forward it dispatches `gradle-cache-warm.yml` on `main` for the new `dev` SHA, best effort (`cacheWarm` in the result and ledger). A documentation-only difference from a SHA with successful exact runs reuses that result after the docs checks; `exact=True` (always for a release) never does. `action="checkpoint"` pushes the `ci/*` branch without waiting and returns `requiredWorkflowsVerified: false`; gate it later with `action="push"`. `action="checks"` queries only runs attached to a full SHA and returns at the first failure. `action="abandon"` cancels unfinished runs of a candidate, records it and deletes its branch; `action="cleanup"` deletes `ci/*` branches that `dev` contains or whose finished runs are older than `max_age_days` (default 7). The [pre-merge CI gate](../development.md#pre-merge-ci-gate) lists every rule.
    Failed-log excerpts select error context and the final summary from the complete
    command output, then enforce an 8,000-character response bound. If more context
    is needed, use the returned exact run ID to inspect its failed log.
@@ -1015,8 +1015,10 @@ loads, literal repository paths in tests and fixtures, and declared scopes) with
 the per-test footprints CI records: each managed CI worker run with
 `AGENT_TEST_FOOTPRINT_DIR` writes which repository files every test module and
 every imported module opened, compiled, listed or launched.
-`python3 agent_tools/agent_test_footprints.py fetch` merges the newest successful
-dev run's footprints into `.rag_index/agent-test-footprints.json`; a listed
+`python3 agent_tools/agent_test_footprints.py fetch` merges the footprints of the
+newest successful Fast Checks run that uploaded `agent-test-footprints-*` and whose
+head is an ancestor of HEAD (normally a `ci/*` gate run: a `dev` run that reused
+its `ci/*` result runs no shards) into `.rag_index/agent-test-footprints.json`; a listed
 directory selects its lister only when a child is added or removed. Local
 selection is precise, not complete: changed agent files no selected test reaches
 are reported as `unconsumedPaths`, and CI runs the complete agent suite on every

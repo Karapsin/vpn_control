@@ -184,6 +184,9 @@ DOCS_REUSE_MAX_ANCESTORS = 50
 # Version and release metadata are product inputs checked by release hygiene,
 # so they never count as documentation for result reuse.
 DOCS_REUSE_EXCLUDED = frozenset({"gradle.properties", "README.md", "docs/CHANGELOG.md"})
+# S7: the only Gradle cache writer runs on the default branch (main) and builds the
+# dev commit it is given; the gate dispatches it after each dev fast-forward.
+CACHE_WARM_WORKFLOW = "gradle-cache-warm.yml"
 CHANGELOG_PATH = REPO_ROOT / "docs" / "CHANGELOG.md"
 UNRELEASED_CHANGELOG_THRESHOLD = 10
 VERSION_RE = re.compile(r"^vpnControlVersion=([^\s]+)$", flags=re.MULTILINE)
@@ -2078,7 +2081,17 @@ def _advance_dev(sha: str) -> dict[str, Any]:
     if not push["ok"]:
         return {"state": "rebase", "dev": dev_sha, "blocker": _command_blocker("push", push),
                 "command_results": [fetch, push]}
-    return {"state": "merged", "dev": dev_sha, "command_results": [fetch, push]}
+    return {"state": "merged", "dev": dev_sha, "advanced": True, "command_results": [fetch, push]}
+
+
+def _dispatch_cache_warm(sha: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Best effort: warm the Gradle cache for the new dev SHA; a failed dispatch is recorded, never a gate failure."""
+    dispatch = _run(["gh", "workflow", "run", CACHE_WARM_WORKFLOW, "--ref", RELEASE_BRANCH, "-f", f"dev_sha={sha}"],
+                    timeout=120)
+    state = {"workflow": CACHE_WARM_WORKFLOW, "ref": RELEASE_BRANCH, "devSha": sha, "dispatched": bool(dispatch["ok"])}
+    if not dispatch["ok"]:
+        state["error"] = _command_blocker("cache-warm", dispatch)
+    return state, dispatch
 
 
 def _await_required_terminal(sha: str, min_ids: dict[str, int]) -> dict[str, Any]:
@@ -2146,7 +2159,14 @@ def _ci_gate(sha: str, *, exact: bool = False) -> dict[str, Any]:
         advanced = _advance_dev(sha)
         commands.extend(advanced["command_results"])
         if advanced["state"] == "merged":
-            return finish("merged", True, summary, {**details, "devAdvanced": True, "previousDev": advanced["dev"]})
+            details = {**details, "devAdvanced": True, "previousDev": advanced["dev"]}
+            if advanced.get("advanced"):
+                warm, dispatch = _dispatch_cache_warm(sha)
+                commands.append(dispatch)
+                details["cacheWarm"] = warm
+                if not warm["dispatched"]:
+                    summary += " The Gradle cache-warm dispatch failed (recorded; the gate is unaffected)."
+            return finish("merged", True, summary, details)
         if advanced["state"] == "rebase":
             return finish("rebase-needed", False, "Required workflows passed, but origin/dev moved and is no longer "
                           "an ancestor; rebase onto origin/dev and gate again.",

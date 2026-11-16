@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 from agent_tools import affected_agent_tests as selector
 from agent_tools import agent_test_footprints as footprints
@@ -146,6 +147,57 @@ class TableTests(unittest.TestCase):
             self.assertIsNone(selector.load_footprints(root))
             cache.write_text(json.dumps({'schemaVersion': 1, 'sourceCommit': 'd' * 40, 'edges': {}, 'directories': {}}))
             self.assertEqual('d' * 40, selector.load_footprints(root)['sourceCommit'])
+
+
+class FetchTests(unittest.TestCase):
+    def test_fetch_takes_the_newest_ancestor_run_that_recorded_footprints(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            git = lambda *args: subprocess.run(['git', '-C', str(root), *args], check=True, capture_output=True,
+                                               text=True).stdout.strip()
+            git('init', '-q')
+            git('-c', 'user.name=t', '-c', 'user.email=t@x', 'commit', '-q', '--allow-empty', '-m', 'one')
+            older = git('rev-parse', 'HEAD')
+            git('-c', 'user.name=t', '-c', 'user.email=t@x', 'commit', '-q', '--allow-empty', '-m', 'two')
+            head = git('rev-parse', 'HEAD')
+            # Newest first: an unrelated ci/* candidate, the dev run that reused its ci/* result
+            # (no shards ran, no footprints), then the ci/* gate run of an ancestor.
+            runs = [{'databaseId': 30, 'headSha': 'f' * 40}, {'databaseId': 20, 'headSha': head},
+                    {'databaseId': 10, 'headSha': older}]
+            artifacts = {30: ['agent-test-footprints-0'], 20: ['agent-test-shard-20-1-0'],
+                         10: ['agent-test-shard-10-1-0', 'agent-test-footprints-3']}
+            calls = []
+
+            def gh(*args):
+                calls.append(list(args))
+                if args[:2] == ('run', 'list'):
+                    return json.dumps(runs)
+                if args[0] == 'api':
+                    run_id = int(args[1].split('/runs/')[1].split('/')[0])
+                    return json.dumps({'artifacts': [{'name': name, 'expired': False} for name in artifacts[run_id]]})
+                if args[:2] == ('run', 'download'):
+                    self.assertEqual('10', args[2])
+                    target = Path(args[args.index('--dir') + 1]) / 'agent-test-footprints-3'
+                    target.mkdir()
+                    (target / 'footprint-1.json').write_text(json.dumps(
+                        {'schemaVersion': 1, 'sourceCommit': older, 'edges': {'a.py': ['b.py']}, 'directories': {}}))
+                    return ''
+                self.fail(args)
+
+            with unittest.mock.patch.object(footprints, '_gh', side_effect=gh):
+                cache = footprints.fetch(root)
+            listed = calls[0]
+            # Every branch: ci/* gate runs hold the footprints, a reused dev run does not.
+            self.assertNotIn('--branch', listed)
+            self.assertEqual({'a.py': ['b.py']}, json.loads(cache.read_text())['edges'])
+            self.assertEqual(older, json.loads(cache.read_text())['sourceCommit'])
+            self.assertEqual([['run', 'download', '10', '--pattern', footprints.ARTIFACT_PATTERN]],
+                             [call[:5] for call in calls if call[:2] == ['run', 'download']])
+
+            artifacts[10] = ['agent-test-shard-10-1-0']
+            with unittest.mock.patch.object(footprints, '_gh', side_effect=gh), \
+                    self.assertRaisesRegex(ValueError, 'footprints'):
+                footprints.fetch(root)
 
 
 if __name__ == '__main__':

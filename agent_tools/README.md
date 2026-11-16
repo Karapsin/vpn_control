@@ -81,7 +81,9 @@ changed selection regroups it, and regrouping runs the selector once per pass.
 Recorded failed modules still narrow their rerun.
 
 `affected_agent_tests.py --run` hands the selection's changed paths to the runner
-plan (`changedPaths`), except for `--audit` without `--baseline`. A TEST-001 RED half
+plan (`changedPaths`), except for `--audit` (with or without `--baseline`) and a
+hosted `--ci-gate` run whose comparison baseline could not be established. Hosted
+Fast Checks passes its push comparison's changed set this way. A TEST-001 RED half
 wrapped in `red_gate.red_required(self, <beforeimage>...)` then runs only when the
 test, a named beforeimage or any file in the test's import or recorded-footprint
 closure changed; otherwise it is skipped and recorded in the worker's
@@ -333,8 +335,9 @@ A missing comparison baseline refuses; do not substitute HEAD. Selection is
 precise rather than complete: static imports, literal test and fixture paths,
 declared scopes (`affected_agent_test_dependencies.json`, keyed by path, no
 digests) and the per-test footprints CI records. `python3
-agent_tools/agent_test_footprints.py fetch` downloads the newest dev footprint
-table into `.rag_index/agent-test-footprints.json`; without it only the static
+agent_tools/agent_test_footprints.py fetch` downloads the footprint table of the
+newest successful Fast Checks run that recorded one (normally a `ci/*` gate run)
+into `.rag_index/agent-test-footprints.json`; without it only the static
 graph is used. Changed agent files that no selected test reaches are listed as
 `unconsumedPaths`. CI runs the complete agent suite on every agent-input change. Full selector,
 parallelism, output-custody and receipt rules remain in

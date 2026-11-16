@@ -54,6 +54,9 @@ class Selection:
     total_modules: int
     footprint_commit: str | None = None
     unconsumed: tuple[str, ...] = ()
+    # False when no comparison baseline was established, so `changed` is not
+    # the real change set and every TEST-001 RED half must run.
+    changed_known: bool = True
 
     def as_dict(self):
         return {"baseline": self.baseline, "changedPaths": list(self.changed),
@@ -106,7 +109,8 @@ def shard_selection(selection, index, count):
             assigned = tuple(duration_partition(modules, count)[index])
         except (OSError, ValueError) as error:
             raise SelectionError("Hosted shard duration table is unavailable") from error
-    return Selection(selection.baseline, selection.changed, assigned, selection.total_modules)
+    return Selection(selection.baseline, selection.changed, assigned, selection.total_modules,
+                     changed_known=selection.changed_known)
 
 
 def select_ci_gate(root, baseline=None, audit=False):
@@ -123,11 +127,11 @@ def select_ci_gate(root, baseline=None, audit=False):
     modules = tuple(sorted(p[:-3].replace("/", ".") for p in current
                            if p.startswith("agent_tools/tests/test_") and p.endswith(".py") and (root / p).is_file()))
     if audit:
-        return Selection(head, (), modules, len(modules))
+        return Selection(head, (), modules, len(modules), changed_known=False)
     try:
         baseline = baseline_for(root, baseline)
     except SelectionError:
-        return Selection(head, (), modules, len(modules))
+        return Selection(head, (), modules, len(modules), changed_known=False)
     changed = tuple(sorted(changed_paths(root, baseline)))
     agent_input = any(not is_document(p) and potentially_agent_input(p) for p in changed)
     return Selection(baseline, changed, modules if agent_input else (), len(modules))
@@ -571,6 +575,17 @@ def serial_command(root, command, fingerprint):
     return result
 
 
+def red_gate_changed(selection, audit):
+    """The changed set handed to the runner's TEST-001 RED gate, or None to run every RED half.
+
+    Only a selection compared with an established baseline knows what changed.
+    An explicit audit re-proves every RED half, with or without --baseline.
+    """
+    if audit or not selection.changed_known:
+        return None
+    return tuple(selection.changed)
+
+
 def prepare_run(root, command, fingerprint, changed=None):
     """Reserve a private retained plan only after planning/source gates pass.
 
@@ -681,9 +696,7 @@ def main(argv=None):
         for command in commands:
             modules = list(command[3:])
             if args.include is None:
-                # An explicit audit without a baseline re-proves every RED half.
-                red_changed = None if args.audit and args.baseline is None else global_selection.changed
-                command = prepare_run(args.root, command, fingerprint, red_changed)
+                command = prepare_run(args.root, command, fingerprint, red_gate_changed(global_selection, args.audit))
             else:
                 command = serial_command(args.root, command, fingerprint)
             if evidence is None:

@@ -5,7 +5,9 @@ of the unobserved hosted timeout. Historical timing is never an allocation input
 the measured hosted run only checks the fixed partition's capacity.
 """
 import ast
+import contextlib
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -570,6 +572,39 @@ class CiGateTests(unittest.TestCase):
         self.assertEqual(4, len(value.modules))
         audit = selector.select_ci_gate(root, base, audit=True)
         self.assertEqual(value.modules, audit.modules)
+
+    def red_gate_sets(self, root, argv, env):
+        """The changed set every hosted shard hands to the runner's RED gate (None: every RED half runs)."""
+        seen = []
+
+        def prepare(_root, _command, _fingerprint, changed=None):
+            seen.append(None if changed is None else sorted(changed))
+            return [sys.executable, '-c', 'pass']
+
+        clean = {key: value for key, value in os.environ.items()
+                 if not key.startswith('GITHUB_') and key != 'AGENT_TEST_BASELINE'}
+        with mock.patch.object(selector, 'prepare_run', side_effect=prepare), \
+                mock.patch.dict(os.environ, {**clean, **env}, clear=True), \
+                contextlib.redirect_stdout(io.StringIO()):
+            for index in range(selector.CI_SHARD_COUNT):
+                self.assertEqual(0, selector.main(['--root', str(root), *argv, '--shard-index', str(index),
+                                                   '--shard-count', str(selector.CI_SHARD_COUNT)]))
+        self.assertTrue(seen)
+        return seen
+
+    def test_hosted_red_gate_gets_the_push_changed_set_and_none_without_a_baseline_or_in_an_audit(self):
+        root, base = self.template(before=False, opaque=False)
+        (root / 'agent_tools/leaf.py').write_text('VALUE=1\n# changed\n')
+        # A push compared with its baseline hands the real changed set, so unchanged RED halves may skip.
+        pushed = self.red_gate_sets(root, ['--run', '--ci-gate'], {'AGENT_TEST_BASELINE': base})
+        self.assertEqual([['agent_tools/leaf.py']] * len(pushed), pushed)
+        # No established baseline: the complete suite runs and so does every RED half (an empty set would skip them all).
+        unknown = self.red_gate_sets(root, ['--run', '--ci-gate'],
+                                     {'GITHUB_EVENT_NAME': 'push', 'GITHUB_EVENT_PATH': str(root / 'missing.json')})
+        self.assertEqual([None] * len(unknown), unknown)
+        # The workflow's explicit audit (dispatch passes --baseline) re-proves every RED half.
+        audit = self.red_gate_sets(root, ['--baseline', base, '--audit', '--run'], {})
+        self.assertEqual([None] * len(audit), audit)
 
     def test_whole_a34e07cb_stage_selects_only_consumers_or_refuses_current_runs_all(self):
         # RED on the whole a34e07cb workflow, selector and projector: the

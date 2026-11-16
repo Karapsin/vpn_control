@@ -1026,6 +1026,8 @@ class FakeGitHub:
         self.commit_times: dict[str, int] = {}
         # (sha, its required-run state) for every dev update: the gate's central invariant.
         self.dev_pushes: list[tuple[str, str]] = []
+        # (gh workflow run arguments, dev tip at dispatch time).
+        self.dispatches: list[tuple[list[str], str]] = []
 
     @staticmethod
     def ok(stdout: str = "", returncode: int = 0, stderr: str = "") -> dict[str, object]:
@@ -1119,6 +1121,10 @@ class FakeGitHub:
             return self.ok(json.dumps(visible))
         if command[:3] == ["gh", "run", "view"]:
             return self.ok(f"Traceback\nAssertionError: run {command[3]} failed\nFAILED (failures=1)\n")
+        if command[:3] == ["gh", "workflow", "run"]:
+            self.dispatches.append((command[3:], self.remote["dev"]))
+            return self.ok(returncode=1 if "cache-warm" in self.failing_checks else 0,
+                           stderr="HTTP 403: Resource not accessible" if "cache-warm" in self.failing_checks else "")
         if command[:3] == ["gh", "run", "cancel"]:
             for run in self.runs:
                 if str(run["databaseId"]) == command[3]:
@@ -1198,6 +1204,42 @@ class CiBranchGateTest(unittest.TestCase):
         self.assertNotIn(self.BRANCH, fake.remote)
         self.assertNotIn(f"refs/remotes/origin/{self.BRANCH}", fake.local_refs)
         self.assertLess(dev_push, fake.calls.index(["git", "push", "origin", "--delete", self.BRANCH]))
+
+    def test_dev_fast_forward_dispatches_the_cache_warm_best_effort(self) -> None:
+        warm = ["gradle-cache-warm.yml", "--ref", "main", "-f", f"dev_sha={self.HEAD}"]
+        fake = self.fake()
+        fake.plans[self.HEAD] = {name: ("success", 1) for name in FakeGitHub.WORKFLOWS}
+        result = mcp_server.git_workflow("push")
+        self.assertTrue(result["ok"], result)
+        # Dispatched once, on the main ref, for the new dev SHA, after dev moved.
+        self.assertEqual([(warm, self.HEAD)], fake.dispatches)
+        self.assertTrue(result["result"]["cacheWarm"]["dispatched"])
+        self.assertTrue(self.record()["cacheWarm"]["dispatched"])
+
+        failing = self.fake()
+        failing.failing_checks.add("cache-warm")
+        failing.plans[self.HEAD] = {name: ("success", 1) for name in FakeGitHub.WORKFLOWS}
+        result = mcp_server.git_workflow("push")
+        # A failed dispatch is recorded but never fails the gate or keeps dev back.
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(self.HEAD, failing.remote["dev"])
+        self.assertEqual([(warm, self.HEAD)], failing.dispatches)
+        self.assertFalse(self.record()["cacheWarm"]["dispatched"])
+        self.assertIn("403", json.dumps(self.record()["cacheWarm"]["error"]))
+        self.assertIn("cache-warm dispatch failed", result["summary"])
+
+        # No dispatch without a fast-forward: a red gate or a dev already at the SHA.
+        red = self.fake()
+        red.plans[self.HEAD] = {name: ("failure", 1) for name in FakeGitHub.WORKFLOWS}
+        self.assertFalse(mcp_server.git_workflow("push")["ok"])
+        self.assertEqual([], red.dispatches)
+        same = self.fake(dev=self.HEAD)
+        same.add_runs(self.HEAD, self.BRANCH, {name: ("success", 0) for name in FakeGitHub.WORKFLOWS},
+                      "2026-11-16T09:00:00Z")
+        for run in same.runs:
+            run["status"], run["conclusion"] = "completed", "success"
+        self.assertTrue(mcp_server.git_workflow("push")["ok"])
+        self.assertEqual([], same.dispatches)
 
     def test_red_result_is_recorded_complete_then_the_branch_is_deleted_and_dev_kept(self) -> None:
         fake = self.fake()
@@ -1414,9 +1456,12 @@ class RequiredWorkflowTriggerTest(unittest.TestCase):
                 expected = "refs/heads/dev" if match.group(1) == "ref" else "dev"
                 self.assertEqual(expected, match.group(2), path.name)
             self.assertNotRegex(text, r"startsWith\(\s*github\.ref", path.name)
-            # A cache may be written only by dev; a ci/* run stays read-only.
+            # Only the cache-warm workflow (main ref, dev commit) writes the Gradle cache;
+            # every other run, dev and ci/* alike, is read-only.
+            expected = "false" if path.name == "gradle-cache-warm.yml" else "true"
             for value in re.findall(r"(?m)^\s+cache-read-only:\s*(.+)$", text):
-                self.assertIn("github.ref != 'refs/heads/dev'", value, path.name)
+                self.assertEqual(expected, value.strip(), path.name)
+        self.assertIn("cache-read-only: false", (workflows / "gradle-cache-warm.yml").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
