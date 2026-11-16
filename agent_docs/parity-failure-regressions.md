@@ -2585,6 +2585,73 @@ The first discovery run of each row must show, in its evidence, the following:
 - `success-reconnect`: `update-upstream-ready` and then `update-reconnect-restored`.
 - `success-explicit-off`: `update-explicit-off-before-update` and then `update-explicit-off-kept`.
 
+### Different approving administrator and original-user worker, offline (2026-11-13)
+
+Built offline in the clone `build-second-admin` on `9a8db1e5` (the wave of 2026-11-13 plus the
+update-counting track); nothing here has run natively. Track T6 of the 2026-11-13 coverage
+audit: `windows-public-update.different-admin` was refused at admission
+(`windows_scenario_update_second_administrator_unavailable`). The fixture had one Administrators
+account, `windows-uac-decision` typed only `final-administrator.secret` and its census expected
+that account's SID in the pending event, and the job's context read only that SID. Nothing a
+grant run recorded said who approved it, so no row could prove `different-approving-admin`
+(`different-admin`) or `original-user-worker` (`success-off` and `different-admin`) of
+windows-installer-lifecycle. RED ran in a worktree of `9a8db1e5` holding only the seven new and
+changed test modules, one unittest process per failure type, on Python 3.14 and 3.12 with
+identical counts (subtests included); every RED result is an assertion failure. GREEN ran on the
+committed fix. Logs and scripts are under the clone's `.runtime/second-admin/`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| No new clone could carry a second Administrators account | `test_windows_vm_unattend.SecondAdministratorTests` (three tests); `test_windows_vm_deploy_coordinator.SecondAdministratorStartTests` (three); `test_windows_vm_guest.SecondAdministratorQualificationTests`: `test_the_script_reads_the_second_administrator_as_it_reads_the_fixture_administrator`, `test_ready_only_with_an_enabled_administrator_of_its_own`, `test_its_facts_come_exactly_when_the_setup_names_it`, `test_secure_rotates_the_fixture_administrator_alone` | A setup may name `secondAdministrator`: a name of its own and no `purpose`. `windows_vm_deploy.start` makes `second-administrator.secret` beside the other credential files and sends it only on stdin. The clone's answer file creates the account in Administrators before the fixture administrator. A setup without it keeps its exact answer file, credentials, qualification and secure scripts. `parse_setup` and `answer_file` are compiled from source into the start and managed-create programs, so they name the key literally. A blank install refuses it (`deployment_second_administrator_clone_only`), because it becomes the next image template, and so does `generalize` of such a clone (`generalize_second_administrator`). Qualification reads the account like the fixture administrator, and `setupReady` also needs it enabled, an administrator and distinct from both fixture accounts. Secure still rotates only the fixture administrator's secret. RED (10 tests): `FAILED (failures=19)`, the setup refused `setup_fields` and the generalize program built. GREEN: OK. |
+| The decision approved only as the fixture administrator | `test_windows_uac_decision.SecondAdministratorExecuteTests` (five tests) | `APPROVERS`, a closed table, names `different-admin` the one row the second administrator answers. Its decision types `second-administrator.secret`, its census expects that account's SID (read by its setup name) in the pending event, and a clone without the account refuses before contact (`uac_second_administrator_absent`). Inputs and input rules are unchanged: five fields, one reviewed frame with an empty field, the secret on stdin, then Enter. On a clone with two administrators the credential prompt offers both, so every approve profile there names its `approver` and an `account` crop (at most seven other crops, since `screen_gate` reads eight): a secret is typed only into a frame that shows its own account selected. The second administrator's profile is `install-helper.second-administrator.json`, made by `reviewed_uac_profile(..., approver="second-administrator", account=...)`. The review admits the row with the same census. RED (5 tests): `FAILED (failures=9)`: the two-administrator setup refused `uac_environment_unavailable`, the review refused, and on a one-administrator clone the row went on to open `final-administrator.secret`. GREEN: OK. |
+| The job's context read and recorded only the fixture administrator | `test_windows_scenario_host_job.SecondAdministratorGrantTests` (four tests) | A plan whose row has an `approver` names `approvingAdministrator`. The context reads its SID beside the fixture administrator's, and the job grants with it: the case's `approvingAdminSid`, every collector request's, and the coordinator the authorization stage must find elevated. It ends `context_approving_administrator` before any task when that SID is the fixture administrator's or the ordinary user's, `context_unreadable` when it is unread, and refuses `approving_administrator_unplanned` when row and plan disagree. Every grant receipt records `update.approval`: `approver`, `approvingAdminSid` and the fixture `administratorSid`. RED (4 tests): `FAILED (failures=11)`, no approval in the receipt, and `different-admin` ending `collector_stage_unserved:before-install` with no grant stages. GREEN: OK. |
+| `different-admin` was refused at admission | `test_native_scenario_windows.SecondAdministratorAdmissionTests` (three tests), `UpdateTableTests.test_only_rows_with_a_producer_for_their_evidence_are_admitted`, `UpdateTableTests.test_the_rows_agree_with_the_dedicated_driver_and_the_decision_table`; `test_native_scenario_windows_matrix.TableTests.test_the_update_rows_prove_their_scenarios_through_what_they_read_back` | `different-admin` takes the four grant collector stages and `approver: second-administrator`. It is admitted only on a clone whose setup names the account (`windows_scenario_update_second_administrator_absent` before any journal otherwise), and its job plan names that account beside the fixture `administrator`. The dedicated driver and the case module needed no change: both already end `different-admin` at `returned-cleanup` and hold its coordinator to the input's `approvingAdminSid`. RED (6 tests): `FAILED (failures=6)`, refused `windows_scenario_update_second_administrator_unavailable` on every clone. GREEN: OK. |
+| The matrix never proved who approved a grant or as whom it installed | `test_native_scenario_windows_matrix.ApprovalTests` (three tests) | `_matrix_row` counts a grant run (a collector with an authorization stage) only with its approval proven from its own receipt (`_approval_facts`). The recorded approver must be the row's own, the coordinator ran elevated under the approving SID, and the worker ran unelevated as the ordinary user, who is neither administrator. The approving SID must differ from the fixture administrator's exactly for `different-admin`. A run whose package is proven but whose approval is not is `approval-unproven` and never counts. Each grant entry of the evidence names `approval` as the approver and those three facts. So `different-approving-admin` needs the `different-admin` pair, and `original-user-worker` needs it and the `success-off` pair. RED (3 tests): `FAILED (failures=18)`, every unproven run classed `passed` and no entry naming its approval. GREEN: OK. |
+
+Controls: the update-counting tests pass unchanged except their run helper, which now writes the
+approval a grant receipt carries; the qualification, replay and secure tests of
+`GuestQualificationTests` also run on a two-administrator setup; one-administrator answer
+files, qualification and secure scripts are byte for byte as before.
+
+Mutants (`.runtime/second-admin/mutants.py`, Python 3.14, on the committed fix): 18 loosenings, each
+turned red by the new tests. In the decision: typing `final-administrator.secret` for every row, the
+census expecting the fixture administrator's SID, a profile without an `account` crop, never requiring
+the account to be shown selected, and answering on a clone without the account. In the job: granting
+with the fixture administrator's SID, accepting any approving account, no `update.approval` record, and
+an approver the plan does not name. In the matrix: any administrator approving, any worker account, and
+ignoring the approval altogether. Admission on any clone. Qualification ignoring the second account. The
+answer file putting it in Users. A blank install allowed to carry it, start without its own secret, and
+generalize of such a clone.
+
+Pins renewed to a fixpoint (`.runtime/second-admin/renew_pins.py`; a second pass changed
+nothing): the `readiness_vm_dispatch.json` `sourcePins` of `windows_vm_unattend`,
+`windows_vm_deploy`, `windows_vm_guest`, `windows_uac_decision`, `native_scenario_windows` and
+`windows_scenario_host_job`; the frozen `windows_vm_deploy.py` digest in
+`test_windows_vm_deploy_release`; the selector's reviewed versions of the four declared loader
+test modules (appended) and its entry for the dispatch manifest. `windows_vm_unattend.py` and
+`windows_vm_deploy.py` are in `readiness_windows._source_pins()`, so any alias registered before
+this change refuses and needs a new one.
+
+Native only:
+
+- That a clone's OOBE creates the account from the answer file, and that qualification reads it.
+- Which account the credential prompt of a two-administrator clone offers first. The answer
+  file creates the second administrator first in the hope that the prompt lists the
+  Administrators members in the order they joined; the review frame shows it. If the prompt
+  offers the fixture administrator first, the decision refuses `instance_uac_frame_unrecognized`
+  and types nothing: a selection step, or the clone policy that makes the prompt ask for a user
+  name (`EnumerateAdministrators` 0), would be a new reviewed input rule.
+- That the second administrator's secret is accepted, and the coordinator then runs elevated
+  under its SID while the worker runs as the original user.
+- Every grant stage on that clone.
+
+The first `different-admin` discovery run must show, on a new clone whose setup names the
+second administrator, the context reading both SIDs, a review frame with that account selected,
+`input-ack-only` with `promptClosed true`, the four collector stages, `update.approval` naming
+`second-administrator`, the second administrator's SID and the fixture administrator's, the
+installer coordinator elevated under the first and the worker unelevated as the ordinary user,
+`installedAfter` role `target`, and a `passed` matrix row whose approval facts are all true.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals
