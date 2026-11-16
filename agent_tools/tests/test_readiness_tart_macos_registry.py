@@ -114,13 +114,26 @@ class MacCustodyPrimitivesTests(unittest.TestCase):
         old=importlib.util.module_from_spec(spec);sys.modules[loader.name]=old
         self.addCleanup(sys.modules.pop,loader.name,None);loader.exec_module(old)
         executable=self.root/'owned-native-public-executable-name-longer-than-bsd-comm-width'
-        shutil.copyfile(Path('/bin/sleep').resolve(),executable);executable.chmod(0o700)
-        process=subprocess.Popen([str(executable),'5'],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        # A multi-call coreutils (ubuntu-26.04) picks its program by name, so its
+        # renamed sleep exits at once; a shell reading an open pipe keeps running.
+        candidates=((Path('/bin/sleep'),('5',),subprocess.DEVNULL),
+                    *((Path(shell),('-s',),subprocess.PIPE) for shell in ('/bin/bash','/usr/bin/bash','/bin/dash','/usr/bin/dash')))
+        for source,arguments,stdin in candidates:
+            if not source.exists():continue
+            executable.unlink(missing_ok=True)
+            shutil.copyfile(source.resolve(),executable);executable.chmod(0o700)
+            process=subprocess.Popen([str(executable),*arguments],stdin=stdin,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            try:process.wait(timeout=.3)
+            except subprocess.TimeoutExpired:break
+            if process.stdin:process.stdin.close()
+        else:
+            self.skipTest('a native program that keeps running under a long copied name is required')
         def close():
             if process.poll() is None:process.terminate()
             process.wait(timeout=2)
+            if process.stdin:process.stdin.close()
         self.addCleanup(close)
-        birth=jobs._birth(process.pid);argv=(str(executable),'5')
+        birth=jobs._birth(process.pid);argv=(str(executable),*arguments)
         with self.assertRaisesRegex(subject.MacBlocked,'^macos_actor_generation_changed$'):
             old.PublicActor(process.pid,birth,str(executable),argv).guard(deadline=time.monotonic()+2)
         actor=subject.PublicActor(process.pid,birth,str(executable),argv)
@@ -129,6 +142,19 @@ class MacCustodyPrimitivesTests(unittest.TestCase):
                         replace(actor,argv=(str(executable),'private-unexpected-input'))):
             with self.assertRaisesRegex(subject.MacBlocked,'^macos_actor_generation_changed$'):
                 changed.guard(deadline=time.monotonic()+2)
+
+    def test_long_executable_case_survives_a_sleep_that_exits_under_another_name(self):
+        # On ubuntu-26.04 (Fast Checks run 43474297086) /bin/sleep is a multi-call
+        # coreutils that selects its program by name: a copy under the long name
+        # exits at once and every guard of the live actor fails. A native program
+        # that ignores '5' and exits at once stands in for that sleep here.
+        stand_in=next((path for path in (Path('/usr/bin/true'),Path('/bin/true')) if path.exists()),None)
+        if stand_in is None:self.skipTest('a native program that exits at once is required')
+        stand_in=stand_in.resolve();resolve=Path.resolve
+        def multi_call_sleep(path,*args,**kwargs):
+            return stand_in if str(path)=='/bin/sleep' else resolve(path,*args,**kwargs)
+        with mock.patch.object(Path,'resolve',multi_call_sleep):
+            self.test_whole_original_ps_comm_long_executable_is_red_kernel_executable_guard_green()
 
     def owner(self):
         root=self.root/'jobs';root.mkdir(mode=0o700)
