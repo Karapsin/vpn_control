@@ -97,6 +97,10 @@ _RETRY_REASONS = frozenset({"instance_uac_event_not_pending", "instance_uac_cens
                             "instance_guest_program_failed", "instance_original_guest_pending", "instance_guest_output",
                             "instance_guest_output_bound", "instance_guest_exec_ack", "uac_transport_unsubmitted",
                             "uac_credential_unavailable"})
+# A gate that searched its whole GATE_SECONDS and found no consent prompt: "not yet" for this many gates in all (about
+# a prompt's own 90 s age bound of searching), then final like any refusal that saw the prompt due (_final_refusal).
+_LATE_PROMPT_REASON = "instance_uac_consent_absent"
+LATE_PROMPT_GATES = 3
 # A review may also follow one that saw the display still black. The pointer journal forbids a second move, so a
 # later review only reads the census and frames: a slow wake costs a call, not the run. The decision keeps its rule.
 _REVIEW_RETRY_REASONS = _RETRY_REASONS | {"instance_uac_display_black"}
@@ -130,6 +134,14 @@ ROWS = {
     "windows-scoped-tun.restart-grant": {"prompt": "vpn-broker", "decision": "approve", "event": "scoped-tun-awaiting-current-input",
                                          "field": "variant", "value": "restart-grant", "variant": None,
                                          "sidEvent": "scoped-tun-awaiting-current-input", "sidField": "expectedApprovingAdminSid"},
+    # Find Best's one prompt: its first verified candidate's broker. A denial (1223) ends the search CANCELLED, so no
+    # second prompt follows it; a later prompt of the same operation finds this decision already answered.
+    "windows-scoped-tun.find-best-deny": {"prompt": "vpn-broker", "decision": "deny", "event": "scoped-tun-awaiting-current-input",
+                                          "field": "variant", "value": "find-best-deny", "variant": None,
+                                          "sidEvent": "scoped-tun-awaiting-current-input", "sidField": "expectedApprovingAdminSid"},
+    "windows-scoped-tun.find-best-grant": {"prompt": "vpn-broker", "decision": "approve", "event": "scoped-tun-awaiting-current-input",
+                                           "field": "variant", "value": "find-best-grant", "variant": None,
+                                           "sidEvent": "scoped-tun-awaiting-current-input", "sidField": "expectedApprovingAdminSid"},
 }
 # Reached only through execute(direct=True), never through MCP: the first rung of a direct proof, one name per answer.
 DIRECT_ROWS = {
@@ -1204,11 +1216,23 @@ def _next_attempt(directory):
 
 
 def _final_refusal(directory, number, retry=_RETRY_REASONS):
-    """The retained refusal of that attempt when it ends this operation's submits, else None."""
+    """The retained refusal of that attempt when it ends this operation's submits, else None.
+
+    A gate that searched its whole bound and found no prompt saw it late, not gone: Find Best validates every candidate
+    before it prepares the broker, so its prompt follows the pending event by a time no gate bounds. That refusal is
+    "not yet" for LATE_PROMPT_GATES gates in all, then final. A prompt found later still answers the 90 s age rule.
+    """
     if number < 1:
         return None
     value = json.loads(_read_private(directory / ("attempt-%04d.result.json" % number)))
-    return value if value.get("reason") not in retry else None
+    if value.get("reason") in retry:
+        return None
+    if value.get("reason") == _LATE_PROMPT_REASON:
+        absent = sum(json.loads(_read_private(directory / ("attempt-%04d.result.json" % earlier))).get("reason") == _LATE_PROMPT_REASON
+                     for earlier in range(1, number + 1))
+        if absent < LATE_PROMPT_GATES:
+            return None
+    return value
 
 
 def _retain_once(directory, name, value):

@@ -1422,12 +1422,14 @@ class ScopedTunTableTests(unittest.TestCase):
                 leaves = [relative.rsplit("/", 1)[1] for relative in files] + [leaf for _, leaf in row["generated"] + row["extracted"]]
                 self.assertEqual(len(leaves), len(set(leaves)))
 
-    def test_the_restart_rows_are_admitted_and_each_find_best_row_names_what_it_lacks(self):
-        # Until the grant's collector route existed every grant was refused windows_scenario_tun_grant_unproven.
+    def test_every_tun_row_is_admitted_with_its_decision_row(self):
+        # Until the grant's collector route existed every grant was refused windows_scenario_tun_grant_unproven; until
+        # the decision waited out a late prompt and the stages read Find Best's own rules, both Find Best rows were
+        # refused windows_scenario_tun_find_best_unproven.
+        from agent_tools import windows_uac_decision as uac
         refusals = {variant: windows.RECIPES["windows-scoped-tun." + variant]["refusal"] for variant in windows.TUN_VARIANTS}
-        self.assertEqual({"restart-deny": None, "restart-grant": None,
-                          "find-best-grant": "windows_scenario_tun_find_best_unproven",
-                          "find-best-deny": "windows_scenario_tun_find_best_unproven"}, refusals)
+        self.assertEqual(dict.fromkeys(("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")), refusals)
+        self.assertEqual({"windows-scoped-tun." + variant for variant in windows.TUN_VARIANTS}, {name for name in uac.ROWS if name.startswith("windows-scoped-tun.")})
 
     def test_the_grant_collector_modules_are_the_contract_roles(self):
         from agent_tools.windows_system_collector import collector_contract as contract
@@ -1664,9 +1666,19 @@ def write_vpn_broker_profile(root, **changes):
 class ScopedTunAdmissionTests(FamilyDriverBase):
     def test_every_refused_row_is_refused_before_any_journal(self):
         write_vpn_broker_profile(self.root)
-        for variant in ("find-best-grant", "find-best-deny"):
-            with self.subTest(variant=variant):
-                self.assert_refused(self.family_request("windows-scoped-tun." + variant), windows.RECIPES["windows-scoped-tun." + variant]["refusal"])
+        name = "windows-scoped-tun.find-best-grant"
+        with mock.patch.dict(windows.RECIPES, {name: dict(windows.RECIPES[name], refusal="windows_scenario_tun_find_best_unproven")}):
+            self.assert_refused(self.family_request(name), "windows_scenario_tun_find_best_unproven")
+        self.assertFalse(self.journal.exists())
+
+    def test_the_find_best_rows_are_admitted_as_the_restart_rows_are(self):
+        """The grant needs the deployment's reviewed vpn-broker profile, the denial none (its run is a review's prompt)."""
+        grant, deny = "windows-scoped-tun.find-best-grant", "windows-scoped-tun.find-best-deny"
+        self.assert_refused(self.family_request(grant), "windows_scenario_uac_profile_unreviewed")
+        self.assertEqual(windows.RECIPES[deny], windows.admit_start(self.root, self.family_request(deny), self.resolver))
+        write_vpn_broker_profile(self.root)
+        self.assertEqual(windows.RECIPES[grant], windows.admit_start(self.root, self.family_request(grant), self.resolver))
+        self.assertFalse(self.journal.exists())
 
     def test_the_grant_is_admitted_only_with_the_deployments_reviewed_broker_profile(self):
         """windows-uac-decision answers the grant's prompt only with this deployment's reviewed vpn-broker profile: without
@@ -1692,10 +1704,11 @@ class ScopedTunAdmissionTests(FamilyDriverBase):
                          windows.admit_start(self.root, self.family_request("windows-scoped-tun.restart-deny"), self.resolver))
 
     def test_a_deny_variant_without_a_decision_join_is_refused_whatever_its_refusal(self):
-        # find-best-deny has no decision row: with its refusal lifted, an expired prompt's CANCELLED would pass as its denial.
+        # A deny row with no decision join: an expired prompt's CANCELLED would pass as its denial.
         name = "windows-scoped-tun.find-best-deny"
-        self.assertNotIn("uac", windows.RECIPES[name])
-        for row in (dict(windows.RECIPES[name], refusal=None),
+        self.assertEqual(("deny", True), ((windows.RECIPES[name].get("uac") or {}).get("decision"), windows.RECIPES[name].get("denyJoin")))
+        bare = {key: value for key, value in windows.RECIPES[name].items() if key not in ("uac", "denyJoin")}
+        for row in (dict(bare, refusal=None),
                     dict(windows.RECIPES[name], refusal=None, uac={"prompt": "vpn-broker", "decision": "deny", "event": "x"}, denyJoin=False)):
             with self.subTest(row=sorted(row)), mock.patch.dict(windows.RECIPES, {name: row}):
                 self.assert_refused(self.family_request(name), "windows_scenario_deny_needs_decision_join")

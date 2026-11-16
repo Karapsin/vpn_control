@@ -551,6 +551,83 @@ class FinishTests(StageWorld):
         with self.assertRaisesRegex(AssertionError, "^actual-tun-native-file-required$"):
             stages.finish(self.owner, lease, runtime, cases, self.observer, receipts=object())
 
+    def test_a_find_best_denial_is_its_cancelled_start_alone(self):
+        # DesktopFindBestService ends at its first CANCELLED start and restores A; it starts with
+        # commitSelectionOnSuccessOnly, so pending B stays selected. Any other failed start makes it try its next
+        # candidate, whose own prompt follows: PERMISSION_DENIED is no denial of this prompt, only a known end.
+        lease = self.begin(self.inputs("find-best-deny"))
+        self.assertEqual(("--async", "find-best"), self.calls[-1])
+        result = self.finish(lease, "CANCELLED")
+        self.assertEqual("CANCELLED", result["terminal"]["code"])
+        self.assertNotIn("knownFailure", result)
+        self.assertEqual("scoped-tun-public-outcome", self.owner.events[-1][0])
+        self.setUp()
+        lease = self.begin(self.inputs("find-best-deny"))
+        result = self.finish(lease, "PERMISSION_DENIED")
+        self.assertEqual("PERMISSION_DENIED", result.get("knownFailure"), "no denial of this prompt: a known end")
+        self.assertEqual("scoped-tun-unexpected-terminal-known", self.owner.events[-1][0])
+        self.setUp()
+        lease = self.begin(self.inputs("find-best-deny"))
+        self.status.update(selectedLocationId="a")
+        with self.assertRaisesRegex(AssertionError, "^uac-denial-lost-active-a-or-pending-b$"):
+            self.finish(lease, "CANCELLED")
+        self.assertFalse(lease["finished"], "a denial that moved the selection parks")
+
+    def granted_find_best(self, selected, active=None):
+        """A granted Find Best whose product status reports this selection and active location after its OK."""
+        lease = self.begin(self.inputs("find-best-grant"))
+        runtime = self.runtime()
+        runtime.finish_operation = lambda *args, **options: {"code": "OK", "final": True}
+        result = runtime.result
+
+        def vpn_status(owner, workspace, identity, *arguments, **options):
+            if arguments[-1] != "status":
+                return result(owner, workspace, identity, *arguments, **options)
+            return {"data": {**self.status, "activeMode": "vpn", "configuredMode": "vpn", "selectedLocationId": selected,
+                             "activeLocationId": selected if active is None else active, "runtimeId": "vpn"}, "restartRequired": False}
+        runtime.result = vpn_status
+        record = {"stage": "ready", "productOperationId": lease["accepted"]["operationId"], "observations": {"configuration": {"sha256": "9" * 64}}}
+        cases = types.SimpleNamespace(config_bytes=lambda path: dict(lease["activeConfig"].initial), exact_actor=lambda *args, **options: None)
+        with mock.patch.object(stages, "read_native_record", lambda *args: record):
+            outcome = stages.finish(self.owner, lease, runtime, cases, self.observer, handoff=lambda *args: {}, receipts=object())
+        return lease, outcome
+
+    def test_a_granted_find_best_selects_its_winner_a_or_b_and_nothing_else(self):
+        # The winner is the first verified candidate by connect time; A and B reach the one owned endpoint, so either may
+        # win, and only that start's success moves the selection to it. A winner A replaces the pending selection of B.
+        for selected, winner in (("a", "active-a"), ("b", "pending-b")):
+            with self.subTest(selected=selected):
+                self.setUp()
+                lease, outcome = self.granted_find_best(selected)
+                expected = {"locationId": selected, "winner": winner, "pendingSelectionKept": selected == "b"}
+                self.assertEqual(expected, lease.get("findBestSelection"))
+                self.assertEqual(("scoped-tun-public-outcome", expected), (self.owner.events[-1][0], self.owner.events[-1][1].get("findBestSelection")))
+                self.assertIsNotNone(lease["nativeReady"])
+        self.setUp()
+        with self.assertRaisesRegex(AssertionError, "^scoped-tun-find-best-winner-not-an-owned-candidate$"):
+            self.granted_find_best("c")
+        self.setUp()
+        with self.assertRaisesRegex(AssertionError, "^scoped-tun-actual-commit-result$"):
+            self.granted_find_best("b", active="a")
+        self.setUp()
+        lease, _ = self.granted_find_best("b")
+        self.assertNotIn("findBestSelection", self.granted_restart(), "a restart has no winner")
+
+    def granted_restart(self):
+        self.setUp()
+        lease = self.begin(self.inputs("restart-grant"))
+        runtime = self.runtime()
+        runtime.finish_operation = lambda *args, **options: {"code": "OK", "final": True}
+        result = runtime.result
+        runtime.result = lambda owner, workspace, identity, *arguments, **options: (
+            {"data": {**self.status, "activeMode": "vpn", "configuredMode": "vpn", "activeLocationId": "b"}, "restartRequired": False}
+            if arguments[-1] == "status" else result(owner, workspace, identity, *arguments, **options))
+        record = {"stage": "ready", "productOperationId": lease["accepted"]["operationId"], "observations": {"configuration": {"sha256": "9" * 64}}}
+        cases = types.SimpleNamespace(config_bytes=lambda path: dict(lease["activeConfig"].initial), exact_actor=lambda *args, **options: None)
+        with mock.patch.object(stages, "read_native_record", lambda *args: record):
+            stages.finish(self.owner, lease, runtime, cases, self.observer, handoff=lambda *args: {}, receipts=object())
+        return lease
+
     def test_a_denial_that_connected_is_never_known(self):
         lease = self.begin()
         self.status.update(runtimeId="vpn-b")

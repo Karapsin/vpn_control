@@ -1068,9 +1068,12 @@ class TableTests(unittest.TestCase):
         # The admitted TUN rows count for what their evidence holds: the denial for its own scenario; the restart grant for
         # the approved TUN's traffic and its half of scoped elevation beside UPD(success-off). It runs no sibling runtime, so
         # it cannot show its elevated off spares one: exact-child-stop stays missing (ExactChildStopTests). The find-best
-        # rows are refused at admission and name no scenario.
+        # rows count for Find Best in VPN mode beside the proxy rows: a denial keeps A and pending B, a grant commits its
+        # winner with traffic through its TUN. They were refused at admission and named no scenario before.
         self.assertEqual({"windows-scoped-tun.restart-deny": ["windows-scoped-vpn:denial-preserves-active-a"],
-                          "windows-scoped-tun.restart-grant": ["windows-native-cli:scoped-elevation", "windows-scoped-vpn:scoped-uac-tun-traffic"]},
+                          "windows-scoped-tun.restart-grant": ["windows-native-cli:scoped-elevation", "windows-scoped-vpn:scoped-uac-tun-traffic"],
+                          "windows-scoped-tun.find-best-deny": ["windows-native-cli:find-best"],
+                          "windows-scoped-tun.find-best-grant": ["windows-native-cli:find-best"]},
                          {row: scenarios for row, scenarios in named.items() if row.startswith("windows-scoped-tun.") and scenarios})
         self.assertEqual((), MATRIX_REAL["windows-scoped-vpn"]["exact-child-stop"])
         self.assertEqual(("windows-scoped-tun.restart-grant", "windows-public-update.success-off"), MATRIX_REAL["windows-native-cli"]["scoped-elevation"])

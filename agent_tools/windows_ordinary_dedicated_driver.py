@@ -46,11 +46,11 @@ PROXY_VARIANTS = frozenset({"gui-pending", "find-best-success",
 CONFIG_VARIANTS = frozenset({"generated", "custom", "large"})
 FAILURE_VARIANTS = frozenset({"prepare-failure", "commit-readiness-failure"})
 BRANCH_VARIANTS = CONFIG_VARIANTS | FAILURE_VARIANTS | {"sibling-off"}
-# restart-grant runs under the caller's close hold of its TUN SYSTEM collector, whose ready and off records this
-# driver hands to the stages. find-best has neither a decision row nor a measured prompt: its names stay refused.
-TUN_VARIANTS = frozenset({"restart-deny", "restart-grant"})
-TUN_GRANT_VARIANTS = frozenset({"restart-grant"})
-TUN_SHA = "97a8d413201c30453eb32e1ad14c6c1757667ad5b6572c47cfc310079881b7f2"
+# A grant runs under the caller's close hold of its TUN SYSTEM collector, whose ready and off records this driver hands
+# to the stages. Find Best raises the same one vpn-broker prompt as a restart, after it validated its candidates.
+TUN_VARIANTS = frozenset({"restart-deny", "restart-grant", "find-best-deny", "find-best-grant"})
+TUN_GRANT_VARIANTS = frozenset({"restart-grant", "find-best-grant"})
+TUN_SHA = "28c2c7ee5d97c382c2bcf43e03d5f1b9f5813c12ac9c76ccf826f4e0c4bf2849"
 SAMPLER_SHA = "e2915de32a47f46251e1af807f181950ceb120d2e3d998c8b3c679645553a697"  # A grant's direct TUN sampler
 TUN_COLLECTOR_SHA = "e8510e0d2fe42a73e7c8a1c5550a18c6292293681fb10472abf2a668f3721135"  # windows_tun_native_observer: COLLECTORS["tun"]
 NATIVE_NEED = "update-native-observation-needed"  # The one native-need kind the SYSTEM run reports (windows_scenario_system_run).

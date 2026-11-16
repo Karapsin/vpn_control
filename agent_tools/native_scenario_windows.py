@@ -166,15 +166,10 @@ _TUN_SAMPLER = (("agent_tools/windows_tun_direct_sampler.py", "sampler", "data")
 # it and the driver's record handoff read machine records with, beside the collector chain and the caller's close hold.
 _TUN_COLLECTOR = (("agent_tools/windows_public_updater/update_receipts.py", "receipts", "data"),
                   ("agent_tools/windows_tun_native_observer.py", "collector", "data"))
-# Refused before any journal, each with what is missing.
-_TUN_REFUSED = {
-    # Find Best validates every candidate before it prepares the broker, so its prompt follows the pending event by an
-    # unmeasured time that the decision's 30 s gate may not cover; the decision table has no find-best row, and which
-    # location a Find Best in VPN mode leaves selected after a denial is unread. The grant's collector route is the
-    # restart grant's own.
-    "find-best-grant": "windows_scenario_tun_find_best_unproven",
-    "find-best-deny": "windows_scenario_tun_find_best_unproven",
-}
+# Refused before any journal, each with what is missing. None today: Find Best's prompt follows its pending event by its
+# candidates' validation, which the decision waits out (windows_uac_decision.LATE_PROMPT_GATES); its denial keeps A and
+# pending B as a restart's does, and its grant selects its winner (windows_tun_stages.denials, find_best_selection).
+_TUN_REFUSED: dict[str, str] = {}
 
 
 def _tun_row(variant: str) -> dict[str, Any]:
@@ -190,13 +185,12 @@ def _tun_row(variant: str) -> dict[str, Any]:
                generated=(("harness", "proxy-harness.py"), ("certificate", "proxy-localhost.pem"), ("privateKey", "proxy-localhost.key"),
                           ("trustStore", "proxy-trust.jks"), *((("samplerInput", "tun-direct-traffic.json"),) if grant else ())),
                extracted=(("runtimeTool", "sing-box.exe"),), refusal=_TUN_REFUSED.get(variant))
-    if not variant.startswith("find-best"):
-        # windows_uac_decision.ROWS answers the restart prompt. Collect joins the row's own decision terminal: a deny's,
-        # since an expired prompt is the same CANCELLED as Esc, and a grant's, so a pass names the reviewed approval.
-        row["uac"] = {"prompt": "vpn-broker", "decision": "approve" if grant else "deny", "event": "scoped-tun-awaiting-current-input"}
-        row["denyJoin"] = not grant
-        if grant:
-            row["approveJoin"] = True
+    # windows_uac_decision.ROWS answers the row's one vpn-broker prompt. Collect joins the row's own decision terminal: a
+    # deny's, since an expired prompt is the same CANCELLED as Esc, and a grant's, so a pass names the reviewed approval.
+    row["uac"] = {"prompt": "vpn-broker", "decision": "approve" if grant else "deny", "event": "scoped-tun-awaiting-current-input"}
+    row["denyJoin"] = not grant
+    if grant:
+        row["approveJoin"] = True
     return row
 
 
@@ -1355,7 +1349,11 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
         "gui-attach-detach": (_P + "gui-pending", _P + "no-tray-close"),
         "runtime-owner": (_P + "sibling-off",),
         "traffic-continuity": (_P + "gui-pending", _U + "success-reconnect"),
-        "find-best": (_P + "find-best-success", _P + "find-best-verification-failure", _P + "find-best-cancel"),
+        # PRX in proxy-only mode; TUN in VPN mode, where the winner's start needs the vpn-broker prompt: a denial keeps
+        # active A and pending B with no broker left, a grant commits its winner (A or B) with traffic through its TUN.
+        # Neither runs Find Best while a TUN is already up, so CONFIG-011's "whether VPN is active" stays unclaimed.
+        "find-best": (_P + "find-best-success", _P + "find-best-verification-failure", _P + "find-best-cancel",
+                      _T + "find-best-deny", _T + "find-best-grant"),
         # SSH proves import, the SSH Routing truth table and route choice; RLY a stdin key import and refreshes through a
         # real in-guest relay, connected and disconnected, an unpinned host key and a stopped relay without fallback.
         "ssh-import-routing": (_SSH, _RLY),

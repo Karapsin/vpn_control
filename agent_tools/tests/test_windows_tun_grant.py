@@ -445,15 +445,25 @@ class DriverGrantTests(unittest.TestCase):
             dedicated_driver.run(self.owner, "windows-proxy-lifecycle")
         self.assertNotIn("start-runtime", self.owner.calls)
 
-    def test_only_the_restart_grant_reaches_the_collector_route(self):
-        self.assertEqual(frozenset({"restart-grant"}), dedicated_driver.TUN_GRANT_VARIANTS)
-        self.assertEqual(frozenset({"restart-deny", "restart-grant"}), dedicated_driver.TUN_VARIANTS)
+    def test_only_the_two_grants_reach_the_collector_route(self):
+        self.assertEqual(frozenset({"restart-grant", "find-best-grant"}), dedicated_driver.TUN_GRANT_VARIANTS)
+        self.assertEqual(frozenset({"restart-deny", "restart-grant", "find-best-deny", "find-best-grant"}), dedicated_driver.TUN_VARIANTS)
         self.assertEqual(contract.COLLECTORS["tun"], getattr(dedicated_driver, "TUN_COLLECTOR_SHA", None))
         self.assertEqual(sha((ROOT / "agent_tools/windows_tun_native_observer.py").read_bytes()), contract.COLLECTORS["tun"])
         self.owner = DedicatedDispatchPeer(self.root)
-        self.grant(variant="find-best-grant")
+        self.grant(variant="restart-fault")
         with self.assertRaisesRegex(ValueError, "^dedicated-finite-proxy-variants-only$"):
             dedicated_driver.run(self.owner, "windows-proxy-lifecycle")
+
+    def test_a_find_best_grant_takes_the_restart_grants_route(self):
+        # Until Find Best's rules were read the driver refused it (dedicated-finite-proxy-variants-only).
+        self.owner = DedicatedDispatchPeer(self.root)
+        self.grant(variant="find-best-grant")
+        self.assertEqual(0, dedicated_driver.run(self.owner, "windows-proxy-lifecycle"))
+        order = ["arm", ("tun-begin", "find-best-grant"), ("tun-finish", "a" * 40), "tun-traffic", "tun-off", "tun-closing",
+                 ("driver-completed", 0), "wait-release"]
+        self.assertEqual(order, [call for call in self.owner.calls if call in order])
+        self.assertEqual("released", self.owner.caller_collection_hold.state)
 
 
 class TunGrantQga(UpdateQga):

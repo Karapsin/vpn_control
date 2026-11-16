@@ -246,6 +246,31 @@ def read_native_record(owner, lease, file_record, receipts, expected_stage):
     return value
 
 
+def denials(variant):
+    """The public codes a denial of this variant's prompt ends its operation with.
+
+    Esc ends the prompt with ERROR_CANCELLED (DesktopWindowsVpnBroker: 1223 is CANCELLED), and a restart that ends it
+    otherwise unelevated may say PERMISSION_DENIED. Find Best ends at its first CANCELLED start, restoring A
+    (DesktopFindBestService); any other failed start makes it try its next candidate, which raises a prompt of its own,
+    so for Find Best no other code is the denial of this prompt.
+    """
+    return {'CANCELLED'} if variant.startswith('find-best') else {'CANCELLED','PERMISSION_DENIED'}
+
+
+def find_best_selection(lease, status):
+    """Which location a granted Find Best leaves selected: its winner, the active one, never a third.
+
+    DesktopFindBestService starts candidates with commitSelectionOnSuccessOnly, so the selection moves only once the
+    elevated start succeeded, and then to that candidate. The candidates are the owned locations, A and B, ordered by
+    their measured connect time; both reach the one owned endpoint, so either may win. A winner A replaces the pending
+    selection of B: the restart's rule (selection kept) is not Find Best's.
+    """
+    a=lease['before']['data']['activeLocationId'];b=lease['pending']['data']['selectedLocationId']
+    selected=status['data']['selectedLocationId']
+    require(a!=b and selected==status['data']['activeLocationId'] and selected in (a,b),'scoped-tun-find-best-winner-not-an-owned-candidate')
+    return {'locationId':selected,'winner':'active-a' if selected==a else 'pending-b','pendingSelectionKept':selected==b}
+
+
 def finish(owner, lease, runtime, cases, observer, handoff=None, receipts=None):
     """The public terminal of the row's own request. A grant whose TUN came up asks handoff(lease, 'ready') for its
     SYSTEM collector's ready record only now: the collector finds the broker and its runtime only once they run."""
@@ -258,7 +283,7 @@ def finish(owner, lease, runtime, cases, observer, handoff=None, receipts=None):
     status=runtime.result(owner,state['workspace'],state['identity'],'status')
     # An expired prompt reaches a grant as the product's own CANCELLED: the same unchanged A, a known failure.
     cancelled=not denied and terminal['code']=='CANCELLED'
-    unexpected=terminal['code'] not in ({'CANCELLED','PERMISSION_DENIED'} if denied else {'OK','CANCELLED'})
+    unexpected=terminal['code'] not in (denials(lease['inputs']['variant']) if denied else {'OK','CANCELLED'})
     if denied or cancelled or unexpected:
         kept(state,lease['inputs'],lease['before'],lease['pending'],lease['activeConfig'].initial,status,cases,observer)
         if unexpected:
@@ -279,6 +304,8 @@ def finish(owner, lease, runtime, cases, observer, handoff=None, receipts=None):
                 and status['restartRequired'] is False
                 and native_record['observations']['configuration']['sha256']!=lease['activeConfig'].initial['sha256'],
                 'scoped-tun-actual-commit-result')
+        if lease['inputs']['variant'].startswith('find-best'):
+            lease['findBestSelection']=find_best_selection(lease,status)
         lease['nativeReady']=native_record  # The TUN is up: only now may the direct sampler run.
     lease['finished']=True
     if cancelled:
@@ -287,7 +314,8 @@ def finish(owner, lease, runtime, cases, observer, handoff=None, receipts=None):
             'status':status,'knownFailure':True,'replayAllowed':False})
         return {'terminal':terminal,'status':status,'nativeRecord':None,'cancelled':True}
     owner.event('scoped-tun-public-outcome',{'variant':lease['inputs']['variant'],'terminal':terminal,
-        'status':status,'nativeRecord':native_record,'uacInputOriginStillRequired':True,
+        'status':status,'nativeRecord':native_record,'findBestSelection':lease.get('findBestSelection'),
+        'uacInputOriginStillRequired':True,
         'trafficAndExactOffStillRequired':not denied,'privilegedFaultRecoveryProven':False})
     return {'terminal':terminal,'status':status,'nativeRecord':native_record}
 

@@ -811,7 +811,7 @@ class PacketTests(unittest.TestCase):
                 self.assertIn(row["sidField"], source)
                 if source is cases:
                     self.assertIn(row["value"], cases)
-        self.assertEqual({"restart-deny", "restart-grant"}, set(dedicated_driver.TUN_VARIANTS))
+        self.assertEqual({"restart-deny", "restart-grant", "find-best-deny", "find-best-grant"}, set(dedicated_driver.TUN_VARIANTS))
         self.assertEqual({"windows-scoped-tun." + variant for variant in dedicated_driver.TUN_VARIANTS},
                          {name for name in decision.ROWS if name.startswith("windows-scoped-tun.")},
                          "the driver runs exactly the TUN variants the table answers: the denial and, behind its collector, the grant")
@@ -1178,7 +1178,7 @@ class ExecuteInputTests(ExecuteBase):
 
     def test_a_refusal_that_saw_the_prompt_due_ends_the_submits(self):
         """The status token outlives the prompt, so a polling client calls again; only a "not yet" refusal is retried."""
-        for reason in ("instance_uac_consent_absent", "instance_uac_frame_unrecognized", "instance_uac_prompt_age", "instance_uac_event_mismatch"):
+        for reason in ("instance_uac_frame_unrecognized", "instance_uac_prompt_age", "instance_uac_event_mismatch"):
             with self.subTest(reason=reason):
                 shutil.rmtree(self.root / ".runtime/windows-uac-decisions", ignore_errors=True)
                 self.packets.clear()
@@ -1190,12 +1190,64 @@ class ExecuteInputTests(ExecuteBase):
                 self.assertEqual(["uac-decide"], [packet["mode"] for packet in self.packets], "no second packet, flock or VM-root entry")
         shutil.rmtree(self.root / ".runtime/windows-uac-decisions")
         self.packets.clear()
-        self.replies = [subprocess.TimeoutExpired("ssh", 1), self.refused("instance_uac_consent_absent")]
+        self.replies = [subprocess.TimeoutExpired("ssh", 1), self.refused("instance_uac_frame_unrecognized")]
         self.assertEqual("unknown", self.execute()["state"])
         learned = self.execute()
-        self.assertEqual(("refused", "instance_uac_consent_absent"), (learned["state"], learned["reason"]))
+        self.assertEqual(("refused", "instance_uac_frame_unrecognized"), (learned["state"], learned["reason"]))
         self.assertEqual(learned, self.execute(), "a refusal learned by status ends the submits too")
         self.assertEqual(["uac-decide", "uac-status"], [packet["mode"] for packet in self.packets])
+
+    def test_a_late_prompt_is_not_yet_for_a_bounded_number_of_gates(self):
+        """Find Best validates its candidates before it prepares the broker, so its prompt may come after a whole gate.
+
+        A gate that found no prompt permits another submit, LATE_PROMPT_GATES in all, counted across the operation's
+        attempts however each was learned; then it is final. A late prompt still answers the 90 s age rule.
+        """
+        absent = "instance_uac_consent_absent"
+        gates = 3  # About the 90 s a prompt may live, searched in 30 s gates: decision.LATE_PROMPT_GATES, checked last.
+        self.assertEqual((30, 90), (decision.GATE_SECONDS, decision.PROMPT_AGE_SECONDS))
+        self.replies = [self.refused(absent, attempt=1), self.refused(absent, attempt=2), self.ack(attempt=3)]
+        for number in (1, 2):
+            late = self.execute()
+            self.assertEqual(("refused", absent, number), (late["state"], late["reason"], late["attempt"]))
+        self.assertEqual("input-ack-only", self.execute()["state"], "the late prompt is answered")
+        self.assertEqual(["uac-decide"] * 3, [packet["mode"] for packet in self.packets])
+        self.assertIn("UAC_ATTEMPT=3", self.packets[2]["source"].decode())
+        # Bounded: the third absent gate ends the submits, like any refusal that saw the prompt due.
+        shutil.rmtree(self.root / ".runtime/windows-uac-decisions")
+        self.packets.clear()
+        self.replies = [self.refused(absent, attempt=number) for number in range(1, gates + 1)]
+        for number in range(1, gates + 1):
+            reply = self.execute()
+            self.assertEqual(("refused", absent, number), (reply["state"], reply["reason"], reply["attempt"]))
+        final = self.execute()
+        self.assertEqual(("refused", absent, gates), (final["state"], final["reason"], final["attempt"]))
+        self.assertEqual(final, self.execute())
+        self.assertEqual(["uac-decide"] * gates, [packet["mode"] for packet in self.packets], "no packet after the bound")
+        # Other "not yet" refusals between them neither end nor extend the bound; an absent gate learned by status counts.
+        shutil.rmtree(self.root / ".runtime/windows-uac-decisions")
+        self.packets.clear()
+        self.replies = [self.refused(absent, attempt=1), self.refused(attempt=2), subprocess.TimeoutExpired("ssh", 1),
+                        self.refused(absent, attempt=3), self.refused(absent, attempt=4)]
+        for expected in ((absent, 1), ("instance_uac_event_not_pending", 2)):
+            reply = self.execute()
+            self.assertEqual(expected, (reply["reason"], reply["attempt"]))
+        self.assertEqual("unknown", self.execute()["state"])
+        for expected, note in (((absent, 3), "learned by status"), ((absent, 4), "a second absent gate permits a third"),
+                               ((absent, 4), "the third absent gate is final")):
+            reply = self.execute()
+            self.assertEqual(expected, (reply["reason"], reply["attempt"]), note)
+        self.assertEqual(["uac-decide", "uac-decide", "uac-decide", "uac-status", "uac-decide"], [packet["mode"] for packet in self.packets])
+        # The 90 s rule is unchanged: a late prompt found too old ends the submits at once.
+        shutil.rmtree(self.root / ".runtime/windows-uac-decisions")
+        self.packets.clear()
+        self.replies = [self.refused(absent, attempt=1), self.refused("instance_uac_prompt_age", attempt=2)]
+        self.execute()
+        aged = self.execute()
+        self.assertEqual(("refused", "instance_uac_prompt_age"), (aged["state"], aged["reason"]))
+        self.assertEqual(aged, self.execute())
+        self.assertEqual(2, len(self.packets))
+        self.assertEqual(gates, getattr(decision, "LATE_PROMPT_GATES", None))
 
     def test_a_refusal_learned_by_status_permits_another_submit(self):
         self.replies = [subprocess.TimeoutExpired("ssh", 1), self.refused(), self.ack(attempt=2)]
@@ -1824,7 +1876,7 @@ class ReviewExecuteTests(ExecuteBase):
         self.assertEqual(("refused", "instance_uac_event_not_pending"), (early["state"], early["reason"]))
         self.assertEqual("review-frame-retained", self.review()["state"])
         self.assertIn("UAC_ATTEMPT=2", self.packets[1]["source"].decode())
-        for reason in ("instance_uac_consent_absent", "instance_uac_prompt_burned", "instance_uac_event_mismatch"):
+        for reason in ("instance_uac_prompt_burned", "instance_uac_event_mismatch"):
             with self.subTest(reason=reason):
                 shutil.rmtree(self.root / ".runtime/windows-uac-reviews")
                 self.packets.clear()
@@ -1833,6 +1885,13 @@ class ReviewExecuteTests(ExecuteBase):
                 self.assertEqual(("refused", reason), (first["state"], first["reason"]))
                 self.assertEqual(first, self.review())
                 self.assertEqual(["uac-review"], self.modes(), "no second packet")
+        # A late prompt is "not yet" for the review as for the decision (decision.LATE_PROMPT_GATES).
+        shutil.rmtree(self.root / ".runtime/windows-uac-reviews")
+        self.packets.clear()
+        self.replies = [refused("instance_uac_consent_absent"), review_terminal(attempt=2)]
+        self.assertEqual("instance_uac_consent_absent", self.review()["reason"])
+        self.assertEqual("review-frame-retained", self.review()["state"])
+        self.assertEqual(["uac-review"] * 2, self.modes())
 
     def test_a_display_still_black_permits_a_later_review_and_still_ends_the_decision(self):
         """A slow wake costs a call, not the run: the pointer journal on the VM host forbids the second move, not this client."""
@@ -2672,7 +2731,7 @@ class CancelledGrantDriverTests(unittest.TestCase):
         self.owner.harness({"LIFECYCLE_INPUTS": self.owner.inputs, "SYSTEM_COLLECTOR_CLOSE_HOLD": None})
         with self.assertRaisesRegex(ValueError, "finite-proxy-variants-only"):
             dedicated_driver.run(self.owner, "windows-proxy-lifecycle")
-        self.owner.inputs.update(variant="find-best-grant", tun={"schemaVersion": 1, "variant": "find-best-grant"})
+        self.owner.inputs.update(variant="restart-fault", tun={"schemaVersion": 1, "variant": "restart-fault"})
         self.owner.harness({"LIFECYCLE_INPUTS": self.owner.inputs, "SYSTEM_COLLECTOR_CLOSE_HOLD": None})
         with self.assertRaisesRegex(ValueError, "finite-proxy-variants-only"):
             dedicated_driver.run(self.owner, "windows-proxy-lifecycle")

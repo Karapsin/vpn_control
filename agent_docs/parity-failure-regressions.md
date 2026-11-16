@@ -2820,6 +2820,23 @@ No file of `readiness_windows._source_pins()` changed. Native only: the time eac
 from the helper's timestamped lines and the attempt's `timing.json`; that the deflated carrier runs on
 the VM host's Python; and that the census then finds the prompt well under 90 s.
 
+### Find Best under VPN on Windows, offline (2026-11-16)
+
+The T7 report left three gaps that refused `windows-scoped-tun.find-best-deny` and
+`find-best-grant` (`windows_scenario_tun_find_best_unproven`). This change closes all three.
+
+| Failure type | Regression | Cause and fix |
+| --- | --- | --- |
+| A late UAC prompt ended the decision | `test_windows_uac_decision.ExecuteInputTests.test_a_late_prompt_is_not_yet_for_a_bounded_number_of_gates`, `ReviewExecuteTests.test_a_not_yet_refusal_permits_another_review_and_any_other_ends_them` | Find Best validates every candidate before it prepares the broker, so its prompt follows `scoped-tun-awaiting-current-input` by a time that no gate bounds. A 30 s gate that found no consent prompt refused with `instance_uac_consent_absent`. That code was not a "not yet" refusal, so the decision ended and the prompt expired. Now `_final_refusal` treats it as "not yet" for `LATE_PROMPT_GATES` = 3 gates, counted over every attempt of the operation (including one learned by status), and only then as final. The 90 s prompt-age rule (`instance_uac_prompt_age`) and every other final refusal are unchanged. Reviews share the rule. |
+| Find Best's denial read as a restart's | `test_windows_tun_stages.FinishTests.test_a_find_best_denial_is_its_cancelled_start_alone` | On a restart, `PERMISSION_DENIED` counted as a denial. `DesktopFindBestService` ends at its first `CANCELLED` start (the broker maps 1223 to `CANCELLED`) and restores A, but any other failed start makes it try its next candidate, which raises a prompt of its own. `windows_tun_stages.denials` now accepts only `CANCELLED` for Find Best; `PERMISSION_DENIED` is a known end. A denial still keeps A and pending B (`kept`), because Find Best starts with `commitSelectionOnSuccessOnly`. |
+| A granted Find Best's selection was unchecked | `FinishTests.test_a_granted_find_best_selects_its_winner_a_or_b_and_nothing_else` | The selection moves only when the elevated start succeeds, and then to that winner: the first verified candidate by connect time. A and B reach the one owned endpoint, so either can win. If A wins, it replaces the pending selection of B. `find_best_selection` requires selected = active, which must be A or B and never a third location, and records the winner in `scoped-tun-public-outcome`. |
+| Rows refused, no decision rows, unmapped | `test_native_scenario_windows.ScopedTunTableTests.test_every_tun_row_is_admitted_with_its_decision_row`, `ScopedTunAdmissionTests.test_the_find_best_rows_are_admitted_as_the_restart_rows_are`, `test_windows_tun_grant.DriverGrantTests.test_a_find_best_grant_takes_the_restart_grants_route`, `test_windows_uac_decision.PacketTests.test_table_values_are_what_the_case_modules_publish`, `test_native_scenario_windows_matrix.TableTests.test_the_document_tun_and_responsive_rows_prove_only_what_their_evidence_holds` | `windows_uac_decision.ROWS` gains `find-best-deny` and `find-best-grant`, and the planner gives both rows their `uac` block and join. The grant needs the reviewed vpn-broker profile. The driver admits both rows, with the grant on the restart grant's collector route. `windows-native-cli:find-best` now also names both TUN rows. Neither row runs Find Best while a TUN is already up, so CONFIG-011's "whether VPN is active" stays unclaimed. |
+
+RED on `786cfda9` sources with the final tests, and GREEN on HEAD, on both Pythons: see the
+find-best-tun REPORT.txt. Still native: how long Find Best validates before its prompt on the
+fixture; whether three gates cover it; which candidate wins; and every TUN-route item that
+T7 left native.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals
