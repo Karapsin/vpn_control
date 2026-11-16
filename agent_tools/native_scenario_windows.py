@@ -1739,7 +1739,11 @@ def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
         receipt = json.loads(raw)
         task = receipt.get("task") if isinstance(receipt.get("task"), dict) else {}
         facts.update(receiptSha256=digest, stage=host_job.token(receipt.get("stage")) if receipt.get("stage") else None,
-                     failure=host_job.token(receipt.get("failure")) if receipt.get("failure") else None)
+                     failure=host_job.token(receipt.get("failure")) if receipt.get("failure") else None,
+                     # The run's measured size: the collection the route carried back and the job's status polls of
+                     # its owner, which pick the set's largest-evidence and longest rows (_mcp_route).
+                     collectedBytes=len(collection["rawJson"].encode("utf-8")),
+                     polls=task["polls"] if type(task.get("polls")) is int and task["polls"] >= 0 else 0)
         public = public_evidence(native_scenario_execution.ScenarioExecutor._public(record))
         if update is not None:
             update = _update_facts(root, plan, row, value, receipt)
@@ -1785,8 +1789,10 @@ def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
     return facts
 
 
-def _matrix_row_state(rows: list[Mapping[str, Any]], name: str, principal: bool = False) -> str:
-    """A row proves its part only with a passed direct run and a passed MCP run; a failure or an unknown wins.
+def _matrix_row_state(rows: list[Mapping[str, Any]], name: str, principal: bool = False, admitted: frozenset[str] = frozenset()) -> str:
+    """A row proves its part with a passed direct run and either a passed MCP run or, when it is no representative of
+    the set's MCP route (_mcp_route), a passed MCP admission dry run of that direct run (admitted); a failure or an
+    unknown of either route wins.
 
     A failed-principal run fails only the scenario its probe proves (principal); for any other it never counts.
     """
@@ -1797,11 +1803,141 @@ def _matrix_row_state(rows: list[Mapping[str, Any]], name: str, principal: bool 
     if "unknown" in kinds:
         return "unknown"
     routes = {row["route"] for row in found if row["classification"] == "passed"}
-    return "passed" if ROUTES <= routes else "missing"
+    if "direct" not in routes:
+        return "missing"
+    return "passed" if ROUTES <= routes or name in admitted else "missing"
+
+
+# TEST-002 for the MCP route of a sweep: a real MCP twin of each route shape its rows have, and of its longest row and
+# the row with the largest evidence, the route-level risks; every other row needs only its MCP admission dry run.
+# plain is a row with none of the other static shapes; QRY's rebootless "none" phase is plain.
+MCP_SHAPES = ("plain", "uac-approve", "uac-deny", "update", "reboot-pre", "reboot-post", "longest", "largest-evidence")
+# What the dry run proves of one row's MCP start, each a route behaviour that once failed through MCP alone: its artifact
+# keys are the adapter's; its bundle manifest resolves to one local location (two copies refused, 055c3b3c); its input
+# resolves as collect resolves it; its admission gates pass; and a repeat start of the operation reaches the executor's
+# duplicate answer rather than an admission refusal (3a1459ee, a bundle changed in the checkout). A follow that ends
+# before terminal is a route behaviour no dry run shows: the longest row's real twin carries it.
+MCP_ADMISSION_CHECKS = ("artifact-keys", "bundle-single-location", "input-at-collect", "admission-gates", "repeat-start")
+
+
+def route_shapes(name: str) -> frozenset[str]:
+    """A row's static MCP route shapes, from its recipe alone."""
+    row = _row(name)
+    uac = row.get("uac") or {}
+    shapes = {shape for shape, present in (("uac-approve", uac.get("decision") == "approve"), ("uac-deny", uac.get("decision") == "deny"),
+                                           ("update", bool(row.get("update"))),
+                                           ("reboot-pre", (row.get("reboot") or {}).get("phase") == "pre"),
+                                           ("reboot-post", (row.get("reboot") or {}).get("phase") == "post")) if present}
+    return frozenset(shapes or {"plain"})
+
+
+def _mcp_route(rows: list[Mapping[str, Any]], names: set[str]) -> dict[str, Any]:
+    """The representatives of a set's MCP route for these counted rows: each shape they have needs a passed MCP twin of
+    some named row of that shape, and the longest row (most job polls of its direct pass, then deadline, then name)
+    and the largest-evidence row (most collected bytes of its direct pass, then name) need their own. A row with a
+    shape no twin covers yet is a representative too, until one does."""
+    passed = [row for row in rows if row["classification"] == "passed"]
+    direct = [row for row in passed if row["route"] == "direct" and row["scenarioId"] in names]
+    measured = {}
+    for row in direct:
+        best = measured.get(row["scenarioId"], (0, 0))
+        measured[row["scenarioId"]] = (max(best[0], row.get("polls") or 0), max(best[1], row.get("collectedBytes") or 0))
+    longest = max(measured, key=lambda name: (measured[name][0], RECIPES[name]["deadlineSeconds"], name), default=None)
+    largest = max(measured, key=lambda name: (measured[name][1], name), default=None)
+    twins: dict[str, list[str]] = {}
+    for row in passed:
+        if row["route"] == "mcp":
+            for shape in route_shapes(row["scenarioId"]) | {shape for shape, name in (("longest", longest), ("largest-evidence", largest))
+                                                             if row["scenarioId"] == name}:
+                twins.setdefault(shape, []).append(row["correlationId"])
+    required = sorted({shape for name in names for shape in route_shapes(name)} | {shape for shape, name in
+                      (("longest", longest), ("largest-evidence", largest)) if name is not None}, key=MCP_SHAPES.index)
+    uncovered = [shape for shape in required if shape not in twins]
+    representatives = sorted({name for name in names if route_shapes(name) & set(uncovered)} | {name for name in (longest, largest) if name})
+    return {"required": required, "covered": {shape: sorted(twins[shape]) for shape in required if shape in twins},
+            "uncovered": uncovered, "longest": longest, "largestEvidence": largest, "representatives": representatives}
+
+
+def _mcp_adapter():
+    try:
+        from . import native_scenario_ssh
+    except ImportError:  # pragma: no cover - script-style fallback
+        import native_scenario_ssh  # type: ignore[no-redef]
+    return native_scenario_ssh
+
+
+class _ReadonlyRegistry:
+    """The registry the MCP resolvers call, verifying without housekeeping: the same unique-local-location rule."""
+    verify_artifact = staticmethod(native_artifact_registry.verify_artifact_readonly)
+
+
+def _mcp_resolvers(root: Path, adapter: Any) -> tuple[Callable[..., Any], Callable[..., Any]]:
+    """The MCP route's own bundle and input resolvers, compiled from mcp_server's scenario actions, so no copy can drift."""
+    path = Path(__file__).resolve().with_name("mcp_server.py")
+    raw = path.read_bytes()
+    key = (hashlib.sha256(raw).hexdigest(), str(root), id(adapter))
+    if key not in _MCP_RESOLVERS:
+        tree = ast.parse(raw, filename=str(path))
+        found = {node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name in ("resolve_bundle", "resolve_input")}
+        _need(set(found) == {"resolve_bundle", "resolve_input"}, "windows_mcp_route_resolvers_unavailable")
+        module = ast.Module(body=[found["resolve_bundle"], found["resolve_input"]], type_ignores=[])
+        namespace = {"adapter": adapter, "registry": _ReadonlyRegistry, "REPO_ROOT": root, "Path": Path, "__builtins__": __builtins__}
+        exec(compile(ast.fix_missing_locations(module), str(path), "exec"), namespace)  # noqa: S102 - the server's own source.
+        _MCP_RESOLVERS.clear()
+        _MCP_RESOLVERS[key] = (namespace["resolve_bundle"], namespace["resolve_input"])
+    return _MCP_RESOLVERS[key]
+
+
+_MCP_RESOLVERS: dict[tuple[str, str, int], tuple[Callable[..., Any], Callable[..., Any]]] = {}
+
+
+def _check(action: Callable[[], Any]) -> str:
+    try:
+        action()
+    except OSError:
+        return "os_error"
+    except (ValueError, KeyError, TypeError, AttributeError, NameError) as error:
+        return (type(error).__name__ + ":" + str(error))[:200]
+    return "passed"
+
+
+def mcp_admission(root: Path | str, correlation: Any) -> dict[str, Any]:
+    """Read only: would an MCP start of this journaled operation be admitted now, through the route's own resolvers and
+    admission, without running it. Nothing is written, submitted or connected."""
+    root = Path(root).resolve()
+    _canonical_uuid(correlation, "windows_matrix_correlations_invalid")
+    try:
+        record = native_scenario_execution.ScenarioExecutor(root.joinpath(*_JOURNALS), None)._read(correlation)
+    except (native_scenario_execution.ScenarioExecutionError, OSError, ValueError):
+        record = None
+    _need(record is not None, "windows_matrix_journal_unavailable:" + correlation)
+    plan = native_scenario_execution.ScenarioPlan.from_mapping(record["plan"])
+    _need(plan.scenario_id in RECIPES, "windows_matrix_not_windows_row:" + correlation)
+    adapter = _mcp_adapter()
+    checks = {"artifact-keys": "passed" if adapter.SCENARIO_ARTIFACT_KEYS.get(plan.scenario_id) == frozenset(plan.artifact_ids)
+              else "mcp_artifact_keys_differ"}
+    try:
+        resolve_bundle, resolve_input = _mcp_resolvers(root, adapter)
+    except (NativeScenarioWindowsError, OSError, SyntaxError, ValueError):
+        resolve_bundle = resolve_input = None
+    if resolve_bundle is None:
+        checks.update({name: "windows_mcp_route_resolvers_unavailable" for name in MCP_ADMISSION_CHECKS if name != "artifact-keys"})
+    else:
+        checks["bundle-single-location"] = _check(lambda: resolve_bundle(plan))
+        checks["input-at-collect"] = _check(lambda: resolve_input(plan)) if "scenarioInput" in plan.artifact_ids else "passed"
+        checks["admission-gates"] = (_check(lambda: adapter.admit_start(root, plan.as_dict(), resolve_bundle))
+                                     if checks["bundle-single-location"] == "passed" else "mcp_bundle_unresolved")
+        # The executor answers a repeat of a journaled correlation with its record only after that admission, and only
+        # for the same immutable plan.
+        checks["repeat-start"] = ("passed" if checks["admission-gates"] == "passed" and record["plan"] == plan.as_dict()
+                                  else "mcp_repeat_start_refused")
+    return {"correlationId": correlation, "scenarioId": plan.scenario_id, "admitted": all(value == "passed" for value in checks.values()),
+            "checks": {name: checks[name] for name in MCP_ADMISSION_CHECKS}}
 
 
 def matrix_review(root: Path | str, requirement_id: str, correlation_ids: Any) -> dict[str, Any]:
-    """Read only: each named row's class and route, and the state of every scenario of one requirement."""
+    """Read only: each named row's class and route, the set's MCP route (_mcp_route) with the admission dry run of every
+    other counted row's direct pass, and the state of every scenario of one requirement."""
     requirement, _ = _matrix_requirement(requirement_id)
     root = Path(root).resolve()
     _need(isinstance(correlation_ids, (list, tuple)) and 0 < len(correlation_ids) <= 256
@@ -1814,17 +1950,178 @@ def matrix_review(root: Path | str, requirement_id: str, correlation_ids: Any) -
     for key, reason in (("sourceSha", "windows_matrix_mixed_source"), ("productVersion", "windows_matrix_mixed_source"),
                         ("artifactSetId", "windows_matrix_mixed_source"), ("targetPackage", "windows_matrix_mixed_package")):
         _need(len({row[key] for row in product}) <= 1, reason)
+    mapped = {name for names in MATRIX_SCENARIOS[requirement_id].values() if names and all(name in RECIPES for name in names)
+              for name in names}
+    route = _mcp_route(rows, mapped)
+    admission: dict[str, dict[str, Any]] = {}
+    for name in sorted(mapped - set(route["representatives"])):
+        found = [row for row in rows if row["scenarioId"] == name and row["classification"] == "passed"]
+        if any(row["route"] == "mcp" for row in found):
+            continue
+        for row in (row for row in found if row["route"] == "direct"):
+            admission[name] = mcp_admission(root, row["correlationId"])
+            if admission[name]["admitted"]:
+                break
+    admitted = frozenset(name for name, result in admission.items() if result["admitted"])
     scenarios = {}
     for scenario, names in MATRIX_SCENARIOS[requirement_id].items():
         if not names or any(name not in RECIPES for name in names):
             scenarios[scenario] = "unmapped"
             continue
         principal = MATRIX_PRINCIPAL.get(requirement_id) == scenario
-        states = {_matrix_row_state(rows, name, principal) for name in names}
+        states = {_matrix_row_state(rows, name, principal, admitted) for name in names}
         scenarios[scenario] = next((state for state in ("failed", "unknown", "missing") if state in states), "passed")
     return {"requirementId": requirement_id, "platform": requirement["platform"], "rows": rows, "scenarios": scenarios,
+            "mcpRoute": {**route, "admission": admission},
             "package": None if not product else {key: product[0][key] for key in ("sourceSha", "productVersion", "artifactSetId",
                                                                                      "targetPackage")}}
+
+
+MATRIX_EVIDENCE_SCHEMA = "vpn-control.windows-matrix-evidence"
+
+
+def verify_route_document(document: Mapping[str, Any]) -> None:
+    """The MCP route rule a passed matrix document holds, re-derived from its own rows (matrix_record calls it too):
+    its recorded route is _mcp_route of its rows, and every counted row has a passed direct run and either a passed
+    MCP twin or, being no representative, an admitted dry run of one of those direct runs with every check passed."""
+    try:
+        if document["result"] != "passed":
+            return
+        rows = list(document["rows"])
+        names = {name for names in document["rowsByScenario"].values() for name in names}
+        recorded = document["mcpRoute"]
+        route = _mcp_route(rows, names)
+        _need({key: recorded[key] for key in route} == route, "windows_matrix_route_differs")
+        for name in sorted(names):
+            found = [row for row in rows if row["scenarioId"] == name and row["classification"] == "passed"]
+            direct = {row["correlationId"] for row in found if row["route"] == "direct"}
+            _need(bool(direct), "windows_matrix_route_direct_missing:" + name)
+            if any(row["route"] == "mcp" for row in found):
+                continue
+            entry = recorded["admission"].get(name)
+            _need(name not in route["representatives"] and isinstance(entry, Mapping) and entry.get("admitted") is True
+                  and entry.get("correlationId") in direct and entry.get("scenarioId") == name
+                  and entry.get("checks") == {check: "passed" for check in MCP_ADMISSION_CHECKS}, "windows_matrix_route_mcp_missing:" + name)
+    except (KeyError, TypeError, AttributeError, ValueError) as error:
+        if isinstance(error, NativeScenarioWindowsError):
+            raise
+        raise NativeScenarioWindowsError("windows_matrix_route_document_invalid") from None
+
+
+def _head(root: Path) -> str:
+    done = subprocess.run(["git", "rev-parse", "--verify", "HEAD^{commit}"], cwd=root, capture_output=True, text=True, check=False)
+    _need(done.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", done.stdout.strip()) is not None, "windows_sweep_head_unavailable")
+    return done.stdout.strip()
+
+
+def sweep_eligibility(root: Path | str, artifact_set_id: Any, requirement_ids: Any = None) -> dict[str, Any]:
+    """Read only, before a final sweep (TEST-007): for each planned row, whether a pass on this frozen set would count
+    for the checkout's HEAD. Nothing is started, written or connected.
+
+    A record counts at HEAD only from HEAD itself or through an equivalence link, so the candidate's source must be
+    HEAD or reach it (native_artifact_reuse); a limited record never links, so its source must be HEAD itself. A
+    requirement with a scenario no row proves, an unretracted pass of its source, a recorded failure or unknown of its
+    source, or a settled failed or unknown run of its rows on the target package that no observation records cannot
+    pass. A refused row, or an update row whose frozen set lacks its fixture receipt or fault artifacts, never runs.
+    A requirement no row maps (windows-visual) has no matrix producer. eligible is False on any refusal.
+    """
+    root = Path(root).resolve()
+    matrix = _matrix_module()
+    mapped_requirements = [name for name, table in MATRIX_SCENARIOS.items() if any(table.values())]
+    requested = list(mapped_requirements if requirement_ids is None else requirement_ids)
+    _need(requested and all(isinstance(name, str) and name in MATRIX_SCENARIOS for name in requested)
+          and len(set(requested)) == len(requested), "windows_sweep_requirement_unknown")
+    _need(isinstance(artifact_set_id, str) and re.fullmatch(r"artifact-set-[0-9a-f]{64}", artifact_set_id) is not None,
+          "windows_sweep_artifact_set_invalid")
+    refusals: list[str] = []
+    head = _head(root)
+    try:
+        verified = native_artifact_reuse.artifact_set_verify_readonly(root, artifact_set_id)
+        frozen = native_artifact_reuse._load_set_readonly(root, artifact_set_id) if verified.get("verification") == "verified" else {}
+    except (native_artifact_reuse.ArtifactReuseError, OSError, ValueError):
+        verified, frozen = {"verification": "unavailable"}, {}
+    if verified.get("verification") != "verified":
+        refusals.append("windows_sweep_artifact_set_unverified")
+    source, version = verified.get("originalSourceSha"), verified.get("productVersion")
+    kinds = {item["artifactKind"]: item["artifactId"] for item in frozen.get("packages", []) if item.get("platform") == "windows"}
+    target = kinds.get(PACKAGE_KINDS["targetPackage"])
+    if frozen and target is None:
+        refusals.append("windows_sweep_target_package_missing")
+    equivalence = None
+    if source is not None:
+        if source == head and not native_artifact_reuse._dirty_paths(root):
+            equivalence = "same-source"
+        else:
+            try:
+                proof = native_artifact_reuse.acceptance_equivalence_check_readonly(root, artifact_set_id, source, head)
+                equivalence = "linkable:" + ",".join(sorted({entry["class"] for entry in proof["changedPaths"]}))
+            except (native_artifact_reuse.ArtifactReuseError, OSError, ValueError) as error:
+                refusals.append("windows_sweep_source_not_equivalent:" + str(error)[:160])
+    try:
+        directory = matrix._existing_directory(root)
+        requirements = matrix.load_requirements()
+        earlier = [] if directory is None else matrix._records_read_only(directory, requirements)
+        retracted = set() if directory is None else matrix._read_retractions(directory, requirements)
+    except (matrix.NativeAcceptanceMatrixError, OSError):
+        raise NativeScenarioWindowsError("windows_matrix_ledger_unavailable") from None
+    adapter = _mcp_adapter()
+    candidate_refusals = list(refusals)  # Of the candidate itself: no requirement of it can count.
+    rows: dict[str, dict[str, Any]] = {}
+    report: dict[str, dict[str, Any]] = {}
+    for requirement_id in requested:
+        table = MATRIX_SCENARIOS[requirement_id]
+        reasons = []
+        unmapped = sorted(name for name, names in table.items() if not names or any(name not in RECIPES for name in names))
+        if unmapped:
+            reasons.append("unmapped:" + ",".join(unmapped))
+        limited = bool(MATRIX_LIMITED.get(requirement_id))
+        if limited and source is not None and source != head:
+            reasons.append("limited-record-needs-exact-head")  # A limited record is never equivalence-linked.
+        same = [item for item in earlier if item["requirementId"] == requirement_id and item["originalSourceSHA"] == source]
+        if any(item["result"] == "passed" and item["receiptId"] not in retracted for item in same):
+            reasons.append("already-recorded")
+        if any(item["result"] in ("failed", "unknown") for item in same):
+            reasons.append("recorded-failure-or-unknown")
+        names = {name for names in table.values() for name in names if name in RECIPES}
+        if names and target is not None:
+            holding = {"failed", "unknown"} | ({"failed-principal"} if requirement_id in MATRIX_PRINCIPAL else set())
+            recorded = _recorded_rows(root, earlier, requirement_id, source) if source else set()
+            try:
+                unrecorded = sorted(run["correlationId"] for run in _settled_runs(root, names, target)
+                                    if run["classification"] in holding and run["correlationId"] not in recorded)
+            except NativeScenarioWindowsError as error:
+                unrecorded = ["unreadable:" + str(error)]
+            if unrecorded:
+                reasons.append("unrecorded-outcome:" + unrecorded[0])
+        for name in sorted(names):
+            row = RECIPES[name]
+            notes = []
+            if row.get("refusal") is not None:
+                notes.append("row-refused:" + str(row["refusal"]))
+            missing = [key for key in row["artifactKeys"] if key in PACKAGE_KINDS and key not in ("targetPackage",)
+                       and PACKAGE_KINDS[key] not in kinds]
+            if missing:
+                notes.append("set-lacks:" + ",".join(missing))
+            if adapter.SCENARIO_ARTIFACT_KEYS.get(name) != frozenset(row["artifactKeys"]):
+                notes.append("mcp-artifact-keys-differ")
+            rows.setdefault(name, {"shapes": sorted(route_shapes(name), key=MCP_SHAPES.index), "reasons": notes, "requirements": []})
+            rows[name]["requirements"].append(requirement_id)
+        if any(rows[name]["reasons"] for name in names):
+            reasons.append("rows-cannot-run:" + ",".join(sorted(name for name in names if rows[name]["reasons"])))
+        report[requirement_id] = {"counts": not reasons and not candidate_refusals, "reasons": reasons,
+                                  "scope": "limited" if limited else "full-native", "rows": sorted(names)}
+        refusals.extend(requirement_id + ":" + reason for reason in reasons)
+    for name, entry in rows.items():
+        entry["counts"] = not entry["reasons"] and all(report[requirement]["counts"] for requirement in entry["requirements"])
+    # The twins the set will need: one per static shape (any row of it; the first named here), then the longest and
+    # the largest-evidence rows, which the direct passes decide (_mcp_route).
+    twins = {shape: next((name for name in sorted(rows) if shape in rows[name]["shapes"] and not rows[name]["reasons"]), None)
+             for shape in MCP_SHAPES if shape not in ("longest", "largest-evidence") and any(shape in entry["shapes"] for entry in rows.values())}
+    twins.update({"longest": "decided-by-direct-passes", "largest-evidence": "decided-by-direct-passes"})
+    return {"eligible": not refusals, "refusals": refusals, "head": head,
+            "candidate": {"artifactSetId": artifact_set_id, "sourceSha": source, "productVersion": version, "targetPackage": target,
+                          "equivalence": equivalence},
+            "requirements": report, "rows": rows, "mcpTwins": twins}
 
 
 def _settled_runs(root: Path, names: set[str], target: str) -> list[dict[str, Any]]:
@@ -1901,8 +2198,9 @@ def _matrix_evidence(root: Path, requirement_id: str, document: Mapping[str, Any
 def matrix_observation(root: Path | str, requirement_id: str, correlation_ids: Any, reviewer_attestation: str) -> dict[str, Any]:
     """The matrix-record input for one requirement, from collected rows; it records nothing itself.
 
-    A passed observation needs every scenario of the requirement passed: each of its rows passed directly and through
-    MCP, all on one package, and every settled failed or unknown run of those rows on that package, named or not,
+    A passed observation needs every scenario of the requirement passed: each of its rows passed directly, and through
+    MCP when it represents a route shape of the set (_mcp_route) or else by its MCP admission dry run (mcp_admission),
+    all on one package, and every settled failed or unknown run of those rows on that package, named or not,
     already in a recorded observation of the requirement. A failed or unknown row yields a failed or unknown
     observation at once. Setup, stopped, refused, installed-package-unproven, approval-unproven, failed-before-task and
     failed-after-task rows never count. A failed-principal run is a failed one of its MATRIX_PRINCIPAL scenario alone,
@@ -1957,14 +2255,16 @@ def matrix_observation(root: Path | str, requirement_id: str, correlation_ids: A
     # An update row's entry also names the base install it started from, the package that install admitted, its target's
     # install and the package read installed after its task: the base is a package of another source, so it is bound here
     # and never among the record's artifacts.
-    document = {"schema": "vpn-control.windows-matrix-evidence", "schemaVersion": 1, "requirementId": requirement_id,
+    document = {"schema": MATRIX_EVIDENCE_SCHEMA, "schemaVersion": 1, "requirementId": requirement_id,
                 "platform": requirement["platform"], "result": result, "evidenceScope": scope, "package": package,
                 "immutableArtifactIDs": artifacts, "scenarios": states,
                 "rowsByScenario": {name: list(MATRIX_SCENARIOS[requirement_id][name]) for name in results},
+                "mcpRoute": review["mcpRoute"],
                 "rows": [{**{key: row.get(key) for key in ("correlationId", "scenarioId", "deploymentId", "route", "classification",
-                                                           "receiptSha256", "exitCode", "stage", "failure")},
+                                                           "receiptSha256", "exitCode", "stage", "failure", "polls", "collectedBytes")},
                           **({"update": row["update"]} if "update" in row else {}),
                           **({"approval": row["approval"]} if "approval" in row else {})} for row in review["rows"]]}
+    verify_route_document(document)
     path, digest = _matrix_evidence(root, requirement_id, document)
     observation = {"requirementId": requirement_id, "platform": requirement["platform"], "originalSourceSHA": source,
                    "immutableArtifactIDs": artifacts, "evidencePath": path, "evidenceHash": digest, "environment": environment,
@@ -1989,8 +2289,28 @@ def main(argv: list[str] | None = None) -> int:
     observe.add_argument("--requirement", required=True)
     observe.add_argument("--reviewer-attestation", required=True)
     observe.add_argument("correlation", nargs="+")
+    # Read only: whether MCP starts of these journaled operations would be admitted now (mcp_admission).
+    admission = actions.add_parser("mcp-admission")
+    admission.add_argument("--root", default=str(Path(__file__).resolve().parents[1]))
+    admission.add_argument("correlation", nargs="+")
+    # Read only, before a final sweep: whether a pass of each planned row on this frozen set would count at HEAD; exit 1
+    # refuses the sweep (sweep_eligibility).
+    eligibility = actions.add_parser("sweep-eligibility")
+    eligibility.add_argument("--root", default=str(Path(__file__).resolve().parents[1]))
+    eligibility.add_argument("--artifact-set", required=True)
+    eligibility.add_argument("--requirement", action="append")
     options = parser.parse_args(argv)
     try:
+        if options.action == "mcp-admission":
+            results = [mcp_admission(options.root, correlation) for correlation in options.correlation]
+            print(json.dumps(results, indent=2, sort_keys=True))
+            return 0 if all(result["admitted"] for result in results) else 1
+        if options.action == "sweep-eligibility":
+            report = sweep_eligibility(options.root, options.artifact_set, options.requirement)
+            print(json.dumps(report, indent=2, sort_keys=True))
+            if not report["eligible"]:
+                print(json.dumps({"refused": "windows_sweep_cannot_count:" + report["refusals"][0]}), file=sys.stderr)
+            return 0 if report["eligible"] else 1
         print(json.dumps(matrix_review(options.root, options.requirement, options.correlation), indent=2, sort_keys=True), file=sys.stderr)
         observation = matrix_observation(options.root, options.requirement, options.correlation, options.reviewer_attestation)
     except NativeScenarioWindowsError as error:

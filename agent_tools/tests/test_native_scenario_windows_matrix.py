@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -19,6 +20,7 @@ import uuid
 
 from agent_tools import native_acceptance_matrix as matrix
 from agent_tools import native_artifact_registry as registry
+from agent_tools import native_artifact_reuse as reuse
 from agent_tools import native_scenario_execution as execution
 from agent_tools import native_scenario_windows as windows
 from agent_tools import windows_scenario_host_job as host_job
@@ -1104,6 +1106,231 @@ class TableTests(unittest.TestCase):
         # Every row the table names outside the update family is admitted today; the update rows' refusals are above.
         self.assertEqual(set(), {row for row, scenarios in named.items() if scenarios and not row.startswith("windows-public-update.")
                                  and (windows.RECIPES[row].get("refusal") is not None or windows.RECIPES[row]["evidenceClass"] != "product")})
+
+
+# S4: five scenarios on each of three plain rows. CFG's direct run is the set's longest (most polls) and largest.
+ROUTE_TABLE = {name: (SMK,) if index < 5 else (SSH,) if index < 10 else (CFG,) for index, name in enumerate(NATIVE)}
+LONG_AND_LARGE = {"task": {"state": "task-finished", "ownerExitCode": 0, "terminalExitCode": 0, "polls": 99}, "padding": "x" * 4096}
+
+
+class McpRouteTests(MatrixBase):
+    """A row needs its own MCP twin only when it represents a route shape of the set; any other row's direct pass counts
+    with its MCP admission dry run, made through the MCP server's own resolvers and the driver's admission."""
+
+    def setUp(self):
+        super().setUp()
+        # The registered bundle manifest the MCP resolver finds by its digest, at one local location.
+        self.bundle_directory = Path(tempfile.mkdtemp(dir=self.sources))
+        manifest = self.bundle_directory / "native-scenario-manifest.json"
+        manifest.write_bytes(b'{"scenarioId":"windows-scenario-driver"}\n')
+        self.bundle_hash = hashlib.sha256(manifest.read_bytes()).hexdigest()
+        registry.register_artifact(self.root, {"platform": "windows", "artifactKind": "scenario-bundle-manifest", "localPath": str(manifest),
+                                               "sha256": self.bundle_hash, "size": manifest.stat().st_size, "evidenceClass": "local-verified"})
+        for patcher in (mock.patch.dict(windows.MATRIX_SCENARIOS, {"windows-native-cli": ROUTE_TABLE}),
+                        # The clone's registration and the frozen set stand outside this repository; the admission's own
+                        # order, the resolvers and the input are real.
+                        mock.patch.object(windows, "_binding", return_value={"setup": {}}),
+                        mock.patch.object(windows, "verified_bundle", return_value=(self.bundle_directory, {})),
+                        mock.patch.object(windows, "admitted_packages", return_value={})):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def large(self, route="direct", kind="passed"):
+        return self.row(CFG, route, kind, extra=LONG_AND_LARGE)
+
+    def test_a_row_that_represents_no_shape_counts_with_its_admitted_dry_run(self):
+        rows = [self.row(SMK, "direct"), self.row(SMK, "mcp"), self.large(), self.large("mcp"), self.row(SSH, "direct")]
+        review = windows.matrix_review(self.root, "windows-native-cli", rows)
+        route = review["mcpRoute"]
+        self.assertEqual((["plain", "longest", "largest-evidence"], CFG, CFG, [CFG], []),
+                         (route["required"], route["longest"], route["largestEvidence"], route["representatives"], route["uncovered"]))
+        self.assertEqual(sorted([rows[1], rows[3]]), route["covered"]["plain"])
+        self.assertEqual({SSH}, set(route["admission"]))
+        self.assertEqual((rows[4], True, {check: "passed" for check in windows.MCP_ADMISSION_CHECKS}),
+                         tuple(route["admission"][SSH][key] for key in ("correlationId", "admitted", "checks")))
+        observation = self.observe(rows)
+        self.assertEqual({name: "passed" for name in NATIVE}, observation["scenarioResults"])
+        document = json.loads((self.root / observation["evidencePath"]).read_bytes())
+        self.assertEqual(route, document["mcpRoute"])
+        recorded = matrix.matrix_record(self.root, observation)
+        self.assertEqual("passed", recorded["result"])
+
+    def test_the_representatives_and_an_uncovered_shape_need_their_own_twins(self):
+        # CFG is the longest and largest row: without its own twin it never counts, however its shape is covered.
+        self.assert_refused([self.row(SMK, "direct"), self.row(SMK, "mcp"), self.large(), self.row(SSH, "direct")],
+                            "windows_matrix_incomplete:5")
+        # No twin of the plain shape at all: every plain row is a representative until one passes through MCP.
+        rows = [self.row(SMK, "direct"), self.large(), self.row(SSH, "direct")]
+        review = windows.matrix_review(self.root, "windows-native-cli", rows)
+        self.assertEqual((["plain", "longest", "largest-evidence"], sorted([CFG, SSH, SMK]), {}),
+                         (review["mcpRoute"]["uncovered"], review["mcpRoute"]["representatives"], review["mcpRoute"]["admission"]))
+        self.assert_refused(rows, "windows_matrix_incomplete:15")
+
+    def test_a_dry_run_refusal_keeps_the_row_missing(self):
+        twins = [self.row(SMK, "direct"), self.row(SMK, "mcp"), self.large(), self.large("mcp")]
+        manifest = self.bundle_directory / "native-scenario-manifest.json"
+        cases = {
+            # The bundle in the checkout changed since the run: admission refuses before the duplicate answer (3a1459ee).
+            "admission-gates": lambda stack: stack.enter_context(mock.patch.object(
+                windows, "verified_bundle", side_effect=windows.NativeScenarioWindowsError("windows_scenario_bundle_differs_from_checkout"))),
+            # Two local copies of the manifest: the MCP route cannot pick one (055c3b3c). Last: the copy stays registered.
+            "bundle-single-location": lambda stack: registry.register_artifact(self.root, {
+                "platform": "windows", "artifactKind": "scenario-bundle-manifest", "evidenceClass": "local-verified",
+                "localPath": str(self.copy(manifest)), "sha256": self.bundle_hash, "size": manifest.stat().st_size}),
+        }
+        for check, damage in cases.items():
+            with self.subTest(check=check), contextlib.ExitStack() as stack:
+                direct = self.row(SSH, "direct")
+                damage(stack)
+                review = windows.matrix_review(self.root, "windows-native-cli", [*twins, direct])
+                result = review["mcpRoute"]["admission"][SSH]
+                self.assertFalse(result["admitted"])
+                self.assertNotEqual("passed", result["checks"][check])
+                self.assertEqual("mcp_repeat_start_refused", result["checks"]["repeat-start"])
+                self.assertEqual("missing", review["scenarios"][NATIVE[5]])
+                self.assert_refused([*twins, direct], "windows_matrix_incomplete:5")
+
+    def copy(self, path):
+        target = Path(tempfile.mkdtemp(dir=self.sources)) / path.name
+        target.write_bytes(path.read_bytes())
+        return target
+
+    def test_an_input_the_route_cannot_resolve_at_collect_keeps_the_row_missing(self):
+        twins = [self.row(SMK, "direct"), self.row(SMK, "mcp"), self.large(), self.large("mcp")]
+        direct = self.row(SSH, "direct")
+        plan = execution.ScenarioExecutor(self.root.joinpath(*windows._JOURNALS), None)._read(direct)["plan"]
+        source = registry.verify_artifact_readonly(self.root, plan["artifactIds"]["scenarioInput"])["location"]["localPath"]
+        registry.register_artifact(self.root, {"platform": "windows", "artifactKind": "scenario-input", "evidenceClass": "local-verified",
+                                               "localPath": str(self.copy(Path(source))), "sha256": plan["artifactIds"]["scenarioInput"][7:],
+                                               "size": Path(source).stat().st_size})
+        result = windows.mcp_admission(self.root, direct)
+        self.assertFalse(result["admitted"])
+        self.assertNotEqual("passed", result["checks"]["input-at-collect"])
+        # The matrix reads that input the same way, so the whole observation refuses rather than count the row.
+        self.assert_refused([*twins, direct], "windows_matrix_input_unavailable:" + direct)
+
+    def test_a_failed_or_unknown_run_of_either_route_still_wins(self):
+        twins = [self.row(SMK, "direct"), self.row(SMK, "mcp"), self.large(), self.large("mcp"), self.row(SSH, "direct")]
+        self.assertEqual("failed", self.observe([*twins, self.row(SSH, "mcp", "failed")])["result"])
+
+    def test_the_record_rederives_the_route_and_refuses_a_composed_windows_pass(self):
+        rows = [self.row(SMK, "direct"), self.row(SMK, "mcp"), self.large(), self.large("mcp"), self.row(SSH, "direct")]
+        observation = self.observe(rows)
+        document = json.loads((self.root / observation["evidencePath"]).read_bytes())
+        forged = {**document, "mcpRoute": {**document["mcpRoute"], "admission": {}}}
+        for name, value in (("forged", forged), ("composed", {"schema": "coordinator-notes", "rows": rows})):
+            with self.subTest(document=name):
+                raw = json.dumps(value, sort_keys=True).encode()
+                path = self.root.joinpath(*windows._MATRIX_EVIDENCE, name + ".json")
+                path.write_bytes(raw)
+                path.chmod(0o600)
+                with self.assertRaises(matrix.NativeAcceptanceMatrixError) as caught:
+                    matrix.matrix_record(self.root, {**observation, "evidencePath": "/".join((*windows._MATRIX_EVIDENCE, name + ".json")),
+                                                     "evidenceHash": hashlib.sha256(raw).hexdigest()})
+                self.assertIn("windows", str(caught.exception))
+
+    def test_the_static_route_shapes_of_the_real_rows(self):
+        self.assertEqual({SMK: {"plain"}, CFG: {"plain"}, "windows-query-owner-gui-reconnect": {"plain"},
+                          "windows-scoped-tun.restart-grant": {"uac-approve"}, "windows-scoped-tun.restart-deny": {"uac-deny"},
+                          "windows-scoped-tun.vpn-prepare-failure": {"plain"},
+                          UPDATE + "public-ready": {"update"}, UPDATE + "success-off": {"update", "uac-approve"},
+                          UPDATE + "uac-denied": {"update", "uac-deny"},
+                          "windows-reboot-reconnect.pre": {"reboot-pre"}, "windows-reboot-reconnect.post": {"reboot-post"}},
+                         {name: set(shapes) for name, shapes in ((name, windows.route_shapes(name)) for name in (
+                             SMK, CFG, "windows-query-owner-gui-reconnect", "windows-scoped-tun.restart-grant",
+                             "windows-scoped-tun.restart-deny", "windows-scoped-tun.vpn-prepare-failure", UPDATE + "public-ready",
+                             UPDATE + "success-off", UPDATE + "uac-denied", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post"))})
+        # The MCP server's own scenario resolvers are the ones the dry run compiles; its admission keys cover every row.
+        resolve_bundle, resolve_input = windows._mcp_resolvers(self.root, windows._mcp_adapter())
+        self.assertEqual(("resolve_bundle", "resolve_input"), (resolve_bundle.__name__, resolve_input.__name__))
+        self.assertEqual({name for name, row in windows.RECIPES.items()},
+                         {name for name in windows._mcp_adapter().SCENARIO_ARTIFACT_KEYS if name.startswith("windows-")})
+
+
+@unittest.skipUnless(os.name == "posix", "private scenario journals are POSIX")
+class SweepEligibilityTests(MatrixBase):
+    """QW5: before a sweep, whether a pass of each planned row on a frozen set would count at HEAD."""
+
+    def setUp(self):
+        super().setUp()
+        self.git("init", "-q")
+        self.git("config", "user.email", "test@example.org")
+        self.git("config", "user.name", "Test")
+        for path, text in ((".gitignore", ".rag_index/\n"), ("gradle.properties", "vpnControlVersion=2.2.17\n"),
+                           ("src.kt", "val x = 1\n"), ("runtime.bin", "runtime\n"), ("docs/guide.md", "guide\n")):
+            (self.root / path).parent.mkdir(exist_ok=True)
+            (self.root / path).write_text(text, encoding="utf-8")
+        self.commit()
+        self.head = self.git("rev-parse", "HEAD")
+        self.package = self.register(b"MSI evidence " * 2000, "vpn-control-2.2.17.msi", "desktop-package", self.head)
+        location = registry.verify_artifact_readonly(self.root, self.package)["location"]["locationId"]
+        self.set_id = reuse.artifact_set_freeze(self.root, {"sourceSha": self.head, "packages": [{"artifactId": self.package,
+            "locationId": location}], "runtimePaths": ["runtime.bin"], "provenance": {"architecture": "x86_64", "signer": {"kind": "unsigned"}}})["artifactSetId"]
+
+    def git(self, *args):
+        return subprocess.run(["git", *args], cwd=self.root, check=True, capture_output=True, text=True).stdout.strip()
+
+    def commit(self):
+        self.git("add", "-A")
+        self.git("commit", "-qm", "fixture")
+
+    def eligibility(self, requirements=("windows-native-cli",)):
+        return windows.sweep_eligibility(self.root, self.set_id, list(requirements))
+
+    def test_a_clean_candidate_at_head_is_eligible_and_names_the_twins(self):
+        report = self.eligibility()
+        self.assertEqual((True, [], "same-source", self.package), (report["eligible"], report["refusals"], report["candidate"]["equivalence"],
+                                                                    report["candidate"]["targetPackage"]))
+        self.assertEqual({SMK, SSH}, set(report["rows"]))
+        self.assertTrue(all(row["counts"] for row in report["rows"].values()))
+        self.assertEqual({"plain": SSH, "longest": "decided-by-direct-passes", "largest-evidence": "decided-by-direct-passes"},
+                         report["mcpTwins"])
+
+    def test_a_docs_commit_stays_linkable_and_a_product_commit_refuses_the_sweep(self):
+        (self.root / "docs/guide.md").write_text("revised\n", encoding="utf-8")
+        self.commit()
+        report = self.eligibility()
+        self.assertEqual((True, "linkable:docs"), (report["eligible"], report["candidate"]["equivalence"]))
+        # A limited record is never linked, so the document requirement needs its source at HEAD itself (GAP-DOC).
+        documents = {name: (SMK,) for name in windows.MATRIX_SCENARIOS["document-persistence-transfer"]}
+        with mock.patch.dict(windows.MATRIX_SCENARIOS, {"document-persistence-transfer": documents}):
+            limited = self.eligibility(["document-persistence-transfer"])
+        self.assertEqual(["document-persistence-transfer:limited-record-needs-exact-head"], limited["refusals"])
+        (self.root / "src.kt").write_text("val x = 2\n", encoding="utf-8")
+        self.commit()
+        report = self.eligibility()
+        self.assertFalse(report["eligible"])
+        self.assertTrue(report["refusals"][0].startswith("windows_sweep_source_not_equivalent:"), report["refusals"])
+        self.assertFalse(any(row["counts"] for row in report["rows"].values()))
+
+    def test_an_unrecorded_failure_on_the_target_refuses_its_requirement(self):
+        failed = self.row(SMK, "direct", "failed", target=self.package, source=self.head)
+        report = self.eligibility()
+        self.assertEqual(["windows-native-cli:unrecorded-outcome:" + failed], report["refusals"])
+        self.assertFalse(report["requirements"]["windows-native-cli"]["counts"])
+
+    def test_unmapped_scenarios_refused_rows_and_a_missing_fixture_receipt_refuse(self):
+        report = self.eligibility(["windows-native-cli", "windows-visual"])
+        self.assertEqual(["windows-visual:unmapped:agent-verdict,geometry-contrast,scene-capture"], report["refusals"])
+        # One requirement that cannot count refuses the sweep, and leaves the other's own verdict alone.
+        self.assertEqual((False, True, False), (report["eligible"], report["requirements"]["windows-native-cli"]["counts"],
+                                                report["requirements"]["windows-visual"]["counts"]))
+        table = dict(TEST_TABLE, **{NATIVE[0]: (UPDATE + "public-ready",)})
+        with mock.patch.dict(windows.MATRIX_SCENARIOS, {"windows-native-cli": table}):
+            report = self.eligibility()
+        self.assertEqual(["set-lacks:fixtureReceipt"], report["rows"][UPDATE + "public-ready"]["reasons"])
+        self.assertEqual(["windows-native-cli:rows-cannot-run:" + UPDATE + "public-ready"], report["refusals"])
+
+    def test_an_unverified_set_refuses_and_the_entry_point_exits_one(self):
+        self.set_id = "artifact-set-" + "9" * 64
+        self.assertEqual("windows_sweep_artifact_set_unverified", self.eligibility()["refusals"][0])
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = windows.main(["sweep-eligibility", "--root", str(self.root), "--artifact-set", self.set_id,
+                                 "--requirement", "windows-native-cli"])
+        self.assertEqual(1, code)
+        self.assertFalse(json.loads(stdout.getvalue())["eligible"])
+        self.assertEqual({"refused": "windows_sweep_cannot_count:windows_sweep_artifact_set_unverified"}, json.loads(stderr.getvalue()))
 
 
 if __name__ == "__main__":

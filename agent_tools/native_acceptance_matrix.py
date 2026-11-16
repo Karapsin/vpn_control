@@ -231,7 +231,37 @@ def _observation(root: Path | str, value: Mapping[str, Any], requirements: Mappi
     normalized = _stored_observation(value, requirements)
     _verify_evidence(root, normalized["evidencePath"], normalized["evidenceHash"])
     _verify_artifacts(root, normalized["immutableArtifactIDs"], normalized["platform"], normalized["originalSourceSHA"], normalized["evidenceScope"])
+    _windows_route_rule(root, normalized)
     return normalized
+
+
+def _windows_route_rule(root: Path | str, observation: Mapping[str, Any]) -> None:
+    """TEST-002's MCP route rule for a passed Windows matrix record: a requirement whose rows the Windows driver maps must
+    be recorded from that driver's own evidence document, and the document's route is re-derived from its rows
+    (native_scenario_windows.verify_route_document): direct passes of every row, MCP twins of the representative
+    route shapes, and an admitted MCP dry run of every other row."""
+    if observation["result"] != "passed":
+        return
+    try:
+        from . import native_scenario_windows as windows
+    except ImportError:  # pragma: no cover - script-style fallback
+        import native_scenario_windows as windows  # type: ignore[no-redef]
+    mapped = any(windows.MATRIX_SCENARIOS.get(observation["requirementId"], {}).values())
+    try:
+        path = Path(root).resolve(strict=True).joinpath(*PurePosixPath(observation["evidencePath"]).parts)
+        document = json.loads(path.read_bytes()) if path.suffix == ".json" else None
+    except (OSError, ValueError):
+        document = None
+    windows_document = isinstance(document, dict) and document.get("schema") == windows.MATRIX_EVIDENCE_SCHEMA
+    if mapped and observation["platform"] == "windows" and not windows_document:
+        raise NativeAcceptanceMatrixError("native acceptance windows record needs the windows matrix evidence document")
+    if windows_document:
+        if document.get("requirementId") != observation["requirementId"]:
+            raise NativeAcceptanceMatrixError("native acceptance windows evidence names another requirement")
+        try:
+            windows.verify_route_document(document)
+        except windows.NativeScenarioWindowsError as error:
+            raise NativeAcceptanceMatrixError("native acceptance windows route rule: " + str(error)) from None
 
 
 def _stored_observation(value: Mapping[str, Any], requirements: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
