@@ -47,7 +47,8 @@ class RedGateTests(unittest.TestCase):
                          list(entry['beforeimages']))
 
     def test_unchanged_proof_is_skipped_and_recorded_with_its_digests(self):
-        self.changed(['agent_docs/contracts.md', 'agent_tools/readiness_windows.py'])
+        # readiness_windows is imported by the preserved dispatch, so it now reruns the RED (see below).
+        self.changed(['agent_docs/contracts.md', 'agent_tools/native_package_release_report.py'])
         self.assertFalse(red_gate.red_required(self, BEFORE))
         (entry,) = self.records()
         self.assertEqual(('skipped', 'unchanged'), (entry['red'], entry['reason']))
@@ -120,6 +121,34 @@ class RedGateTests(unittest.TestCase):
         runner._red_gate_environment(runner.validate_plan(plan), worker)
         self.assertFalse(red_gate.red_required(self, BEFORE))
         self.assertEqual('skipped', json.loads((worker / 'red-proofs.jsonl').read_text().splitlines()[-1])['red'])
+
+    def test_beforeimage_imports_and_the_mcp_environment_rerun_red_RED_before_GREEN(self):
+        """Review finding 13: a RED proof also depends on what its beforeimage imports and on requirements-mcp.txt."""
+        fixture = red_gate.ROOT / 'agent_tools/tests/fixtures/red_gate_beforeimage_imports'
+        raw = (fixture / 'red_gate.before.source').read_bytes()
+        self.assertEqual(json.loads((fixture / 'provenance.json').read_bytes())['sha256'], hashlib.sha256(raw).hexdigest())
+        image = BEFORE.relative_to(red_gate.ROOT).as_posix()
+        # The preserved readiness_vm_dispatch imports modules this test never imports.
+        only_image = sorted(red_gate.image_closure(image) - red_gate.closure(SELF))
+        self.assertIn('agent_tools/readiness_fixture_registry.py', only_image)
+        before = type(sys)('red_gate_before')
+        before.__file__ = red_gate.__file__
+        exec(compile(raw, 'red_gate.before.source', 'exec'), before.__dict__)
+        for paths, reason in ((['agent_tools/readiness_fixture_registry.py'], 'beforeimage-import-changed'),
+                              (['agent_tools/requirements-mcp.txt'], 'environment-changed')):
+            with self.subTest(paths=paths):
+                self.changed(paths)
+                if red_gate.red_required(self, fixture / 'red_gate.before.source'):
+                    before._changed.cache_clear()
+                    # RED: the bf8d2da2 gate skipped this proof although its result could change.
+                    self.assertFalse(before.red_required(self, BEFORE))
+                    self.assertEqual('unchanged', self.records()[-1]['reason'])
+                self.assertTrue(red_gate.red_required(self, BEFORE))
+                self.assertEqual(('ran', reason), (self.records()[-1]['red'], self.records()[-1]['reason']))
+        # A non-Python beforeimage contributes only its own bytes.
+        self.assertEqual(frozenset(), red_gate.image_closure('agent_tools/tests/fixtures/dispatch_source_closure/provenance.json'))
+        # A beforeimage resolves relative imports against the package of the source it preserves.
+        self.assertEqual('agent_tools/readiness_vm_dispatch.py', red_gate._preserved_path(image))
 
 
 if __name__ == '__main__':

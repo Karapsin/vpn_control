@@ -1,0 +1,6 @@
+{
+  "commit": "bf8d2da243cd39a40a88dae0b060d709e13d6a0c",
+  "path": "agent_tools/tests/red_gate.py",
+  "sha256": "83ccd9e169b92d9ba615f1bc677a3bf30d25a2b2aad028bbb3add3391d3cec40",
+  "reason": "RED gate before review finding 13: the closure that decides whether a TEST-001 RED half reruns followed only the test module's imports, so a change to a module only the preserved beforeimage imports, or to the MCP environment (agent_tools/requirements-mcp.txt), skipped a RED proof whose result it could change."
+}
