@@ -3381,6 +3381,43 @@ tier; nothing to enroll by hand. Not proven: no packaged GUI run (the Stats scre
 through the owner's presentation and `logs` read path, not a native window); Android `:app` tests were not run
 (no Android source changed; the journal's API is unchanged).
 
+### Windows GUI picker row, the GUI half of gui-cli-transfer, offline build (2026-11-17)
+
+`windows-document-cold.gui-picker` was built in the `doc-gui` builder clone on `efd774b0`. Nothing here has run
+natively, and no product failure was found: the rows below are the tool's own guards, each with a test that fails
+when the guard is taken out. gui-cli-transfer, unmapped on `efd774b0` because the GUI's own file picker had no tool,
+now maps to `windows-document-cold.gui-owner` (the CLI half) and the new row (the GUI half). The input route is the
+no-tray row's owned private desktop (`OwnedNoTrayDesktop`, under its own child label), the input desktop switched to
+it for the GUI steps only, and reviewed clicks: no generic executor, and no input reaches a window outside the GUI's
+own process tree. RED ran in place, with no tree copied: `red_runner.py` loads the `efd774b0` modules (the picker
+module absent) or one mutant of the built modules into `sys.modules` before the tests import them. Its logs, the
+mutants and the runner are in `.runtime/windows-parity-20261107/evidence/doc-gui/` of the recovery checkout. Every
+count is the same on Python 3.14.3 and 3.12.13.
+
+RED on `efd774b0`: `test_windows_document_gui_picker` does not import (`ModuleNotFoundError`); the matrix tests
+`test_with_the_real_table_gui_cli_transfer_needs_both_its_cli_and_its_gui_half`, the cache-row test and
+`test_the_table_names_every_windows_scenario_and_only_built_rows` fail (3) with
+`test_the_document_tun_and_responsive_rows_prove_only_what_their_evidence_holds` and the document table test erroring
+(2) on the missing row; `test_windows_names_are_closed` fails on the missing name. GREEN on the build: all of them, and
+`test_windows_document_gui_picker` 41 OK.
+
+| Guard | Regression | Notes |
+| --- | --- | --- |
+| A click on a frame other than the reviewed one | `test_windows_document_gui_picker.ReviewedStepTests.test_a_frame_other_than_the_reviewed_one_clicks_nothing` | Each step clicks only when the sha256 of the frame's pixels inside its reviewed anchor equals the profile's. RED on the mutant `anchor-unchecked`: the routing-nav click went out on the routing screen. |
+| A click with no review | `ReviewedStepTests.test_a_step_with_no_review_keeps_its_frame_and_clicks_nothing`, `PickerFlowTests.test_an_unreviewed_profile_ends_known_at_the_first_step_with_its_frame_and_no_click` | No step of `PROFILE` is reviewed yet, so the first native run ends `document-gui-picker-frame-unreviewed:routing-nav` with that frame kept and collected. RED on `unreviewed-clicked`: 2 failures. |
+| A click into another process's window | `ReviewedStepTests.test_a_point_over_a_window_of_another_process_is_never_clicked`, `test_a_window_of_any_other_process_on_the_desktop_stops_the_row_before_any_click` | Every window of the owned desktop must be the launcher's or its direct child's, and the window under the point the GUI's. RED on `point-owner-unchecked` and `census-unchecked`: 1 failure each. |
+| A press without its release sent again or taken as a click | `ReviewedStepTests.test_a_click_sendinput_inserted_only_in_part_parks_and_is_never_sent_again`, `test_a_click_sendinput_inserted_nothing_of_is_a_known_refusal_naming_its_error` | A partial `SendInput` parks; one that inserted nothing is a known refusal with its error. RED on `partial-input-accepted`: 1 failure. |
+| A file name confirmed that the dialog does not hold | `DialogTests.test_a_file_name_that_does_not_read_back_is_never_confirmed`, `test_a_dialog_without_exactly_one_file_name_edit_is_a_known_failure_with_its_controls` | The path goes in by `WM_SETTEXT` to the dialog's one file name Edit and must read back before the one `IDOK`. RED on `readback-unchecked` and `edit-unchecked`: 1 failure each. |
+| A failure that left the input desktop on the private one, or a dialog open under the GUI's quit | `DialogTests` closing tests, `PickerFlowTests.test_a_dialog_left_open_by_a_failure_is_cancelled_before_the_gui_is_quit` and the flow's known failures | The cold module's `close_known` closes the picker first: one posted `IDCANCEL` to the GUI's own open dialog, then Default restored; a cancel that does not close parks. RED on `closing-no-restore`: 6 failures; on `closing-no-cancel`: 3 failures and 1 error. |
+| A GUI export taken as the CLI's when only its meaning matched | `ExportComparisonTests.test_any_other_byte_is_a_difference`, `PickerFlowTests.test_a_gui_export_that_differs_by_any_other_byte_is_a_known_failure_that_closes_the_gui` | The GUI export must be the CLI export's bytes except its one `exported_at` value. RED on `export-semantic-only`: 3 failures. |
+| A GUI import read before it committed, or one whose committed state differs from the CLI's | `PickerFlowTests.test_a_gui_import_that_never_commits_is_a_known_failure`, `test_a_gui_import_whose_committed_state_differs_from_the_clis_import_of_the_same_file_is_a_known_failure` | The revision must change within 60 s, and the committed `routing_rules` must equal the CLI import's of the same file. RED on `import-not-awaited` and `import-state-unchecked`: 1 failure each. |
+
+Native only: the switch of the input desktop, `BitBlt` of its screen, `SendInput` through a second handle with
+journal playback access, `WM_SETTEXT` and `IDOK` in a real Vista-style common dialog of AWT's `FileDialog` and its
+file name control IDs (1001 Save, 1148 Open), the GUI's own export and import through it, and every anchor of
+`PROFILE`. The ctypes structure layouts were not checked on Windows. Still open: the reviewed profile, one native run
+per step, and then the row's first full pass.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

@@ -543,9 +543,9 @@ class ColdGuest(DocumentGuest):
 
 
 LAUNCHER_PATH = r"C:\Users\fixture\AppData\Local\vpn-control\vpn-control-cli.exe"
-# The variants that import and export a routing document; the cache variant has its own source and module of tests
-# (test_windows_document_cache).
-ROUTING_VARIANTS = tuple(variant for variant in cold_cases.VARIANTS if variant != "cache-bytes")
+# The variants that import and export one routing document; the cache variant has its own source and module of tests
+# (test_windows_document_cache), and the GUI picker variant its two documents and GUI steps (test_windows_document_gui_picker).
+ROUTING_VARIANTS = tuple(variant for variant in cold_cases.VARIANTS if variant not in ("cache-bytes", "gui-picker"))
 
 
 class ColdCaseTests(unittest.TestCase):

@@ -1,7 +1,24 @@
 {
   "schemaVersion": 3,
   "closures": {
-    "closure-22eb8fb8eeedb5ea": [
+    "closure-3260531cdc474cf7": [
+      "agent_tools/macos_fixture_guest_stage.py",
+      "agent_tools/native_artifact_registry.py"
+    ],
+    "closure-33893ccdd9408532": [
+      "agent_tools/windows_update_fixture_workflow.py"
+    ],
+    "closure-83fb8a469ec2f6cf": [
+      "agent_tools/macos_fixture_stage.py",
+      "agent_tools/native_artifact_registry.py",
+      "agent_tools/native_review_source_closure.py",
+      "agent_tools/private_inventory_lock.py"
+    ],
+    "closure-86b48ea0d916156d": [
+      "agent_tools/native_acceptance_overview.py",
+      "agent_tools/native_review_source_closure.py"
+    ],
+    "closure-95289ebdb07a9dff": [
       "agent_tools/affected_agent_test_dependencies.json",
       "agent_tools/affected_agent_tests.py",
       "agent_tools/agent_ci_evidence.py",
@@ -329,6 +346,7 @@
       "agent_tools/windows_document_cold_cases.py",
       "agent_tools/windows_document_export_race.py",
       "agent_tools/windows_document_gated_https_fixture.py",
+      "agent_tools/windows_document_gui_picker.py",
       "agent_tools/windows_document_native.py",
       "agent_tools/windows_document_responsive_cases.py",
       "agent_tools/windows_document_responsive_cli_cases.py",
@@ -523,23 +541,6 @@
       "scripts/windows_broker_fixture_observer.py",
       "scripts/windows_install_admission_diagnostic.py"
     ],
-    "closure-3260531cdc474cf7": [
-      "agent_tools/macos_fixture_guest_stage.py",
-      "agent_tools/native_artifact_registry.py"
-    ],
-    "closure-33893ccdd9408532": [
-      "agent_tools/windows_update_fixture_workflow.py"
-    ],
-    "closure-83fb8a469ec2f6cf": [
-      "agent_tools/macos_fixture_stage.py",
-      "agent_tools/native_artifact_registry.py",
-      "agent_tools/native_review_source_closure.py",
-      "agent_tools/private_inventory_lock.py"
-    ],
-    "closure-86b48ea0d916156d": [
-      "agent_tools/native_acceptance_overview.py",
-      "agent_tools/native_review_source_closure.py"
-    ],
     "closure-dab6da63fa2fc575": [
       "agent_tools/macos_machine_acceptance.py",
       "agent_tools/macos_machine_boundary.py",
@@ -563,10 +564,10 @@
         "linux_rpm_workspace_recovery",
         "linux_rpm_fixture_server_lifecycle"
       ],
-      "closure": "closure-22eb8fb8eeedb5ea"
+      "closure": "closure-95289ebdb07a9dff"
     },
     "android-action-acceptance-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -579,7 +580,7 @@
       }
     },
     "android-action-acceptance-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -592,7 +593,7 @@
       }
     },
     "android-action-acceptance-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -605,28 +606,28 @@
       }
     },
     "android-admission-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_admission_readback"
       ]
     },
     "android-admission-readback": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_admission_readback"
       ]
     },
     "android-admission-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_admission_readback"
       ]
     },
     "android-api35-large-routing-observe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -639,7 +640,7 @@
       }
     },
     "android-api35-remaining-proxy-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -652,28 +653,28 @@
       }
     },
     "android-cli-stage-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_cli_stage"
       ]
     },
     "android-cli-stage-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_cli_stage"
       ]
     },
     "android-cli-stage-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_cli_stage"
       ]
     },
     "android-coldboot-product-api29-observe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -686,7 +687,7 @@
       }
     },
     "android-consent-acceptance-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -699,7 +700,7 @@
       }
     },
     "android-consent-acceptance-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -712,7 +713,7 @@
       }
     },
     "android-consent-acceptance-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -725,7 +726,7 @@
       }
     },
     "android-consent-acceptance-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -738,7 +739,7 @@
       }
     },
     "android-consent-grant-acceptance-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -752,7 +753,7 @@
       }
     },
     "android-consent-grant-acceptance-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -765,7 +766,7 @@
       }
     },
     "android-consent-grant-acceptance-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -778,7 +779,7 @@
       }
     },
     "android-consent-grant-acceptance-reconcile-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -791,7 +792,7 @@
       }
     },
     "android-consent-grant-acceptance-reconcile-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -804,7 +805,7 @@
       }
     },
     "android-consent-grant-acceptance-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -818,7 +819,7 @@
       }
     },
     "android-consent-grant-acceptance-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -832,7 +833,7 @@
       }
     },
     "android-consent-grant-prompt-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -845,7 +846,7 @@
       }
     },
     "android-document-acceptance-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -858,7 +859,7 @@
       }
     },
     "android-document-acceptance-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -871,7 +872,7 @@
       }
     },
     "android-document-acceptance-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -884,7 +885,7 @@
       }
     },
     "android-document-recovery-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -897,7 +898,7 @@
       }
     },
     "android-document-recovery-finalize": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -910,7 +911,7 @@
       }
     },
     "android-document-recovery-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -923,7 +924,7 @@
       }
     },
     "android-document-recovery-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -936,7 +937,7 @@
       }
     },
     "android-document-retry-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -949,7 +950,7 @@
       }
     },
     "android-document-retry-recovery-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -962,7 +963,7 @@
       }
     },
     "android-document-retry-recovery-finalize": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -975,7 +976,7 @@
       }
     },
     "android-document-retry-recovery-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -988,7 +989,7 @@
       }
     },
     "android-document-retry-recovery-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1001,7 +1002,7 @@
       }
     },
     "android-document-retry-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1014,7 +1015,7 @@
       }
     },
     "android-document-retry-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1027,7 +1028,7 @@
       }
     },
     "android-document-retry-unknown-close": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1040,7 +1041,7 @@
       }
     },
     "android-document-retry-unknown-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1053,7 +1054,7 @@
       }
     },
     "android-endpoint-admission-cleanup": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1066,7 +1067,7 @@
       }
     },
     "android-endpoint-admission-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1079,7 +1080,7 @@
       }
     },
     "android-endpoint-admission-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1092,7 +1093,7 @@
       }
     },
     "android-endpoint-cleanup-mount-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1105,7 +1106,7 @@
       }
     },
     "android-endpoint-cleanup-readmission": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1118,7 +1119,7 @@
       }
     },
     "android-endpoint-cleanup-readmission-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1131,7 +1132,7 @@
       }
     },
     "android-endpoint-cleanup-readmitted": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1144,7 +1145,7 @@
       }
     },
     "android-endpoint-cleanup-readmitted-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1157,7 +1158,7 @@
       }
     },
     "android-endpoint-mount-diagnostic-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1170,7 +1171,7 @@
       }
     },
     "android-installer-abort-prelaunch": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1183,7 +1184,7 @@
       }
     },
     "android-installer-callback-continue": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1196,7 +1197,7 @@
       }
     },
     "android-installer-callback-handoff-ready": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1209,7 +1210,7 @@
       }
     },
     "android-installer-callback-status-continue": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1222,7 +1223,7 @@
       }
     },
     "android-installer-callback-status-handoff-ready": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1235,7 +1236,7 @@
       }
     },
     "android-installer-dispatch-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1248,7 +1249,7 @@
       }
     },
     "android-installer-dispatch-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1261,7 +1262,7 @@
       }
     },
     "android-installer-dispatch-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1274,7 +1275,7 @@
       }
     },
     "android-installer-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1287,7 +1288,7 @@
       }
     },
     "android-native-fixture-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1300,7 +1301,7 @@
       }
     },
     "android-native-fixture-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1313,7 +1314,7 @@
       }
     },
     "android-native-fixture-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1326,7 +1327,7 @@
       }
     },
     "android-native-fixture-stop": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1339,14 +1340,14 @@
       }
     },
     "android-observe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_observation"
       ]
     },
     "android-obsolete-consent-denial-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1359,7 +1360,7 @@
       }
     },
     "android-package-install-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1372,7 +1373,7 @@
       }
     },
     "android-package-install-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1385,7 +1386,7 @@
       }
     },
     "android-package-install-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1398,7 +1399,7 @@
       }
     },
     "android-package-install-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1411,7 +1412,7 @@
       }
     },
     "android-package-install-unknown-proof": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1424,7 +1425,7 @@
       }
     },
     "android-package-install-unknown-release": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1437,63 +1438,63 @@
       }
     },
     "android-program-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "facade",
       "modules": [
         "readiness_adb_jobs"
       ]
     },
     "android-program-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "facade",
       "modules": [
         "readiness_adb_jobs"
       ]
     },
     "android-proxy-recover": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_proxy_recovery"
       ]
     },
     "android-proxy-recovery-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_proxy_recovery"
       ]
     },
     "android-public-inspect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_public_inspect"
       ]
     },
     "android-readback-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_admission_readback"
       ]
     },
     "android-readback-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_admission_readback"
       ]
     },
     "android-readback-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_admission_readback"
       ]
     },
     "android-recovered-endpoint-stage-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1506,7 +1507,7 @@
       }
     },
     "android-runtime-acceptance-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1520,7 +1521,7 @@
       }
     },
     "android-runtime-acceptance-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1534,7 +1535,7 @@
       }
     },
     "android-runtime-acceptance-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1548,7 +1549,7 @@
       }
     },
     "android-vpn-permission-reset-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_vpn_permission_reset",
@@ -1556,7 +1557,7 @@
       ]
     },
     "android-vpn-permission-reset-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_vpn_permission_reset",
@@ -1564,7 +1565,7 @@
       ]
     },
     "android-vpn-permission-reset-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "android_vpn_permission_reset",
@@ -1572,7 +1573,7 @@
       ]
     },
     "arch-ai-loop-observe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1585,7 +1586,7 @@
       }
     },
     "arch-qemu-holder-census": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1598,7 +1599,7 @@
       }
     },
     "arch-tmux-install-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1612,7 +1613,7 @@
       }
     },
     "arch-tmux-install-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1626,7 +1627,7 @@
       }
     },
     "arch-tmux-install-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1644,10 +1645,10 @@
       "modules": [
         "native_vm_baseline_config"
       ],
-      "closure": "closure-22eb8fb8eeedb5ea"
+      "closure": "closure-95289ebdb07a9dff"
     },
     "baseline-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "provider_boundary",
       "modules": [
         "native_vm_baseline_config"
@@ -1658,17 +1659,17 @@
       "modules": [
         "native_vm_baseline_config"
       ],
-      "closure": "closure-22eb8fb8eeedb5ea"
+      "closure": "closure-95289ebdb07a9dff"
     },
     "baseline-verify": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "provider_boundary",
       "modules": [
         "native_vm_baseline_config"
       ]
     },
     "batch-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -1683,7 +1684,7 @@
       }
     },
     "batch-resume": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -1704,10 +1705,10 @@
         "native_fixture_preflight",
         "native_rpm_public_install_ssh"
       ],
-      "closure": "closure-22eb8fb8eeedb5ea"
+      "closure": "closure-95289ebdb07a9dff"
     },
     "batch-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -1726,24 +1727,24 @@
       "modules": [
         "native_fixture_preflight"
       ],
-      "closure": "closure-22eb8fb8eeedb5ea"
+      "closure": "closure-95289ebdb07a9dff"
     },
     "guest-program-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "facade",
       "modules": [
         "readiness_guest_jobs"
       ]
     },
     "guest-program-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "facade",
       "modules": [
         "readiness_guest_jobs"
       ]
     },
     "linux-deb-arch-acceptance-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1758,7 +1759,7 @@
       }
     },
     "linux-deb-arch-acceptance-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1773,7 +1774,7 @@
       }
     },
     "linux-deb-arch-acceptance-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1788,7 +1789,7 @@
       }
     },
     "linux-deb-arch-guest-prepare-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1802,7 +1803,7 @@
       }
     },
     "linux-deb-arch-guest-prepare-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1816,7 +1817,7 @@
       }
     },
     "linux-deb-arch-guest-prepare-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1830,7 +1831,7 @@
       }
     },
     "linux-guest-park-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1847,10 +1848,10 @@
       "modules": [
         "linux_guest_park"
       ],
-      "closure": "closure-22eb8fb8eeedb5ea"
+      "closure": "closure-95289ebdb07a9dff"
     },
     "linux-guest-park-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1863,7 +1864,7 @@
       }
     },
     "linux-owner-public-quit-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -1876,7 +1877,7 @@
       }
     },
     "linux-owner-public-quit-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -1889,7 +1890,7 @@
       }
     },
     "linux-owner-public-quit-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -1902,7 +1903,7 @@
       }
     },
     "linux-package-fixture-build-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1915,7 +1916,7 @@
       }
     },
     "linux-package-fixture-build-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1928,7 +1929,7 @@
       }
     },
     "linux-package-fixture-build-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1941,7 +1942,7 @@
       }
     },
     "linux-package-fixture-build-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1954,7 +1955,7 @@
       }
     },
     "linux-package-tmux-availability": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1968,7 +1969,7 @@
       }
     },
     "linux-package-tmux-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1982,7 +1983,7 @@
       }
     },
     "linux-package-tmux-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -1996,7 +1997,7 @@
       }
     },
     "linux-package-tmux-resource-prepare": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2010,7 +2011,7 @@
       }
     },
     "linux-package-tmux-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2024,7 +2025,7 @@
       }
     },
     "linux-package-tmux-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2038,7 +2039,7 @@
       }
     },
     "linux-rpm-base-prepare-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2051,7 +2052,7 @@
       }
     },
     "linux-rpm-base-prepare-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2064,7 +2065,7 @@
       }
     },
     "linux-rpm-base-prepare-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2084,7 +2085,7 @@
       ]
     },
     "linux-rpm-fixture-server-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2097,7 +2098,7 @@
       }
     },
     "linux-rpm-fixture-server-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2110,7 +2111,7 @@
       }
     },
     "linux-rpm-fixture-server-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2123,7 +2124,7 @@
       }
     },
     "linux-rpm-fixture-server-stop": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2143,7 +2144,7 @@
       ]
     },
     "linux-rpm-owner-observe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2156,7 +2157,7 @@
       }
     },
     "linux-rpm-protected-job-observe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2169,7 +2170,7 @@
       }
     },
     "linux-rpm-workspace-cleanup-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2182,7 +2183,7 @@
       }
     },
     "linux-rpm-workspace-cleanup-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2195,7 +2196,7 @@
       }
     },
     "linux-rpm-workspace-recovery-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2208,7 +2209,7 @@
       }
     },
     "linux-vm-readonly-inventory": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2257,7 +2258,7 @@
       ]
     },
     "readiness-ensure": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "facade",
       "modules": [
         "readiness",
@@ -2266,14 +2267,14 @@
       ]
     },
     "readiness-lease-acquire": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "facade",
       "modules": [
         "readiness_lease_workflow"
       ]
     },
     "readiness-lease-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "facade",
       "modules": [
         "readiness_lease_workflow",
@@ -2281,7 +2282,7 @@
       ]
     },
     "readiness-reboot": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "facade",
       "modules": [
         "readiness",
@@ -2290,7 +2291,7 @@
       ]
     },
     "readiness-sleep-capability": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "facade",
       "modules": [
         "readiness",
@@ -2299,7 +2300,7 @@
       ]
     },
     "readiness-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "facade",
       "modules": [
         "readiness",
@@ -2308,7 +2309,7 @@
       ]
     },
     "rpm-proc-observe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2321,7 +2322,7 @@
       }
     },
     "rpm-proc-observe-privileged": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2334,7 +2335,7 @@
       }
     },
     "rpm-public-install-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2348,7 +2349,7 @@
       }
     },
     "rpm-public-install-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2362,7 +2363,7 @@
       }
     },
     "rpm-public-install-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "fedora2328",
       "kind": "fixed_host",
       "modules": [
@@ -2376,7 +2377,7 @@
       }
     },
     "scenario-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "native_scenario_execution",
@@ -2385,7 +2386,7 @@
       ]
     },
     "scenario-resume": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "native_scenario_execution",
@@ -2400,10 +2401,10 @@
         "native_scenario_ssh",
         "native_artifact_registry"
       ],
-      "closure": "closure-22eb8fb8eeedb5ea"
+      "closure": "closure-95289ebdb07a9dff"
     },
     "scenario-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "native_scenario_execution",
@@ -2419,7 +2420,7 @@
       "closure": "closure-86b48ea0d916156d"
     },
     "windows-cp117-c32-archive-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2432,7 +2433,7 @@
       }
     },
     "windows-cp117-c32-archive-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2445,7 +2446,7 @@
       }
     },
     "windows-cp117-c32-host-archive-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2458,7 +2459,7 @@
       }
     },
     "windows-cp117-c32-retained-task-retire-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2471,7 +2472,7 @@
       }
     },
     "windows-cp117-c32-retained-task-retire-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2484,7 +2485,7 @@
       }
     },
     "windows-cp117-campaign-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2497,7 +2498,7 @@
       }
     },
     "windows-cp117-campaign-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2512,7 +2513,7 @@
       }
     },
     "windows-cp117-cp95-retained-tasks": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2525,7 +2526,7 @@
       }
     },
     "windows-cp117-cp95-task-retire-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2538,7 +2539,7 @@
       }
     },
     "windows-cp117-cp95-task-retire-finish": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2552,7 +2553,7 @@
       }
     },
     "windows-cp117-cp95-task-retire-finish-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2565,7 +2566,7 @@
       }
     },
     "windows-cp117-cp95-task-retire-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2579,7 +2580,7 @@
       }
     },
     "windows-cp117-cp95-task-retire-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2593,7 +2594,7 @@
       }
     },
     "windows-cp117-cp95-task-retire-successor-admission-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2606,7 +2607,7 @@
       }
     },
     "windows-cp117-cp95-task-retire-successor-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2620,7 +2621,7 @@
       }
     },
     "windows-cp117-cp95-task-retire-tail-close-pre-effect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2634,7 +2635,7 @@
       }
     },
     "windows-cp117-cp95-task-retire-tail-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2647,7 +2648,7 @@
       }
     },
     "windows-cp117-cp95-task-retire-tail-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2661,7 +2662,7 @@
       }
     },
     "windows-cp117-download-abort-current-successor-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2674,7 +2675,7 @@
       }
     },
     "windows-cp117-download-abort-current-successor-resume-begin": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2687,7 +2688,7 @@
       }
     },
     "windows-cp117-download-abort-current-successor-resume-close": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2700,7 +2701,7 @@
       }
     },
     "windows-cp117-download-abort-current-successor-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2713,7 +2714,7 @@
       }
     },
     "windows-cp117-download-abort-successor-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2726,7 +2727,7 @@
       }
     },
     "windows-cp117-download-abort-successor-resume-begin": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2739,7 +2740,7 @@
       }
     },
     "windows-cp117-download-abort-successor-resume-close": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2752,7 +2753,7 @@
       }
     },
     "windows-cp117-download-abort-successor-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2765,7 +2766,7 @@
       }
     },
     "windows-cp117-e66-successor-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2778,7 +2779,7 @@
       }
     },
     "windows-cp117-e66-successor-resume-begin": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2791,7 +2792,7 @@
       }
     },
     "windows-cp117-e66-successor-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2804,7 +2805,7 @@
       }
     },
     "windows-cp117-e848-http-task": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2817,7 +2818,7 @@
       }
     },
     "windows-cp117-e848-http-task-retire-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2831,7 +2832,7 @@
       }
     },
     "windows-cp117-e848-http-task-retire-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2845,7 +2846,7 @@
       }
     },
     "windows-cp117-guest-abort-successor-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2858,7 +2859,7 @@
       }
     },
     "windows-cp117-guest-abort-successor-resume-begin": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2871,7 +2872,7 @@
       }
     },
     "windows-cp117-guest-abort-successor-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2884,7 +2885,7 @@
       }
     },
     "windows-cp117-guest-agent-recovery-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2898,7 +2899,7 @@
       }
     },
     "windows-cp117-guest-agent-recovery-journal": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2912,7 +2913,7 @@
       }
     },
     "windows-cp117-guest-agent-recovery-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2926,7 +2927,7 @@
       }
     },
     "windows-cp117-guest-agent-recovery-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2940,7 +2941,7 @@
       }
     },
     "windows-cp117-guest-agent-recovery-successor-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2954,7 +2955,7 @@
       }
     },
     "windows-cp117-guest-agent-recovery-successor-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2968,7 +2969,7 @@
       }
     },
     "windows-cp117-historical-base-archives": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2981,7 +2982,7 @@
       }
     },
     "windows-cp117-retirement-recovery-finish": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -2994,7 +2995,7 @@
       }
     },
     "windows-cp117-retirement-recovery-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3007,7 +3008,7 @@
       }
     },
     "windows-cp117-retirement-recovery-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3020,7 +3021,7 @@
       }
     },
     "windows-cp117-source-campaign-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3034,7 +3035,7 @@
       }
     },
     "windows-cp117-source-campaign-finish": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3048,7 +3049,7 @@
       }
     },
     "windows-cp117-source-campaign-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3062,7 +3063,7 @@
       }
     },
     "windows-cp117-source-campaign-reservation-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3076,7 +3077,7 @@
       }
     },
     "windows-cp117-source-campaign-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3090,7 +3091,7 @@
       }
     },
     "windows-cp117-source-campaign-terminal-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3104,7 +3105,7 @@
       }
     },
     "windows-cp117-source-pre-effect-close": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3117,7 +3118,7 @@
       }
     },
     "windows-cp117-source-pre-effect-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3130,7 +3131,7 @@
       }
     },
     "windows-cp117-source-pre-effect-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3143,7 +3144,7 @@
       }
     },
     "windows-cp117-staged-fixture-retire-boundary": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3157,7 +3158,7 @@
       }
     },
     "windows-cp117-staged-fixture-retire-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3171,7 +3172,7 @@
       }
     },
     "windows-cp117-staged-fixture-retire-guard-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3185,7 +3186,7 @@
       }
     },
     "windows-cp117-staged-fixture-retire-locks": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3199,7 +3200,7 @@
       }
     },
     "windows-cp117-staged-fixture-retire-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3213,7 +3214,7 @@
       }
     },
     "windows-cp117-staged-fixture-retire-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3227,7 +3228,7 @@
       }
     },
     "windows-cp117-staged-fixture-retire-tree": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3241,49 +3242,49 @@
       }
     },
     "windows-credential-probe-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "windows_credential_probe_ssh"
       ]
     },
     "windows-credential-probe-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "windows_credential_probe_ssh"
       ]
     },
     "windows-credential-recover-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "windows_credential_recovery_ssh"
       ]
     },
     "windows-credential-recover-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "windows_credential_recovery_ssh"
       ]
     },
     "windows-desktop-test-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_desktop_test"
       ]
     },
     "windows-desktop-test-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_desktop_test"
       ]
     },
     "windows-fixture-acl-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3296,7 +3297,7 @@
       }
     },
     "windows-fixture-acl-preflight-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3309,7 +3310,7 @@
       }
     },
     "windows-fixture-credentials-abort-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3322,7 +3323,7 @@
       }
     },
     "windows-fixture-credentials-abort-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3335,7 +3336,7 @@
       }
     },
     "windows-fixture-credentials-cleanup-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3348,7 +3349,7 @@
       }
     },
     "windows-fixture-credentials-cleanup-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3361,7 +3362,7 @@
       }
     },
     "windows-fixture-credentials-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3374,7 +3375,7 @@
       }
     },
     "windows-fixture-credentials-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3387,7 +3388,7 @@
       }
     },
     "windows-fixture-credentials-failure-detail": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3400,7 +3401,7 @@
       }
     },
     "windows-fixture-credentials-pre-effect-guard-probe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3413,7 +3414,7 @@
       }
     },
     "windows-fixture-credentials-provenance-acl-shape": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3426,7 +3427,7 @@
       }
     },
     "windows-fixture-credentials-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3439,7 +3440,7 @@
       }
     },
     "windows-fixture-network-probe-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3452,7 +3453,7 @@
       }
     },
     "windows-fixture-network-probe-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3465,7 +3466,7 @@
       }
     },
     "windows-fixture-owner-network-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3478,7 +3479,7 @@
       }
     },
     "windows-fixture-owner-network-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3491,7 +3492,7 @@
       }
     },
     "windows-fixture-package-mode-repair-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3504,7 +3505,7 @@
       }
     },
     "windows-fixture-package-mode-repair-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3517,7 +3518,7 @@
       }
     },
     "windows-fixture-package-mode-repair-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3530,7 +3531,7 @@
       }
     },
     "windows-fixture-python-acquire-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3544,7 +3545,7 @@
       }
     },
     "windows-fixture-python-acquire-failure-detail": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3557,7 +3558,7 @@
       }
     },
     "windows-fixture-python-acquire-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3571,7 +3572,7 @@
       }
     },
     "windows-fixture-python-acquire-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3585,7 +3586,7 @@
       }
     },
     "windows-fixture-python-download-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3599,7 +3600,7 @@
       }
     },
     "windows-fixture-python-host-source-observe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3613,7 +3614,7 @@
       }
     },
     "windows-fixture-python-install-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3627,7 +3628,7 @@
       }
     },
     "windows-fixture-python-install-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3641,7 +3642,7 @@
       }
     },
     "windows-fixture-python-install-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3655,7 +3656,7 @@
       }
     },
     "windows-fixture-python-inventory-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3668,7 +3669,7 @@
       }
     },
     "windows-fixture-python-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3681,7 +3682,7 @@
       }
     },
     "windows-fixture-server-abort-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3694,7 +3695,7 @@
       }
     },
     "windows-fixture-server-abort-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3707,7 +3708,7 @@
       }
     },
     "windows-fixture-server-abort-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3720,7 +3721,7 @@
       }
     },
     "windows-fixture-server-abort-successor-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3733,7 +3734,7 @@
       }
     },
     "windows-fixture-server-abort-successor-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3746,7 +3747,7 @@
       }
     },
     "windows-fixture-server-acl-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3759,7 +3760,7 @@
       }
     },
     "windows-fixture-server-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3772,7 +3773,7 @@
       }
     },
     "windows-fixture-server-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3785,7 +3786,7 @@
       }
     },
     "windows-fixture-server-post-resource-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3798,7 +3799,7 @@
       }
     },
     "windows-fixture-server-probe-events-acl-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3811,7 +3812,7 @@
       }
     },
     "windows-fixture-server-second-abort-recovery-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3824,7 +3825,7 @@
       }
     },
     "windows-fixture-server-second-abort-recovery-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3837,7 +3838,7 @@
       }
     },
     "windows-fixture-server-second-abort-successor-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3850,7 +3851,7 @@
       }
     },
     "windows-fixture-server-second-abort-successor-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3863,7 +3864,7 @@
       }
     },
     "windows-fixture-server-static-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3876,7 +3877,7 @@
       }
     },
     "windows-fixture-server-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3889,7 +3890,7 @@
       }
     },
     "windows-fixture-server-stop-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3902,7 +3903,7 @@
       }
     },
     "windows-fixture-server-stop-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3915,7 +3916,7 @@
       }
     },
     "windows-fixture-stage-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3928,7 +3929,7 @@
       }
     },
     "windows-fixture-stage-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3941,7 +3942,7 @@
       }
     },
     "windows-fixture-stage-recover-7f27": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3954,7 +3955,7 @@
       }
     },
     "windows-fixture-stage-recover-7f27-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3967,7 +3968,7 @@
       }
     },
     "windows-fixture-stage-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3980,7 +3981,7 @@
       }
     },
     "windows-input-decision": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -3993,7 +3994,7 @@
       }
     },
     "windows-input-finish": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4006,7 +4007,7 @@
       }
     },
     "windows-input-join": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4019,7 +4020,7 @@
       }
     },
     "windows-input-observe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4032,7 +4033,7 @@
       }
     },
     "windows-input-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4045,7 +4046,7 @@
       }
     },
     "windows-msi-base-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4059,7 +4060,7 @@
       }
     },
     "windows-msi-base-finish-observed": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4072,7 +4073,7 @@
       }
     },
     "windows-msi-base-pre-effect-close": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4085,7 +4086,7 @@
       }
     },
     "windows-msi-base-pre-effect-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4098,7 +4099,7 @@
       }
     },
     "windows-msi-base-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4112,7 +4113,7 @@
       }
     },
     "windows-msi-base-readiness": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4126,7 +4127,7 @@
       }
     },
     "windows-msi-base-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4140,7 +4141,7 @@
       }
     },
     "windows-msi-base-stage-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4154,7 +4155,7 @@
       }
     },
     "windows-msi-base-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4168,7 +4169,7 @@
       }
     },
     "windows-msi-base-terminal-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4182,7 +4183,7 @@
       }
     },
     "windows-msi-base-transfer-endpoint-probe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4196,7 +4197,7 @@
       }
     },
     "windows-msi-base-transfer-endpoint-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4210,7 +4211,7 @@
       }
     },
     "windows-msi-base-transfer-endpoint-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4224,7 +4225,7 @@
       }
     },
     "windows-msi-base-transfer-network-admission": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4238,7 +4239,7 @@
       }
     },
     "windows-msi-base-transfer-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4252,7 +4253,7 @@
       }
     },
     "windows-msi-base-unknown-close": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4266,7 +4267,7 @@
       }
     },
     "windows-msi-base-unknown-close-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4312,10 +4313,10 @@
       "modules": [
         "windows_msi_http_transfer"
       ],
-      "closure": "closure-22eb8fb8eeedb5ea"
+      "closure": "closure-95289ebdb07a9dff"
     },
     "windows-msi-owner-census": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4329,7 +4330,7 @@
       }
     },
     "windows-msi-owner-census-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4343,7 +4344,7 @@
       }
     },
     "windows-msi-owner-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4356,7 +4357,7 @@
       }
     },
     "windows-msi-owner-liveness": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4369,7 +4370,7 @@
       }
     },
     "windows-msi-owner-observe-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4382,7 +4383,7 @@
       }
     },
     "windows-msi-owner-observe-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4395,7 +4396,7 @@
       }
     },
     "windows-msi-owner-observe-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4408,7 +4409,7 @@
       }
     },
     "windows-msi-owner-public-status-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4421,7 +4422,7 @@
       }
     },
     "windows-msi-owner-public-status-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4434,7 +4435,7 @@
       }
     },
     "windows-msi-owner-public-status-retry-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4447,7 +4448,7 @@
       }
     },
     "windows-msi-owner-public-status-retry-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4460,7 +4461,7 @@
       }
     },
     "windows-msi-owner-public-status-retry-observe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4473,7 +4474,7 @@
       }
     },
     "windows-msi-owner-public-status-retry-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4486,7 +4487,7 @@
       }
     },
     "windows-msi-owner-public-status-retry-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4499,7 +4500,7 @@
       }
     },
     "windows-msi-owner-public-status-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4512,7 +4513,7 @@
       }
     },
     "windows-msi-owner-public-status-third-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4525,7 +4526,7 @@
       }
     },
     "windows-msi-owner-public-status-third-observe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4538,7 +4539,7 @@
       }
     },
     "windows-msi-owner-public-status-third-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4551,7 +4552,7 @@
       }
     },
     "windows-msi-owner-quit-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4564,7 +4565,7 @@
       }
     },
     "windows-msi-owner-quit-phase-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4577,7 +4578,7 @@
       }
     },
     "windows-msi-owner-quit-phase-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4590,7 +4591,7 @@
       }
     },
     "windows-msi-owner-quit-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4603,7 +4604,7 @@
       }
     },
     "windows-msi-owner-quit-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4616,7 +4617,7 @@
       }
     },
     "windows-msi-owner-relaunch-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4629,7 +4630,7 @@
       }
     },
     "windows-msi-owner-relaunch-detail": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4642,7 +4643,7 @@
       }
     },
     "windows-msi-owner-relaunch-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4655,7 +4656,7 @@
       }
     },
     "windows-msi-owner-relaunch-endpoint-access": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4668,7 +4669,7 @@
       }
     },
     "windows-msi-owner-relaunch-launch": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4681,7 +4682,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4694,7 +4695,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4707,7 +4708,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4720,7 +4721,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-v2-bootstrap-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4733,7 +4734,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-v2-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4746,7 +4747,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-v2-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4759,7 +4760,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-v2-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4772,7 +4773,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-v3-bootstrap-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4785,7 +4786,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-v3-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4798,7 +4799,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-v3-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4811,7 +4812,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-v3-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4824,7 +4825,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-v3-task-result": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4837,7 +4838,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-v4-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4850,7 +4851,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-v4-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4863,7 +4864,7 @@
       }
     },
     "windows-msi-owner-relaunch-quit-v4-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4876,7 +4877,7 @@
       }
     },
     "windows-msi-owner-relaunch-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4889,7 +4890,7 @@
       }
     },
     "windows-msi-powershell-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4902,7 +4903,7 @@
       }
     },
     "windows-msi-preinstall-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4915,7 +4916,7 @@
       }
     },
     "windows-msi-public-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4928,7 +4929,7 @@
       }
     },
     "windows-msi-public-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4941,7 +4942,7 @@
       }
     },
     "windows-msi-stale-lock-diagnose": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4954,7 +4955,7 @@
       }
     },
     "windows-msi-stale-lock-reconcile": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4967,7 +4968,7 @@
       }
     },
     "windows-msi-stale-lock-reconcile-close": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4980,7 +4981,7 @@
       }
     },
     "windows-msi-stale-lock-reconcile-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -4993,7 +4994,7 @@
       }
     },
     "windows-msi-stale-lock-reconciliation-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5006,7 +5007,7 @@
       }
     },
     "windows-msi-stale-lock-recover": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5019,7 +5020,7 @@
       }
     },
     "windows-msi-target-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5032,7 +5033,7 @@
       }
     },
     "windows-msi-target-readiness": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5045,7 +5046,7 @@
       }
     },
     "windows-msi-target-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5058,7 +5059,7 @@
       }
     },
     "windows-msiexec-service-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5071,7 +5072,7 @@
       }
     },
     "windows-parallel-vm-copy-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5084,7 +5085,7 @@
       }
     },
     "windows-parallel-vm-source-inventory": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5097,28 +5098,28 @@
       }
     },
     "windows-uac-decision": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "windows_uac_decision"
       ]
     },
     "windows-uac-review": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "selected_host",
       "modules": [
         "windows_uac_decision"
       ]
     },
     "windows-uac-visual": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_uac_visual"
       ]
     },
     "windows-update-fixture-download-abort": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5131,7 +5132,7 @@
       }
     },
     "windows-update-fixture-download-abort-current": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5144,7 +5145,7 @@
       }
     },
     "windows-update-fixture-download-abort-current-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5157,7 +5158,7 @@
       }
     },
     "windows-update-fixture-download-abort-current-task-cleanup": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5170,7 +5171,7 @@
       }
     },
     "windows-update-fixture-download-abort-current-task-cleanup-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5183,7 +5184,7 @@
       }
     },
     "windows-update-fixture-download-abort-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5196,7 +5197,7 @@
       }
     },
     "windows-update-fixture-download-task-cleanup": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5209,7 +5210,7 @@
       }
     },
     "windows-update-fixture-download-task-cleanup-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5222,7 +5223,7 @@
       }
     },
     "windows-update-fixture-guest-create-abort": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5235,7 +5236,7 @@
       }
     },
     "windows-update-fixture-guest-create-abort-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5248,7 +5249,7 @@
       }
     },
     "windows-update-fixture-http-stage-extract-diagnostic": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5265,10 +5266,10 @@
       "modules": [
         "windows_update_fixture_http_stage"
       ],
-      "closure": "closure-22eb8fb8eeedb5ea"
+      "closure": "closure-95289ebdb07a9dff"
     },
     "windows-update-fixture-phase-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5282,84 +5283,84 @@
       }
     },
     "windows-vm-deploy-frame": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_vm_deploy"
       ]
     },
     "windows-vm-deploy-frame-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_vm_deploy"
       ]
     },
     "windows-vm-deploy-media": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_vm_deploy"
       ]
     },
     "windows-vm-deploy-preflight": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_vm_deploy"
       ]
     },
     "windows-vm-deploy-qualify": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_vm_deploy"
       ]
     },
     "windows-vm-deploy-qualify-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_vm_deploy"
       ]
     },
     "windows-vm-deploy-release": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_vm_reservation_release"
       ]
     },
     "windows-vm-deploy-resources": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_vm_deploy"
       ]
     },
     "windows-vm-deploy-secure": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_vm_deploy"
       ]
     },
     "windows-vm-deploy-secure-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_vm_deploy"
       ]
     },
     "windows-vm-deploy-start": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_vm_deploy"
       ]
     },
     "windows-vm-deploy-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "kind": "windows_deployment",
       "modules": [
         "windows_vm_deploy"
@@ -5370,10 +5371,10 @@
       "modules": [
         "windows_vm_deploy"
       ],
-      "closure": "closure-22eb8fb8eeedb5ea"
+      "closure": "closure-95289ebdb07a9dff"
     },
     "windows-vm-disk-probe-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5386,7 +5387,7 @@
       }
     },
     "windows-vm-driver-fetch-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5399,7 +5400,7 @@
       }
     },
     "windows-vm-fresh-screen-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5412,7 +5413,7 @@
       }
     },
     "windows-vm-fresh-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5425,7 +5426,7 @@
       }
     },
     "windows-vm-optical-attempt2-close-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5439,7 +5440,7 @@
       }
     },
     "windows-vm-optical-attempt2-phase-probe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5452,7 +5453,7 @@
       }
     },
     "windows-vm-optical-attempt2-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5466,7 +5467,7 @@
       }
     },
     "windows-vm-optical-attempt3-frame-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5479,7 +5480,7 @@
       }
     },
     "windows-vm-optical-attempt3-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5493,7 +5494,7 @@
       }
     },
     "windows-vm-optical-boot-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5506,7 +5507,7 @@
       }
     },
     "windows-vm-optical-close-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5519,7 +5520,7 @@
       }
     },
     "windows-vm-optical-current-screen-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5533,7 +5534,7 @@
       }
     },
     "windows-vm-optical-current-screen-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5547,7 +5548,7 @@
       }
     },
     "windows-vm-secureboot-fresh-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5560,7 +5561,7 @@
       }
     },
     "windows-vm-secureboot-inventory": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5573,7 +5574,7 @@
       }
     },
     "windows-vm-setup-install-ack-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5586,7 +5587,7 @@
       }
     },
     "windows-vm-setup-install-ack-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5599,7 +5600,7 @@
       }
     },
     "windows-vm-setup-install-disk-proof": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5612,7 +5613,7 @@
       }
     },
     "windows-vm-setup-install-focus-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5625,7 +5626,7 @@
       }
     },
     "windows-vm-setup-install-focus-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5638,7 +5639,7 @@
       }
     },
     "windows-vm-setup-install-next-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5651,7 +5652,7 @@
       }
     },
     "windows-vm-setup-install-next-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5664,7 +5665,7 @@
       }
     },
     "windows-vm-setup-keyboard-next-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5677,7 +5678,7 @@
       }
     },
     "windows-vm-setup-keyboard-next-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5690,7 +5691,7 @@
       }
     },
     "windows-vm-setup-language-next-collect": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5703,7 +5704,7 @@
       }
     },
     "windows-vm-setup-language-next-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5716,7 +5717,7 @@
       }
     },
     "windows-vm-swtpm-owner-observe": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5729,7 +5730,7 @@
       }
     },
     "windows-vm-swtpm-repair-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [
@@ -5742,7 +5743,7 @@
       }
     },
     "windows-vm-virt-firmware-install-status": {
-      "closure": "closure-22eb8fb8eeedb5ea",
+      "closure": "closure-95289ebdb07a9dff",
       "host": "archlinux",
       "kind": "fixed_host",
       "modules": [

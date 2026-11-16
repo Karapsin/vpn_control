@@ -47,7 +47,7 @@ PROXY_ROWS = tuple("windows-proxy-lifecycle." + variant for variant in (
     "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated", "custom", "large",
     "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh", "no-tray-close"))
 DOCUMENT_ROWS = ("windows-document-acceptance", *("windows-document-cold." + variant for variant in (
-    "cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")))
+    "cold-reopen", "legacy-newline", "gui-owner", "cache-bytes", "gui-picker")))
 # The responsive row runs the same document action with its responsiveWork; cache-bytes with its own cache source.
 RESPONSIVE_ROW = "windows-document-responsive"
 ADMITTED_DOCUMENT_ROWS = (*DOCUMENT_ROWS, RESPONSIVE_ROW)
@@ -470,12 +470,13 @@ class DocumentTableTests(unittest.TestCase):
             with self.subTest(name=name):
                 row = windows.RECIPES[name]
                 variant = None if name == "windows-document-acceptance" else name.split(".", 1)[1]
-                cache = variant == "cache-bytes"
+                cache, gui_picker = variant == "cache-bytes", variant == "gui-picker"
                 self.assertEqual(("product", "python-worker", "document-acceptance", True, None),
                                  (row["evidenceClass"], row["bootstrapMode"], row["workerAction"], row["priorInstall"], row["package"]))
                 self.assertEqual({"variant": variant, "principalProbe": variant is None, "rootSubfolders": ("document-temp",)}, row["document"])
                 self.assertEqual(["owner", "worker", "cases", "client", "windows", "race", "harness", "diagnostic"]
-                                 + (["cacheFixture", "runtime", "socks", "https"] if cache else []),
+                                 + (["cacheFixture", "runtime", "socks", "https"] if cache else [])
+                                 + (["picker", "pickerDesktop"] if gui_picker else []),
                                  [role for _, role, _ in row["guestFiles"]])
                 self.assertEqual((host_job.POWERSHELL_PATH,), row["readPins"])
                 self.assertIsNone(row["refusal"])
@@ -485,7 +486,9 @@ class DocumentTableTests(unittest.TestCase):
                                                             **({"certificate": "document-cache-localhost.pem",
                                                                 "privateKey": "document-cache-localhost.key",
                                                                 "trustStore": "document-cache-trust.jks",
-                                                                "cacheBody": "document-cache-subscription.txt"} if cache else {})},
+                                                                "cacheBody": "document-cache-subscription.txt"} if cache else {}),
+                                                            **({"pickerFirst": "document-picker-first.json",
+                                                                "pickerSecond": "document-picker-second.json"} if gui_picker else {})},
                                  generated)
                 leaves = [relative.rsplit("/", 1)[1] for relative, _, _ in row["guestFiles"]] + [leaf for _, leaf in row.get("generated", ())]
                 self.assertEqual(len(leaves), len(set(leaves)), "every guest file of the row has its own name in the workspace")

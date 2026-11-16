@@ -433,15 +433,29 @@ class ExactChildStopTests(MatrixBase):
         others = sorted({row for rows in MATRIX_REAL[DOCUMENTS].values() for row in rows} - {cache})
         rows = [self.row(name, route) for name in others + [cache] for route in ("direct", "mcp")]
         scenarios = windows.matrix_review(self.root, DOCUMENTS, rows)["scenarios"]
-        self.assertEqual(("passed", "unmapped"), (scenarios["cache-digest-bytes"], scenarios["gui-cli-transfer"]))
-        self.assertEqual({"passed"}, {state for name, state in scenarios.items() if name != "gui-cli-transfer"})
-        self.assert_refused(rows, "windows_matrix_incomplete:1", DOCUMENTS)
+        self.assertEqual("passed", scenarios["cache-digest-bytes"])
+        self.assertEqual({"passed"}, set(scenarios.values()), "with gui-picker, gui-cli-transfer passes too")
+        self.assertEqual("passed", self.observe(rows, DOCUMENTS)["result"])
         # Without the cache row, or with it on one route only, the scenario stays open; every other one still passes.
         for subset in ([self.row(name, route) for name in others for route in ("direct", "mcp")],
                        [self.row(name, route) for name in others for route in ("direct", "mcp")] + [self.row(cache, "direct")]):
             scenarios = windows.matrix_review(self.root, DOCUMENTS, subset)["scenarios"]
             self.assertEqual("missing", scenarios["cache-digest-bytes"])
-            self.assertEqual({"passed"}, {state for name, state in scenarios.items() if name not in ("gui-cli-transfer", "cache-digest-bytes")})
+            self.assertEqual({"passed"}, {state for name, state in scenarios.items() if name != "cache-digest-bytes"})
+            self.assert_refused(subset, "windows_matrix_incomplete:1", DOCUMENTS)
+
+    def test_with_the_real_table_gui_cli_transfer_needs_both_its_cli_and_its_gui_half(self):
+        # RED on efd774b0, where gui-cli-transfer mapped to no row: the GUI's own file picker had no tool, and a passed
+        # CLD(gui-owner) never counted. It now takes CLD(gui-owner), the CLI's transfers through a GUI-started owner, and
+        # CLD(gui-picker), the GUI's own picker export and import against the CLI's, each with its direct and MCP pass.
+        owner, gui = "windows-document-cold.gui-owner", "windows-document-cold.gui-picker"
+        self.assertEqual((owner, gui), MATRIX_REAL[DOCUMENTS]["gui-cli-transfer"])
+        both = [self.row(name, route) for name in (owner, gui) for route in ("direct", "mcp")]
+        self.assertEqual("passed", windows.matrix_review(self.root, DOCUMENTS, both)["scenarios"]["gui-cli-transfer"])
+        for missing in ((gui, "direct"), (gui, "mcp"), (owner, "mcp")):
+            with self.subTest(missing=missing):
+                rows = [self.row(name, route) for name in (owner, gui) for route in ("direct", "mcp") if (name, route) != missing]
+                self.assertNotEqual("passed", windows.matrix_review(self.root, DOCUMENTS, rows)["scenarios"]["gui-cli-transfer"])
 
 
 class PrincipalVerdictTests(MatrixBase):
@@ -1014,8 +1028,7 @@ class TableTests(unittest.TestCase):
                          - set(MATRIX_REAL["document-persistence-transfer"]))
         unmapped = sorted(name + ":" + scenario for name, table in MATRIX_REAL.items() for scenario, rows in table.items() if not rows)
         self.assertEqual(sorted(["windows-visual:" + item for item in ("scene-capture", "geometry-contrast", "agent-verdict")]
-                                + ["windows-scoped-vpn:" + item for item in ("exact-child-stop",)]
-                                + ["document-persistence-transfer:" + item for item in ("gui-cli-transfer",)]),
+                                + ["windows-scoped-vpn:" + item for item in ("exact-child-stop",)]),
                          unmapped)
         # The SSH row declares a relayed transfer and a stdin key import still to do, which the relay row does: they prove
         # ssh-import-routing together and nothing else, and each is a product row admitted today.
@@ -1095,15 +1108,18 @@ class TableTests(unittest.TestCase):
                          {row: scenarios for row, scenarios in named.items() if row.startswith("windows-scoped-tun.") and scenarios})
         self.assertEqual((), MATRIX_REAL["windows-scoped-vpn"]["exact-child-stop"])
         self.assertEqual(("windows-scoped-tun.restart-grant", "windows-public-update.success-off"), MATRIX_REAL["windows-native-cli"]["scoped-elevation"])
-        # gui-owner is only the CLI half of gui-cli-transfer, which stays missing. cache-bytes reads the committed cache
-        # back and, with the product closed, corrupts it three ways that must each be kept aside with the typed status:
-        # both halves of cache-digest-bytes, and nothing else.
-        self.assertEqual(([], ["document-persistence-transfer:cache-digest-bytes"]),
-                         (named["windows-document-cold.gui-owner"], named["windows-document-cold.cache-bytes"]))
+        # gui-owner is the CLI half of gui-cli-transfer and gui-picker its GUI half: each proves that scenario alone.
+        # cache-bytes reads the committed cache back and, with the product closed, corrupts it three ways that must each
+        # be kept aside with the typed status: both halves of cache-digest-bytes, and nothing else.
+        self.assertEqual(([DOCUMENTS + ":gui-cli-transfer"], [DOCUMENTS + ":gui-cli-transfer"], [DOCUMENTS + ":cache-digest-bytes"]),
+                         (named["windows-document-cold.gui-owner"], named["windows-document-cold.gui-picker"],
+                          named["windows-document-cold.cache-bytes"]))
         documents = MATRIX_REAL["document-persistence-transfer"]
-        self.assertEqual(((), ("windows-document-cold.cache-bytes",)), (documents["gui-cli-transfer"], documents["cache-digest-bytes"]))
+        self.assertEqual((("windows-document-cold.gui-owner", "windows-document-cold.gui-picker"), ("windows-document-cold.cache-bytes",)),
+                         (documents["gui-cli-transfer"], documents["cache-digest-bytes"]))
         self.assertEqual({doc, rsp, cfg, "windows-document-cold.cold-reopen", "windows-document-cold.legacy-newline",
-                          "windows-document-cold.cache-bytes"}, {row for rows in documents.values() for row in rows})
+                          "windows-document-cold.gui-owner", "windows-document-cold.gui-picker", "windows-document-cold.cache-bytes"},
+                         {row for rows in documents.values() for row in rows})
         self.assertEqual({"large-import-readback", "retained-result-export", "private-no-overwrite-export", "unicode-surrogate"},
                          {scenario for scenario, rows in documents.items() if cfg in rows}, "design.md step 8: these take DOC and CFG")
         self.assertEqual({"document-persistence-transfer": ("android-48m-heap",)}, windows.MATRIX_LIMITED)

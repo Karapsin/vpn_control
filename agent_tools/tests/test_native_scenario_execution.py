@@ -373,7 +373,7 @@ class NativeScenarioExecutionTest(unittest.TestCase):
                                                                                       "resources-grant", "ssh-grant", "stage-squat")),
                                     *updates,
                                     "windows-document-acceptance", *("windows-document-cold." + variant for variant in (
-                                        "cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")),
+                                        "cold-reopen", "legacy-newline", "gui-owner", "cache-bytes", "gui-picker")),
                                     "windows-document-responsive"}),
                          execution.WINDOWS_SCENARIOS)
         for name in ("windows-proxy-lifecycle", "windows-proxy-lifecycle.no-tray", "windows-proxy-lifecycle.scheduled",

@@ -126,6 +126,8 @@ _SCENARIOS = {
         "agent_tools/windows_document_gated_https_fixture.py",
         # The cold cache variant's own in-guest subscription source; the runtime stages and both producers are above.
         "agent_tools/windows_document_cache_fixture.py",
+        # The cold picker variant's GUI steps; the owned desktop they run on (windows_no_tray_desktop.py) is above.
+        "agent_tools/windows_document_gui_picker.py",
     ),
 }
 

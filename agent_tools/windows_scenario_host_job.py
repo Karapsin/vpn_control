@@ -83,7 +83,8 @@ DIRECTORY_BATCH = 256
 # Top-level evidence only; folders holding activation.port are never entered.
 EVIDENCE_NAME = (r"(?:(?:task-)?event-[0-9A-Za-z_.-]+\.json|child-[0-9A-Za-z_.-]+\.raw"
                  r"|task-child\.[0-9A-Za-z_.-]+\.raw|(?:task-)?owner-parked\.json"
-                 r"|(?:python-install|msi-install|msi-uninstall)[0-9A-Za-z_.-]*\.log|update-[a-z0-9-]+\.json)")
+                 r"|(?:python-install|msi-install|msi-uninstall)[0-9A-Za-z_.-]*\.log|update-[a-z0-9-]+\.json"
+                 r"|document-gui-picker-frame-[0-9]{2}-[a-z0-9-]+\.png)")
 # The public-update rows. The fixture, its TLS files and the collector roots live in the workspace,
 # which the ordinary user may only read; the fixture's server-state folder alone is the user's.
 UPDATE_ACTION = "windows-public-update"
@@ -234,6 +235,12 @@ CACHE_BODY_LEAF = "document-cache-subscription.txt"
 CACHE_TLS = (("certificate", "document-cache-localhost.pem"), ("privateKey", "document-cache-localhost.key"),
              ("trustStore", "document-cache-trust.jks"))
 CACHE_SUBSCRIPTION_NAME = "Owned cache"
+# windows-document-cold.gui-picker: the cold module with the GUI's own file picker (windows_document_gui_picker on an
+# owned desktop, windows_no_tray_desktop). Two small routing documents in the product's own export form, each with its
+# own suffixes, so every import the row makes changes the committed rules; the GUI shows them on its routing screen.
+DOCUMENT_PICKER = "gui-picker"
+PICKER_ENTRIES = 512
+PICKER_INPUTS = (("pickerFirst", "document-picker-first.json", "first"), ("pickerSecond", "document-picker-second.json", "second"))
 PRINCIPAL_WINDOW = "document-principal-window"
 LOCAL_SERVICE = "S-1-5-19"
 _DOMAIN_BOUNDARY = re.compile(r"[,\n\r\t ]")
@@ -734,6 +741,18 @@ def document_input(entries=DOCUMENT_INPUT_ENTRIES):
     return (head + body + "\n    ]\n  }\n}").encode("ascii")
 
 
+def picker_suffixes(label, entries=PICKER_ENTRIES):
+    return ["%s%04d.picker.invalid" % (label, number) for number in range(entries)]
+
+
+def picker_input(label, entries=PICKER_ENTRIES):
+    """One of the picker row's two documents: the product's export form with a fixed timestamp and its own suffixes."""
+    head = ('{\n  "type": "vpn_control_routing_rules",\n  "version": 7,\n  "exported_at": "2026-01-01T00:00:00Z",\n  "rules": {\n'
+            '    "ignore_rules": false,\n    "block_quic_udp_443": false,\n    "proxy_packages": [],\n    "direct_domain_suffixes": [')
+    body = ",".join('\n      "%s"' % value for value in picker_suffixes(label, entries))
+    return (head + body + "\n    ]\n  }\n}").encode("ascii")
+
+
 def normalized_suffixes(values):
     """RoutingRulesCharacterImport's domain entries: each string split at , LF CR tab and space, trimmed, a leading
     *. and outer dots removed, lower-cased, first occurrence kept. A legacy newline-joined entry is many domains."""
@@ -894,10 +913,22 @@ def cache_input(paths):
             "expectedCount": len(stored), "expectedNewlineBytes": len(newline), "expectedNewlineSha256": _sha(newline)}
 
 
+def picker_case_input(paths):
+    """The picker variant's part of the cold module's literal input: its two modules, its two documents and their digests."""
+    return {"modulePath": paths["file:picker"], "desktopPath": paths["file:pickerDesktop"],
+            "firstInputPath": paths["file:pickerFirst"], "secondInputPath": paths["file:pickerSecond"],
+            "firstSemanticSha256": routing_semantic_sha256(picker_suffixes("first")),
+            "secondSemanticSha256": routing_semantic_sha256(picker_suffixes("second")), "suffixCount": PICKER_ENTRIES}
+
+
 def cold_input(row, paths, operation):
     """The cold module's literal input: its variant, the document it imports and the digest its export must have.
-    The cache variant's names its source's roles and the stored locations its refresh must commit instead."""
+    The cache variant's names its source's roles and the stored locations its refresh must commit instead, and the
+    picker variant's its modules and its two documents."""
     variant = row["document"]["variant"]
+    if variant == DOCUMENT_PICKER:
+        value = {"schemaVersion": 1, "variant": variant, "operationId": operation, "picker": picker_case_input(paths)}
+        return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
     if variant == DOCUMENT_CACHE:
         value = {"schemaVersion": 1, "variant": variant, "operationId": operation, "cache": cache_input(paths)}
         return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
@@ -2836,6 +2867,8 @@ class Job:
             if variant == DOCUMENT_CACHE:
                 tls = self._load("windows_scenario_proxy").material(secrets.randbits, time.time())
                 targets += [(role, tls[role]) for role, _ in CACHE_TLS] + [("cacheBody", cache_body())]
+            if variant == DOCUMENT_PICKER:
+                targets += [(role, picker_input(label)) for role, _, label in PICKER_INPUTS]
             targets.append(("coldInput", cold_input(self.row, self.paths, self.op)))
         if [role for role, _ in self.row["generated"]] != [role for role, _ in targets]:
             raise KnownFailure("document_files_not_the_row")

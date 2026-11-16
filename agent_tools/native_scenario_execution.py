@@ -48,7 +48,7 @@ WINDOWS_SCENARIOS = frozenset({  # Rows live in native_scenario_windows; a varia
         "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect", "success-explicit-off",
         "different-admin", "wait-client-loss", "installer-wait-client-loss")),
     "windows-document-acceptance",
-    *("windows-document-cold." + variant for variant in ("cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")),
+    *("windows-document-cold." + variant for variant in ("cold-reopen", "legacy-newline", "gui-owner", "cache-bytes", "gui-picker")),
     "windows-document-responsive"})
 # One closed job outside the scenario table: a complete in-guest :desktopApp:test, admitted and driven only by
 # windows_desktop_test under its own journal directory. scenario-start has no artifact recipe for it.

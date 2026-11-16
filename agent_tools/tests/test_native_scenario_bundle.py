@@ -69,8 +69,8 @@ class NativeScenarioBundleTest(unittest.TestCase):
         # document rows five, the scoped-TUN rows three (the grant's TUN collector among them), the SSH import row its
         # case module, the responsive row three, the scheduled-refresh row its case module, the no-tray-close row its
         # desktop module, the SSH relay row two, two levels deep under scripts/integration among them, the cache row its
-        # source and the reserved scoped-TUN cases their one case module.
-        self.assertEqual(67, len(verify_bundle(self.root, destination, receipt["manifestSha256"])["files"]))
+        # source, the reserved scoped-TUN cases their one case module and the GUI picker row its picker steps.
+        self.assertEqual(68, len(verify_bundle(self.root, destination, receipt["manifestSha256"])["files"]))
         self.assertEqual({"agent_tools", "scripts", MANIFEST_NAME}, {item.name for item in destination.iterdir()})
         self.assertTrue((destination / "scripts/integration/socks_http_fixture.py").is_file(), "a nested script moves with its top-level name")
         self.assertEqual([], list(self.root.parent.glob("native-scenario-stage-*")))

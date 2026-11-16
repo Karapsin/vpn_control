@@ -1670,9 +1670,10 @@ module in `document-cold-input.json`.
   the product splits and normalizes as `RoutingRulesCharacterImport` does.
 - `gui-owner`: the installed GUI reopens the workspace and starts its own
   controller, and the CLI imports and exports the large document through that
-  GUI-started owner. It needs no UI input. It is only the CLI half of
-  gui-cli-transfer: the GUI's own file picker import and export have no tool, so
-  gui-cli-transfer stays open and a passed `gui-owner` never counts for it.
+  GUI-started owner. It needs no UI input. It is the CLI half of
+  gui-cli-transfer; `gui-picker` is its GUI half, and the scenario needs both.
+- `gui-picker` (gui-cli-transfer, GUI half): the GUI's own file picker against the
+  CLI, below.
 - `cache-bytes` (cache-digest-bytes): the committed subscription cache, read
   back and then corrupted while the product is closed. The
   committed cache is filled only by a refresh from a subscription source, so before
@@ -1735,6 +1736,91 @@ module in `document-cold-input.json`.
   and awaited before any serve exists: `document-cache-fixture-not-ready:<timeout
   |ended|refused>:...`. A refresh whose answer is not final keeps every original
   for the park.
+
+`windows-document-cold.gui-picker` is the GUI half of gui-cli-transfer (CLI-002,
+PRODUCT-004): the installed GUI's own file picker against the CLI. The job adds the
+picker steps (`windows_document_gui_picker.py`) and the owned desktop they run on
+(`windows_no_tray_desktop.py`) to the row's files, and makes two small routing
+documents in the product's export form from a fixed recipe (512 suffixes each,
+`document-picker-first.json` and `document-picker-second.json`). The literal input
+names both modules, both documents and their export digests. The original serve
+imports the first by the CLI and exports it, and is quit. The GUI then starts with
+`--state-dir` on a new private desktop of `WinSta0` (the no-tray row's
+`OwnedNoTrayDesktop` under its own child label, open to SYSTEM and the ordinary
+user only, with no shell), starts its own controller, and its main window must be
+the one visible `SunAwtFrame`, with every window of that desktop the launcher's or
+its direct child's on a 1280 x 800, 96 DPI display. The row switches the input
+desktop to the private one and moves the main window to the visual suite's window
+frame placement (140, 16, 1000 x 720). In order:
+
+1. GUI export: Routing, Export, File, then the Save dialog. The file the GUI writes
+   must be the CLI's export of the same rules byte for byte, except the one
+   `exported_at` value (`same_export`: a GUI export without exactly one
+   `exported_at` in its place differs).
+2. The CLI, through the GUI's controller, imports the second document and exports
+   it, then imports the GUI's export, whose readback must be the first document.
+3. GUI import: Import, File, then the Open dialog on the CLI's export of the second
+   document. The controller's revision must change within 60 s, and the export must
+   be the second document.
+4. The CLI imports the GUI's export and then the same CLI export of the second
+   document. The committed `persisted_state.routing_rules` in `workspace.json`, its
+   suffix count, the export and status must equal what step 3 left.
+
+The input desktop is then Default again, and the owner's pass closing quits the
+GUI-started owner as for `gui-owner`.
+
+Every click is reviewed. Before it the pointer is parked at (4, 796) on the bare
+desktop, and the main window's region is captured from that desktop's screen until
+two consecutive captures are identical (at most 20, 250 ms apart: the region
+capture's stable-frame rule). The frame is kept as
+`document-gui-picker-frame-<nn>-<step>.png` in the operation root, which the
+evidence zip collects, with a `document-gui-picker-frame` event naming its
+rectangle and digests. The click follows only when:
+
+- the step has an entry in `windows_document_gui_picker.PROFILE`: a point, an anchor
+  rectangle that holds it inside the placement, and the sha256 of the reviewed
+  frame's RGB pixels inside the anchor;
+- this frame's anchor pixels have that digest;
+- the pointer reads back at the point after `SetCursorPos`;
+- the window under the point belongs to the GUI's processes.
+
+It is one `SendInput` of a left press and release. A step with no entry ends the row
+`document-gui-picker-frame-unreviewed:<step>` with its frame kept and nothing
+clicked: the reviewer opens that frame and records the step with `review_step`. A
+frame whose anchor differs ends `document-gui-picker-anchor-mismatch:<step>`, so a
+redrawn control is never clicked unreviewed. No step is reviewed yet, so the first
+native runs stop, one step further each, as the profile grows. The common file
+dialog takes no click. Its one visible file name Edit (control ID 1001 in a Save
+dialog, 1148 in an Open dialog) gets the path by `WM_SETTEXT` and must read it
+back, and the dialog gets one posted `WM_COMMAND IDOK`, as Enter sends it. Its
+region is kept before and after the text. A dialog without exactly one such Edit
+and an `IDOK` button ends `document-gui-picker-dialog-controls:<kind>` with the
+dialog's control census.
+
+Other known ends:
+
+- `document-gui-picker-foreign-window:<step>`, with the census;
+- `-window-unresolved`, `-display-not-canonical`, `-placement`, `-park`;
+- `-frame-unstable:<step>` and `-frame-blank:<step>`, each with its last frame;
+- `-point-not-owned:<step>`;
+- `-click-refused:<step>`: `SendInput` inserted nothing, with its error;
+- `-filename-readback:<kind>`, `-dialog-stayed:<kind>`;
+- `-export-absent`, `-export-bytes`;
+- `-gui-export-cli-import`, `-gui-import-not-committed`, `-cli-export-gui-import`;
+- `-import-state`.
+
+A `SendInput` that inserted only the press, a desktop switch whose outcome is
+unknown and a desktop thread that does not return within 60 s park. A known failure
+closes the picker first, whether or not the GUI still runs: a dialog left open gets
+one posted `IDCANCEL` and must close within 15 s, else the owner parks, and the
+input desktop is switched back to Default. Then the GUI-started owner is quit as for
+`gui-owner`. The desktop handles close with the owner process.
+
+Known before any native run, and proved only offline: the switch of the input
+desktop, `BitBlt` of its screen, `SendInput` through a handle with journal playback
+access, `WM_SETTEXT` and `IDOK` in a real Vista-style common dialog of AWT's
+`FileDialog`, the file name control IDs, the GUI's export and import through it and
+every reviewed anchor. A display that is asleep may capture as one flat colour, which ends the row `-frame-blank`.
 
 A known case failure in these rows closes what the owner started and ends 1. The
 harness's oracle failure and the modules' own `document-` codes count only after
@@ -2007,15 +2093,14 @@ design.md adapter steps 4-8 with the names the code accepts: all 48 Windows
 scenarios and the 16 Windows document scenarios. A scenario whose design rows are not
 all built, or whose only row declares procedures still to do, maps to `()` and stays
 missing: the TUN fault and config rows (no variant exists), `exact-child-stop` (no grant variant keeps a sibling
-runtime through its off, so its TUN half has no row), the GUI half of `gui-cli-transfer`
-(`windows-document-cold.gui-owner` is only its CLI half and is named for no
-scenario), and `windows-visual`, which stays on `visual_platform` and
-`visual_review`. `cache-digest-bytes` names `windows-document-cold.cache-bytes`
-alone: it reads the committed cache back and keeps its closed-state corruption
-step.
+runtime through its off, so its TUN half has no row), and `windows-visual`, which
+stays on `visual_platform` and `visual_review`. `cache-digest-bytes` names
+`windows-document-cold.cache-bytes` alone: it reads the committed cache back and
+keeps its closed-state corruption step.
 `ssh-import-routing` names the SSH row and the SSH relay row together. The other
 document scenarios name DOC, CLD (`cold-reopen`, `legacy-newline`) or RSP, with CFG
-where design.md step 8 adds it; the second real principal of
+where design.md step 8 adds it, and `gui-cli-transfer` names its two halves,
+`windows-document-cold.gui-owner` and `windows-document-cold.gui-picker`; the second real principal of
 `wrong-principal-owner-context-kind` is the DOC row's own LOCAL SERVICE probe: a DOC
 run passes only with it observed denied, and one whose probe proved no denial fails
 that scenario alone (`failed-principal`, below). RSP also names `cli-disconnect-long-work` and its part of

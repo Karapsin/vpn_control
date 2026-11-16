@@ -330,8 +330,8 @@ _DOCUMENT_FILES = (("agent_tools/windows_document_client.py", "client", "data"),
                    ("agent_tools/windows_document_native.py", "windows", "data"),
                    ("agent_tools/windows_document_export_race.py", "race", "data"), *_HARNESS)
 # windows-document-cold.<variant>: the cold module's variants. gui-owner is the CLI's transfer through a GUI-started
-# owner, never gui-cli-transfer: the GUI's own import and export have no tool.
-DOCUMENT_COLD_VARIANTS = ("cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")
+# owner, the CLI half of gui-cli-transfer; gui-picker is its GUI half, the GUI's own file-picker export and import.
+DOCUMENT_COLD_VARIANTS = ("cold-reopen", "legacy-newline", "gui-owner", "cache-bytes", "gui-picker")
 # cache-bytes fills the committed subscription cache by a refresh from the owner's own in-guest subscription source
 # (windows_document_cache_fixture, loopback only). The source, the runtime stages it borrows (publish, ready, scoped trust)
 # and its two producers are bundle files; the job makes the source's body from a fixed recipe and its localhost TLS files,
@@ -343,16 +343,23 @@ _CACHE_FILES = (("agent_tools/windows_document_cache_fixture.py", "cacheFixture"
                 ("scripts/integration/https_subscription_relay_fixture.py", "https", "data"))
 
 
+# gui-picker drives the installed GUI's own file picker on an owned private desktop: the picker steps and the desktop they
+# run on are bundle files, and the job makes its two small routing documents from a fixed recipe (PICKER_INPUTS).
+_PICKER_FILES = (("agent_tools/windows_document_gui_picker.py", "picker", "data"),
+                 ("agent_tools/windows_no_tray_desktop.py", "pickerDesktop", "data"))
+
+
 def _document_row(cases: str, variant: str | None = None) -> dict[str, Any]:
-    cache = variant == host_job.DOCUMENT_CACHE
+    cache, picker = variant == host_job.DOCUMENT_CACHE, variant == host_job.DOCUMENT_PICKER
     row = _worker_row("product", "document-acceptance", ("targetPackage",),
-                      ((cases, "cases", "data"), *_DOCUMENT_FILES, *(_CACHE_FILES if cache else ())),
+                      ((cases, "cases", "data"), *_DOCUMENT_FILES, *(_CACHE_FILES if cache else ()), *(_PICKER_FILES if picker else ())),
                       prior=True, deadline=7200 if variant is None else 3600)
     # Only the acceptance row probes a second principal: its owner opens the window during the expiry wait.
     row["document"] = {"variant": variant, "principalProbe": variant is None, "rootSubfolders": (host_job.DOCUMENT_TEMP,)}
     if variant is not None:
         row["generated"] = (*((("legacyInput", host_job.DOCUMENT_LEGACY_INPUT),) if variant == "legacy-newline" else ()),
                             *((*host_job.CACHE_TLS, ("cacheBody", host_job.CACHE_BODY_LEAF)) if cache else ()),
+                            *(((role, leaf) for role, leaf, _ in host_job.PICKER_INPUTS) if picker else ()),
                             ("coldInput", host_job.DOCUMENT_COLD_INPUT))
     row["refusal"] = None
     return row
@@ -1863,8 +1870,9 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
         "private-no-overwrite-export": (_DOC, _CFG),
         "racing-parent-destination": (_DOC,),
         "unicode-surrogate": (_DOC, _CFG),
-        # The GUI's own file-picker import and export have no tool. CLD(gui-owner) is only the CLI half and never counts.
-        "gui-cli-transfer": (),
+        # The CLI half is CLD(gui-owner): the CLI's large transfers through a GUI-started owner. The GUI half is
+        # CLD(gui-picker): the GUI's own file-picker export and import against the CLI's, and each read by the other.
+        "gui-cli-transfer": (_CLD + "gui-owner", _CLD + "gui-picker"),
     },
 }
 # A shared requirement Windows can only partly prove: recorded as limited, its other platforms' scenarios missing.

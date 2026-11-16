@@ -83,9 +83,12 @@ Android and macOS native and visual work stay deferred and open, never passed.
    source of `windows-document-cold.cache-bytes`, now admitted. Built offline on
    2026-11-17, not yet run natively: its closed-state corruption step (one byte
    made invalid UTF-8, the last byte cut, one byte appended; each kept aside with
-   the typed status), so cache-digest-bytes maps to the row again.
+   the typed status), so cache-digest-bytes maps to the row again; and the GUI
+   half of gui-cli-transfer, `windows-document-cold.gui-picker`, which the matrix
+   maps with `gui-owner`. No step of its click profile is reviewed yet, so its
+   first native runs stop at the first unreviewed step with that step's frame.
    Still to add: the TUN grant collector route, dns-ws-ssh-cache-resources,
-   pipe-storage-races, the GUI half of gui-cli-transfer, and an in-guest build
+   pipe-storage-races, and an in-guest build
    for the complete
    `:desktopApp:test` and the local visual capture. Fix the tool defects
    the review predicted, each with RED and GREEN when proven.

@@ -56,7 +56,8 @@ SCENARIO_ARTIFACT_KEYS = {
                                                               "faultPackage", "faultReceipt"}),
     **{name: frozenset({"bundleManifest", "scenarioInput", "targetPackage"}) for name in (
         "windows-document-acceptance", "windows-document-cold.cold-reopen", "windows-document-cold.legacy-newline",
-        "windows-document-cold.gui-owner", "windows-document-cold.cache-bytes", "windows-document-responsive")},
+        "windows-document-cold.gui-owner", "windows-document-cold.cache-bytes", "windows-document-cold.gui-picker",
+        "windows-document-responsive")},
 }
 _MAX_OUTPUT = 8192
 _WINDOWS_PREFIX = "windows-"

@@ -15,6 +15,13 @@ expected semantic digest from the same fixed recipe that produced the document.
   controller; the CLI then imports and exports it through that GUI-started owner. This is only
   the CLI half of gui-cli-transfer: the GUI's own import and export are not exercised, so it
   never stands for that scenario.
+- gui-picker: the GUI half of gui-cli-transfer. Two small routing documents; the CLI imports and exports the first,
+  the original serve is quit, and the installed GUI reopens the workspace on an owned private desktop
+  (windows_document_gui_picker, beside windows_no_tray_desktop). Through its own file picker the GUI exports, which
+  must be the CLI export's bytes but for exported_at; the CLI imports that GUI export; the GUI imports a CLI export of
+  the second document, and the committed routing rules and export must then be those of the CLI's import of the same
+  file. Every GUI step is a reviewed click (windows_document_gui_picker.PROFILE); a step without a review stops the
+  row with its frame kept and no click.
 - cache-bytes: the committed subscription cache. Before the serve exists the
   owner starts its own in-guest subscription source (windows_document_cache_fixture, loopback
   only), and the serve alone trusts its localhost certificate. The product adds that source and
@@ -43,11 +50,17 @@ import re
 import time
 import uuid
 
-VARIANTS = ("cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")
+VARIANTS = ("cold-reopen", "legacy-newline", "gui-owner", "cache-bytes", "gui-picker")
 CACHE = "cache-bytes"
+PICKER = "gui-picker"
 INPUT_LEAF = "document-cold-input.json"
 INPUT_FIELDS = {"schemaVersion", "variant", "operationId", "routingInputPath", "expectedSemanticSha256", "expectedSuffixCount"}
 CACHE_INPUT_FIELDS = {"schemaVersion", "variant", "operationId", "cache"}
+PICKER_INPUT_FIELDS = {"schemaVersion", "variant", "operationId", "picker"}
+PICKER_FIELDS = {"modulePath", "desktopPath", "firstInputPath", "secondInputPath", "firstSemanticSha256", "secondSemanticSha256",
+                 "suffixCount"}
+# The picker's two modules, loaded by their held paths: the GUI steps and the owned desktop they run on.
+PICKER_LEAVES = {"modulePath": "windows_document_gui_picker.py", "desktopPath": "windows_no_tray_desktop.py"}
 CACHE_FIELDS = {"fixtureWorkerPath", "runtimeStagesPath", "socksSourcePath", "httpsSourcePath", "certificatePath", "privateKeyPath",
                 "trustStorePath", "bodyPath", "bodySha256", "bodyBytes", "subscriptionName", "expectedLocations", "expectedCount",
                 "expectedNewlineBytes", "expectedNewlineSha256"}
@@ -139,6 +152,20 @@ def _cache_case(owner, cache):
     return cache
 
 
+def _picker_case(owner, picker):
+    """The picker's two held modules in their fixed roles and its two documents with their own digests."""
+    need(type(picker) is dict and set(picker) == PICKER_FIELDS, "document-cold-input-schema")
+    roles = ("modulePath", "desktopPath", "firstInputPath", "secondInputPath")
+    need(all(type(picker[key]) is str and _held(owner, picker[key]) for key in roles)
+         and len({str(Path(picker[key])).casefold() for key in roles}) == len(roles)
+         and all(Path(picker[key]).name == leaf for key, leaf in PICKER_LEAVES.items())
+         and all(type(picker[key]) is str and len(picker[key]) == 64 and set(picker[key]) <= set("0123456789abcdef")
+                 for key in ("firstSemanticSha256", "secondSemanticSha256"))
+         and picker["firstSemanticSha256"] != picker["secondSemanticSha256"]
+         and type(picker["suffixCount"]) is int and picker["suffixCount"] > 0, "document-cold-input-schema")
+    return picker
+
+
 def literal_input(owner):
     path = Path(__file__).with_name(INPUT_LEAF)
     pin = owner.by_path[str(path).casefold()]
@@ -148,6 +175,10 @@ def literal_input(owner):
     if value["variant"] == CACHE:
         need(set(value) == CACHE_INPUT_FIELDS, "document-cold-input-schema")
         _cache_case(owner, value["cache"])
+        return value
+    if value["variant"] == PICKER:
+        need(set(value) == PICKER_INPUT_FIELDS, "document-cold-input-schema")
+        _picker_case(owner, value["picker"])
         return value
     need(set(value) == INPUT_FIELDS and type(value["expectedSuffixCount"]) is int
          and type(value["expectedSemanticSha256"]) is str and len(value["expectedSemanticSha256"]) == 64
@@ -671,6 +702,139 @@ def _ready(owner, workspace, child, seconds, previous):
     owner.park("document-cold-reopened-owner-readiness-unknown")
 
 
+def _quit_original(owner, workspace, identity, harness, original):
+    """Cold: the original owner ends through the same public quit a pass sends, and its descriptor goes with it."""
+    owner.event("document-cold-quit-intent", {"child": original.ordinal, "controllerId": identity, "replayAllowed": False})
+    quit_body = harness["envelope"](owner.invoke(workspace, "--json", "--controller-id", identity, "quit"))
+    need(quit_body["controllerId"] == identity and quit_body["final"] is True, "document-cold-quit-acknowledged")
+    terminal = original.wait()
+    need(terminal["exitCode"] == 0 and not (Path(workspace) / "activation.port").exists(), "document-cold-original-closed")
+
+
+# ---- The GUI's own file picker against the CLI (gui-picker) -----------------------------------------------------------
+
+PICKER_FILE_SECONDS = 60  # The GUI's export, written after its Save dialog closed.
+PICKER_IMPORT_SECONDS = 60  # The GUI's import, committed after its Open dialog closed.
+
+
+def _read_whole(owner, windows, path):
+    held = windows.Held(owner.native, path)
+    try:
+        return held.bytes(64 * 1024 * 1024)
+    finally:
+        held.close()
+
+
+def _await_written(owner, windows, path):
+    """The GUI's export once the product published it whole: a held read that its writer no longer blocks."""
+    until = time.monotonic() + PICKER_FILE_SECONDS
+    while True:
+        if Path(path).exists():
+            try:
+                return _read_whole(owner, windows, path)
+            except Exception as error:
+                # Still held by its writer (NativeOpenError), or changed while it was read: read it again.
+                if not (type(error).__name__ == "NativeOpenError" or str(error).startswith("document-held-")):
+                    raise
+        if time.monotonic() >= until:
+            owner.event("document-gui-picker-export-absent", {"path": str(path), "exists": Path(path).exists(), "replayAllowed": False})
+            raise RuntimeError("document-gui-picker-export-absent")
+        time.sleep(0.5)
+
+
+def _run_picker(owner, workspace, identity, harness, windows, case, original):
+    picker = case["picker"]
+    suffix = owner.operation.replace("-", "")
+    gui_module = owner.module(picker["modulePath"], "document_gui_picker_" + suffix)
+    desktop_module = owner.module(picker["desktopPath"], "document_gui_picker_desktop_" + suffix)
+    first, second = picker["firstInputPath"], picker["secondInputPath"]
+    expected = {"first": (picker["firstSemanticSha256"], picker["suffixCount"]),
+                "second": (picker["secondSemanticSha256"], picker["suffixCount"])}
+    root = Path(owner.root)
+
+    def call(controller, *tail):
+        body = harness["envelope"](owner.invoke(workspace, "--json", "--controller-id", controller, *tail))
+        need(body["controllerId"] == controller and body["final"] is True, "document-gui-picker-owner-answer")
+        return body
+
+    def cli_import(controller, path):
+        revision = call(controller, "status")["configurationRevision"]
+        call(controller, "--if-revision", str(revision), "routing", "import", "--input", str(path))
+
+    def cli_export(controller, leaf, document, code):
+        destination = root / leaf
+        need(not destination.exists(), "document-gui-picker-export-new-leaf")
+        result = call(controller, "routing", "export", "--output", str(destination))
+        raw = _read_whole(owner, windows, destination)
+        need(result["data"].get("bytes") in (None, len(raw)) and semantic_sha256(raw) == expected[document], code)
+        return destination, raw
+
+    def state(controller, leaf, document, code):
+        """The committed routing rules in workspace.json and the product's export of them, after an import."""
+        held = windows.Held(owner.native, Path(workspace) / "workspace.json")
+        try:
+            raw = held.bytes()
+            held.current()
+        finally:
+            held.close()
+        status = call(controller, "status")
+        _, exported = cli_export(controller, leaf, document, code)
+        return {**gui_module.routing_state(raw), "exportSemanticSha256": semantic_sha256(exported)[0],
+                "restartRequired": status["restartRequired"], "runtimeRunning": status["data"]["runtimeRunning"]}
+
+    before = call(identity, "status")
+    need(before["data"]["runtimeRunning"] is False, "document-cold-disconnected-owner")
+    # The CLI's import and export of the first document, by the original serve.
+    cli_import(identity, first)
+    _, cli_first = cli_export(identity, "document-picker-cli-first.json", "first", "document-gui-picker-cli-readback")
+    _quit_original(owner, workspace, identity, harness, original)
+    launcher = str(Path(owner.request["cliPath"]).with_name("vpn-control.exe"))
+    need(launcher.casefold() in owner.by_path, "document-cold-installed-gui-pin")
+    lease, child = gui_module.start(owner, desktop_module, launcher, workspace)
+    reopened = _ready(owner, workspace, child, READY_SECONDS["gui"], identity)
+    # From here the owner closes this one, on a pass and on a known failure alike: the picker's closing first.
+    owner.document_reopened_owner = {"child": child, "controllerId": reopened, "gui": True, "picker": None}
+    session = owner.document_reopened_owner["picker"] = gui_module.session(owner, lease, child)
+    owner.event("document-cold-reopened", {"variant": PICKER, "child": child.ordinal, "controllerId": reopened,
+                                           "byInstalledGui": True, "originalControllerId": identity, "desktop": lease.name})
+    session.attach()
+    session.show()
+    # 1. The GUI's export through its picker is the CLI's export of the same rules, but for its moment.
+    gui_first = root / "document-picker-gui-first.json"
+    need(not gui_first.exists(), "document-gui-picker-export-new-leaf")
+    session.export_file(gui_first)
+    gui_raw = _await_written(owner, windows, gui_first)
+    same, compared = gui_module.same_export(gui_raw, cli_first)
+    owner.event("document-gui-picker-export-compared", {**compared, "same": same})
+    need(same, "document-gui-picker-export-bytes")
+    # 2. The CLI, through the GUI's own controller: the second document, its export for the GUI, and the GUI's export.
+    cli_import(reopened, second)
+    cli_second_path, _ = cli_export(reopened, "document-picker-cli-second.json", "second", "document-gui-picker-cli-readback")
+    cli_import(reopened, gui_first)
+    cli_export(reopened, "document-picker-cli-of-gui-export.json", "first", "document-gui-picker-gui-export-cli-import")
+    # 3. The GUI's import of the CLI's export through its picker.
+    revision = call(reopened, "status")["configurationRevision"]
+    session.import_file(cli_second_path)
+    until = time.monotonic() + PICKER_IMPORT_SECONDS
+    while call(reopened, "status")["configurationRevision"] == revision:
+        if time.monotonic() >= until:
+            raise RuntimeError("document-gui-picker-gui-import-not-committed")
+        time.sleep(1)
+    gui_state = state(reopened, "document-picker-after-gui-import.json", "second", "document-gui-picker-cli-export-gui-import")
+    # 4. The CLI's import of the same file from the first document's rules: the same committed state.
+    cli_import(reopened, gui_first)
+    cli_import(reopened, cli_second_path)
+    cli_state = state(reopened, "document-picker-after-cli-import.json", "second", "document-gui-picker-cli-readback")
+    owner.event("document-gui-picker-import-compared", {"gui": gui_state, "cli": cli_state, "same": gui_state == cli_state})
+    need(gui_state == cli_state, "document-gui-picker-import-state")
+    session.restore()
+    result = {"variant": PICKER, "controllerId": reopened, "independentOwner": True, "guiExport": compared,
+              "guiImportState": gui_state, "cliImportState": cli_state, "steps": list(session.steps),
+              "frames": session.frames, "desktop": lease.name}
+    owner.event("document-cold-observed", {**result, "nativeAcceptanceComplete": False})
+    return result
+
+
 def run(owner, workspace, identity, harness):
     _inputs(owner)
     case = literal_input(owner)
@@ -686,6 +850,8 @@ def run(owner, workspace, identity, harness):
     windows = owner.module(owner.request["documentAcceptance"]["windowsPath"], "document_cold_windows_" + owner.operation.replace("-", ""))
     if variant == CACHE:
         return _run_cache(owner, workspace, identity, harness, windows, case, original)
+    if variant == PICKER:
+        return _run_picker(owner, workspace, identity, harness, windows, case, original)
     expected = (case["expectedSemanticSha256"], case["expectedSuffixCount"])
     before = harness["envelope"](owner.invoke(workspace, "--json", "--controller-id", identity, "status"))
     need(before["controllerId"] == identity and before["data"]["runtimeRunning"] is False, "document-cold-disconnected-owner")
@@ -697,12 +863,7 @@ def run(owner, workspace, identity, harness):
     need(warm == expected, "document-cold-warm-readback")
     owner.event("document-cold-warm-readback", {"variant": variant, "semanticSha256": warm[0], "suffixes": warm[1],
                                                 "exportBytes": warm_bytes, "controllerId": identity})
-    # Cold: the original owner ends through the same public quit a pass sends, and its descriptor goes with it.
-    owner.event("document-cold-quit-intent", {"child": original.ordinal, "controllerId": identity, "replayAllowed": False})
-    quit_body = harness["envelope"](owner.invoke(workspace, "--json", "--controller-id", identity, "quit"))
-    need(quit_body["controllerId"] == identity and quit_body["final"] is True, "document-cold-quit-acknowledged")
-    terminal = original.wait()
-    need(terminal["exitCode"] == 0 and not (Path(workspace) / "activation.port").exists(), "document-cold-original-closed")
+    _quit_original(owner, workspace, identity, harness, original)
     gui = variant == "gui-owner"
     if gui:
         launcher = str(Path(cli).with_name("vpn-control.exe"))
@@ -737,9 +898,11 @@ def close_known(owner, error, serve, identity):
 
     Known: the harness's AssertionError, or this module's own document- codes. The cache variant's source is ended
     first, by one termination of its original handle, unless a refresh may still be fetching from it: then every
-    original stays for the park. A GUI-started owner is closed here by one journaled public quit and its exit, because
-    the owner's closing knows only serves; a reopened serve, or the live serve of the cache variant's corruption step,
-    is returned for that closing, and before any reopen, or once that serve has exited, the original is.
+    original stays for the park. The picker variant's GUI steps close first, whether or not its GUI still runs: a file
+    dialog they left open gets one posted cancel and the input desktop is switched back to Default, and what cannot be
+    known there parks. A GUI-started owner is closed here by one journaled public quit and its exit, because the owner's
+    closing knows only serves; a reopened serve, or the live serve of the cache variant's corruption step, is returned
+    for that closing, and before any reopen, or once that serve has exited, the original is.
     """
     try:
         name = type(error).__name__
@@ -751,6 +914,9 @@ def close_known(owner, error, serve, identity):
                 return None
             end_cache_source(owner, lease, error, "known-failure")
         reopened = getattr(owner, "document_reopened_owner", None)
+        if reopened is not None and reopened.get("picker") is not None:
+            # A dialog the GUI steps left open is cancelled and the input desktop is Default again before the quit.
+            reopened["picker"].close_known()
         if reopened is None or reopened["child"].terminal is not None:
             return serve, identity
         if not reopened["gui"]:

@@ -93,7 +93,7 @@ BUNDLE_FILES = ("agent_tools/windows_scenario_host_job.py", "agent_tools/windows
                 "agent_tools/windows_document_client.py", "agent_tools/windows_document_native.py",
                 "agent_tools/windows_document_export_race.py", "agent_tools/windows_document_responsive_cli_cases.py",
                 "agent_tools/windows_document_responsive_cases.py", "agent_tools/windows_document_gated_https_fixture.py",
-                "agent_tools/windows_document_cache_fixture.py")
+                "agent_tools/windows_document_cache_fixture.py", "agent_tools/windows_document_gui_picker.py")
 PYTHON_ROOT = PROFILE + "\\AppData\\Local\\Programs\\Python\\Python313"
 INSTALLED_ROOT = PROFILE + "\\AppData\\Local\\vpn-control"
 OLD_CODE = "{11111111-2222-4333-8444-555555555555}"
@@ -4348,7 +4348,7 @@ class UpdateVariantJobTests(UpdateFamilyBase):
 
 
 DOCUMENT_ROWS = ("windows-document-acceptance", "windows-document-cold.cold-reopen", "windows-document-cold.legacy-newline",
-                 "windows-document-cold.gui-owner")
+                 "windows-document-cold.gui-owner", "windows-document-cold.gui-picker")
 
 
 SECOND_ADMIN_SID = "S-1-5-21-1-2-3-502"
@@ -4580,6 +4580,17 @@ class DocumentFamilyTests(DocumentFamilyBase):
                     self.assertIsNone(receipt["document"]["principal"], "only the acceptance row probes a second principal")
                     value = json.loads(self.qga.files[workspace + "\\" + job.DOCUMENT_COLD_INPUT])
                     self.assertEqual((variant, plan["operationId"]), (value["variant"], value["operationId"]))
+                    if variant == "gui-picker":
+                        # The picker's two modules are bundle files and its two documents the job's own recipe, all held.
+                        picked = value["picker"]
+                        self.assertEqual((workspace + "\\windows_document_gui_picker.py", workspace + "\\windows_no_tray_desktop.py",
+                                          workspace + "\\document-picker-first.json", workspace + "\\document-picker-second.json"),
+                                         (picked["modulePath"], picked["desktopPath"], picked["firstInputPath"], picked["secondInputPath"]))
+                        for key, label in (("firstInputPath", "first"), ("secondInputPath", "second")):
+                            self.assertEqual(hashlib.sha256(job.picker_input(label)).hexdigest(), pins[picked[key]]["sha256"])
+                        self.assertTrue({picked["modulePath"], picked["desktopPath"]} <= set(pins))
+                        self.assertEqual(job.routing_semantic_sha256(job.picker_suffixes("second")), picked["secondSemanticSha256"])
+                        continue
                     self.assertIn(value["routingInputPath"], pins)
                     if variant == "legacy-newline":
                         self.assertEqual(workspace + "\\" + job.DOCUMENT_LEGACY_INPUT, value["routingInputPath"])
