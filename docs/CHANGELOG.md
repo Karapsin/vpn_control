@@ -5,6 +5,10 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Desktop transfers refuse a sealed document whose bytes changed after it was sealed, checking its size and digest before anything is parsed.
+
+## 2.2.19 - 2026-11-16
+
 - Windows agent tools: UAC review capture and visual prompt route, region capture of OS-owned visual scenes, no-tray close and SSH relay transfer rows, document holder census, query-owner process-tree fixes, and two hosted-runner test races closed.
 - Windows: closing the GUI no longer hides it when the notification area has no usable tray icon; tray detection follows the real notification area and waits for one that appears late after sign-in.
 - Windows: SSH-routed subscription refreshes no longer leave home-ssh-bootstrap files behind, and orphaned sing-box helper processes from an interrupted bootstrap are cleaned up.
@@ -14,6 +18,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows agent tools: the update fault rows (deliberately failing installer, counterfeit protected storage) now produce and settle, the reserved scoped-TUN resource and race cases are admitted, and five Windows-only CI tests use premises the hosted runner keeps.
 - CI and fixtures no longer drift silently: runner images, actions, the Gradle distribution and dependencies, Python tool packages and Linux validator containers are pinned by exact version or hash, every module builds with a JDK 17 toolchain, new Windows test clones refuse an unpinned base image, and a weekly non-blocking canary plus Dependabot surface upgrades as reviewable changes.
 - Windows build relay: a rejected request's already-sent bytes are drained before the connection closes, so the 403 reply is no longer lost to a reset; the macOS upload-step check accepts actions pinned to an exact commit.
+- Windows: turning a connection off now waits for sing-box to fully exit and retries removing its runtime folder, so the SSH key copy and location credentials no longer stay on disk; leftovers are named and removed on the next start or stop.
 
 ## 2.2.18 - 2026-11-13
 
