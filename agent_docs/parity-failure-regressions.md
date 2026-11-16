@@ -2080,17 +2080,62 @@ Android was checked (PRODUCT-002): its bootstrap already sends sing-box's output
 writes its configuration to the app's private cache, where an open file never blocks an unlink, so
 the cause cannot occur there; it still creates the file before `SingBoxInstaller.resolveBinary`
 (a missing bundled library would leave one empty file) and ignores `delete()`'s result, recorded
-here as unchanged. The desktop direct-probe proxy (`DesktopDirectProbeProxy`) and the validation
-runtime (`DesktopProxyValidationRuntime.benchmarkCandidate`, whose configuration holds a
-location's credentials) keep the old pattern; no run has shown their files left.
+here as unchanged. The desktop direct-probe proxy (`DesktopDirectProbeProxy`) and the Find Best
+candidate runtime (`DesktopProxyValidationRuntime.benchmarkCandidate`) had the same pattern, worse
+in the candidate: it created `validate-<remarks>-<n>.json`, which holds the candidate's
+credentials, and its `.log` before it resolved sing-box and prepared the probe copy, outside its
+`try`, so `sing_box_missing` and `probe_binary_failed` returned with both files left, with no
+report and no later sweep (review of `1fe2ddab`). No native run has shown it; it is fixed with
+the same parts below.
 
 The row's `leftovers()` still fails at the first look after the reply: the product deletes before
 the download returns and the bootstrap exists only for that one download while no runtime is active
 (CONFIG-004's direct exception; an active runtime's management inbound carries it, CONFIG-005), so a
 settle before the verdict would pass a product that answers before its cleanup ends. Only after the
 verdict, `bootstrap_left` settles for at most 10 s and records `ssh-relay-bootstrap-leftovers`: each
-left file's name, size and age by `lstat`, the live runtimes under the workspace, and whether the
-files were still there at the bound. A census that fails keeps the verdict.
+left file's name, size and age by `lstat` and its hold, at the verdict and after the settle, the
+live runtimes under the workspace, the settle's actual length, and the offset at which a held
+file became free (`freedAfterSeconds`) or a name went away (`goneAfterSeconds`). A census that
+fails keeps the verdict. The first form of this settle (`1fe2ddab`) recorded only whether the
+files were still listed, and its key read "gone after the settle: a scanner past 3.2 s; still
+there: a holder that never let go". Both readings were wrong for a refused deletion: nothing in
+the product deletes the file again, so it stays listed whether its holder let go a moment after
+the product's last retry or never did, and with POSIX delete semantics it cannot go away. The
+hold tells them apart: an open for DELETE access alone sharing read, write and delete, not
+following a reparse point, closed at once and never given a delete disposition, answers `held`
+(a sharing violation: a holder without `FILE_SHARE_DELETE`), `denied` (access denied: a
+delete-pending name or an ACL), `free` or `gone`; off Windows `unprobed`. `held` then `free` with
+`freedAfterSeconds` t: a holder let go t s after the verdict, so the product's retry bound was too
+short; `held` at both looks: a holder that never let go within 10 s (with `runtimes` 1, the
+bootstrap's own sing-box); `free` at the verdict: nothing held it when judged (no retry, a package
+before the fix, or a holder gone between the last retry and the verdict); a name in
+`goneAfterSeconds`: a delete-pending name whose last handle closed.
+
+Two more gaps of the fix's first form (`1fe2ddab`), from its review. The bootstrap was cleaned up
+only by its owner's own `finally`: an owner ended any other way (SIGTERM, End task or
+`taskkill /F`, SIGKILL, a crash) left its sing-box running with an authenticated SSH session
+behind a loopback mixed inbound without users, which any local process could use as an egress
+through the user's SSH Routing server, and before readiness also left the configuration; no
+owner start ended or removed either, nor the files packages 2.2.17 and 2.2.18 already left. Each
+short-lived sing-box of the owner (the SSH Routing bootstrap, a Find Best candidate, the direct
+probe) is now a
+`DesktopShortLivedRuntime`: registered with `DesktopShortLivedRuntimes` before its first file
+exists, so one JVM shutdown hook ends every live child and removes its files and admits no new
+one, and finished once, whoever comes first (the hook waits for a `finish` under way). On Windows
+the child is put in a job of its own with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` right after it
+starts (`tieToOwnerLifetime`, `DesktopWindowsNativeJob.assign`), so the kernel ends it when the
+owner's last handle to the job closes, which an End task or `taskkill /F` does; a child that cannot
+be tied is reported on stderr and still carries its download. At owner start, under the
+single-instance lock (`DesktopAppServiceFactory.default`), `reapShortLivedRuntimesAtOwnerStart`
+ends each sing-box of the same user whose arguments are `run -c <folder>/<prefix>*.json` in the
+runtime folder (`home-ssh-bootstrap-`) or the validation folder (`validate-`, `direct-probe-`),
+which Linux and macOS report, then removes those files (the pre-fix `.log` too) with the bounded
+retries, one stderr line per process by pid and per file by leaf. It never matches the main
+runtime's `runtime-sing-box-*.json` or `candidate-*` names. A Windows orphan of a package before
+this fix is not found by its arguments (the JDK reports none there); its files are still removed.
+The candidate and the direct probe now resolve sing-box and prepare the probe copy before any
+file, discard sing-box's output, delete the configuration once sing-box listens, and end and
+clean up through `DesktopBootstrapCleanup` labelled `Find Best validation` and `Direct probe`.
 
 | Failure type | Regression | Notes |
 | --- | --- | --- |
@@ -2098,13 +2143,19 @@ files were still there at the bound. A census that fails keeps the verdict.
 | A missing sing-box left two empty bootstrap files | `DesktopHomeSshBootstrapCleanupTest.aMissingSingBoxLeavesNoBootstrapFile` (all platforms) | RED on `450b8764` in the same run: an empty `.json` and `.log` left. GREEN: none. |
 | The configuration lived, and the log existed, for the whole download | `DesktopHomeSshBootstrapCleanupTest.theConfigurationIsGoneOnceTheBootstrapListensAndNoLogIsWritten`, `DesktopBootstrapCleanupTest.theBootstrapRuntimeKeepsNoOutputOnDisk` | Also pins that the configuration names the key by path, holds no key line and is `rw-------` on POSIX (true on both trees). RED on `450b8764` in the same run: both files present while the download ran. GREEN: none. |
 | `bootstrap-files-left` named no file and said nothing of its age, of a bootstrap still running or of a later release | `test_windows_ssh_relay_cases.CaseTests`: `test_left_bootstrap_files_are_named_sized_and_aged_and_the_row_fails`, `test_files_a_holder_lets_go_of_after_the_first_look_still_fail_the_row`, `test_a_bootstrap_process_left_with_its_files_is_counted_beside_them`, `test_a_census_that_fails_while_describing_keeps_the_verdict`, `test_the_description_holds_metadata_only` | RED on `450b8764`'s module with the final test bytes in an isolated `git archive` tree, Python 3.14 and 3.12 alike: `Ran 15 tests`, `FAILED (failures=5)`, each `one description of the bootstrap files left` (none was recorded); the ten earlier tests pass. GREEN: 15 OK on both. Three loosenings each turn named tests red: a settle before the verdict (5, among them the holder that lets go after the first look), no census (3), a census error that escapes (5). |
+| The settle after the verdict could not tell a holder that let go from one that never did (review of `1fe2ddab`) | `test_windows_ssh_relay_cases.CaseTests`: `test_a_holder_that_lets_go_during_the_settle_is_told_from_one_that_never_does`, `test_a_holder_that_never_lets_go_stays_held_at_both_looks`, `test_a_file_nothing_held_when_judged_is_free_at_the_verdict`, `test_the_hold_is_asked_by_an_open_for_delete_alone_that_is_closed_at_once`; updated `test_left_bootstrap_files_are_named_sized_and_aged_and_the_row_fails`, `test_files_a_holder_lets_go_of_after_the_first_look_still_fail_the_row`, `test_the_description_holds_metadata_only` | The world answers each hold through the module's `HOLD` seam; the Win32 open is checked against a fake kernel (DELETE alone, every share mode, `OPEN_EXISTING`, `FILE_FLAG_OPEN_REPARSE_POINT`, closed at once; error 32 `held`, 5 `denied`, 2 and 3 `gone`). RED on `1fe2ddab`'s module with the final test bytes in an isolated `git archive` tree, Python 3.14 and 3.12 alike: `Ran 19 tests`, `FAILED (failures=6, errors=1)` (no `hold` in a row, no `freedAfterSeconds` or `goneAfterSeconds`, no `_windows_hold`); the twelve other tests pass. GREEN: 19 OK on both; `SshRelayFamilyTests` and `test_native_scenario_bundle` 18 OK on both. |
+| The SSH Routing bootstrap outlived an owner ended without its `finally`, and no owner start ended it or removed its configuration (review of `1fe2ddab`) | `DesktopHomeSshBootstrapOwnerEndTest` (`:desktopApp:test`, POSIX): `anOwnerShutDownBeforeTheBootstrapListensEndsItAndRemovesItsConfiguration`, `anOwnerShutDownDuringTheDownloadEndsTheBootstrap`, `theNextOwnerStartEndsABootstrapAKilledOwnerLeftAndRemovesItsConfiguration`; `DesktopShortLivedRuntimeTest` (6 seam tests, all platforms); Windows-only `DesktopHomeSshBootstrapCleanupNativeTest.nativeAnOwnerEndedByTerminateProcessTakesItsTiedBootstrapChildWithIt` | A child JVM is the owner: it refreshes through the public download client with a stand-in sing-box that reports its pid and port, and the test sends it SIGTERM before readiness or while it holds the download's request, or SIGKILL and then starts a second child JVM through `DesktopAppServiceFactory.default()` under that workspace. RED on `1fe2ddab` (production sources and the native test as there, `DesktopShortLivedRuntimeTest` set aside; this class compiles against them unchanged): 3 of 3 fail, `the bootstrap's sing-box still ran` after each shutdown and after the next owner start. GREEN: 3 of 3, the next owner's stderr naming the pid it ended and the leaf it removed. The seam tests pin one hook for every live runtime and no admission after it, one finish whoever comes first with the tie closed after the child, a tie refusal reported, and a reaper that ends only `run -c <folder>/<prefix>*.json` of the same user (not the main runtime's `runtime-sing-box-*.json`, `candidate-*`, another folder, a `.log`, `check`, another user or itself) and removes only prefixed regular files, the pre-fix `.log` among them. |
+| The Find Best candidate left its credential-bearing configuration and log when sing-box or the probe copy was missing, kept the log redirect and swallowed a refused deletion; the direct probe the same (review of `1fe2ddab`) | `DesktopValidationRuntimeCleanupTest` (`:desktopApp:test`): `aFindBestCandidateWithoutSingBoxLeavesNoCredentialFile`, `aFindBestCandidateWhoseProbeCopyFailsLeavesNoCredentialFile`, `theDirectProbeWithoutSingBoxLeavesNoFile` (all platforms), `aFindBestCandidateKeepsNoLogAndRemovesItsFilesOnceRefusalsEnd` (POSIX) | Public validation runtime and direct probe; the last uses a stand-in that lists the folder when it starts, makes it read-only until 0.4 s after it is gone and never listens. RED on `1fe2ddab` in the same run: 4 of 4 fail, each with a `validate-fixture-*.json` and `.log` (or `direct-probe-*`) left, the stand-in seeing the log beside the configuration. GREEN: 4 of 4. The focused GREEN run on the final sources: 86 tests in 19 classes, 0 failures, 5 skipped (the Windows-only native tests). |
 
 Native only: Windows' refusal itself and its timing (sharing violation, exit code before the
 handles close, a scanner), shown by the Windows-only tests in the Windows package workflow's
 `:desktopApp:test` and by the row. The next direct discovery run on a package built from this
 fix must end with all six groups complete and no known failure; the serve's stderr must hold
 no `SSH Routing bootstrap:` line; and if a file is left again, `ssh-relay-bootstrap-leftovers`
-names it, with the runtimes, before `known-failure-closing`. Routine suites: `:desktopApp:test` in
+names it with its hold at both looks, the runtimes and `freedAfterSeconds`, before
+`known-failure-closing`. Also native only: the job tie (End task or `taskkill /F` ending the
+child, the Windows-only test above), and the owner-start reaper on Linux (`/proc` arguments; the
+POSIX tests ran on macOS). Routine suites: `:desktopApp:test` in
 Fast Checks and every desktop package workflow, and `test_windows_ssh_relay_cases` in the affected
 agent tier. Logs, JUnit reports, the mutant summary and the beforeimages are under
 `.runtime/windows-parity-20261107/evidence/ssh-bootstrap-cleanup/`.
