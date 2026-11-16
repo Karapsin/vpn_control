@@ -1953,8 +1953,26 @@ configuration grants and fault variants name `generated-custom-config`,
 `scheduled-without-gui` alone, and `windows-proxy-lifecycle.no-tray-close` names
 `close-detach-traffic` alone and `gui-attach-detach` with `gui-pending`: that row
 proves the attach, a crash and the re-attach, and DESKTOP-001 names a detach apart
-from a crash, which only a close without a tray makes. A built row proves its part only with a passed run
-through each route, and every row named for a scenario must. The observation reads each journal without collecting, so call
+from a crash, which only a close without a tray makes. A built row proves its part with a passed direct run and
+either a passed MCP run or, when it represents no MCP route shape of the set, a passed MCP admission dry run of that
+direct run (`TEST-002`). The set's route shapes are its rows' static shapes (`route_shapes`: `plain`, `uac-approve`,
+`uac-deny`, `update`, `reboot-pre`, `reboot-post`; QRY's rebootless phase is `plain`) plus `longest`, the counted row
+whose direct pass made the most job polls (then the longest deadline, then the name), and `largest-evidence`, the
+counted row whose direct pass collected the most bytes. Each static shape needs a passed MCP run of some named row
+with it; `longest` and `largest-evidence` need their own row's. While a shape has no such twin, every row with it is
+a representative and needs its own. `mcp_admission(root, correlationId)`, or
+`python3 -m agent_tools.native_scenario_windows mcp-admission <correlationId>...`, is the read-only dry run of an
+MCP start of that journaled operation now: it compiles `resolve_bundle` and `resolve_input` from `mcp_server.py`'s
+scenario actions, so no copy can drift, verifies registry bytes without housekeeping, and checks `artifact-keys`
+(the adapter's `SCENARIO_ARTIFACT_KEYS`), `bundle-single-location` (the manifest at one local location; two copies
+refused the MCP twin `055c3b3c`), `input-at-collect` (the input resolves as collect resolves it),
+`admission-gates` (`native_scenario_ssh.admit_start` with the route's resolver) and `repeat-start` (a repeat of the
+operation reaches the executor's duplicate answer, which a bundle changed in the checkout refused for `3a1459ee`). A
+follow that ends before terminal is no admission fact; the longest row's real twin carries it. The review's `mcpRoute`
+names the required, covered and uncovered shapes, the longest and largest rows, the representatives and each dry run,
+and the evidence document keeps it with each row's `polls` and `collectedBytes`. `matrix-record` re-derives the rule
+from that document (`verify_route_document`) and refuses a passed record of a Windows requirement the driver maps
+unless it comes from this evidence. The observation reads each journal without collecting, so call
 `scenario-status` for every row first, then it classifies each row:
 
 - `passed`: terminal, collection complete, unstopped, and installed-package by the
@@ -2026,25 +2044,48 @@ unmapped scenario.
 source commit, is the checked-out HEAD, or through an equivalence link to HEAD. A link
 exists only for a complete passed full-native record, never for a limited, failed or
 unknown one, and not while any other record of that requirement and source is
-partial, failed or unknown, retracted or not. Between the source and HEAD every
-changed path must be documentation (`README.md`, `docs/`, `agent_docs/`), tests
-(`tests/`, `agent_tools/tests/`) or a noncritical `agent_tools/*.py`, with no
-`package`, `packaging`, `release`, `native`, `runtime`, `workflow`, `build`,
-`gradle` or `fixture` in its path, and every other path byte-identical, with no rename,
-mode change or symlink. A change to `native_scenario_windows.py` or any other
-`*native*` or `*runtime*` tool, to `mcp_server.py`, the matrix or registry modules, a
-JSON manifest such as `affected_agent_test_dependencies.json` or
-`readiness_vm_dispatch.json`, a PowerShell template, `scripts/`, `.gitattributes`,
-`gradle.properties` (a version roll) or product code therefore ends every link. When
-only eligible paths changed, from a clean checkout at HEAD call
+partial, failed or unknown, retracted or not. Between the source and HEAD no input a
+scenario executed may change, with no rename, mode change or symlink anywhere in the
+diff. `native_artifact_reuse._ScopedInputs` derives those inputs from each commit's own
+files: the product build inputs (every tracked path outside `agent_tools/`, documentation
+and tests, so product code, `settings.gradle.kts` and build files, `scripts/` other than
+`test_*.py`, `.github/` and `gradle.properties`), the files the `_SCENARIOS` table of
+`native_scenario_bundle.py` ships to a guest, and the static import closure of every
+`agent_tools` module that imports the bundle, execution, matrix or equivalence module,
+with the non-Python files those modules name (such as `native_acceptance_requirements.json`
+and `tool_action_policy.json`). A path is executed when either commit executes it, and
+the executed paths of both commits must be byte-identical. Not executed, and so kept:
+`docs/`, `agent_docs/` and Markdown outside the Gradle projects; Gradle test source sets
+(`src/test`, `src/*Test`) and directories only they add (`visual-tests/`); `tests/`,
+`scripts/**/test_*.py` outside the bundle, `agent_tools/tests/` and its fixtures; the
+selector's own metadata (the files `affected_agent_tests.py` names, such as
+`affected_agent_test_dependencies.json`, even where `mcp_server.py` reads them to load
+the selector); and any other `agent_tools` file outside the closure, such as
+`readiness_vm_dispatch.json`. When only such paths changed, from a clean checkout at HEAD call
 `vm_workflow matrix-equivalence-record` with the receipt ID, the target package's
 frozen `artifactSetId`, `targetSourceSHA` HEAD and an attestation, once per record and
 HEAD, then finish its `requiredCurrentChecks`: exact-SHA CI for HEAD, and the changed
-tool tests when tests or tools changed. Any other change needs a new package built
-from a commit after it, a new frozen set and base install, and every row again
-directly and through MCP; the old records stay historical. A failed or unknown record,
-retracted or not, blocks every later link of its requirement and source, which is why
-`failed` is only the owner's own exit 1 and a harness failure is never recorded.
+tool tests when tests, fixtures, metadata or tools changed. Any other change needs a new
+package built from a commit after it, a new frozen set and base install, and the sweep
+again; the old records stay historical. A failed or unknown record, retracted or not,
+blocks every later link of its requirement and source, which is why `failed` is only the
+owner's own exit 1 and a harness failure is never recorded.
+
+Before a final sweep, `sweep_eligibility(root, artifactSetId, requirementIds)`, or
+`python3 -m agent_tools.native_scenario_windows sweep-eligibility --artifact-set <id>
+[--requirement <id>]...`, classifies read-only whether a pass of each planned row on that
+frozen set would count at the checkout's HEAD, and exits 1 with
+`windows_sweep_cannot_count:<first refusal>` when it would not; a refused sweep does not
+start (`TEST-007`). It refuses an unverified set or one without a Windows
+`desktop-package`, a set whose source neither is HEAD nor reaches it by an equivalence
+proof, a limited requirement whose source is not HEAD itself (GAP-DOC), a requirement
+with an unmapped scenario (`windows-visual` has no matrix producer), an unretracted pass
+or any failed or unknown record of the requirement and source, a settled failed or
+unknown run of a counted row on the target package that no observation records, a
+refused row, and an update row whose set lacks its fixture receipt or fault artifacts.
+With no requirement named it checks every requirement the driver maps. `mcpTwins` names
+one row per static shape; the longest and largest-evidence rows are decided by the direct
+passes.
 
 #### Windows UAC decision
 

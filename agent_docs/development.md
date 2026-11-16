@@ -342,9 +342,13 @@ original handles and unknown-outcome guards apply in both native phases.
 Apply `TEST-007` to order that work: give each new or changed row one direct
 first-contact run as soon as its tooling exists, on a non-evidence build of the
 candidate such as its push-build package, fix what it finds, and land tool
-patches between those runs. Run the direct-then-MCP pairs that count as
-evidence only in one final sweep, after the candidate package and the scenario
-tooling are frozen, and land no change while an MCP twin is in flight.
+patches between those runs. Run the rows that count as evidence only in one
+final sweep, after the candidate package and the scenario tooling are frozen and
+`sweep-eligibility` admits the candidate set at HEAD: every row directly, and
+through MCP only the representative route shapes `TEST-002` names, with the
+others proven by their MCP admission dry run. Land no change while an MCP twin
+is in flight; afterwards only changes outside the executed inputs `TEST-007`
+names keep the records current.
 
 Apply `TEST-003` to schedule independent native scenarios in parallel. Give every
 worker exact file ownership and each guest/emulator one operator. Use separate
