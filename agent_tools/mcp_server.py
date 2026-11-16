@@ -3137,6 +3137,7 @@ _VM_NATIVE_ADAPTERS = (
     'windows_vm_setup_install_ack',
     'windows_vm_setup_install_next',
     'windows_vm_deploy',
+    'windows_vm_guest',
     'windows_vm_reservation_release',
     'windows_vm_setup_policy',
     'vm_workflow',
@@ -4170,7 +4171,10 @@ def _vm_workflow_dispatch(action: str, inputs: dict[str, Any]) -> dict[str, Any]
                 return _error('vm_workflow','Qualification requires deploymentId, operationId and credentialFile.')
             try:
                 result=_agent_module('windows_vm_deploy').qualify(REPO_ROOT,inputs['deploymentId'],inputs['operationId'],inputs['credentialFile'],status_only=action.endswith('-status'))
-                return {'tool':'vm_workflow',**result,'ok':result['state']=='setup-observed','productAction':False,'evidenceClass':'read-only-owned-windows-setup'}
+                # A stopped first-boot OOBE is named from the guest's own facts (windows_vm_guest.setup_failure).
+                failure=(_agent_module('windows_vm_guest').setup_failure(result['result'])
+                         if result['state']=='setup-observed' and result.get('setupReady')is False else None)
+                return {'tool':'vm_workflow',**result,'ok':result['state']=='setup-observed','setupFailure':failure,'productAction':False,'evidenceClass':'read-only-owned-windows-setup'}
             except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError):
                 return {'tool':'vm_workflow','ok':False,'state':'unknown','reason':'deployment_qualification_unavailable','nativeActionAllowed':False,'replayAllowed':False,'productAction':False}
         if action in {'windows-vm-deploy-start','windows-vm-deploy-status','windows-vm-deploy-stop'}:

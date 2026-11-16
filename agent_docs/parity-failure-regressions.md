@@ -3209,6 +3209,42 @@ had its decision call 1 answered `input-ack-only`, attempt 1, prompt closed, in 
 | Failure type | Regression | Notes |
 | --- | --- | --- |
 | A UAC decision packet was not submitted within its deadline under host congestion (ENVIRONMENT) | existing `test_windows_uac_decision.ExecuteInputTests.test_a_typed_unsubmitted_transport_refusal_permits_another_submit` | No defect: the decision refused before any effect, sent no key, and allowed another submit, as designed. Recorded so a second occurrence is recognised. Run a UAC decision row with no other guest submission, clone bring-up or qualify loop in flight on the same hosts. |
+### Clone first-boot OOBE stuck, setup task result 73 (native, `db6df990` 2026-11-08 and `23824f97` 2026-11-16)
+
+Two clones of image `637199a5` (`db6df990` regular; `23824f97`, NE, with `secondAdministrator`) never
+finished their first boot: every qualification read `oobeInProgress` 1, `IMAGE_STATE_UNDEPLOYABLE`, no
+console user, no `fixtureuser` profile, the guest agent running and no `ready.json`;
+`VpnControlFixtureInitialize` ran from the last boot (`23824f97`: boot 17:36:38Z, result 73 by 17:52Z) and
+ended 73, `install-agent.ps1`'s own 15-minute wait for setup. The agent is installed only after that gate
+and the task is registered only by `SetupComplete.cmd`, which Windows runs after the machine OOBE set
+`IMAGE_STATE_COMPLETE`, so both clones had completed the machine OOBE, the agent install was in flight, and
+Windows then resealed to OOBE and restarted, and the restarted OOBE never completed. The preserved `ee0d45b1`
+disk logs show the same sequence record by record: `COMPLETE`, `SetupComplete.cmd`, user OOBE as
+`defaultuser0`, the agent service installed inside it, `CloudExperienceHostBroker` `COMPLETE ->
+SPECIALIZE_RESEAL_TO_OOBE`, then a machine OOBE stopped at `UNDEPLOYABLE` after creating `defaultuser0`
+again. Both start programs executed the same `INSTALL_AGENT` (sha256 in the fixture provenance); the
+OneDrive policy (absent for `db6df990`), the second administrator (absent for `db6df990`), host load
+(`db6df990` booted in 120 s) and the dark display (`23824f97`'s frame `4294a47a`; no input was sent) do not
+separate the stuck clones from the good ones. Evidence: `clones/bring-up-5995.out`,
+`tool-recovery/windows-sleep-20261106/public/{215945,222501,204209,210323}-*qualify*.stdout`, start programs
+`.runtime/windows-vm-deploy/{8e0d0e2c…,d52b1d95…}/caller.py`; RED/GREEN logs and the patch in
+`.runtime/windows-parity-20261107/evidence/oobe-stuck/`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The agent install ran during the user OOBE, which can still reseal (TOOL) | `test_windows_first_boot_oobe.InstallerGateTests.test_windows_installer_starts_only_once_a_non_temporary_account_owns_the_console` | Windows sets `OOBEInProgress` 0 and `IMAGE_STATE_COMPLETE` before the user OOBE (clone `07831787` wrote `ready.json` while `defaultuser0` owned the console). The gate now also needs a console user that is not `defaultuserN`. A strict interpreter runs the gate on the preserved module both clones executed (RED: installer admitted before and during the user OOBE) and on the fix (GREEN), with phase values from the preserved replies. |
+| A stopped OOBE had a guest agent only by accident (TOOL) | `...InstallerGateTests.test_a_stopped_machine_oobe_is_made_observable_and_never_reported_ready` | RED: the preserved gate ends 73 without an agent. A machine phase still incomplete when the wait ends now installs the agent for observation only (`ready.json` `setup-incomplete`, exit 75); a complete machine phase without a fixture logon ends 73 without installing. |
+| Qualification reported a stopped OOBE only as `setupReady` false for 30 minutes (TOOL) | `test_windows_first_boot_oobe.QualifyNamedFailureTests` (stuck replies named, waiting and ready replies not, the fixed exit-75 record named) | MCP and CLI qualification add `setupFailure` (`windows_vm_guest.setup_failure`): `first_boot_oobe_stuck` when the machine phase is incomplete after the task ended 73 or 75, with `nextAction` `replace-fixture`. RED on `9f5b1995`: no field, generic `inspect-evidence`. No in-place recovery: the only nudges are input to an unreviewed OOBE page or forced setup state, neither of which leaves a faithful fixture. |
+
+Routine suite: `agent_tools/tests/test_windows_first_boot_oobe.py` (affected selection of
+`windows_vm_unattend.py`, `windows_vm_guest.py`, `mcp_server.py`, `native_next_action.py`). Native limits:
+why Windows fails the user OOBE and which page the resealed OOBE waits on are not in the evidence (a
+`disk-logs` read of the kept `23824f97` disk would show it); the fixed gate itself is proven only by the next
+clones. The next clone created from these sources must show, in its first qualification, the console user
+`…\fixtureuser` (or the visual administrator) together with `ready.json` `ready`, a `ready.json` time after
+`defaultuser0` left the console, and no `ready.json` while `defaultuser0` is signed in; a clone that stops
+in OOBE again must reach `setupFailure` `first_boot_oobe_stuck` within about 15 minutes of its last boot,
+with the agent installed and `ready.json` `setup-incomplete`.
 
 ## Historical coverage rule
 

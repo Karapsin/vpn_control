@@ -40,6 +40,12 @@ function Get-ItemProperty {
  }
  throw 'UNEXPECTED_REGISTRY_READ'
 }
+# The console belongs to the fixture account only once setup is complete.
+function Get-CimInstance {
+ param($ClassName)
+ if($ClassName -ne 'Win32_ComputerSystem'){throw 'UNEXPECTED_CIM_READ'}
+ return [pscustomobject]@{UserName=$(if($global:complete){'FIXTURE\fixtureuser'}else{$null})}
+}
 function Start-Sleep {param($Seconds) $global:sleeps++;$global:complete=$true}
 function Start-Process {
  param($FilePath,$ArgumentList,[switch]$PassThru,[switch]$Wait)

@@ -1,0 +1,601 @@
+{
+ "replies": [
+  {
+   "reply": "104459-mcp-windows-vm-deploy-qualify-more-qualify.stdout",
+   "replySha256": "d489ddd9d020eecc18920278dc0dfac09ae01bec29a9137a96084a604612764c",
+   "response": {
+    "deploymentId": "07831787-a0b6-4fe2-8f37-b1bf6fec06de",
+    "imageMatchesRequest": true,
+    "operationId": "276605b4-af91-4948-9e0b-703e79ce9ece",
+    "productReady": false,
+    "reason": null,
+    "result": {
+     "administrator": {
+      "enabled": true,
+      "isAdministrator": true,
+      "name": "fixtureadmin",
+      "sid": "S-1-5-21-520538448-1056110111-3183390444-1003"
+     },
+     "computer": {
+      "loggedOn": "DESKTOP-ELUT0RI\\defaultuser0",
+      "name": "DESKTOP-ELUT0RI",
+      "partOfDomain": false
+     },
+     "fixturePrincipal": "S-1-5-18",
+     "guestAgent": {
+      "path": "\"C:\\Program Files\\Qemu-ga\\qemu-ga.exe\" -d --retry-path",
+      "pid": 2624,
+      "startMode": "Auto",
+      "state": "Running"
+     },
+     "nonce": "276605b4-af91-4948-9e0b-703e79ce9ece",
+     "os": {
+      "bootTime": "2026-11-13T07:43:26.2186490Z",
+      "build": "26200",
+      "caption": "Microsoft Windows 11 Enterprise Evaluation",
+      "displayVersion": "25H2",
+      "editionId": "EnterpriseEval",
+      "locale": "en-US",
+      "productName": "Windows 10 Enterprise Evaluation",
+      "ubr": 6584,
+      "version": "10.0.26200"
+     },
+     "setup": {
+      "imageState": "IMAGE_STATE_COMPLETE",
+      "oobeInProgress": 0,
+      "ready": {
+       "installerExit": 0,
+       "principal": "NT AUTHORITY\\SYSTEM",
+       "state": "ready",
+       "time": "2026-11-13T07:44:22.8005568Z"
+      },
+      "systemSetupInProgress": 0,
+      "taskResult": 0,
+      "taskState": "Ready"
+     },
+     "updatePolicy": {
+      "noAutoUpdate": 1,
+      "storeAutoDownload": 2
+     },
+     "user": {
+      "enabled": true,
+      "isAdministrator": false,
+      "isUsersMember": true,
+      "name": "fixtureuser",
+      "profileRoot": null,
+      "sid": "S-1-5-21-520538448-1056110111-3183390444-1004"
+     }
+    },
+    "setupReady": false,
+    "state": "setup-observed"
+   },
+   "role": "user-oobe-temporary-console"
+  },
+  {
+   "reply": "104627-mcp-windows-vm-deploy-qualify-more-qualify.stdout",
+   "replySha256": "19fbdf4d4c3c299ede40cbb10149f3dd382737c9fa8c40add53f637a5afba64c",
+   "response": {
+    "deploymentId": "07831787-a0b6-4fe2-8f37-b1bf6fec06de",
+    "imageMatchesRequest": true,
+    "operationId": "83affdcd-ee39-4144-8f4d-e11286877a68",
+    "productReady": false,
+    "reason": null,
+    "result": {
+     "administrator": {
+      "enabled": true,
+      "isAdministrator": true,
+      "name": "fixtureadmin",
+      "sid": "S-1-5-21-520538448-1056110111-3183390444-1003"
+     },
+     "computer": {
+      "loggedOn": "DESKTOP-ELUT0RI\\fixtureuser",
+      "name": "DESKTOP-ELUT0RI",
+      "partOfDomain": false
+     },
+     "fixturePrincipal": "S-1-5-18",
+     "guestAgent": {
+      "path": "\"C:\\Program Files\\Qemu-ga\\qemu-ga.exe\" -d --retry-path",
+      "pid": 3172,
+      "startMode": "Auto",
+      "state": "Running"
+     },
+     "nonce": "83affdcd-ee39-4144-8f4d-e11286877a68",
+     "os": {
+      "bootTime": "2026-11-13T07:45:45.5000000Z",
+      "build": "26200",
+      "caption": "Microsoft Windows 11 Enterprise Evaluation",
+      "displayVersion": "25H2",
+      "editionId": "EnterpriseEval",
+      "locale": "en-US",
+      "productName": "Windows 10 Enterprise Evaluation",
+      "ubr": 6584,
+      "version": "10.0.26200"
+     },
+     "setup": {
+      "imageState": "IMAGE_STATE_COMPLETE",
+      "oobeInProgress": 0,
+      "ready": {
+       "installerExit": 0,
+       "principal": "NT AUTHORITY\\SYSTEM",
+       "state": "ready",
+       "time": "2026-11-13T07:44:22.8005568Z"
+      },
+      "systemSetupInProgress": 0,
+      "taskResult": 74,
+      "taskState": "Ready"
+     },
+     "updatePolicy": {
+      "noAutoUpdate": 1,
+      "storeAutoDownload": 2
+     },
+     "user": {
+      "enabled": true,
+      "isAdministrator": false,
+      "isUsersMember": true,
+      "name": "fixtureuser",
+      "profileRoot": "C:\\Users\\fixtureuser",
+      "sid": "S-1-5-21-520538448-1056110111-3183390444-1004"
+     }
+    },
+    "setupReady": true,
+    "state": "setup-observed"
+   },
+   "role": "fixture-user-console"
+  },
+  {
+   "reply": "180715-mcp-windows-vm-deploy-qualify-more-qualify.stdout",
+   "replySha256": "772b9c16665a170af83bab2cf9eb8e098e32c29701556e41f8111524e5531169",
+   "response": {
+    "deploymentId": "39242640-dfff-4391-bd06-e33e974edf2b",
+    "imageMatchesRequest": true,
+    "operationId": "522944ea-823e-45be-be24-3dcb9481ed75",
+    "productReady": false,
+    "reason": null,
+    "result": {
+     "administrator": {
+      "enabled": true,
+      "isAdministrator": true,
+      "name": "fixtureadmin",
+      "sid": "S-1-5-21-2061291817-1289158617-3448004818-1003"
+     },
+     "computer": {
+      "loggedOn": "DESKTOP-SPD30ML\\fixtureadmin",
+      "name": "DESKTOP-SPD30ML",
+      "partOfDomain": false
+     },
+     "fixturePrincipal": "S-1-5-18",
+     "guestAgent": {
+      "path": "\"C:\\Program Files\\Qemu-ga\\qemu-ga.exe\" -d --retry-path",
+      "pid": 3236,
+      "startMode": "Auto",
+      "state": "Running"
+     },
+     "nonce": "522944ea-823e-45be-be24-3dcb9481ed75",
+     "os": {
+      "bootTime": "2026-11-09T15:05:17.5000000Z",
+      "build": "26200",
+      "caption": "Microsoft Windows 11 Enterprise Evaluation",
+      "displayVersion": "25H2",
+      "editionId": "EnterpriseEval",
+      "locale": "en-US",
+      "productName": "Windows 10 Enterprise Evaluation",
+      "ubr": 6584,
+      "version": "10.0.26200"
+     },
+     "setup": {
+      "imageState": "IMAGE_STATE_COMPLETE",
+      "oobeInProgress": 0,
+      "ready": {
+       "installerExit": 0,
+       "principal": "NT AUTHORITY\\SYSTEM",
+       "state": "ready",
+       "time": "2026-11-09T15:04:33.3961171Z"
+      },
+      "systemSetupInProgress": 0,
+      "taskResult": 74,
+      "taskState": "Ready"
+     },
+     "updatePolicy": {
+      "noAutoUpdate": 1,
+      "storeAutoDownload": 2
+     },
+     "user": {
+      "enabled": true,
+      "isAdministrator": false,
+      "isUsersMember": true,
+      "name": "fixtureuser",
+      "profileRoot": null,
+      "sid": "S-1-5-21-2061291817-1289158617-3448004818-1004"
+     },
+     "visualFilteredAdminReady": true,
+     "visualSession": {
+      "activeConsoleSession": 2,
+      "administratorProfile": "C:\\Users\\fixtureadmin",
+      "bootFileTimeUtc": "134387103175000000",
+      "closing": [
+       "134387103377377595",
+       "C:\\Windows\\explorer.exe",
+       "S-1-5-21-2061291817-1289158617-3448004818-1003",
+       "0",
+       "3",
+       "True",
+       "False",
+       "True",
+       "2"
+      ],
+      "closingConsoleSession": 2,
+      "explorerPid": 4984,
+      "opening": [
+       "134387103377377595",
+       "C:\\Windows\\explorer.exe",
+       "S-1-5-21-2061291817-1289158617-3448004818-1003",
+       "0",
+       "3",
+       "True",
+       "False",
+       "True",
+       "2"
+      ]
+     }
+    },
+    "setupReady": true,
+    "state": "setup-observed"
+   },
+   "role": "visual-administrator-console"
+  },
+  {
+   "reply": "215228-mcp-windows-vm-deploy-qualify-pin-qualify.stdout",
+   "replySha256": "9329c8b323cb456bdaf0517736e945afb1541db26e31be2a39f69a63c13e33e3",
+   "response": {
+    "deploymentId": "74e99864-c8e3-4890-82ae-7a3e6c746669",
+    "imageMatchesRequest": true,
+    "operationId": "80e3bd76-a8a4-4a9b-9bd7-e2aed15a7ba1",
+    "productReady": false,
+    "reason": null,
+    "result": {
+     "administrator": {
+      "enabled": true,
+      "isAdministrator": true,
+      "name": "fixtureadmin",
+      "sid": "S-1-5-21-2273039459-1703881155-186347341-1003"
+     },
+     "computer": {
+      "loggedOn": "DESKTOP-J5C6UMO\\fixtureuser",
+      "name": "DESKTOP-J5C6UMO",
+      "partOfDomain": false
+     },
+     "fixturePrincipal": "S-1-5-18",
+     "guestAgent": {
+      "path": "\"C:\\Program Files\\Qemu-ga\\qemu-ga.exe\" -d --retry-path",
+      "pid": 6840,
+      "startMode": "Auto",
+      "state": "Running"
+     },
+     "nonce": "80e3bd76-a8a4-4a9b-9bd7-e2aed15a7ba1",
+     "os": {
+      "bootTime": "2026-11-16T18:51:04.3620390Z",
+      "build": "26200",
+      "caption": "Microsoft Windows 11 Enterprise Evaluation",
+      "displayVersion": "25H2",
+      "editionId": "EnterpriseEval",
+      "locale": "en-US",
+      "productName": "Windows 10 Enterprise Evaluation",
+      "ubr": 6584,
+      "version": "10.0.26200"
+     },
+     "secondAdministrator": {
+      "enabled": true,
+      "isAdministrator": true,
+      "name": "fixtureapprover",
+      "sid": "S-1-5-21-2273039459-1703881155-186347341-1004"
+     },
+     "setup": {
+      "imageState": "IMAGE_STATE_COMPLETE",
+      "oobeInProgress": 0,
+      "ready": {
+       "installerExit": 0,
+       "principal": "NT AUTHORITY\\SYSTEM",
+       "state": "ready",
+       "time": "2026-11-16T18:51:42.7163032Z"
+      },
+      "systemSetupInProgress": 0,
+      "taskResult": 74,
+      "taskState": "Ready"
+     },
+     "updatePolicy": {
+      "noAutoUpdate": 1,
+      "storeAutoDownload": 2
+     },
+     "user": {
+      "enabled": true,
+      "isAdministrator": false,
+      "isUsersMember": true,
+      "name": "fixtureuser",
+      "profileRoot": "C:\\Users\\fixtureuser",
+      "sid": "S-1-5-21-2273039459-1703881155-186347341-1005"
+     }
+    },
+    "setupReady": true,
+    "state": "setup-observed"
+   },
+   "role": "second-administrator-clone-ready"
+  },
+  {
+   "reply": "215945-mcp-windows-vm-deploy-qualify-more-qualify.stdout",
+   "replySha256": "1bd98b2d6bcdcbd49f29b49ea13245a58dc18427011613e16ef0ab550652d7e6",
+   "response": {
+    "deploymentId": "db6df990-06b8-4ffc-b820-58ea34f02896",
+    "imageMatchesRequest": true,
+    "operationId": "591f2217-39da-45b6-ba1c-3a02fda80089",
+    "productReady": false,
+    "reason": null,
+    "result": {
+     "administrator": {
+      "enabled": true,
+      "isAdministrator": true,
+      "name": "fixtureadmin",
+      "sid": "S-1-5-21-2269864750-2461662382-3419391046-1003"
+     },
+     "computer": {
+      "loggedOn": null,
+      "name": "DESKTOP-7881E5T",
+      "partOfDomain": false
+     },
+     "fixturePrincipal": "S-1-5-18",
+     "guestAgent": {
+      "path": "\"C:\\Program Files\\Qemu-ga\\qemu-ga.exe\" -d --retry-path",
+      "pid": 3568,
+      "startMode": "Auto",
+      "state": "Running"
+     },
+     "nonce": "591f2217-39da-45b6-ba1c-3a02fda80089",
+     "os": {
+      "bootTime": "2026-11-08T18:58:13.5000000Z",
+      "build": "26200",
+      "caption": "Microsoft Windows 11 Enterprise Evaluation",
+      "displayVersion": "25H2",
+      "editionId": "EnterpriseEval",
+      "locale": "en-US",
+      "productName": "Windows 10 Enterprise Evaluation",
+      "ubr": 6584,
+      "version": "10.0.26200"
+     },
+     "setup": {
+      "imageState": "IMAGE_STATE_UNDEPLOYABLE",
+      "oobeInProgress": 1,
+      "ready": null,
+      "systemSetupInProgress": 0,
+      "taskResult": 267009,
+      "taskState": "Running"
+     },
+     "updatePolicy": {
+      "noAutoUpdate": 1,
+      "storeAutoDownload": 2
+     },
+     "user": {
+      "enabled": true,
+      "isAdministrator": false,
+      "isUsersMember": true,
+      "name": "fixtureuser",
+      "profileRoot": null,
+      "sid": "S-1-5-21-2269864750-2461662382-3419391046-1004"
+     }
+    },
+    "setupReady": false,
+    "state": "setup-observed"
+   },
+   "role": "stuck-task-waiting"
+  },
+  {
+   "reply": "222501-mcp-windows-vm-deploy-qualify-more-qualify.stdout",
+   "replySha256": "2c5edf5f43948869ccba5780195e853880c0ef1a93ab4232eaa9185dcd3a6da0",
+   "response": {
+    "deploymentId": "db6df990-06b8-4ffc-b820-58ea34f02896",
+    "imageMatchesRequest": true,
+    "operationId": "d89fd8e6-a4c1-4a40-aa1d-abb31bf8171a",
+    "productReady": false,
+    "reason": null,
+    "result": {
+     "administrator": {
+      "enabled": true,
+      "isAdministrator": true,
+      "name": "fixtureadmin",
+      "sid": "S-1-5-21-2269864750-2461662382-3419391046-1003"
+     },
+     "computer": {
+      "loggedOn": null,
+      "name": "DESKTOP-7881E5T",
+      "partOfDomain": false
+     },
+     "fixturePrincipal": "S-1-5-18",
+     "guestAgent": {
+      "path": "\"C:\\Program Files\\Qemu-ga\\qemu-ga.exe\" -d --retry-path",
+      "pid": 3568,
+      "startMode": "Auto",
+      "state": "Running"
+     },
+     "nonce": "d89fd8e6-a4c1-4a40-aa1d-abb31bf8171a",
+     "os": {
+      "bootTime": "2026-11-08T18:58:13.5000000Z",
+      "build": "26200",
+      "caption": "Microsoft Windows 11 Enterprise Evaluation",
+      "displayVersion": "25H2",
+      "editionId": "EnterpriseEval",
+      "locale": "en-US",
+      "productName": "Windows 10 Enterprise Evaluation",
+      "ubr": 6584,
+      "version": "10.0.26200"
+     },
+     "setup": {
+      "imageState": "IMAGE_STATE_UNDEPLOYABLE",
+      "oobeInProgress": 1,
+      "ready": null,
+      "systemSetupInProgress": 0,
+      "taskResult": 73,
+      "taskState": "Ready"
+     },
+     "updatePolicy": {
+      "noAutoUpdate": 1,
+      "storeAutoDownload": 2
+     },
+     "user": {
+      "enabled": true,
+      "isAdministrator": false,
+      "isUsersMember": true,
+      "name": "fixtureuser",
+      "profileRoot": null,
+      "sid": "S-1-5-21-2269864750-2461662382-3419391046-1004"
+     }
+    },
+    "setupReady": false,
+    "state": "setup-observed"
+   },
+   "role": "stuck-task-ended"
+  },
+  {
+   "reply": "204209-mcp-windows-vm-deploy-qualify-pin-qualify.stdout",
+   "replySha256": "9ae569d94848a77e51e09baa6e94e37ee63ce02eac79cfb66341af688803793e",
+   "response": {
+    "deploymentId": "23824f97-98ca-46f8-90fd-2cb9a70ad9c8",
+    "imageMatchesRequest": true,
+    "operationId": "490baa16-976e-4ca3-bc27-6b37403c7386",
+    "productReady": false,
+    "reason": null,
+    "result": {
+     "administrator": {
+      "enabled": true,
+      "isAdministrator": true,
+      "name": "fixtureadmin",
+      "sid": "S-1-5-21-3350828439-105478642-3716142616-1003"
+     },
+     "computer": {
+      "loggedOn": null,
+      "name": "DESKTOP-ROL0Q3E",
+      "partOfDomain": false
+     },
+     "fixturePrincipal": "S-1-5-18",
+     "guestAgent": {
+      "path": "\"C:\\Program Files\\Qemu-ga\\qemu-ga.exe\" -d --retry-path",
+      "pid": 3428,
+      "startMode": "Auto",
+      "state": "Running"
+     },
+     "nonce": "490baa16-976e-4ca3-bc27-6b37403c7386",
+     "os": {
+      "bootTime": "2026-11-16T17:36:38.4208220Z",
+      "build": "26200",
+      "caption": "Microsoft Windows 11 Enterprise Evaluation",
+      "displayVersion": "25H2",
+      "editionId": "EnterpriseEval",
+      "locale": "en-US",
+      "productName": "Windows 10 Enterprise Evaluation",
+      "ubr": 6584,
+      "version": "10.0.26200"
+     },
+     "secondAdministrator": {
+      "enabled": true,
+      "isAdministrator": true,
+      "name": "fixtureapprover",
+      "sid": "S-1-5-21-3350828439-105478642-3716142616-1004"
+     },
+     "setup": {
+      "imageState": "IMAGE_STATE_UNDEPLOYABLE",
+      "oobeInProgress": 1,
+      "ready": null,
+      "systemSetupInProgress": 0,
+      "taskResult": 267009,
+      "taskState": "Running"
+     },
+     "updatePolicy": {
+      "noAutoUpdate": 1,
+      "storeAutoDownload": 2
+     },
+     "user": {
+      "enabled": true,
+      "isAdministrator": false,
+      "isUsersMember": true,
+      "name": "fixtureuser",
+      "profileRoot": null,
+      "sid": "S-1-5-21-3350828439-105478642-3716142616-1005"
+     }
+    },
+    "setupReady": false,
+    "state": "setup-observed"
+   },
+   "role": "stuck-task-waiting"
+  },
+  {
+   "reply": "210323-mcp-windows-vm-deploy-qualify-pin-qualify.stdout",
+   "replySha256": "a4f8907612e33065b19df1bb81fe7ddc99faf5164d7260f9532eead7be44fce4",
+   "response": {
+    "deploymentId": "23824f97-98ca-46f8-90fd-2cb9a70ad9c8",
+    "imageMatchesRequest": true,
+    "operationId": "4e5800c6-c69d-4fe1-9678-52c3c215ec08",
+    "productReady": false,
+    "reason": null,
+    "result": {
+     "administrator": {
+      "enabled": true,
+      "isAdministrator": true,
+      "name": "fixtureadmin",
+      "sid": "S-1-5-21-3350828439-105478642-3716142616-1003"
+     },
+     "computer": {
+      "loggedOn": null,
+      "name": "DESKTOP-ROL0Q3E",
+      "partOfDomain": false
+     },
+     "fixturePrincipal": "S-1-5-18",
+     "guestAgent": {
+      "path": "\"C:\\Program Files\\Qemu-ga\\qemu-ga.exe\" -d --retry-path",
+      "pid": 3428,
+      "startMode": "Auto",
+      "state": "Running"
+     },
+     "nonce": "4e5800c6-c69d-4fe1-9678-52c3c215ec08",
+     "os": {
+      "bootTime": "2026-11-16T17:36:38.4208220Z",
+      "build": "26200",
+      "caption": "Microsoft Windows 11 Enterprise Evaluation",
+      "displayVersion": "25H2",
+      "editionId": "EnterpriseEval",
+      "locale": "en-US",
+      "productName": "Windows 10 Enterprise Evaluation",
+      "ubr": 6584,
+      "version": "10.0.26200"
+     },
+     "secondAdministrator": {
+      "enabled": true,
+      "isAdministrator": true,
+      "name": "fixtureapprover",
+      "sid": "S-1-5-21-3350828439-105478642-3716142616-1004"
+     },
+     "setup": {
+      "imageState": "IMAGE_STATE_UNDEPLOYABLE",
+      "oobeInProgress": 1,
+      "ready": null,
+      "systemSetupInProgress": 0,
+      "taskResult": 73,
+      "taskState": "Ready"
+     },
+     "updatePolicy": {
+      "noAutoUpdate": 1,
+      "storeAutoDownload": 2
+     },
+     "user": {
+      "enabled": true,
+      "isAdministrator": false,
+      "isUsersMember": true,
+      "name": "fixtureuser",
+      "profileRoot": null,
+      "sid": "S-1-5-21-3350828439-105478642-3716142616-1005"
+     }
+    },
+    "setupReady": false,
+    "state": "setup-observed"
+   },
+   "role": "stuck-task-ended"
+  }
+ ],
+ "schemaVersion": 1
+}

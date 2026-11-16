@@ -46,6 +46,22 @@ def validate_setup_result(value,operation_id,setup):
     return value
 
 
+# A first boot whose OOBE stopped (db6df990 2026-11-08, 23824f97 2026-11-16): Windows' machine phase is
+# incomplete again (OOBEInProgress or ImageState not complete) after the setup task's own 15-minute wait in
+# this boot ended, with 73 (the installer was never admitted) or 75 (windows_vm_unattend installed the agent
+# only to make the stopped OOBE observable). It never completes by itself; the clone is replaced, never nudged.
+SETUP_FAILURE_OOBE_STUCK='first_boot_oobe_stuck'
+
+
+def setup_failure(result):
+    """Name a validated qualification result's terminal setup failure, or None; pure."""
+    setup=result['setup']
+    incomplete=(setup['systemSetupInProgress']!=0 or setup['oobeInProgress']!=0
+                or setup['imageState']!='IMAGE_STATE_COMPLETE')
+    ended=setup['taskState']!='Running' and type(setup['taskResult'])is int and setup['taskResult']in (73,75)
+    return SETUP_FAILURE_OOBE_STUCK if incomplete and ended else None
+
+
 def qualify_instance(spec,setup,operation_id,status_only,root,read,save,process,owns,instance_intent,closing,observed,script_source=None):
     import base64,hashlib,json,os,re,time
     global wire,partial_wire,QGA_PEER_PID,QGA_GUARD

@@ -1,0 +1,51 @@
+{
+ "beforeimage": {
+  "file": "windows_vm_unattend.py.before.source",
+  "gitRevision": "9f5b199506954707a23da305520aa37a212e2bad",
+  "installAgentSha256": "2cfa2606c94d716a61b8577c24ce2aef0c2aae58da4bc70bda3579037e9fa77f",
+  "note": "INSTALL_AGENT is unchanged from 881d39f7 (db6df990, 2026-11-08) to 9f5b1995; both stuck clones executed exactly these bytes.",
+  "sha256": "b2aa96fd93d50d872ad94e619ef628f3c43e106d2bcfc40b1fe48c5879a67098",
+  "source": "agent_tools/windows_vm_unattend.py"
+ },
+ "nativeLimits": "Windows decides when the user OOBE fails and reseals, which page the resealed OOBE then waits on, and how Win32_ComputerSystem.UserName reads during each phase (observed natively in the replies). The test models those phases with the observed values; only a native clone proves the fixed gate end to end.",
+ "phaseOrder": {
+  "lines": {
+   "174": "2026-11-05 07:29:11 [setupact] [oobeldr.exe] OrchestrateUpdateImageState: Updating image state from [IMAGE_STATE_SPECIALIZE_RESEAL_TO_OOBE] --> [IMAGE_STATE_UNDEPLOYABLE]",
+   "177": "2026-11-05 07:29:13 [setupact] [msoobe.exe] Deleting existing default account",
+   "228": "2026-11-05 07:29:17 [setupact] [msoobe.exe] Creating a new default account",
+   "237": "2026-11-05 07:29:30 [setupact] [oobeldr.exe] OrchestrateUpdateImageState: Updating image state from [IMAGE_STATE_UNDEPLOYABLE] --> [IMAGE_STATE_COMPLETE]",
+   "238": "2026-11-05 07:29:30 [setupact] [windeploy.exe] RunUserProvidedScript: Found script at [C:\\WINDOWS\\Setup\\Scripts\\SetupComplete.cmd]; executing with UI hidden...",
+   "244": "2026-11-05 07:29:38 [setupact] [taskhostw.exe] OOBE Monitor event received: 101",
+   "291": "2026-11-05 07:29:44 [System] #511 QEMU Guest Agent\"C:\\Program Files\\Qemu-ga\\qemu-ga.exe\" -d --retry-pathuser mode serviceauto startLocalSystem",
+   "421": "2026-11-05 07:30:04 [setupact] [CloudExperienceHostBroker.exe] OrchestrateUpdateImageState: Updating image state from [IMAGE_STATE_COMPLETE] --> [IMAGE_STATE_SPECIALIZE_RESEAL_TO_OOBE]",
+   "423": "2026-11-05 07:30:04 [setupact] [taskhostw.exe] OOBE Monitor event received: 4",
+   "460": "2026-11-05 07:30:30 [setupact] [oobeldr.exe] OrchestrateUpdateImageState: Updating image state from [IMAGE_STATE_SPECIALIZE_RESEAL_TO_OOBE] --> [IMAGE_STATE_UNDEPLOYABLE]",
+   "461": "2026-11-05 07:30:31 [setupact] [msoobe.exe] Deleting existing default account",
+   "582": "2026-11-05 07:30:36 [setupact] [msoobe.exe] Creating a new default account"
+  },
+  "note": "Read-only disk logs of a resealed clone (F3d, schema 5, same clone-specialize/SetupComplete.cmd/install-agent flow). Machine OOBE sets IMAGE_STATE_COMPLETE, then SetupComplete.cmd runs, then the user OOBE starts in defaultuser0; the guest agent MSI ran inside that user OOBE; CloudExperienceHostBroker resealed COMPLETE->SPECIALIZE_RESEAL_TO_OOBE and the next machine OOBE stopped at UNDEPLOYABLE after creating defaultuser0 again.",
+  "origin": ".runtime/tool-recovery/windows-lane-20261103/clone-ee0d45b1-disk-logs/timeline.txt",
+  "sha256": "24e75c764b62f2230fe8562a9a46ffc8b9fbb6f1c2be7dd8b9e1465e60cfebda"
+ },
+ "replies": {
+  "file": "qualify-replies.json",
+  "origin": ".runtime/tool-recovery/windows-sleep-20261106/public/<reply> (operator qualify outputs, MCP surface)"
+ },
+ "schemaVersion": 1,
+ "stuckStarts": [
+  {
+   "callerPath": ".runtime/windows-vm-deploy/8e0d0e2cccc74535a4c07451197c223f/caller.py",
+   "callerSha256": "bee83ac1c24dcca212b66111863810b7b1834d358ebf1398cc926a73202e5893",
+   "deployment": "db6df990",
+   "executedInstallAgentSha256": "2cfa2606c94d716a61b8577c24ce2aef0c2aae58da4bc70bda3579037e9fa77f",
+   "startCorrelationId": "8e0d0e2cccc74535a4c07451197c223f"
+  },
+  {
+   "callerPath": ".runtime/windows-vm-deploy/d52b1d95cc7e423588219101fdf55928/caller.py",
+   "callerSha256": "a5542f6980f7ec73c64e8c10e6b22066df42e7067e1ab7b78707d456d3b68596",
+   "deployment": "23824f97-98ca-46f8-90fd-2cb9a70ad9c8",
+   "executedInstallAgentSha256": "2cfa2606c94d716a61b8577c24ce2aef0c2aae58da4bc70bda3579037e9fa77f",
+   "startCorrelationId": "d52b1d95cc7e423588219101fdf55928"
+  }
+ ]
+}

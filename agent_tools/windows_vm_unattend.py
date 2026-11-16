@@ -79,14 +79,24 @@ INSTALL_AGENT=r'''$ErrorActionPreference='Stop'
 $logs=Join-Path $env:ProgramData 'VpnControlFixture'
 # An early OOBE logon may trigger this task. Never start Windows Installer
 # while setup still owns the machine, and never replay an uncertain installer.
+# Windows marks the machine phase complete (OOBEInProgress 0, IMAGE_STATE_COMPLETE)
+# before the user OOBE runs in the temporary defaultuserN session, and that phase
+# can still fail, reseal the machine to OOBE and restart it (db6df990, 23824f97).
+# So the installer waits until an account that is not a temporary OOBE account
+# owns the console. A machine phase still incomplete when the wait ends means
+# OOBE stopped: the agent is then installed only to make that state observable
+# (ready.json setup-incomplete, exit 75), never as a ready fixture.
 $deadline=[DateTime]::UtcNow.AddMinutes(15)
 do {
     $state=Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\Setup'
     $image=Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State'
-    $ready=($state.SystemSetupInProgress -eq 0 -and $state.OOBEInProgress -eq 0 -and $image.ImageState -eq 'IMAGE_STATE_COMPLETE')
+    $console=(Get-CimInstance -ClassName Win32_ComputerSystem).UserName
+    $machine=($state.SystemSetupInProgress -eq 0 -and $state.OOBEInProgress -eq 0 -and $image.ImageState -eq 'IMAGE_STATE_COMPLETE')
+    $ready=($machine -and $console -and $console -notmatch '\\defaultuser\d+$')
     if(-not $ready){Start-Sleep -Seconds 2}
 } until($ready -or [DateTime]::UtcNow -ge $deadline)
-if(-not $ready){exit 73}
+if(-not $ready -and $machine){exit 73}
+$observeOnly=(-not $ready)
 $intent=Join-Path $logs 'agent-install-intent.json'
 try {
     $stream=[IO.File]::Open($intent,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
@@ -102,8 +112,11 @@ if(-not $p.WaitForExit(180000)){throw 'GUEST_AGENT_INSTALL_UNKNOWN'}
 if($p.ExitCode -notin @(0,3010)){throw 'GUEST_AGENT_INSTALL'}
 Set-Service -Name QEMU-GA -StartupType Automatic
 Start-Service -Name QEMU-GA
-@{state='ready';principal=[Security.Principal.WindowsIdentity]::GetCurrent().Name;installerExit=$p.ExitCode;time=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $logs 'ready.json') -Encoding UTF8
+$outcome='ready'
+if($observeOnly){$outcome='setup-incomplete'}
+@{state=$outcome;principal=[Security.Principal.WindowsIdentity]::GetCurrent().Name;installerExit=$p.ExitCode;time=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $logs 'ready.json') -Encoding UTF8
 Stop-Transcript
+if($observeOnly){exit 75}
 '''
 
 

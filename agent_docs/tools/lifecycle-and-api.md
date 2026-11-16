@@ -318,6 +318,24 @@ second account has no automatic logon, and its setup secret leaves the seed medi
 and answer caches with the rest. Its secret stays `second-administrator.secret`,
 which only `windows-uac-decision` reads.
 
+The guest-agent install waits for the end of Windows' first boot, not only its
+machine phase. Windows sets `OOBEInProgress` 0 and `IMAGE_STATE_COMPLETE` before
+the user OOBE runs in the temporary `defaultuserN` session, and that phase can
+still fail, reseal the machine to OOBE and restart it. Clones `db6df990` and
+`23824f97` had their agent install in flight then and stayed in OOBE for good.
+`install-agent.ps1` therefore starts Windows Installer only once an account that
+is not a temporary OOBE account owns the console
+(`Win32_ComputerSystem.UserName`). If the machine phase is still incomplete when
+its 15-minute wait ends, it installs the agent only to make that state
+observable: `ready.json` records `setup-incomplete` and the task ends 75. A
+complete machine phase without such a console user ends 73 as before, and the
+fixture's next logon runs the task again. Qualification names a machine phase
+that is incomplete after the task ended 73 or 75 `setupFailure:
+first_boot_oobe_stuck` (`windows_vm_guest.setup_failure`), with the next action
+`replace-fixture`: stop the clone with its disk kept, release its reservation
+and create a new clone. Nothing types into the OOBE page or forces setup state;
+a stopped first-boot OOBE never completes by itself.
+
 Fixtures take no unexpected updates. `windows_vm_unattend.UPDATE_POLICY` runs
 in the fixture's first-boot initialize script and sets the machine policies for
 Windows Update (`NoAutoUpdate=1`, `NoAutoRebootWithLoggedOnUsers=1`) and the

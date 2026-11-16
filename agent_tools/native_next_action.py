@@ -358,6 +358,13 @@ def next_action(tool: str, action: str, result: Mapping[str, Any] | Any) -> dict
                 return _guidance("complete", "the scenario completed with exit code 0", fresh=False)
             return _guidance("inspect-evidence", "the scenario is terminal without a successful exit receipt", fresh=True)
 
+    if (tool == "vm_workflow" and action in {"windows-vm-deploy-qualify", "windows-vm-deploy-qualify-status"}
+            and state == "setup-observed" and result.get("setupFailure") == "first_boot_oobe_stuck"):
+        # windows_vm_guest.setup_failure: the clone's first-boot OOBE stopped and never completes by itself.
+        # No input goes to an unreviewed OOBE page and no setup state is forced; the clone is replaced.
+        return _guidance("replace-fixture", "the clone's first-boot OOBE stopped; stop it with its disk kept, "
+                         "release its reservation and create a new clone", fresh=False)
+
     if tool == "vm_workflow" and action == "environment-status":
         observations = result.get("observations")
         stale = result.get("freshness") == "stale" or (

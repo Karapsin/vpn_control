@@ -22798,7 +22798,7 @@
     "windows_vm_deploy_remote": "36d39cca455244445f1c4d654d96b0f7634f99e6545af8e0464aa5f486eb101a",
     "windows_vm_driver_fetch": "38da7a06dc1a2700508a7440b29eccb94927b28ec38befcededaed34c35a0f2a",
     "windows_vm_fresh_setup": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe",
-    "windows_vm_guest": "5550dcc9cb5bd1392bcf97714601a07270c147a5d8aa5399561c00176b275c14",
+    "windows_vm_guest": "3d0292b3fb0eaa14bb4754a1051fbbb750ef5ba3f37e1b3af3ebd89abc883ab5",
     "windows_vm_hardware": "541d9ad4c733b0092254e991915f5f7ae631fe12249b1bd984a0c74002a1d4ad",
     "windows_vm_image": "c6502b08149f1127ada09d71c7b4b917906377028ed818df0481ac30bb03fcbd",
     "windows_vm_instance": "50d624e9e79c3f6111b5b081455beaa3b73d2f0177569a54481e3baa527f548a",
@@ -22820,7 +22820,7 @@
     "windows_vm_setup_keyboard_next": "200f86f50356763242d813c04c6104401bd4da3463e81ee0bd3f4cf07f68e48f",
     "windows_vm_setup_language_next": "987509c25ef36843d9dbae573bb3db37e124979d3a5c3fc80668133eabcc5c67",
     "windows_vm_swtpm_repair": "47190e2c3a0b0b2d56be4595904aa0b3c30c939aa5841c69850e1e263e24eca1",
-    "windows_vm_unattend": "b2aa96fd93d50d872ad94e619ef628f3c43e106d2bcfc40b1fe48c5879a67098",
+    "windows_vm_unattend": "741cc30a0baf910b584d05ea4579d59a4e16cd420c1357c8d15f955c1e96a855",
     "windows_vm_virt_firmware_install": "752863505733482fad930ec4b409c00beb5a705c0be581eba04e774f0691ef1a"
   }
 }

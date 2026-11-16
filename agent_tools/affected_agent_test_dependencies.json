@@ -180,7 +180,8 @@
         "ddc0b780428760e9de644488ebbd024c7daa458d7f341b473c8f5a46ebec91fb",
         "64446372a3f60f0617776996b61bb3750860bee654028bb472934ede0cb1616f",
         "cd7b80fe23ce17c92730e193a336b82ee62c6e72b4e285431524fa20a8be95df",
-        "9fc965df373aa3fd7f1753b0e8959b917eea91f44a737eda33628edb2a3f9003"
+        "9fc965df373aa3fd7f1753b0e8959b917eea91f44a737eda33628edb2a3f9003",
+        "e212754f314a4d1390e80bc4a09cf19d7874a0ea8396f77a9826eb2915828a90"
       ]
     },
     "agent_tools/readiness_tart_macos_legacy_public_resolution.py": {
@@ -11916,6 +11917,24 @@
         "47e8ce0001777fc23d68a0fb4113599fd425fe595318281b5904fa4986c41fec"
       ]
     },
+    "agent_tools/tests/test_windows_first_boot_oobe.py": {
+      "reason": "Reads only its own fixture folder: the provenance-authenticated windows_vm_unattend.py beforeimage whose INSTALL_AGENT both stuck clones executed, and preserved qualify replies; loads mcp_server/windows_vm_deploy/windows_vm_guest through the reviewed route adapter.",
+      "scopes": [
+        "agent_tools/windows_vm_unattend.py",
+        "agent_tools/windows_vm_guest.py",
+        "agent_tools/windows_vm_deploy.py",
+        "agent_tools/mcp_server.py",
+        "agent_tools/native_next_action.py",
+        "agent_tools/readiness_vm_dispatch.py",
+        "agent_tools/tests/route_adapter.py",
+        "agent_tools/tests/fixtures/windows_first_boot_oobe/windows_vm_unattend.py.before.source",
+        "agent_tools/tests/fixtures/windows_first_boot_oobe/provenance.json",
+        "agent_tools/tests/fixtures/windows_first_boot_oobe/qualify-replies.json"
+      ],
+      "sourceSha256": [
+        "8c02d4afe4c5ba1b7cbdaea485429b5b4cd2d1cb5e9f3b17ac1375d1d77e184e"
+      ]
+    },
     "agent_tools/tests/test_windows_fixture_checkout_bytes.py": {
       "reason": "Exact raw-byte checkout regression reads only the two unchanged current specimen reader definitions, their authenticated standalone before functions and attributes, and the explicit public HTTPS/cleanup fixture families. Fresh owned local Git checkouts use isolated Git configuration and actual core.autocrlf conversion; no native execution, global Git settings, historical source pin changes or prior-attempt data. All payload/provenance guards and unlisted text conversion remain active. Two exact raw ordinary-task owner/XML payloads are additionally compared through real isolated Git checkout conversion; other source/path authority is unchanged.",
       "scopes": [
@@ -13614,7 +13633,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "1288d5b7bd5898d9f326eda60be8471b2f88c74ff95f833764e3bca1d842e26c",
+    "agent_tools/readiness_vm_dispatch.json": "b4bd6c10fe2100d71152fb15f817b6b44ef3a72f2174163a9d25b5cf04a3fe9b",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",
