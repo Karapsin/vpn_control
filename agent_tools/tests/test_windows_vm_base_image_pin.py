@@ -6,15 +6,14 @@ stand-in for the private .runtime directory.
 import contextlib
 import io
 import json
-import os
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest import mock
 
 from agent_tools import windows_vm_base_image_pin as pin
 from agent_tools import windows_vm_deploy as deploy
-from agent_tools.tests import test_windows_vm_deploy_coordinator as coordinator
 
 IMAGE = {"imageId": "0b0b0b0b-1c1c-4d4d-8e8e-2f2f2f2f2f2f", "manifestSha256": "a" * 64}
 OTHER = "b" * 64
@@ -69,22 +68,37 @@ class BaseImagePinTests(unittest.TestCase):
         with contextlib.redirect_stderr(err):
             self.assertEqual(2, pin.main(["--root", str(self.root), "refresh", "--manifest-sha256", "x"]))
 
-    @unittest.skipUnless(os.name == "posix", "POSIX coordinator state")
-    def test_clone_start_is_refused_before_any_preparation_without_or_with_a_wrong_pin(self):
-        spec = deploy.FreshWindowsVmSpec.parse(coordinator.specs.request())
-        setup = {"imageName": "Windows 11 Pro", "locale": "en-US", "user": "ordinary", "administrator": "fixtureAdmin"}
+    def test_clone_entry_points_refuse_before_the_deployment_runs_without_or_with_a_wrong_pin(self):
+        args = (self.root, {"request": "inert"}, {"setup": "inert"}, "inert-credential-file")
+        with mock.patch.object(deploy, "start", side_effect=AssertionError("no deployment")) as start, \
+                mock.patch.object(deploy, "images", side_effect=AssertionError("no host contact")):
+            with self.assertRaisesRegex(pin.BasePinError, "^deployment_base_image_unpinned"):
+                pin.start_clone(*args, image=IMAGE)
+            pin.refresh(self.root, OTHER)
+            with self.assertRaisesRegex(pin.BasePinError, "^deployment_base_image_hash_mismatch"):
+                pin.start_clone(*args, image=IMAGE)
+            with self.assertRaisesRegex(pin.BasePinError, "^deployment_base_image_required"):
+                pin.start_clone(*args, image=None)
+            start.assert_not_called()
 
-        def attempt(token):
-            with mock.patch.object(deploy, "_prepare_reservation", side_effect=AssertionError("no preparation")), \
-                    mock.patch.object(deploy, "_execute", side_effect=AssertionError("no program")), \
-                    mock.patch.object(deploy, "installer_media", side_effect=AssertionError("no media")), \
-                    self.assertRaisesRegex(ValueError, token):
-                deploy.start(self.root, spec.as_dict(), setup, str(self.root / "sudo.secret"), image=IMAGE)
-            self.assertFalse((self.root / ".rag_index").exists())
-            self.assertFalse((self.root / ".runtime/windows-vm-credentials").exists())
-        attempt("^deployment_base_image_unpinned")
-        pin.refresh(self.root, OTHER)
-        attempt("^deployment_base_image_hash_mismatch")
+    def test_pinned_clone_start_delegates_unchanged(self):
+        pin.refresh(self.root, IMAGE["manifestSha256"])
+        with mock.patch.object(deploy, "start", return_value={"state": "unknown"}) as start:
+            result = pin.start_clone(self.root, {"r": 1}, {"s": 1}, "cred", image=IMAGE, network=None)
+        self.assertEqual({"state": "unknown"}, result)
+        start.assert_called_once_with(self.root, {"r": 1}, {"s": 1}, "cred", image=IMAGE, network=None)
+
+    def test_no_other_production_code_creates_a_clone(self):
+        """windows_vm_deploy is source-pinned, so the gate lives in the callers: only this module may pass an image."""
+        agent_tools = Path(pin.__file__).parent
+        offenders = []
+        for path in sorted(agent_tools.glob("*.py")):
+            if path.name in {"windows_vm_base_image_pin.py", "windows_vm_deploy.py"}:
+                continue
+            text = path.read_text(errors="replace")
+            if re.search(r"\b(?:deploy|deployment)\.create\(", text) or re.search(r"\bdeploy\.start\([^)]*image\s*=", text):
+                offenders.append(path.name)
+        self.assertEqual([], offenders, "route clone creation through windows_vm_base_image_pin.create_clone/start_clone")
 
 
 if __name__ == "__main__":

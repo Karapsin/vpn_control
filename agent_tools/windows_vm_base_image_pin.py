@@ -11,6 +11,11 @@ Policy:
 * `require_pinned` runs before any new clone is prepared. A missing pin (legacy
   checkouts, before the first deliberate refresh) and a different image hash
   both refuse, and the message names the refresh step.
+* `windows_vm_deploy.py` and the image/instance sources are frozen by the
+  sign-in packet source pins, so the gate is not inside them. `create_clone`
+  and `start_clone` here are the only sanctioned clone entry points: they
+  check the pin, then delegate unchanged to `windows_vm_deploy`. A repository
+  test refuses any other non-test caller that creates a clone.
 * `refresh` is the only writer. It must be run on purpose with the exact hash
   to accept (`--manifest-sha256`) and appends the superseded hash to a history.
   It does not contact any host or VM.
@@ -104,6 +109,38 @@ def refresh(root, manifest_sha256, *, now_ms: int | None = None) -> dict:
         os.fsync(stream.fileno())
     os.replace(temporary, path)
     return value
+
+
+def start_clone(root, request, setup, credential_file, *, image, network=None):
+    """Start one clone of an exact published image, only from the pinned base image."""
+    from . import windows_vm_deploy as deploy
+    if image is None:
+        raise BasePinError("deployment_base_image_required: a clone needs an exact published image")
+    from .windows_vm_image import validate_context_image
+    image = validate_context_image(image)
+    require_pinned(root, image)
+    return deploy.start(root, request, setup, credential_file, image=image, network=network)
+
+
+def create_clone(root, request, setup, credential_file, *, now_ms=None):
+    """`windows_vm_deploy.create` for clones: the newest matching image must be the pinned one.
+
+    The image listing is read-only host contact, exactly as in `create`; the pin is
+    checked before anything is prepared. A blank install (no image yet) is the
+    next image template, not a clone, and is not this function's business.
+    """
+    import time
+    from . import windows_vm_deploy as deploy
+    from . import windows_vm_unattend as unattended
+    from .windows_vm_image import choose_image
+    spec = deploy.FreshWindowsVmSpec.parse(request)
+    parsed = unattended.parse_setup(setup)
+    image = choose_image(deploy.images(root, spec.as_dict()), spec.as_dict(), parsed,
+                         time.time_ns() // 1_000_000 if now_ms is None else now_ms)
+    if image is None:
+        raise BasePinError("deployment_base_image_missing: no matching unexpired base image; capture one, then run: " + REFRESH_COMMAND)
+    return {**start_clone(root, spec.as_dict(), parsed, credential_file, image=image),
+            "image": image, "nextAction": None}
 
 
 def main(argv=None) -> int:

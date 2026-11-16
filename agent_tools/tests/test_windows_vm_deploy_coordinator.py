@@ -253,8 +253,6 @@ class SecondAdministratorStartTests(unittest.TestCase):
             self.assertEqual(('start',setup),(mode,kwargs['setup']))
             sent.append(dict(kwargs['payload']));kwargs['before_submit']()
             return {'state':'unknown','nativeActionAllowed':False,'replayAllowed':False}
-        from agent_tools import windows_vm_base_image_pin as pin
-        pin.refresh(self.root,image['manifestSha256'])
         with mock.patch.object(deploy,'_prepare_reservation',side_effect=prepare),mock.patch.object(deploy,'_execute',side_effect=native):
             try:result=deploy.start(self.root,self.spec.as_dict(),setup,str(self.credential),image=image)
             except ValueError as error:self.fail('the clone start was refused: '+str(error))
