@@ -3245,6 +3245,31 @@ clones. The next clone created from these sources must show, in its first qualif
 `defaultuser0` left the console, and no `ready.json` while `defaultuser0` is signed in; a clone that stops
 in OOBE again must reach `setupFailure` `first_boot_oobe_stuck` within about 15 minutes of its last boot,
 with the agent installed and `ready.json` `setup-incomplete`.
+### Native scenario row speed (S6/QW7), offline (2026-11-16)
+
+Built offline in the clone `builders/native-speed` on `a34e07cb`; nothing here has run natively. Not a
+failure fix: 78 local rows (birth times, `.runtime/windows-parity-20261107/evidence/native-speed/breakdown.jsonl`)
+spent a median 80 s before submit (the 1.2 MB program over the saved-program route every row, an admission
+per call, a separate stage-check) and up to one 30-45 s status round after the job's end. Each new behaviour
+keeps "recover by reading the original" and refuses before any guest contact when its proof is missing.
+RED ran in a sparse worktree of `a34e07cb` holding only the two changed test modules (removed after use),
+Python 3.14: 21 tests, 16 fail on their cause, failures=9 and errors=12 with subtests. The other five assert
+that a caller who does not ask for the new behaviour sees none of it, so they pass on both. Logs:
+`evidence/native-speed/test-logs/red-a34e07cb-py314.log` and the `green-*` logs beside it.
+
+| Behaviour | Regression | Notes |
+| --- | --- | --- |
+| The 1.2 MB job body went over the saved-program route on every row | `test_native_scenario_windows.CachedBodyTests` | RED failures=1, errors=2: the body was never staged, and a submit took four calls. The body is staged once per host in the artifact cache; each row submits a 14 KB loader inline. The loader checks digest, size, owner and mode before it runs the body, and exits 2 (`host_setup:job_body_*`) otherwise. The loader over the cached body runs exactly what the single program ran. |
+| Every SSH call of a row ran its own admission | `RowAdmissionTests` | RED errors=4: no `row_admission`. One admission carries a row's calls; every call still revalidates connection, boot and account when sent, and a call with no reply makes the next one admit afresh. MCP is unchanged. |
+| The job's end was seen only at the next status round | `JobWaitTests` | RED errors=3: no `wait_job`. The host waits up to 110 s on the durable owner's `terminal.json` and liveness; it decides nothing, status still reads the original job, and nothing is replayed. |
+| A product row after a passed row still needed a 7-minute reset | `test_windows_scenario_host_job.CleanStartTests`; `test_native_scenario_windows.CleanStartWiringTests` | RED failures=8 (subtests), errors=1. `clean_start=True` (direct route, product rows only) refuses `clean_start_unclean_job` unless every job since the install passed or was refused, then runs a read-only SYSTEM census before publish; anything left is `clean_start_drift:*`. A row right after its install records exactly what it did before. |
+| Nothing measured where a row's time went | `DriverTimingTests`, `JobTimingTests` | RED errors=1 each. `timing.jsonl` (driver) and `host-timing.json` (collected) are not evidence, and a timing write that fails changes nothing. |
+
+The private family helpers' change (no `sleep 120` between rows, `queue.py` resets only after a known failure,
+drift or install-changing row, exit 3 stops a queue on an unsettled row) is a patch only:
+`evidence/native-speed/family-helpers.patch`, with `helpers/simulate-{red,green}.log`. Still native, all of it:
+the cache staging and inline submit on a fresh host, a second passing product row with `--clean-start` and its
+census, a refused clean start after a failed row, a UAC row's job wait, and the measured row times.
 
 ## Historical coverage rule
 
