@@ -96,7 +96,7 @@ class LinuxUpdateFixtureWorkflowTest(unittest.TestCase):
         guard = "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.fixture_base_version != ''"
         self.assertEqual(2, workflow.count(guard))
         self.assertIn("if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''", workflow)
-        self.assertIn('runs-on: ubuntu-latest', workflow)
+        self.assertIn('runs-on: ubuntu-24.04', workflow)
         self.assertIn('scripts/verify_linux_update_fixture.py', workflow)
         self.assertIn('vpn-control-linux-update-fixture-${{ inputs.correlation_id }}', workflow)
         self.assertIn('run-name: Linux RPM fixture ${{ inputs.correlation_id', workflow)

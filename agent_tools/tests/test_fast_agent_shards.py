@@ -138,7 +138,7 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
         agent = [jobs[key] for key in hosted]
         phases = []
         for index, job in enumerate(agent):
-            self.assertEqual('ubuntu-latest', job['runs-on'])
+            self.assertEqual('ubuntu-24.04', job['runs-on'])
             self.assertEqual(90, job['timeout-minutes'])
             self.assertNotIn('strategy', job)
             steps = job['steps']
@@ -189,6 +189,9 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
             # TEST-006 continues each retained step after an earlier failed
             # check and lets Gradle finish its other tasks; commands stay exact.
             step = dict(step)
+            if 'uses' in step:
+                # Third-party actions are pinned to a commit with a version comment.
+                step['uses'] = re.sub(r'@[0-9a-f]{40} # (v\d+)\.\d+\.\d+$', r'@\1', step['uses'])
             if step.get('if') == '${{ !cancelled() }}':
                 del step['if']
             if 'run' in step:
@@ -212,7 +215,7 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
         for index, key in enumerate(hosted_job_keys()):
             step = self.named(jobs[key], 'Retain public agent shard evidence')
             self.assertEqual('always()', step['if'])
-            self.assertEqual('actions/upload-artifact@v4', step['uses'])
+            self.assertEqual('actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2', step['uses'])
             self.assertEqual({'name', 'if', 'uses', 'with'}, set(step))
             options = step['with']
             self.assertEqual({'name', 'path', 'if-no-files-found', 'include-hidden-files', 'retention-days'}, set(options))
@@ -228,7 +231,7 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
         coverage = jobs['agent-test-coverage']
         self.assertEqual('always()', coverage['if'])
         self.assertEqual(hosted_job_keys(), coverage['needs'])
-        downloads = [step for step in coverage['steps'] if step.get('uses') == 'actions/download-artifact@v4']
+        downloads = [step for step in coverage['steps'] if step.get('uses') == 'actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0']
         self.assertEqual(names, [step['with']['name'] for step in downloads])
         self.assertEqual(['.rag_index/agent-ci-evidence-%d' % index for index in range(len(names))],
                          [step['with']['path'] for step in downloads])

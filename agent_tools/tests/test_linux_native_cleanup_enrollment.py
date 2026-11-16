@@ -80,8 +80,10 @@ def enrolled_cleanup_ids(workflow_raw, test_raw):
     header, separator, _ = job.partition('    steps:\n')
     expected_header = ("    name: Build DEB and RPM\n"
                        "    if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''\n"
-                       "    runs-on: ubuntu-latest\n"
+                       "    runs-on: ubuntu-24.04\n"
                        "    timeout-minutes: 45")
+    # The preserved before-workflow predates runner-image pinning (test_ci_environment_pins).
+    header = header.replace('runs-on: ubuntu-latest', 'runs-on: ubuntu-24.04')
     assert separator and header.strip('\n') == expected_header, 'ordinary dev job header, Linux capability and failure policy must be exact'
     rows = [(name, _without_continuation(block)) for name, block in _steps(job)]
     target = [(i, b) for i, (n, b) in enumerate(rows) if n == 'Verify native JDK launcher before packaging']
@@ -91,11 +93,11 @@ def enrolled_cleanup_ids(workflow_raw, test_raw):
     java = [(j, b) for j, (n, b) in enumerate(rows) if n == 'Set up JDK 17']
     assert len(java) == 1 and java[0][0] < i, 'Temurin setup must precede native cleanup'
     expected_java = ('      - name: Set up JDK 17\n'
-                     '        uses: actions/setup-java@v4\n'
+                     '        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1\n'
                      '        with:\n'
                      '          distribution: temurin\n'
                      '          java-version: "17"')
-    assert java[0][1].rstrip() == expected_java, 'real unconditional Temurin17 setup required'
+    assert java[0][1].rstrip().replace('actions/setup-java@v4', 'actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1') == expected_java, 'real unconditional Temurin17 setup required'
     packaging = [j for j, (n, _) in enumerate(rows) if n == 'Build Linux packages']
     assert len(packaging) == 1 and i < packaging[0], 'cleanup controls must run before packaging'
     prefix = '      - name: Verify native JDK launcher before packaging\n        run: |\n'

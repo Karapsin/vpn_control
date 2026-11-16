@@ -44,12 +44,12 @@ class WindowsUpdateFixtureWorkflowTest(unittest.TestCase):
 
     def test_uses_pinned_windows_packaging_prerequisites(self):
         for value in (
-            "actions/setup-java@v4",
+            "actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3",
             'distribution: temurin',
             'java-version: "17"',
-            "gradle/actions/setup-gradle@v4",
+            "gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1",
             "desktopApp/native/windows/toolchain.lock.json",
-            "actions/setup-dotnet@v4",
+            "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
             "choco install wixtoolset --no-progress -y",
             "./scripts/check_release_hygiene.sh",
             "scripts/test_windows_install_admission_diagnostic.py",
@@ -107,7 +107,7 @@ class WindowsUpdateFixtureWorkflowTest(unittest.TestCase):
 
     def test_upload_is_limited_to_pair_and_hash_provenance(self):
         for value in (
-            "actions/upload-artifact@v4",
+            "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
             "format('vpn-control-windows-update-fixture-{0}', inputs.correlation_id)",
             "fixture-receipt.json",
             "snapshot.json",

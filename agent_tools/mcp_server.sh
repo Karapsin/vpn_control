@@ -42,7 +42,7 @@ if [[ -f "$marker" ]]; then
 fi
 if [[ "$requirements_hash" != "$installed_hash" ]] || ! "$venv_python" -c 'import mcp' >/dev/null 2>&1; then
   echo "[vpn-control MCP] Installing agent-only dependencies ..." >&2
-  "$venv_python" -m pip install --disable-pip-version-check -r "$requirements" >&2
+  "$venv_python" -m pip install --disable-pip-version-check --require-hashes -r "$requirements" >&2
   printf '%s\n' "$requirements_hash" >"$marker"
 fi
 

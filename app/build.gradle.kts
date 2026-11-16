@@ -4,6 +4,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+kotlin {
+    jvmToolchain(17)
+}
+
 fun parseCanonicalVersion(value: String): List<Int> {
     val parts = value.trim().split('.').map { it.toIntOrNull() }
     require(parts.size == 3 && parts.all { it != null && it in 0..19 } && requireNotNull(parts[0]) > 0) {

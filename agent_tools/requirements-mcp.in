@@ -1,0 +1,8 @@
+# Human-edited source. Regenerate the hashed lock with:
+#   uv pip compile --universal --generate-hashes --python-version 3.12 \
+#     agent_tools/requirements-mcp.in -o agent_tools/requirements-mcp.txt
+# CI and mcp_server.sh install the lock with pip --require-hashes.
+mcp>=1.27,<2
+vncdotool==1.3.0
+cryptography==50.0.1
+pycdlib==1.14.0

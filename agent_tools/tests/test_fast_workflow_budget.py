@@ -128,7 +128,7 @@ def workflow_limits(source):
                     raise ValueError('Duplicate public retention step')
                 end = next((index for index in range(tail_index + 1, len(body))
                             if body[index].startswith('      - ')), len(body))
-                actual = [item for item in body[tail_index:end] if item.strip()]
+                actual = [re.sub(r'@[0-9a-f]{40} # (v\d+)\.\d+\.\d+$', r'@\1', item) for item in body[tail_index:end] if item.strip()]
                 expected = '''      - name: Retain public agent shard evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -35,10 +35,10 @@ class MacosUpdateFixtureWorkflowTest(unittest.TestCase):
 
     def test_reusable_fixture_uses_native_architecture_frozen_runtime_and_property_versions(self):
         for value in (
-            "runs-on: macos-latest",
-            "actions/setup-java@v4",
+            "runs-on: macos-15",
+            "actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3",
             'java-version: \"17\"',
-            "gradle/actions/setup-gradle@v4",
+            "gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1",
             "./scripts/prepare_sing_box_macos_runtime.sh",
             "python3 scripts/version_metadata.py --field version",
             "--platform macos",

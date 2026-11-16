@@ -97,6 +97,7 @@ def admit_public_uploader(body):
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 7'''
+    body = re.sub(r'@[0-9a-f]{40} # (v\d+)\.\d+\.\d+', r'@\1', body)
     if body.strip() != expected.strip():
         raise AssertionError("Unknown public evidence retention action")
 
@@ -212,6 +213,8 @@ class WorkflowInterpreterOrderTests(unittest.TestCase):
             if actual.startswith(continuation.format(name)):
                 actual = "      - name: " + name + "\n" + actual[len(continuation.format(name)):]
             actual = actual.replace("./gradlew --continue ", "./gradlew ", 1)
+            # Environment pinning (test_ci_environment_pins) changes only action refs and pip hash checking.
+            actual = re.sub(r"@[0-9a-f]{40} # (v\d+)\.\d+\.\d+", r"@\1", actual).replace(" --require-hashes", "")
             self.assertEqual(body.strip(), actual.strip(), name)
 
     def test_prepared_runtime_and_dependencies_precede_all_python_hygiene(self):
@@ -225,12 +228,12 @@ class WorkflowInterpreterOrderTests(unittest.TestCase):
             for name in names:
                 self.assertLess(installed, position(source, name, job), name)
             action = dict(steps(source, job))["Set up Python 3.12"]
-            self.assertIn("uses: actions/setup-python@v5", action)
+            self.assertIn("uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0", action)
             self.assertIn('python-version: "3.12"', action)
         self.assertLess(position(source, "Set up Python 3.12", "agent-test-coverage"),
                         position(source, "Require actual complete disjoint shard coverage", "agent-test-coverage"))
         coverage_action = dict(steps(source, "agent-test-coverage"))["Set up Python 3.12"]
-        self.assertIn("uses: actions/setup-python@v5", coverage_action)
+        self.assertIn("uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0", coverage_action)
         self.assertIn('python-version: "3.12"', coverage_action)
 
     def test_qemu_img_is_installed_before_actual_agent_fixture_selection(self):

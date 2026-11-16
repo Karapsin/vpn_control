@@ -434,7 +434,7 @@ class VisualPlatformTest(unittest.TestCase):
         lock = json.loads((visual_platform.ROOT / "desktopApp/native/windows/toolchain.lock.json").read_text())
         self.assertRegex(lock["sdkVersion"], r"^\d+\.\d+\.\d+$")
         read_pin = windows_job.index("Get-Content desktopApp/native/windows/toolchain.lock.json -Raw")
-        setup = windows_job.index("uses: actions/setup-dotnet@v4")
+        setup = windows_job.index("uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9")
         capture = windows_job.index("name: Capture repeatable Windows scenes")
         self.assertLess(read_pin, setup)
         self.assertLess(setup, capture)

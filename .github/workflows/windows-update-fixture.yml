@@ -17,7 +17,7 @@ jobs:
   build-windows-update-fixture:
     if: github.ref == 'refs/heads/dev'
     name: Build immutable MSI pair
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 60
     env:
       BASE_VERSION: ${{ inputs.base_version }}
@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout selected development source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
@@ -47,13 +47,13 @@ jobs:
           "FIXTURE_ROOT=$FixtureRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
 
       - name: Read native helper SDK version
         id: native-helper-sdk
@@ -63,7 +63,7 @@ jobs:
           "version=$($Pin.sdkVersion)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Set up native helper SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: ${{ steps.native-helper-sdk.outputs.version }}
 
@@ -128,7 +128,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Deliberately failing MSI derivation failed" }
 
       - name: Upload immutable fixture pair and provenance
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ inputs.correlation_id != '' && format('vpn-control-windows-update-fixture-{0}', inputs.correlation_id) || format('vpn-control-windows-update-fixture-{0}', github.sha) }}
           path: |
@@ -147,7 +147,7 @@ jobs:
 
       - name: Preserve failed build diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ inputs.correlation_id != '' && format('vpn-control-windows-update-fixture-failure-{0}', inputs.correlation_id) || format('vpn-control-windows-update-fixture-failure-{0}', github.sha) }}
           path: |

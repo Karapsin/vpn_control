@@ -52,12 +52,12 @@ jobs:
           TARGET_SHA: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
         run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
       - name: Checkout exact source and LFS baselines
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           fetch-depth: 0
           lfs: true
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: '17'
@@ -134,7 +134,7 @@ jobs:
           scripts/capture_visual_android.sh --target android:vpn-control-visual-hosted build/visual-actual/android "$VISUAL_SCENES"
       - name: Upload capture evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: visual-capture-android-${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           path: |
@@ -152,12 +152,12 @@ jobs:
           TARGET_SHA: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
         run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
       - name: Checkout exact source and LFS baselines
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           fetch-depth: 0
           lfs: true
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: '17'
@@ -177,7 +177,7 @@ jobs:
         run: dbus-run-session -- xvfb-run --server-args='-screen 0 1280x800x24' scripts/capture_visual_desktop.sh linux build/visual-actual/linux "$VISUAL_SCENES"
       - name: Upload capture evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: visual-capture-linux-${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           path: |
@@ -195,12 +195,12 @@ jobs:
           TARGET_SHA: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
         run: if ($env:TARGET_SHA -notmatch '^[0-9a-f]{40}$') { throw 'Invalid target SHA' }
       - name: Checkout exact source and LFS baselines
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           fetch-depth: 0
           lfs: true
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: '17'
@@ -211,7 +211,7 @@ jobs:
           $Pin = Get-Content desktopApp/native/windows/toolchain.lock.json -Raw | ConvertFrom-Json
           "version=$($Pin.sdkVersion)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
       - name: Set up native helper SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: ${{ steps.native-helper-sdk.outputs.version }}
       - name: Set canonical visual resolution
@@ -234,7 +234,7 @@ jobs:
         run: ./scripts/capture_visual_desktop.ps1 -Platform windows -Output build/visual-actual/windows -Scenes $env:VISUAL_SCENES
       - name: Upload capture evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: visual-capture-windows-${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           path: |
@@ -252,12 +252,12 @@ jobs:
           TARGET_SHA: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
         run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
       - name: Checkout exact source and LFS baselines
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           fetch-depth: 0
           lfs: true
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: '17'
@@ -295,7 +295,7 @@ jobs:
         run: scripts/capture_visual_desktop.sh macos build/visual-actual/macos "$VISUAL_SCENES"
       - name: Upload capture evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: visual-capture-macos-${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
           path: |
