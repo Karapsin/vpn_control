@@ -409,6 +409,102 @@ class FailedAndUnknownTests(MatrixBase):
                     self.assertEqual(("failed", {"ssh-import-routing": "failed"}), (observation["result"], observation["scenarioResults"]))
 
 
+# TEST-008. The reason the owner journal of DOC run 83484649 (S_D, 2026-11-09) closed its exit 1 with: the harness's own
+# export-race fixture, refused by the OS (ERROR_SHARING_VIOLATION) before the product's export child started.
+HARNESS_REASON = "document-race-fixture-refused:rename-away:32"
+
+
+def owner_journal(reason, *, closings=1, closed_reason=None, exit_code=1):
+    """A pulled evidence copy as the owner leaves it: its top-level event files, the known-failure closing among them."""
+    import zipfile  # Local: the module's import block stays as other open work changes it.
+    events = [("owner-started", {}), *[("known-failure-closing", {"action": "document-acceptance", "reason": reason,
+                                                                   "errorClass": "RuntimeError", "replayAllowed": False})] * closings,
+              ("known-failure-closed", {"action": "document-acceptance", "reason": reason if closed_reason is None else closed_reason,
+                                        "replayAllowed": False, "nativeAcceptanceComplete": False}),
+              ("owner-terminal", {"exitCode": exit_code, "errorClass": "RuntimeError", "sourceClosing": True})]
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as archive:
+        for ordinal, (kind, value) in enumerate(events):
+            archive.writestr("event-%06d-%s.json" % (ordinal, kind), json.dumps(
+                {"schemaVersion": 1, "operationId": "fixture", "ordinal": ordinal, "kind": kind, "value": value}))
+    return stream.getvalue()
+
+
+class HarnessFailureTests(MatrixBase):
+    def harness_row(self, scenario=SMK, route="direct", reason=HARNESS_REASON, *, raw=None, pulled=True, **journal):
+        """An owner exit 1 (the product's failed by its receipt alone) whose pulled evidence copy names its closing reason."""
+        raw = owner_journal(reason, **journal) if raw is None else raw
+        evidence = {"name": "evidence-1.zip", "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(), "entries": 4}
+        correlation = self.row(scenario, route, "failed", extra={"evidence": evidence})
+        if pulled:
+            folder = self.root.joinpath(*windows._EVIDENCE_PARENT, correlation)
+            folder.mkdir(parents=True)
+            (folder / "evidence-1.zip").write_bytes(raw)
+        return correlation
+
+    def classification(self, rows, correlation):
+        return next(row for row in windows.matrix_review(self.root, "windows-native-cli", rows)["rows"] if row["correlationId"] == correlation)
+
+    def test_a_fixture_the_os_refused_is_failed_harness_and_never_the_products_failure(self):
+        harness = self.harness_row()
+        row = self.classification([harness], harness)
+        self.assertEqual(("failed-harness", "task_exit_code", HARNESS_REASON), (row["classification"], row["failure"], row["harnessFailure"]))
+        review = windows.matrix_review(self.root, "windows-native-cli", [harness])
+        self.assertEqual({name: "failed-harness" for name in NATIVE[:10]}, {name: review["scenarios"][name] for name in NATIVE[:10]})
+        self.assert_refused([harness], "windows_matrix_harness_failure:" + min(NATIVE[:10]))
+        self.assertFalse(self.root.joinpath(*windows._MATRIX_EVIDENCE).exists(), "no failed record is made of a harness failure")
+
+    def test_it_blocks_its_scenario_beside_passed_twins_and_never_counts_as_a_pass(self):
+        rows = [*self.complete(), self.harness_row(route="mcp")]
+        self.assertEqual("failed-harness", windows.matrix_review(self.root, "windows-native-cli", rows)["scenarios"][NATIVE[0]])
+        self.assert_refused(rows, "windows_matrix_harness_failure:" + min(NATIVE[:10]))
+
+    def test_it_does_not_hold_a_later_pass_of_its_package(self):
+        # Fix the tool, rerun the row: the pass of the rerun needs no record of the harness's run beside it.
+        self.harness_row()
+        observation = self.observe(self.complete())
+        self.assertEqual("passed", observation["result"])
+        matrix.matrix_record(self.root, observation)
+        status = next(row for row in matrix.matrix_status(self.root, self.source)["requirements"] if row["requirementId"] == "windows-native-cli")
+        self.assertEqual("passed", status["status"])
+
+    def test_the_other_reviewed_harness_codes(self):
+        for reason in ("document-persistence-fixture-refused:reserve-open:5", "document-export-fixture-refused:parent-hold:errno-13",
+                       "document-work-fixture-not-ready:timeout:relay-listening", "document-cache-fixture-not-ready:ended:1:none"):
+            with self.subTest(reason=reason):
+                harness = self.harness_row(reason=reason)
+                self.assertEqual("failed-harness", self.classification([harness], harness)["classification"])
+
+    def test_anything_else_stays_the_products_failure(self):
+        # A case oracle's own reason, a reason outside the reviewed list (the product's lease release timed by the
+        # harness), and a harness reason the pulled copy cannot prove: each is the owner's exit 1, the product's failed.
+        cases = {"oracle": {"reason": "document-export-envelope-mismatch"},
+                 "unlisted": {"reason": "no-tray-close-release-unproven"},
+                 "not-pulled": {"pulled": False},
+                 "other-bytes": {"raw": owner_journal(HARNESS_REASON, exit_code=1) + b"\0"},
+                 "two-closings": {"closings": 2},
+                 "closed-otherwise": {"closed_reason": "document-export-envelope-mismatch"},
+                 "owner-exit-0": {"exit_code": 0}}
+        for name, arguments in cases.items():
+            with self.subTest(case=name):
+                if name == "other-bytes":
+                    correlation = self.harness_row(raw=owner_journal(HARNESS_REASON))
+                    folder = self.root.joinpath(*windows._EVIDENCE_PARENT, correlation)
+                    (folder / "evidence-1.zip").write_bytes(arguments["raw"])
+                else:
+                    correlation = self.harness_row(**arguments)
+                self.assertEqual("failed", self.classification([correlation], correlation)["classification"])
+
+    def test_a_product_failure_beside_it_is_still_recorded_at_once(self):
+        rows = [self.harness_row(), self.row(SSH, "direct", "failed")]
+        observation = self.observe(rows)
+        self.assertEqual(("failed", {name: "failed" for name in NATIVE[10:]}), (observation["result"], observation["scenarioResults"]))
+        self.assertEqual(sorted(NATIVE[:10]), observation["missingEvidence"])
+        document = json.loads((self.root / observation["evidencePath"]).read_bytes())
+        self.assertEqual({name: "failed-harness" for name in NATIVE[:10]}, {name: document["scenarios"][name] for name in NATIVE[:10]})
+        matrix.matrix_record(self.root, observation)
+
+
 class ExactChildStopTests(MatrixBase):
     """windows-scoped-vpn with its real table: passed direct and MCP pairs of PRX(sibling-off) and the TUN restart grant.
 

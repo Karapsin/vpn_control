@@ -1741,7 +1741,8 @@ class NativeScenarioWindowsDriver:
 # The matrix. One reviewed table, built from design.md adapter steps 4-8 with the row names the code accepts:
 # each Windows-applicable requirement scenario and the rows whose passed direct and MCP runs together prove it.
 # () is a scenario no built row proves yet, which stays missing; its comment names what design.md wants.
-# windows-visual stays on visual_platform and visual_review; android-48m-heap is no Windows scenario.
+# windows-visual is proven by no row: its producer (MATRIX_PRODUCERS) maps its three scenarios to the exact-SHA capture,
+# comparison and review evidence of visual_platform and visual_review. android-48m-heap is no Windows scenario.
 _U, _P, _T = "windows-public-update.", "windows-proxy-lifecycle.", "windows-scoped-tun."
 _SMK, _CFG, _STR, _QRY = ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt",
                           "windows-query-owner-gui-reconnect")
@@ -1882,6 +1883,20 @@ MATRIX_LIMITED = {"document-persistence-transfer": ("android-48m-heap",)}
 # this scenario alone; for the row's other scenarios it never counts, and it holds a pass only of this requirement.
 MATRIX_PRINCIPAL = {"document-persistence-transfer": "wrong-principal-owner-context-kind"}
 _PRINCIPAL_FAILURE = "document_principal_not_denied"
+# A Windows requirement whose observation another producer makes from evidence that is no scenario row (T12).
+MATRIX_PRODUCERS = {"windows-visual": "agent_tools/windows_visual_matrix.py"}
+# TEST-008. The harness's own known failures: a fixture the harness started, refused by the OS or not ready before the
+# product took any part, which the owner closes by the same known-failure closing as a case oracle and ends 1. Such a
+# run is failed-harness, never the product's failed: it never counts as a pass, it blocks its scenario while named, and
+# it does not hold a later pass of its package, because it says nothing of the product. Fix the tool and rerun the row.
+# The list is closed and reviewed: an owner exit 1 with any other reason, or whose evidence copy cannot show the
+# reason, stays the product's failed.
+MATRIX_HARNESS_FAILURES = (
+    # windows_document_native.fixture_refused, and the export race's own (9761f1d3): document-<fixture>-fixture-refused.
+    re.compile(r"document-(?:race|persistence|export|spool)-fixture-refused:[a-z0-9-]{1,40}:(?:[0-9]{1,10}|errno-[0-9]{1,6}|none)\Z"),
+    # The responsive row's gated work fixture and the cache row's subscription source, ended before the serve existed.
+    re.compile(r"document-(?:work|cache)-fixture-not-ready:(?:timeout|ended|refused):[!-~]{1,100}\Z"),
+)
 _COLLECTION_FINAL_UNKNOWN = frozenset({"collector_output_limit"})  # Overflow stays unknown; other misses may collect later.
 # The durable job's own final UNKNOWNs (durable_remote_job.observe): an owner gone without a terminal, a host boot since
 # submit, a terminal whose stream overflowed. A missed read or any other reason may still settle on the next status.
@@ -2021,6 +2036,37 @@ def _approval_facts(row: Mapping[str, Any], receipt: Mapping[str, Any] | None) -
     return {**facts, "proven": proven}
 
 
+def _harness_failure(root: Path, correlation: str, receipt: Mapping[str, Any]) -> str | None:
+    """The harness's own known failure an owner exit 1 closed (MATRIX_HARNESS_FAILURES), from the run's pulled evidence
+    copy alone, or None. The copy must be the one the receipt hashed, and its owner journal must hold exactly one
+    known-failure closing and one closed record with the same reason and an owner terminal of exit 1. None for anything
+    else, so the run stays the product's failed: this never refuses."""
+    evidence = receipt.get("evidence")
+    if not (isinstance(evidence, Mapping) and isinstance(evidence.get("name"), str) and _EVIDENCE_NAME.fullmatch(evidence["name"])
+            and isinstance(evidence.get("sha256"), str)):
+        return None
+    path = root.joinpath(*_EVIDENCE_PARENT, correlation, evidence["name"])
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > _MAX_EVIDENCE:
+            return None
+        raw = path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != evidence["sha256"]:
+            return None
+        events = [value for _, value in host_job.evidence_events(raw)]
+    except Exception:  # noqa: BLE001 - an unreadable copy proves no harness failure; the run stays failed.
+        return None
+
+    def values(kind: str) -> list[Any]:
+        return [event.get("value") for event in events if event.get("kind") == kind]
+    closing, closed, terminal = values("known-failure-closing"), values("known-failure-closed"), values("owner-terminal")
+    if not (len(closing) == len(closed) == len(terminal) == 1 and all(isinstance(item, Mapping) for item in (*closing, *closed, *terminal))):
+        return None
+    reason = closing[0].get("reason")
+    if not isinstance(reason, str) or closed[0].get("reason") != reason or terminal[0].get("exitCode") != 1:
+        return None
+    return reason if any(pattern.fullmatch(reason) for pattern in MATRIX_HARNESS_FAILURES) else None
+
+
 def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
     """One row as the matrix reads it, from its journal, its input and its route only; nothing is collected.
 
@@ -2089,7 +2135,12 @@ def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
                 kind = "failed-before-task"
             elif receipt.get("failure") == "task_exit_code" and all(type(task.get(key)) is int and task[key] == 1
                                                                    for key in ("ownerExitCode", "terminalExitCode")):
-                kind = "failed"
+                # TEST-008: the same exit 1 for a fixture of the harness the OS refused or that was never ready, as
+                # the owner's own journal names it, is failed-harness: the tool's, never the product's, never a pass.
+                harness = _harness_failure(root, correlation, receipt)
+                kind = "failed" if harness is None else "failed-harness"
+                if harness is not None:
+                    facts["harnessFailure"] = harness
             elif (receipt.get("failure") == _PRINCIPAL_FAILURE and (row.get("document") or {}).get("principalProbe") is True
                   and all(type(task.get(key)) is int and task[key] == row["expectedExit"] for key in ("ownerExitCode", "terminalExitCode"))):
                 # The owner passed, and the row's own LOCAL SERVICE probe proved no denial: the product's verdict on its
@@ -2317,6 +2368,13 @@ def matrix_review(root: Path | str, requirement_id: str, correlation_ids: Any) -
         principal = MATRIX_PRINCIPAL.get(requirement_id) == scenario
         states = {_matrix_row_state(rows, name, principal, admitted) for name in names}
         scenarios[scenario] = next((state for state in ("failed", "unknown", "missing") if state in states), "passed")
+
+    # TEST-008: a named failed-harness run of a counted row blocks its scenario, unless the product's failure or an
+    # unknown holds it already: it is no pass and no product failure. Rerun the row once the tool is fixed.
+    for scenario, names in MATRIX_SCENARIOS[requirement_id].items():
+        if scenarios[scenario] in ("missing", "passed") and any(row["scenarioId"] in names and row["classification"] == "failed-harness"
+                                                                for row in rows):
+            scenarios[scenario] = "failed-harness"
     return {"requirementId": requirement_id, "platform": requirement["platform"], "rows": rows, "scenarios": scenarios,
             "mcpRoute": {**route, "admission": admission},
             "package": None if not product else {key: product[0][key] for key in ("sourceSha", "productVersion", "artifactSetId",
@@ -2557,6 +2615,7 @@ def matrix_observation(root: Path | str, requirement_id: str, correlation_ids: A
     """
     _need(isinstance(reviewer_attestation, str) and reviewer_attestation.strip() and len(reviewer_attestation) <= 240,
           "windows_matrix_attestation_invalid")
+    _need(requirement_id not in MATRIX_PRODUCERS, "windows_matrix_other_producer:" + str(MATRIX_PRODUCERS.get(requirement_id)))
     root = Path(root).resolve()
     review = matrix_review(root, requirement_id, correlation_ids)
     requirement, requirements = _matrix_requirement(requirement_id)
@@ -2568,6 +2627,9 @@ def matrix_observation(root: Path | str, requirement_id: str, correlation_ids: A
         result = "failed" if "failed" in results.values() else "unknown"
         missing = sorted(set(requirement["requiredScenarios"]) - set(results))
     else:
+        # TEST-008: no record is made of a harness failure, failed or passed; it names the scenario to rerun.
+        harness = sorted(name for name, state in states.items() if state == "failed-harness")
+        _need(not harness, "windows_matrix_harness_failure:" + "".join(harness[:1]))
         open_scenarios = [name for name, state in states.items() if state != "passed"]
         _need(not open_scenarios, "windows_matrix_incomplete:" + str(len(open_scenarios)))
         result, results, missing = "passed", dict(states), list(limited)
