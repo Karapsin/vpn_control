@@ -42,11 +42,15 @@ with open(os.path.join(root, 'calls.jsonl'), 'a') as output:
 if args[:1] == ['get']:
     print(json.dumps({'State': 'stopped', 'Running': False}))
 elif args[:1] == ['run']:
-    open(os.path.join(root, 'child.pid'), 'w').write(str(os.getpid()))
     def exited(_signum, _frame):
         open(os.path.join(root, 'child.exited'), 'w').close()
         raise SystemExit(0)
+    # Install the handler before publishing the pid so a SIGTERM sent as soon
+    # as the pid is visible cannot hit the default action and skip child.exited.
     signal.signal(signal.SIGTERM, exited)
+    pid_temporary = os.path.join(root, 'child.pid.tmp')
+    open(pid_temporary, 'w').write(str(os.getpid()))
+    os.replace(pid_temporary, os.path.join(root, 'child.pid'))
     heartbeat = 0
     while not os.path.exists(os.path.join(root, 'stop')):
         temporary = os.path.join(root, 'child.heartbeat.tmp')

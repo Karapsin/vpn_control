@@ -136,7 +136,13 @@ os.write(1,out);os.write(2,err);raise SystemExit(code)
                 environment=dict(os.environ);environment['PATH']=str(self.root)+os.pathsep+environment.get('PATH','')
                 result=subprocess.run(command,input=payload,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=15,env=environment)
                 connection.sendall(struct.pack('!iii',result.returncode,len(result.stdout),len(result.stderr))+result.stdout+result.stderr)
-        except BaseException as error:self.failures.append(type(error).__name__)
+        except BaseException as error:
+            self.failures.append(type(error).__name__)
+            # Never close silently: an empty reply surfaces in the client as an
+            # opaque struct.error. Report the guest-side failure kind instead.
+            detail=('fixture-guest-failure: '+repr(error)[:400]).encode()
+            try:connection.sendall(struct.pack('!iii',97,0,len(detail))+detail)
+            except OSError:pass
 
     def close(self):
         self.stop.set();self.listener.close()
@@ -248,17 +254,21 @@ class PrivilegedCarrierTests(unittest.TestCase):
 
     def test_actual_kernel_e2big_password_carrier_file_fallback(self):
         argv=self.argv(self.source(size=32000),password=False);self.assertIsInstance(argv,transport.BoundInlineArgv)
-        argmax=os.sysconf('SC_ARG_MAX');remaining=argmax-20000-sum(len(os.fsencode(k))+len(os.fsencode(v))+2 for k,v in os.environ.items());padding={};index=0
+        argmax=os.sysconf('SC_ARG_MAX')
+        # Linux charges every argv/envp pointer and the NUL against the limit, so count
+        # them (9 bytes per variable). The guest-side exec of the small file-carrier
+        # command must keep headroom while the 32000 byte inline source still overflows.
+        remaining=argmax-20000-sum(len(os.fsencode(k))+len(os.fsencode(v))+9 for k,v in os.environ.items());padding={};index=0
         if not 65536<=argmax<=8*1024*1024:self.skipTest('finite ARG_MAX')
         while remaining>128:
-            name='VC_PRIVILEGED_BUDGET_'+str(index);value='E'*min(60000,remaining-len(name)-2)
-            padding[name]=value;remaining-=len(name)+len(value)+2;index+=1
+            name='VC_PRIVILEGED_BUDGET_'+str(index);value='E'*min(60000,remaining-len(name)-9)
+            padding[name]=value;remaining-=len(name)+len(value)+9;index+=1
         with self.peer.environment(),mock.patch.dict(os.environ,padding):
             with self.assertRaises(OSError) as native:subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
             self.assertEqual(errno.E2BIG,native.exception.errno)
             self.assertFalse(self.peer.events)
             result=transport.run_ssh(argv,input=b'payload',capture_output=True,timeout=15)
-        self.assertEqual(0,result.returncode,result.stderr)
+        self.assertEqual(0,result.returncode,(result.stderr,self.peer.events,self.peer.failures))
         self.assertEqual('once\n',(self.root/'once').read_text())
         journal=self.root/'.rag_index/ssh-automatic-program'/argv.saved_plan.correlation
         self.assertTrue((journal/'prelaunch-refusal.json').exists())
