@@ -773,7 +773,7 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(("windows_deployment", ("windows_uac_visual",)), (route["kind"], route["modules"]))
         for module in ("windows_uac_visual", "windows_uac_decision", "readiness_windows_remote", "readiness_windows_login", "windows_vm_instance",
                        "windows_visual_fixture"):
-            self.assertIn(module, route["closure"])
+            self.assertIn("agent_tools/" + module + ".py", route["closure"])
 
 
 class RouteAdmissionTests(LocalBase):

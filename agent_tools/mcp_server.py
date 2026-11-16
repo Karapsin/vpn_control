@@ -4563,7 +4563,9 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             return _vm_workflow_dispatch(action, inputs)
     try:
         policy = _agent_module("tool_action_policy").action_policy("vm_workflow", action)
-        if not policy.requirements:
+        # A requirement-free intentional phase (scenario-start, batch-start, baseline-restore, ...) still reaches a guest
+        # or a native host, so it is admitted too: its source must be clean and published (TEST-005).
+        if not policy.requirements and policy.classification != "intentional_phase":
             return _vm_workflow_dispatch(action, inputs)
         if action in {"windows-uac-decision", "windows-uac-review", "windows-uac-visual"}:
             local = _uac_before_contact(action, inputs)

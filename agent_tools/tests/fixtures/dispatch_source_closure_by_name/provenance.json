@@ -1,0 +1,6 @@
+{
+  "commit": "bf8d2da243cd39a40a88dae0b060d709e13d6a0c",
+  "path": "agent_tools/dispatch_source_closure.py",
+  "sha256": "2753de17a41d8a6c8ce676c33aacf847062d5523ada5a202811689b65f672fb7",
+  "reason": "Closure computation before by-name loads were followed: it parsed static imports and a few literals of top-level modules only, so modules mcp_server loads by name (_VM_NATIVE_ADAPTERS, _agent_module, import_module), runtime by-name loads (SourceSession.load over _PROFILE_MODULES), the windows_system_collector/ and windows_public_updater/ subpackages, readiness_vm_dispatch.json and the guest payloads the scenario bundle ships (.ps1, .ps1.template, .cs, .source) were outside every dispatch closure."
+}

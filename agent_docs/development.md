@@ -79,12 +79,15 @@ engineering route covers only the Linux package builder and requires a new clean
 checkpoint containing its gate; it cannot extend an old producer retroactively.
 See the concrete operation in `agent_tools/README.md` and TEST-005.
 
-Native dispatch admits only committed, published tool source. Each action's closure
-in `readiness_vm_dispatch.json` is computed by `dispatch_source_closure.py`
-(`--write` regenerates it; CI requires equality and checks every fixed-host proof
-symbol). At dispatch every closure file must be clean in git and equal to the
-merge-base with `origin/dev` or to an `origin/ci/*` tip, so push a candidate before
-running native work from it. There are no source digests to re-pin.
+Native dispatch admits only committed, published tool source (TEST-005). Each
+action's closure in `readiness_vm_dispatch.json` is computed by
+`dispatch_source_closure.py` (`--write` regenerates it; CI requires equality and
+checks every fixed-host proof symbol). At dispatch the whole `agent_tools/` tree
+outside `tests/` must be clean with no untracked files, and it and every other
+closure file must equal a published commit: the merge-base with `origin/dev`, a
+gate-ledger entry, or an origin `ci/*` tip confirmed by `git ls-remote`. Push a
+candidate (or gate it) before running native work from it. There are no source
+digests to re-pin.
 
 Collect the complete actual bounded result once before publishing its finite public
 summary. Preserve private raw payloads and the original execution receipt; partial

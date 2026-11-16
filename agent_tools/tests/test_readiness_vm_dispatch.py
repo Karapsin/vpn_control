@@ -1,6 +1,7 @@
 """Normal VM admission dispatches complete generated SSH callers to real sockets."""
 from dataclasses import replace
 import ast
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,7 @@ from agent_tools import readiness
 from agent_tools import readiness_vm_dispatch as subject
 from agent_tools import ssh_transport as transport
 from agent_tools import source_module_loader
+from agent_tools.tests import red_gate
 from agent_tools.tests import test_readiness_transport as transport_fixture
 from agent_tools.tests.test_readiness import Provider, SocketAdapter
 from agent_tools.tests.test_readiness_entrypoints import before_source, controlled_lease_workflow, finish_controlled_leases
@@ -176,7 +178,7 @@ class VmDispatchTests(unittest.TestCase):
         routes = sorted(action for action, row in subject.ROUTES.items() if row['kind'] == 'windows_deployment')
         self.assertIn('windows-vm-deploy-start',routes)
         for action in routes:
-            self.assertEqual([],sorted(set(shipped)-set(subject.ROUTES[action]['closure'])),action)
+            self.assertEqual([],sorted({'agent_tools/'+module+'.py' for module in shipped}-set(subject.ROUTES[action]['closure'])),action)
 
     def test_missing_action_or_changed_target_source_fails_before_recovery(self):
         routes = dict(subject.ROUTES)
@@ -191,7 +193,7 @@ class VmDispatchTests(unittest.TestCase):
 
     def test_every_closure_file_must_be_committed_after_target_selection(self):
         action = 'windows-credential-probe-status'
-        expected = (subject._SOURCE.parent.parent, tuple('agent_tools/' + m + '.py' for m in subject.ROUTES[action]['closure']))
+        expected = (subject._SOURCE.parent.parent, tuple(subject.ROUTES[action]['closure']))
         plan = subject.resolve(self.root, action, self.inputs())
         self.assertEqual(('explicit-peer', [expected]), (plan.host, self.committed))
         # A target refusal comes first and costs no git call.
@@ -199,9 +201,10 @@ class VmDispatchTests(unittest.TestCase):
         with self.assertRaises(subject.DispatchBlocked) as caught:
             subject.resolve(self.root, action, {**self.inputs(), 'host': 'unconfigured-peer'})
         self.assertEqual(('vm_readiness_host_unconfigured', []), (caught.exception.reason, self.committed))
-        # Boundaries that run no closure are not checked.
+        # Facade, hosted and provider boundaries reach native targets too: their source is checked as well.
         subject.resolve(self.root, 'readiness-ensure', {})
-        self.assertEqual([], self.committed)
+        self.assertEqual([(subject._SOURCE.parent.parent, tuple(subject.ROUTES['readiness-ensure']['closure']))], self.committed)
+        self.committed.clear()
         for reason, blocked in ((subject.committed_source.UNPUBLISHED, 'vm_readiness_target_source_unpublished'),
                                 (subject.committed_source.DIRTY, 'vm_readiness_target_source_uncommitted'),
                                 (subject.committed_source.HIDDEN, 'vm_readiness_target_source_uncommitted'),
@@ -215,6 +218,71 @@ class VmDispatchTests(unittest.TestCase):
             self.assertEqual(blocked, caught.exception.reason)
         self.assertEqual([], self.children)
         self.assertEqual(0, self.provider.observe_calls)
+
+    def test_requirement_free_phases_and_boundaries_are_source_checked_RED_unchecked_GREEN(self):
+        """Review finding 3: scenario-start (requirements: []) dispatched without the committed-source check."""
+        from agent_tools.tests.test_committed_source import before
+        phases = sorted(action for action, row in subject.ROUTES.items() if row['kind'] == 'phase')
+        self.assertIn('scenario-start', phases)
+        self.assertEqual({'intentional_phase'}, {subject.policies.action_policy('vm_workflow', action).classification
+                                                 for action in phases})
+        boundaries = sorted(action for action, row in subject.ROUTES.items()
+                            if row['kind'] in ('facade', 'hosted_boundary', 'provider_boundary'))
+        source = before('readiness_vm_dispatch.before.source')
+        if red_gate.red_required(self, source):
+            tree = ast.parse(source.read_bytes())
+            function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'resolve')
+            namespace = dict(subject.__dict__)
+            exec(compile(ast.Module(body=[function], type_ignores=[]), str(source), 'exec'), namespace)
+            for action in phases + boundaries:
+                namespace['resolve'](self.root, action, self.inputs())
+            # RED: the bf8d2da2 resolve returned before any source check for every one of them.
+            self.assertEqual([], self.committed)
+        for action in phases + boundaries:
+            with self.subTest(action=action):
+                self.committed.clear()
+                plan = subject.resolve(self.root, action, self.inputs())
+                self.assertEqual([(subject._SOURCE.parent.parent, tuple(subject.ROUTES[action]['closure']))], self.committed)
+                self.assertEqual('observation_only' if action in phases else subject.ROUTES[action]['kind'], plan.boundary)
+                refusal = subject.committed_source.SourceNotCommitted(subject.committed_source.UNTRACKED, ['agent_tools/x.py'])
+                with mock.patch.object(subject, '_require_committed', side_effect=refusal), \
+                     self.assertRaises(subject.DispatchBlocked) as caught:
+                    with subject.admitted_dispatch(self.root, action, self.inputs()):
+                        self.fail('dispatch admitted uncommitted source')
+                self.assertEqual('vm_readiness_target_source_uncommitted', caught.exception.reason)
+        # Local metadata and local observation stay unchecked: they reach no guest.
+        self.committed.clear()
+        for action in ('artifact-find', 'matrix-status', 'guest-program-status'):
+            subject.resolve(self.root, action, {})
+        self.assertEqual([], self.committed)
+        self.assertEqual([], self.children)
+
+    def test_a_submit_records_its_published_source_and_observation_reads_it(self):
+        head = __import__('subprocess').run(['git', 'rev-parse', 'HEAD'], cwd=subject._SOURCE.parent, capture_output=True,
+                                            text=True).stdout.strip()
+        if len(head) != 40:
+            self.skipTest('no git checkout')
+        source = {'reference': head, 'basis': subject.committed_source.BASIS_REMOTE, 'head': head}
+        inputs = self.inputs()
+        with mock.patch.object(subject, '_require_committed', return_value=source), \
+             mock.patch.object(subject, '_deployment_host', return_value='explicit-peer'):
+            with subject.admitted_dispatch(self.root, 'scenario-start', inputs) as plan:
+                self.assertEqual(source, plan.source)
+        record = json.loads((self.root / '.rag_index' / 'dispatch-source' / (inputs['correlationId'] + '.json')).read_bytes())
+        self.assertEqual({'schemaVersion': 1, 'identity': inputs['correlationId'], 'action': 'scenario-start', 'reference': head,
+                          'basis': 'origin-ci', 'head': head}, record)
+        # The status of that job, after its candidate branch is gone, checks the recorded submit SHA.
+        refusal = subject.committed_source.SourceNotCommitted(subject.committed_source.UNPUBLISHED, ['agent_tools/'])
+        with mock.patch.object(subject, '_require_committed', side_effect=refusal), \
+             mock.patch.object(subject, '_selected_host', return_value='explicit-peer'):
+            with subject.admitted_dispatch(self.root, 'windows-credential-probe-status', inputs) as plan:
+                self.assertEqual((head, 'submit-record'), (plan.source['reference'], plan.source['basis']))
+                self.run_command()
+            # An observation records nothing; another job's status stays refused.
+            with self.assertRaises(subject.DispatchBlocked) as caught:
+                subject.resolve(self.root, 'windows-credential-probe-status', self.inputs())
+        self.assertEqual('vm_readiness_target_source_unpublished', caught.exception.reason)
+        self.assertEqual(1, len(list((self.root / '.rag_index' / 'dispatch-source').iterdir())))
 
     def test_interactive_lease_guards_every_ssh_packet_and_cancels_original(self):
         self.peer.hosts['archlinux'] = dict(self.peer.hosts['explicit-peer'])
@@ -234,6 +302,72 @@ class VmDispatchTests(unittest.TestCase):
                 self.assertEqual('awake', (self.root/'controlled-lease-setting').read_text())
             self.assertEqual('sleep', (self.root/'controlled-lease-setting').read_text())
         self.assertEqual([], self.provider.effects)
+
+
+class McpPhaseRoutingTests(unittest.TestCase):
+    """The MCP vm_workflow route sends requirement-free intentional phases through admitted_dispatch (TEST-005)."""
+
+    def route(self, implementation, server, action):
+        admitted, dispatched = [], []
+
+        original = server._agent_module
+
+        @contextlib.contextmanager
+        def admission(root, name, inputs):
+            admitted.append(name)
+            # The route recognises a refusal by the class its request scope loaded, as production raises it.
+            raise original('readiness_vm_dispatch').DispatchBlocked('vm_readiness_target_source_unpublished', 'operation')
+            yield  # pragma: no cover
+
+        fake = SimpleNamespace(admitted_dispatch=admission)
+        with mock.patch.object(server, '_agent_module', side_effect=lambda name: fake if name == 'readiness_vm_dispatch'
+                               else original(name)), \
+             mock.patch.object(server, '_vm_workflow_dispatch', side_effect=lambda *args: dispatched.append(args) or {'ok': True}):
+            result = implementation(action, {'correlationId': str(uuid4())})
+        return admitted, dispatched, result
+
+    def test_scenario_start_is_admitted_before_dispatch_RED_direct_GREEN(self):
+        from agent_tools import mcp_server as server
+        from agent_tools.tests.test_committed_source import before
+        source = before('mcp_server_vm_workflow_impl.before.source')
+        if red_gate.red_required(self, source):
+            namespace = dict(server.__dict__)
+            exec(compile(source.read_bytes(), str(source), 'exec'), namespace)
+            admitted, dispatched, _ = self.route(lambda action, inputs: namespace['_vm_workflow_impl'](action, inputs),
+                                                 _Namespace(namespace), 'scenario-start')
+            # RED: bf8d2da2 dispatched scenario-start (requirements: []) with no admission and no source check.
+            self.assertEqual(([], 1), (admitted, len(dispatched)))
+        phases = sorted(action for action, row in subject.ROUTES.items() if row['kind'] == 'phase'
+                        # A request-shape refusal still answers first, before any admission or contact.
+                        and not server._vm_invalid_before_recovery(action, {'correlationId': str(uuid4())}))
+        self.assertIn('scenario-start', phases)
+        for action in phases:
+            with self.subTest(action=action):
+                admitted, dispatched, result = self.route(server._vm_workflow_impl, server, action)
+                self.assertEqual(([action], []), (admitted, dispatched))
+                self.assertEqual('vm_readiness_target_source_unpublished', result['reason'])
+        # Local metadata still dispatches without admission.
+        admitted, dispatched, _ = self.route(server._vm_workflow_impl, server, 'artifact-find')
+        self.assertEqual(([], 1), (admitted, len(dispatched)))
+
+
+class _Namespace:
+    """Attribute view of an exec namespace, so mock.patch.object can patch its globals."""
+
+    def __init__(self, namespace):
+        object.__setattr__(self, '_namespace', namespace)
+
+    def __getattr__(self, name):
+        try:
+            return self._namespace[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def __setattr__(self, name, value):
+        self._namespace[name] = value
+
+    def __delattr__(self, name):
+        del self._namespace[name]
 
 
 if __name__ == '__main__':

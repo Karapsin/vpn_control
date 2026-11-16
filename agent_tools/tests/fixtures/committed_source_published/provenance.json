@@ -1,0 +1,19 @@
+{
+  "commit": "bf8d2da243cd39a40a88dae0b060d709e13d6a0c",
+  "files": {
+    "committed_source.before.source": {
+      "path": "agent_tools/committed_source.py",
+      "sha256": "e105d1a7b00283138fb9c5092e10ea1580bb2804908f3bc1814dd77e5c0c46e6"
+    },
+    "readiness_vm_dispatch.before.source": {
+      "path": "agent_tools/readiness_vm_dispatch.py",
+      "sha256": "dbd1430646990c3fb7288025a047cf800b5da028e8d7b8cb8a3cec567432d2e9"
+    },
+    "mcp_server_vm_workflow_impl.before.source": {
+      "path": "agent_tools/mcp_server.py",
+      "extract": "the _vm_workflow_impl function, without its decorator",
+      "sha256": "44101ea4fdeef1a1445d17145f1a6b98b28ffa6d3ecb00d8d92f9f229a42239b"
+    }
+  },
+  "reason": "Committed-source rule before review findings 3, 11 and 13: it accepted any refs/remotes/origin/ci/* tip as published, including one set locally with update-ref; it checked only closure files, so an untracked or edited agent_tools file outside the closure (readiness_vm_dispatch.json, tool_action_policy.json) passed; requirement-free phases such as scenario-start and facade or hosted boundaries were never checked; and a read-only status of a job submitted from a published ci/* tip was refused once that branch was deleted or a local commit followed."
+}

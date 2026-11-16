@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
 """Computed source closure of every native dispatch action in readiness_vm_dispatch.json.
 
-An action's closure is every top-level agent_tools module that its entry modules
-reach through:
+A closure is a sorted list of repository-relative files. From an action's entry
+modules it follows, through every agent_tools Python file it reaches (top level
+or in a subpackage such as windows_system_collector/):
   * an import statement (module level or inside a function), absolute or relative;
-  * a sibling source named by `Path(...).with_name("<module>.py")` or by the
-    literal path "agent_tools/<module>.py" (a shipped or read source, such as a
-    guest worker, a packet body or a reviewed helper);
-  * a module-level `_INSTANCE_SOURCES` tuple of module names (sources shipped to
-    a lab host).
+  * a module loaded by name: a string argument of a loader call (`_agent_module`,
+    `importlib.import_module`, `_module`, `SourceSession(...)`, `.load`, `.adapter`,
+    `_source_pin`), directly, in an f-string tail (`f"{__package__}.name"`) or
+    through a module-level name assigned a string, and every name of a by-name
+    registry (`_INSTANCE_SOURCES`, `_VM_NATIVE_ADAPTERS`, `_PROFILE_MODULES`);
+  * a file named by a literal: `Path(...).with_name("<file>")`, a sibling file
+    name such as "tool_action_policy.json", a path relative to agent_tools such
+    as "windows_public_updater/update_cases.py", a repository path under
+    agent_tools/ or scripts/ (the scenario bundle table ships these to the guest:
+    .py, .ps1, .ps1.template, .cs, .source), or a subpackage directory name,
+    which names all of its files;
+  * the module's own resource named by `.with_suffix("<suffix>")`
+    (readiness_vm_dispatch.json).
+Non-Python files and scripts/ files are leaves. Tests, fixtures, caches and
+Markdown are never members.
 
 CI requires each declared closure to equal this computation, so the runtime
 committed-source rule (readiness_vm_dispatch) checks exactly what can run, and
@@ -20,100 +31,274 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 
 TOOLS = Path(__file__).resolve().parent
 CATALOG = TOOLS / "readiness_vm_dispatch.json"
-_REGISTRIES = frozenset({"_INSTANCE_SOURCES"})
+_PREFIX = "agent_tools/"
+# Literal repository paths that a tool runs, reads or ships (the bundle table's agent_tools/ and scripts/ entries).
+_LITERAL_ROOTS = ("agent_tools/", "scripts/")
+_SKIPPED_DIRECTORIES = frozenset({"tests", "__pycache__"})
+# By-name module registries: every string they hold is a module loaded by name.
+REGISTRIES = frozenset({"_INSTANCE_SOURCES", "_VM_NATIVE_ADAPTERS", "_PROFILE_MODULES"})
+# Calls whose string arguments name a module to load (agent_tools.<name>, .<name> or <name>).
+LOADERS = frozenset({"_agent_module", "import_module", "_module", "load", "adapter", "SourceSession", "_source_pin"})
+
+
+def module_path(name):
+    """Repository path of the agent_tools file of `name` (top-level module stem or a known relative path)."""
+    return _PREFIX + name + ".py"
+
+
+def _member(relative):
+    parts = relative.split("/")
+    return (not any(part in _SKIPPED_DIRECTORIES or part.startswith(".") for part in parts)
+            and not relative.endswith((".md", ".pyc")))
+
+
+def files(tools=TOOLS):
+    """Every agent_tools file a closure may hold: repository paths, without tests, caches or Markdown."""
+    tools = Path(tools)
+    found = set()
+    for directory, names, leaves in os.walk(tools):
+        names[:] = sorted(name for name in names if name not in _SKIPPED_DIRECTORIES and not name.startswith("."))
+        for leaf in leaves:
+            relative = os.path.relpath(os.path.join(directory, leaf), tools).replace(os.sep, "/")
+            if _member(relative):
+                found.add(_PREFIX + relative)
+    return frozenset(found)
 
 
 def modules(tools=TOOLS):
+    """Top-level module stems (the names readiness_vm_dispatch.json lists as entry modules)."""
     return frozenset(path.stem for path in Path(tools).glob("*.py"))
 
 
-def direct_sources(name, tools=TOOLS, known=None):
-    """Top-level agent_tools modules that one module imports, reads or ships."""
-    known = modules(tools) if known is None else known
-    tree = ast.parse((Path(tools) / (name + ".py")).read_bytes(), filename=name + ".py")
+class Scan:
+    """One walk of a parsed module: what the closure rules read from it."""
+
+    __slots__ = ("imports", "strings", "loaded", "with_name", "with_suffix")
+
+    def __init__(self, tree):
+        self.imports, self.strings, self.with_name, self.with_suffix = [], set(), set(), set()
+        assigned, loader_arguments, registries = {}, [], set()
+        for node in ast.walk(tree):
+            kind = type(node)
+            if kind is ast.Constant:
+                if type(node.value) is str and 0 < len(node.value) <= 256:
+                    self.strings.add(node.value)
+            elif kind is ast.Import or kind is ast.ImportFrom:
+                self.imports.append(node)
+            elif kind is ast.Assign:
+                for target in node.targets:
+                    if type(target) is ast.Name:
+                        if type(node.value) is ast.Constant and type(node.value.value) is str:
+                            assigned.setdefault(target.id, set()).add(node.value.value)
+                        if target.id in REGISTRIES:
+                            registries.add(node.value)
+            elif kind is ast.Call:
+                function = node.func
+                name = function.id if type(function) is ast.Name else function.attr if type(function) is ast.Attribute else None
+                if name in LOADERS:
+                    loader_arguments.extend([*node.args, *(keyword.value for keyword in node.keywords)])
+                if (type(function) is ast.Attribute and name in ("with_name", "with_suffix") and len(node.args) == 1
+                        and type(node.args[0]) is ast.Constant and type(node.args[0].value) is str):
+                    (self.with_name if name == "with_name" else self.with_suffix).add(node.args[0].value)
+        raw = set()
+        for value in registries:
+            raw.update(_strings(value))
+        for argument in loader_arguments:
+            raw.update(_strings(argument))
+            if type(argument) is ast.Name:
+                raw.update(assigned.get(argument.id, ()))
+        self.loaded = set()
+        for value in raw:
+            value = (value[len("agent_tools."):] if value.startswith("agent_tools.") else value).lstrip(".")
+            if value and len(value) <= 160 and all(part.isidentifier() for part in value.split(".")):
+                self.loaded.add(value)
+
+
+def _strings(node):
+    return [item.value for item in ast.walk(node) if type(item) is ast.Constant and type(item.value) is str]
+
+
+def by_name_loads(tree):
+    """Module names one parsed module loads by name: dotted, without an `agent_tools.` or leading `.` prefix."""
+    return Scan(tree).loaded
+
+
+def _resolve_module(dotted, known):
+    """agent_tools path of a dotted module name, or of its longest existing prefix."""
+    parts = dotted.split(".")
+    for end in range(len(parts), 0, -1):
+        for candidate in (_PREFIX + "/".join(parts[:end]) + ".py", _PREFIX + "/".join(parts[:end]) + "/__init__.py"):
+            if candidate in known:
+                return candidate
+    return None
+
+
+def _imports(scan, path, known):
+    """agent_tools paths one module imports, package or script style."""
+    package = path[len(_PREFIX):].split("/")[:-1]
     found = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            if (node.level == 1 and not node.module) or (node.level == 0 and node.module == "agent_tools"):
-                found.update(alias.name for alias in node.names)
-            elif node.level == 1:
-                found.add(node.module.split(".")[0])
-            elif node.level == 0 and node.module and node.module.startswith("agent_tools."):
-                found.add(node.module.split(".")[1])
-        elif isinstance(node, ast.Import):
-            found.update(alias.name.split(".")[1] for alias in node.names if alias.name.startswith("agent_tools."))
-        elif (isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.startswith("agent_tools/")
-              and node.value.endswith(".py") and node.value.count("/") == 1):
-            found.add(node.value[len("agent_tools/"):-3])
-        elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "with_name"
-              and len(node.args) == 1 and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
-              and node.args[0].value.endswith(".py")):
-            found.add(node.args[0].value[:-3])
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id in _REGISTRIES for t in node.targets):
-            value = ast.literal_eval(node.value)
-            found.update(item for item in value if isinstance(item, str))
-    return (found & known) - {name}
+    for node in scan.imports:
+        names = []
+        if type(node) is ast.ImportFrom:
+            module = node.module.split(".") if node.module else []
+            if node.level:
+                base = package[:len(package) - (node.level - 1)] if node.level > 1 else package
+                names = [".".join([*base, *module, alias.name]) for alias in node.names] + [".".join([*base, *module])]
+            elif module and module[0] == "agent_tools":
+                names = [".".join([*module[1:], alias.name]) for alias in node.names] + [".".join(module[1:])]
+            elif module:
+                # Script-style sibling import (`import native_artifact_registry`), as the MCP fallbacks do.
+                names = [".".join([*package, *module]), ".".join(module)]
+        else:
+            for alias in node.names:
+                parts = alias.name.split(".")
+                names.append(".".join(parts[1:]) if parts[0] == "agent_tools" else ".".join([*package, *parts]))
+                if parts[0] != "agent_tools" and package:
+                    names.append(alias.name)
+        for name in names:
+            if name:
+                resolved = _resolve_module(name, known)
+                if resolved is not None:
+                    found.add(resolved)
+    return found
+
+
+def _subpackages(known):
+    return frozenset(item.split("/")[1] for item in known if item.count("/") >= 2)
+
+
+def _literals(scan, path, known, root, subpackages):
+    """Files a module names by literal or resource rule."""
+    directory = path.rsplit("/", 1)[0] + "/"
+    found = {directory + value for value in scan.with_name if directory + value in known}
+    found.update(path[:-3] + value for value in scan.with_suffix if path[:-3] + value in known)
+    for value in scan.strings:
+        if "\n" in value or ".." in value.split("/"):
+            continue
+        value = value.rstrip("/")
+        for candidate in (directory + value, _PREFIX + value, value):
+            if candidate in known:
+                found.add(candidate)
+        if value.startswith(_LITERAL_ROOTS) and not value.startswith(_PREFIX) and _member(value) \
+                and (Path(root) / value).is_file():
+            found.add(value)
+        if value in subpackages:
+            found.update(item for item in known if item.startswith(_PREFIX + value + "/"))
+    return found
+
+
+def direct_sources(path, tools=TOOLS, known=None, subpackages=None):
+    """Repository paths one closure member reaches directly. Only agent_tools Python files have edges."""
+    known = files(tools) if known is None else known
+    if not (path.startswith(_PREFIX) and path.endswith(".py")):
+        return set()
+    tools = Path(tools)
+    scan = Scan(ast.parse((tools / path[len(_PREFIX):]).read_bytes(), filename=path))
+    found = _imports(scan, path, known) | _literals(scan, path, known, tools.parent,
+                                                    _subpackages(known) if subpackages is None else subpackages)
+    found.update(resolved for resolved in (_resolve_module(name, known) for name in scan.loaded) if resolved)
+    return found - {path}
 
 
 def closure(entries, tools=TOOLS, known=None, cache=None):
-    known = modules(tools) if known is None else known
+    """Sorted repository paths reachable from entry module names."""
+    known = files(tools) if known is None else known
     cache = {} if cache is None else cache
-    seen, pending = set(), [name for name in entries if name in known]
+    subpackages = _subpackages(known)
+    seen, pending = set(), [module_path(name) for name in entries if module_path(name) in known]
     while pending:
-        name = pending.pop()
-        if name in seen:
+        path = pending.pop()
+        if path in seen:
             continue
-        seen.add(name)
-        if name not in cache:
-            cache[name] = direct_sources(name, tools, known)
-        pending.extend(cache[name])
+        seen.add(path)
+        if path not in cache:
+            cache[path] = direct_sources(path, tools, known, subpackages)
+        pending.extend(cache[path])
     return sorted(seen)
 
 
-_PARSED = {}  # (tools, module, size, mtime_ns) -> direct sources; one parse per process
+_PARSED = {}  # (tools, path, size, mtime_ns) -> direct sources; one parse per process
+
+
+def declared(catalog):
+    """{action: closure list}: a row's closure is a list or the id of a shared list in catalog["closures"]."""
+    shared = catalog.get("closures", {})
+    return {action: list(shared[row["closure"]] if type(row["closure"]) is str else row["closure"])
+            for action, row in catalog["actions"].items()}
+
+
+def closure_id(paths):
+    """The id of a shared closure: derived from its members, so equal closures share one list."""
+    return "closure-" + hashlib.sha256(json.dumps(sorted(paths)).encode()).hexdigest()[:16]
+
+
+def write(catalog, tools=TOOLS):
+    """The catalog with every closure recomputed, each distinct list stored once under closures."""
+    shared = {}
+    for action, value in computed(catalog, tools).items():
+        identity = closure_id(value)
+        shared[identity] = value
+        catalog["actions"][action]["closure"] = identity
+    return {"schemaVersion": catalog["schemaVersion"], "closures": dict(sorted(shared.items())),
+            "actions": catalog["actions"]}
 
 
 def computed(catalog=None, tools=TOOLS):
     catalog = json.loads(CATALOG.read_bytes()) if catalog is None else catalog
-    known = modules(tools)
+    known = files(tools)
     cache = _Cache(Path(tools))
     return {action: closure(row["modules"], tools, known, cache) for action, row in catalog["actions"].items()}
 
 
 def mismatches(catalog=None, tools=TOOLS):
     catalog = json.loads(CATALOG.read_bytes()) if catalog is None else catalog
-    expected = computed(catalog, tools)
-    return {action: {"missing": sorted(set(expected[action]) - set(row["closure"])),
-                     "extra": sorted(set(row["closure"]) - set(expected[action]))}
-            for action, row in catalog["actions"].items() if sorted(row["closure"]) != expected[action]}
+    expected, lists = computed(catalog, tools), declared(catalog)
+    found = {action: {"missing": sorted(set(expected[action]) - set(lists[action])),
+                      "extra": sorted(set(lists[action]) - set(expected[action]))}
+             for action in catalog["actions"] if sorted(lists[action]) != expected[action]}
+    shared = catalog.get("closures", {})
+    for identity, value in shared.items():
+        if identity != closure_id(value) or value != sorted(value):
+            found["closures:" + identity] = {"missing": [], "extra": ["unsorted or misnamed shared closure"]}
+    return found
 
 
 class _Cache(dict):
-    """Direct sources keyed by the file's size and mtime, shared across calls."""
+    """Direct sources keyed by the file's size and mtime, shared across calls; each file is stat'ed once per use."""
 
     def __init__(self, tools):
         super().__init__()
-        self.tools = tools
+        self.tools, self.keys = tools, {}
 
-    def _key(self, name):
-        info = (self.tools / (name + ".py")).stat()
-        return (str(self.tools), name, info.st_size, info.st_mtime_ns)
+    def _key(self, path):
+        if path not in self.keys:
+            if not path.endswith(".py") or not path.startswith(_PREFIX):
+                self.keys[path] = None
+            else:
+                info = (self.tools / path[len(_PREFIX):]).stat()
+                self.keys[path] = (str(self.tools), path, info.st_size, info.st_mtime_ns)
+        return self.keys[path]
 
-    def __contains__(self, name):
-        return self._key(name) in _PARSED
+    def __contains__(self, path):
+        key = self._key(path)
+        return key is None or key in _PARSED
 
-    def __getitem__(self, name):
-        return _PARSED[self._key(name)]
+    def __getitem__(self, path):
+        key = self._key(path)
+        return set() if key is None else _PARSED[key]
 
-    def __setitem__(self, name, value):
-        _PARSED[self._key(name)] = value
+    def __setitem__(self, path, value):
+        key = self._key(path)
+        if key is not None:
+            _PARSED[key] = value
 
 
 def _symbol(tree, dotted):
@@ -138,12 +323,12 @@ def proof_problems(catalog=None, tools=TOOLS):
     validated-host: a def or class whose body compares with that string.
     """
     catalog = json.loads(CATALOG.read_bytes()) if catalog is None else catalog
-    problems, trees = {}, {}
+    problems, trees, lists = {}, {}, declared(catalog)
     for action, row in catalog["actions"].items():
         if row["kind"] != "fixed_host":
             continue
         proof, host = row["proof"], row["host"]
-        if proof["module"] not in row["closure"]:
+        if module_path(proof["module"]) not in lists[action]:
             problems[action] = "proof_module_outside_closure"
             continue
         if proof["module"] not in trees:
@@ -171,8 +356,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     catalog = json.loads(CATALOG.read_bytes())
     if args.write:
-        for action, value in computed(catalog).items():
-            catalog["actions"][action]["closure"] = value
+        catalog = write(catalog)
         CATALOG.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
         print(json.dumps({"ok": True, "actions": len(catalog["actions"])}))
         return 0

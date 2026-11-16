@@ -277,6 +277,13 @@ module.REPO_ROOT = Path({temporary!r})
 for name in module._VM_NATIVE_ADAPTERS:
     adapter = module._agent_module(name)
     assert adapter.__name__ == "agent_tools." + name, adapter
+# fixture-preflight is admitted like every native phase; the committed-source admission itself is covered by
+# test_readiness_vm_dispatch and test_committed_source, and this test checkout need not be published.
+from contextlib import nullcontext
+from types import SimpleNamespace
+original = module._agent_module
+inert = SimpleNamespace(admitted_dispatch=lambda *args, **kwargs: nullcontext())
+module._agent_module = lambda name: inert if name == "readiness_vm_dispatch" else original(name)
 result = module.vm_workflow("fixture-preflight", {preflight_request!r})
 assert result["tool"] == "vm_workflow", result
 # Require check()'s typed result so the empty root cannot mask a helper load error.

@@ -75,8 +75,12 @@ def windows_before_facade(workflow):
 class ReadinessProviderErrorProjectionTests(unittest.TestCase):
     def invoke(self, is_before, error, tool):
         ns = windows_before_facade(_Raising(error)) if is_before == 'windows' else facade(is_before, _Raising(error))
+        # The readiness facade is source-checked like every native dispatch (TEST-005; test_readiness_vm_dispatch and
+        # test_committed_source cover it); this test checkout need not be published.
+        from agent_tools import readiness_vm_dispatch
         with mock.patch.object(readiness_transport, 'TransportAdapter',
-                               side_effect=AssertionError('transport constructed')) as adapter:
+                               side_effect=AssertionError('transport constructed')) as adapter, \
+             mock.patch.object(readiness_vm_dispatch, '_require_committed', return_value=None):
             if tool == 'ssh_workflow':
                 result = ns['_ssh_workflow_impl']('readiness-status', 'archlinux', 15, SSH_IDENTITY, None, None)
             else:

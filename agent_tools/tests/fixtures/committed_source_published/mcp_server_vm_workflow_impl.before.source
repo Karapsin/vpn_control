@@ -1,0 +1,30 @@
+def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
+    """Admit the actual native target before generating remote commands."""
+    if not isinstance(inputs, dict):
+        return _error("vm_workflow", "VM workflow inputs must be an object.")
+    if _vm_invalid_before_recovery(action, inputs):
+        return _vm_workflow_dispatch(action, inputs)
+    if action in {"windows-fixture-server-second-abort-successor-start",
+                  "windows-fixture-server-second-abort-successor-status",
+                  "windows-fixture-server-second-abort-successor-diagnostic",
+                  "windows-fixture-server-second-abort-recovery-diagnose",
+                  "windows-fixture-server-second-abort-recovery-start",
+                  "windows-fixture-server-second-abort-recovery-status"}:
+        field = "successorCorrelationId" if "successor" in action else "recoveryCorrelationId"
+        if set(inputs) != {field} or not _valid_uuid(inputs.get(field)):
+            return _vm_workflow_dispatch(action, inputs)
+    try:
+        policy = _agent_module("tool_action_policy").action_policy("vm_workflow", action)
+        if not policy.requirements:
+            return _vm_workflow_dispatch(action, inputs)
+        if action in {"windows-uac-decision", "windows-uac-review", "windows-uac-visual"}:
+            local = _uac_before_contact(action, inputs)
+            if local is not None:
+                return local
+        with _agent_module("readiness_vm_dispatch").admitted_dispatch(REPO_ROOT, action, inputs):
+            return _vm_workflow_dispatch(action, inputs)
+    except Exception as error:
+        core = _agent_module("readiness")
+        if isinstance(error, core.ReadinessBlocked):
+            return {"tool": "vm_workflow", **error.as_dict()}
+        raise

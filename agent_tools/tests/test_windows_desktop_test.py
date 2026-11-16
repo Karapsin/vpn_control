@@ -1383,7 +1383,7 @@ class RouteTests(unittest.TestCase):
                                "windows_ordinary_task", "windows_ordinary_process_owner", "windows_artifact_transfer", "readiness_windows_guest",
                                "native_scenario_windows", "native_scenario_execution", "readiness_windows_registration", "readiness_windows_remote",
                                "windows_vm_deploy_remote", "durable_remote_job", "ssh_program_execution_remote"):
-                    self.assertIn(module, route["closure"])
+                    self.assertIn("agent_tools/" + module + ".py", route["closure"])
         self.assertTrue(dispatch.audit_sources()["ok"])
 
     @unittest.skipUnless(os.name == "posix", "private intents are POSIX")

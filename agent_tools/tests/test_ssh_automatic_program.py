@@ -69,7 +69,9 @@ def committed_repository(root):
     env={k:v for k,v in os.environ.items() if not k.startswith('GIT_')}
     env.update(GIT_CONFIG_GLOBAL=os.devnull,GIT_CONFIG_NOSYSTEM='1',GIT_AUTHOR_NAME='fixture',GIT_AUTHOR_EMAIL='fixture@invalid',
                GIT_COMMITTER_NAME='fixture',GIT_COMMITTER_EMAIL='fixture@invalid')
-    for args in (('init','-q'),('add','agent_tools'),('commit','-q','--no-gpg-sign','-m','fixture'),
+    # The dispatch closure may hold scripts/ payloads too; both trees are committed and published.
+    added=tuple(name for name in ('agent_tools','scripts') if (Path(root)/name).is_dir())
+    for args in (('init','-q'),('add',*added),('commit','-q','--no-gpg-sign','-m','fixture'),
                  ('update-ref','refs/remotes/origin/dev','HEAD')):
         subprocess.run(['git','-C',str(root),*args],check=True,capture_output=True,env=env)
 
@@ -252,8 +254,10 @@ class AutomaticProgramTests(unittest.TestCase):
                        'android_observation.py','readiness_transport.py','readiness_ssh_master.py'})
         # Dispatch admits only a committed, published closure, so the copy holds
         # every closure member of the route as a complete source file.
-        routes=json.loads((TOOLS/'readiness_vm_dispatch.json').read_bytes())['actions']
-        needed.update(m+'.py' for m in routes['android-proxy-recovery-status']['closure'])
+        from agent_tools import dispatch_source_closure
+        routes=dispatch_source_closure.declared(json.loads((TOOLS/'readiness_vm_dispatch.json').read_bytes()))
+        closure=routes['android-proxy-recovery-status']
+        needed.update(path.removeprefix('agent_tools/') for path in closure if path.startswith('agent_tools/'))
         # The real mandatory VM admission imports its finite transitive Python
         # closure. Include complete source files, not replacement dispatch code.
         pending=list(needed);scripts=set()
@@ -271,11 +275,15 @@ class AutomaticProgramTests(unittest.TestCase):
                     if (TOOLS/child).is_file()and child not in needed:needed.add(child);pending.append(child)
                 if node.level==0 and node.module and node.module.startswith('scripts.'):
                     scripts.add(node.module.removeprefix('scripts.').replace('.','/')+'.py')
+        scripts.update(path.removeprefix('scripts/') for path in closure if path.startswith('scripts/'))
         for name in sorted(needed):
+            (directory / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(TOOLS / name, directory / name)
         if scripts:
             (self.root/'scripts').mkdir(mode=0o700)
-            for name in scripts:shutil.copyfile(TOOLS.parent/'scripts'/name,self.root/'scripts'/name)
+            for name in scripts:
+                (self.root/'scripts'/name).parent.mkdir(parents=True,exist_ok=True)
+                shutil.copyfile(TOOLS.parent/'scripts'/name,self.root/'scripts'/name)
         adapter = directory / "android_proxy_recovery.py"
         adapter.write_text(
             "import json\nfrom pathlib import Path\n"

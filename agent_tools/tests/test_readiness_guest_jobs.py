@@ -1,7 +1,7 @@
 """Full fixed guest source over real TCP and detached process ownership."""
 import base64
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager, redirect_stdout
+from contextlib import contextmanager, nullcontext, redirect_stdout
 import io
 import json
 import hashlib
@@ -280,8 +280,11 @@ class RegisteredGuestJobsTests(unittest.TestCase):
     def test_public_mcp_and_actual_cli_parser_share_original_socket_owner_schema(self):
         from agent_tools import mcp_server
         original = mcp_server._agent_module
+        # The facade is source-checked like every native dispatch (TEST-005, covered by test_readiness_vm_dispatch and
+        # test_committed_source); this test checkout need not be published, so its admission is inert here.
+        inert = SimpleNamespace(admitted_dispatch=lambda *args, **kwargs: nullcontext())
         def module(name):
-            return facade if name == "readiness_guest_jobs" else original(name)
+            return facade if name == "readiness_guest_jobs" else inert if name == "readiness_vm_dispatch" else original(name)
         operation = str(uuid4())
         with patch.object(mcp_server, "REPO_ROOT", self.root), patch.object(mcp_server, "_agent_module", side_effect=module):
             result = mcp_server.vm_workflow("guest-program-start", {"fixtureId": "fixture", "operationId": operation,

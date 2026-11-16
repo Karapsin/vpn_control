@@ -1531,7 +1531,7 @@ class RouteTests(unittest.TestCase):
         route = dispatch.ROUTES["windows-uac-decision"]
         self.assertEqual(("selected_host", ("windows_uac_decision",)), (route["kind"], route["modules"]))
         for module in ("windows_uac_decision", "readiness_windows_login", "readiness_windows_remote", "private_credential_file"):
-            self.assertIn(module, route["closure"])
+            self.assertIn("agent_tools/" + module + ".py", route["closure"])
         self.assertEqual("fixture", dispatch._selected_host(Path("/nonexistent"), self.INPUTS, route, CORRELATION))
 
     def test_the_review_is_a_sibling_closed_route_with_the_decisions_admission(self):
