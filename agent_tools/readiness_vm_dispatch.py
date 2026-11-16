@@ -40,6 +40,8 @@ _MANIFEST_RAW, _MANIFEST_GENERATION, _MANIFEST_DIGEST = policies._capture(_MANIF
 _MANIFEST_PIN = (_MANIFEST_GENERATION, _MANIFEST_DIGEST)
 _MODULE = re.compile(r"[a-z][a-z0-9_]{0,127}\Z")
 _ALIAS = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
+_SYMBOL = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}(?:\.[A-Za-z_][A-Za-z0-9_]{0,127}){0,3}\Z")
+_PROOFS = frozenset({"host-constant", "validated-host"})
 _KINDS = frozenset({"fixed_host", "selected_host", "windows_deployment", "registered_tart",
                     "hosted_boundary", "provider_boundary", "facade"})
 _ACTIVE = ContextVar("vm_dispatch_admission", default=())
@@ -68,33 +70,32 @@ def _unique(pairs):
 
 def _parse_manifest():
     value = json.loads(_MANIFEST_RAW, object_pairs_hook=_unique)
-    if type(value) is not dict or set(value) != {"schemaVersion", "actions", "sourcePins"} or value["schemaVersion"] != 1:
+    # Schema 2: no source digests. The closure is CI-computed
+    # (dispatch_source_closure) and admitted only when committed and published
+    # (committed_source); a fixed-host proof names the symbol holding its host.
+    if type(value) is not dict or set(value) != {"schemaVersion", "actions"} or value["schemaVersion"] != 2:
         raise ValueError("vm_readiness_manifest_invalid")
-    for module, digest in value["sourcePins"].items():
-        if type(module) is not str or not _MODULE.fullmatch(module) or type(digest) is not str or not re.fullmatch("[0-9a-f]{64}", digest):
-            raise ValueError("vm_readiness_manifest_invalid")
     for action, row in value["actions"].items():
         if type(action) is not str or type(row) is not dict or row.get("kind") not in _KINDS:
             raise ValueError("vm_readiness_manifest_invalid")
         fields = {"kind", "modules", "closure"} | ({"host", "proof"} if row["kind"] == "fixed_host" else set())
         if set(row) != fields or type(row["modules"]) is not list or type(row["closure"]) is not list:
             raise ValueError("vm_readiness_manifest_invalid")
-        if any(type(m) is not str or not _MODULE.fullmatch(m) for m in row["modules"]):
+        if any(type(m) is not str or not _MODULE.fullmatch(m) for m in row["modules"] + row["closure"]):
             raise ValueError("vm_readiness_manifest_invalid")
-        if any(m not in value["sourcePins"] for m in row["closure"]):
+        if not set(row["modules"]) <= set(row["closure"]):
             raise ValueError("vm_readiness_manifest_invalid")
         if row["kind"] == "fixed_host":
             proof = row["proof"]
             if (type(row["host"]) is not str or not _ALIAS.fullmatch(row["host"])
-                    or type(proof) is not dict or set(proof) != {"module", "line", "kind", "sha256"}
-                    or proof["module"] not in value["sourcePins"]
-                    or proof["sha256"] != value["sourcePins"][proof["module"]]):
+                    or type(proof) is not dict or set(proof) != {"module", "symbol", "kind"}
+                    or proof["kind"] not in _PROOFS or proof["module"] not in row["closure"]
+                    or type(proof["symbol"]) is not str or not _SYMBOL.fullmatch(proof["symbol"])):
                 raise ValueError("vm_readiness_manifest_invalid")
     return value
 
 
 _DOCUMENT = _parse_manifest()
-_SOURCE_PINS = MappingProxyType(dict(_DOCUMENT["sourcePins"]))
 ROUTES = MappingProxyType({action: MappingProxyType({
     **row, "modules": tuple(row["modules"]), "closure": tuple(row["closure"]),
     **({"proof": MappingProxyType(dict(row["proof"]))} if "proof" in row else {})})
@@ -110,19 +111,21 @@ def _guard():
 
 
 def audit_sources():
-    """CI rejects added requirements or stale reviewed target-source closure."""
+    """CI rejects unclassified actions and closure members without a source file.
+
+    Closure equality and proof symbols are CI tests (dispatch_source_closure);
+    review of the bytes is the committed-source rule at dispatch.
+    """
     _guard()
     expected = {action for (surface, action), policy in policies.CATALOG.items()
                 if surface == "vm_workflow" and policy.requirements}
     if expected != set(ROUTES):
         raise ValueError("vm_readiness_action_unclassified")
-    changed = []
-    for module, digest in _SOURCE_PINS.items():
-        if policies._capture(_SOURCE.parent / (module + ".py"))[2] != digest:
-            changed.append(module)
-    if changed:
-        raise ValueError("vm_readiness_target_source_unreviewed:" + ",".join(changed))
-    return {"ok": True, "actions": len(ROUTES), "sourceNodes": len(_SOURCE_PINS)}
+    nodes = {module for row in ROUTES.values() for module in row["closure"]}
+    missing = sorted(module for module in nodes if not (_SOURCE.parent / (module + ".py")).is_file())
+    if missing:
+        raise ValueError("vm_readiness_target_source_missing:" + ",".join(missing))
+    return {"ok": True, "actions": len(ROUTES), "sourceNodes": len(nodes)}
 
 
 def _operation(inputs):
@@ -313,9 +316,6 @@ def resolve(root, action, inputs):
     kind = row["kind"]
     if kind in {"facade", "hosted_boundary", "provider_boundary"}:
         return DispatchPlan(root, action, operation, None, boundary=kind)
-    for module in row["closure"]:
-        _need(policies._capture(_SOURCE.parent / (module + ".py"))[2] == _SOURCE_PINS[module],
-              operation, "vm_readiness_target_source_unreviewed")
     if kind == "registered_tart":
         fixture_id, fixture = _tart_fixture(root, inputs, operation, action=action)
         plan = DispatchPlan(root, action, operation, None, fixture_id, fixture)

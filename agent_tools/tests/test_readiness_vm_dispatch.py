@@ -150,23 +150,28 @@ class VmDispatchTests(unittest.TestCase):
         self.assertTrue(audited['ok'])
         self.assertEqual(len(subject.ROUTES),audited['actions'])
 
+    def refuse(self, module):
+        def check(repository, paths):
+            if 'agent_tools/' + module + '.py' in paths:
+                raise subject.committed_source.SourceNotCommitted(subject.committed_source.UNPUBLISHED, [module])
+        return mock.patch.object(subject, '_require_committed', side_effect=check)
+
     def test_every_shipped_windows_instance_source_is_reviewed_before_dispatch(self):
-        # windows_vm_deploy ships _INSTANCE_SOURCES to the lab host. An unreviewed
-        # edit to any shipped source must refuse before recovery or host selection,
-        # like every other pinned closure member (windows_vm_image was shipped
-        # without being in any Windows deployment closure).
+        # windows_vm_deploy ships _INSTANCE_SOURCES to the lab host. An unpublished
+        # edit to any shipped source must refuse before recovery, like every other
+        # closure member (windows_vm_image was shipped without being in any Windows
+        # deployment closure); the computed closure now includes the registry.
         from agent_tools import windows_vm_deploy
         # windows_visual_fixture ships only for a windowsUacVisual setup, which a dispatch
         # cannot see from its action, so every deployment route reviews it too.
         shipped = sorted({*windows_vm_deploy._INSTANCE_SOURCES, 'windows_visual_fixture'})
         self.assertIn('windows_vm_image', shipped)
-        # Every other pin holds the current bytes, so only the injected one can refuse.
-        current = {name: subject.policies._capture(subject._SOURCE.parent / (name + '.py'))[2] for name in subject._SOURCE_PINS}
         for module in shipped:
-            pins = {**current, module: '0'*64}
-            with mock.patch.object(subject,'_SOURCE_PINS',pins), self.assertRaises(subject.DispatchBlocked) as caught:
+            # Only the private deployment lookup is substituted; the closure check follows it.
+            with self.refuse(module), mock.patch.object(subject, '_deployment_host', return_value='explicit-peer'), \
+                 self.assertRaises(subject.DispatchBlocked) as caught:
                 subject.resolve(self.root,'windows-vm-deploy-status',self.inputs())
-            self.assertEqual('vm_readiness_target_source_unreviewed',caught.exception.reason,module)
+            self.assertEqual('vm_readiness_target_source_unpublished',caught.exception.reason,module)
         self.assertEqual([],self.children)
         routes = sorted(action for action, row in subject.ROUTES.items() if row['kind'] == 'windows_deployment')
         self.assertIn('windows-vm-deploy-start',routes)
@@ -178,11 +183,10 @@ class VmDispatchTests(unittest.TestCase):
         routes.pop('windows-credential-probe-status')
         with mock.patch.object(subject,'ROUTES',routes), self.assertRaisesRegex(ValueError,'action_unclassified'):
             subject.audit_sources()
-        pins = dict(subject._SOURCE_PINS)
-        pins['windows_credential_probe_ssh'] = '0'*64
-        with mock.patch.object(subject,'_SOURCE_PINS',pins), self.assertRaises(subject.DispatchBlocked) as caught:
-            subject.resolve(self.root,'windows-credential-probe-status',self.inputs())
-        self.assertEqual('vm_readiness_target_source_unreviewed',caught.exception.reason)
+        with self.refuse('windows_credential_probe_ssh'), self.assertRaises(subject.DispatchBlocked) as caught:
+            with subject.admitted_dispatch(self.root,'windows-credential-probe-status',self.inputs()):
+                self.fail('dispatch admitted unpublished source')
+        self.assertEqual('vm_readiness_target_source_unpublished',caught.exception.reason)
         self.assertEqual([],self.children)
 
     def test_every_closure_file_must_be_committed_after_target_selection(self):

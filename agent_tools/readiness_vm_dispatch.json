@@ -240,9 +240,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-action-acceptance-start": {
@@ -485,9 +484,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-action-acceptance-status": {
@@ -730,9 +728,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-admission-preflight": {
@@ -1590,9 +1587,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-api35-remaining-proxy-status": {
@@ -1845,9 +1841,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-cli-stage-collect": {
@@ -2707,9 +2702,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-consent-acceptance-collect": {
@@ -2952,9 +2946,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-consent-acceptance-preflight": {
@@ -3197,9 +3190,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-consent-acceptance-start": {
@@ -3442,9 +3434,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-consent-acceptance-status": {
@@ -3687,9 +3678,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-consent-grant-acceptance-collect": {
@@ -3935,9 +3925,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-consent-grant-acceptance-diagnose": {
@@ -4181,9 +4170,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-consent-grant-acceptance-reconcile": {
@@ -4427,9 +4415,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-consent-grant-acceptance-reconcile-diagnose": {
@@ -4673,9 +4660,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-consent-grant-acceptance-reconcile-status": {
@@ -4919,9 +4905,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-consent-grant-acceptance-start": {
@@ -5167,9 +5152,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-consent-grant-acceptance-status": {
@@ -5415,9 +5399,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-consent-grant-prompt-collect": {
@@ -5661,9 +5644,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-acceptance-collect": {
@@ -5905,9 +5887,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-acceptance-start": {
@@ -6149,9 +6130,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-acceptance-status": {
@@ -6393,9 +6373,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-recovery-collect": {
@@ -6638,9 +6617,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-recovery-finalize": {
@@ -6883,9 +6861,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-recovery-start": {
@@ -7128,9 +7105,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-recovery-status": {
@@ -7373,9 +7349,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-retry-collect": {
@@ -7619,9 +7594,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-retry-recovery-collect": {
@@ -7865,9 +7839,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-retry-recovery-finalize": {
@@ -8111,9 +8084,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-retry-recovery-start": {
@@ -8357,9 +8329,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-retry-recovery-status": {
@@ -8603,9 +8574,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-retry-start": {
@@ -8849,9 +8819,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-retry-status": {
@@ -9095,9 +9064,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-retry-unknown-close": {
@@ -9342,9 +9310,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-document-retry-unknown-diagnose": {
@@ -9589,9 +9556,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-endpoint-admission-cleanup": {
@@ -9832,9 +9798,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-endpoint-admission-start": {
@@ -10075,9 +10040,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-endpoint-admission-status": {
@@ -10318,9 +10282,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-endpoint-cleanup-mount-diagnostic": {
@@ -10561,9 +10524,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-endpoint-cleanup-readmission": {
@@ -10804,9 +10766,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-endpoint-cleanup-readmission-status": {
@@ -11047,9 +11008,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-endpoint-cleanup-readmitted": {
@@ -11290,9 +11250,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-endpoint-cleanup-readmitted-status": {
@@ -11533,9 +11492,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-endpoint-mount-diagnostic-collect": {
@@ -11776,9 +11734,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-installer-abort-prelaunch": {
@@ -12019,9 +11976,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-installer-callback-continue": {
@@ -12262,9 +12218,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-installer-callback-handoff-ready": {
@@ -12505,9 +12460,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-installer-callback-status-continue": {
@@ -12748,9 +12702,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-installer-callback-status-handoff-ready": {
@@ -12991,9 +12944,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-installer-dispatch-collect": {
@@ -13234,9 +13186,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-installer-dispatch-start": {
@@ -13477,9 +13428,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-installer-dispatch-status": {
@@ -13720,9 +13670,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-installer-reconcile": {
@@ -13963,9 +13912,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-native-fixture-collect": {
@@ -14206,9 +14154,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-native-fixture-start": {
@@ -14449,9 +14396,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-native-fixture-status": {
@@ -14692,9 +14638,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-native-fixture-stop": {
@@ -14935,9 +14880,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-observe": {
@@ -15386,9 +15330,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-package-install-collect": {
@@ -15629,9 +15572,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-package-install-reconcile": {
@@ -15872,9 +15814,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-package-install-start": {
@@ -16115,9 +16056,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-package-install-status": {
@@ -16358,9 +16298,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-package-install-unknown-proof": {
@@ -16601,9 +16540,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-package-install-unknown-release": {
@@ -16844,9 +16782,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-program-reconcile": {
@@ -18726,9 +18663,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-runtime-acceptance-collect": {
@@ -18973,9 +18909,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-runtime-acceptance-start": {
@@ -19220,9 +19155,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-runtime-acceptance-status": {
@@ -19467,9 +19401,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
+        "symbol": "HOST"
       }
     },
     "android-vpn-permission-reset-collect": {
@@ -20399,9 +20332,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 26,
         "module": "arch_ai_loop_observe",
-        "sha256": "edbed36135788964d94ceb0765a1fac808e31b8126a4f847a0f069eadafcbe6f"
+        "symbol": "HOST"
       }
     },
     "arch-qemu-holder-census": {
@@ -20612,9 +20544,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "arch-tmux-install-preflight": {
@@ -20824,9 +20755,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "arch_tmux_install",
-        "sha256": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a"
+        "symbol": "HOST"
       }
     },
     "arch-tmux-install-start": {
@@ -21036,9 +20966,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "arch_tmux_install",
-        "sha256": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a"
+        "symbol": "HOST"
       }
     },
     "arch-tmux-install-status": {
@@ -21248,9 +21177,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "arch_tmux_install",
-        "sha256": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a"
+        "symbol": "HOST"
       }
     },
     "baseline-preflight": {
@@ -21885,9 +21813,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "batch-resume": {
@@ -22110,9 +22037,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "batch-status": {
@@ -22335,9 +22261,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "guest-program-reconcile": {
@@ -22959,9 +22884,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 21,
         "module": "linux_deb_arch_transport",
-        "sha256": "503e1f70a81b4b237e3c63b8120d8a68b0ecd5601a8bbd5773b9b3f3370c5363"
+        "symbol": "_HOST"
       }
     },
     "linux-deb-arch-acceptance-start": {
@@ -23175,9 +23099,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 21,
         "module": "linux_deb_arch_transport",
-        "sha256": "503e1f70a81b4b237e3c63b8120d8a68b0ecd5601a8bbd5773b9b3f3370c5363"
+        "symbol": "_HOST"
       }
     },
     "linux-deb-arch-acceptance-status": {
@@ -23391,9 +23314,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 21,
         "module": "linux_deb_arch_transport",
-        "sha256": "503e1f70a81b4b237e3c63b8120d8a68b0ecd5601a8bbd5773b9b3f3370c5363"
+        "symbol": "_HOST"
       }
     },
     "linux-deb-arch-guest-prepare-preflight": {
@@ -23609,9 +23531,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 21,
         "module": "linux_deb_arch_transport",
-        "sha256": "503e1f70a81b4b237e3c63b8120d8a68b0ecd5601a8bbd5773b9b3f3370c5363"
+        "symbol": "_HOST"
       }
     },
     "linux-deb-arch-guest-prepare-start": {
@@ -23827,9 +23748,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 21,
         "module": "linux_deb_arch_transport",
-        "sha256": "503e1f70a81b4b237e3c63b8120d8a68b0ecd5601a8bbd5773b9b3f3370c5363"
+        "symbol": "_HOST"
       }
     },
     "linux-deb-arch-guest-prepare-status": {
@@ -24045,9 +23965,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 21,
         "module": "linux_deb_arch_transport",
-        "sha256": "503e1f70a81b4b237e3c63b8120d8a68b0ecd5601a8bbd5773b9b3f3370c5363"
+        "symbol": "_HOST"
       }
     },
     "linux-guest-park-preflight": {
@@ -24263,9 +24182,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 71,
         "module": "linux_guest_park",
-        "sha256": "65db4bcf70e7775764fc49ef6d9c5bbe35b0a0f6c76351c3d4e48db7e3e447e0"
+        "symbol": "Intent.from_evidence"
       }
     },
     "linux-guest-park-status": {
@@ -24481,9 +24399,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 71,
         "module": "linux_guest_park",
-        "sha256": "65db4bcf70e7775764fc49ef6d9c5bbe35b0a0f6c76351c3d4e48db7e3e447e0"
+        "symbol": "Intent.from_evidence"
       }
     },
     "linux-owner-public-quit-collect": {
@@ -24702,9 +24619,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-owner-public-quit-start": {
@@ -24923,9 +24839,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-owner-public-quit-status": {
@@ -25144,9 +25059,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-package-fixture-build-collect": {
@@ -25355,9 +25269,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "arch_tmux_install",
-        "sha256": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a"
+        "symbol": "HOST"
       }
     },
     "linux-package-fixture-build-preflight": {
@@ -25566,9 +25479,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "arch_tmux_install",
-        "sha256": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a"
+        "symbol": "HOST"
       }
     },
     "linux-package-fixture-build-start": {
@@ -25777,9 +25689,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "arch_tmux_install",
-        "sha256": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a"
+        "symbol": "HOST"
       }
     },
     "linux-package-fixture-build-status": {
@@ -25988,9 +25899,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "arch_tmux_install",
-        "sha256": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a"
+        "symbol": "HOST"
       }
     },
     "linux-package-tmux-availability": {
@@ -26200,9 +26110,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "arch_tmux_install",
-        "sha256": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a"
+        "symbol": "HOST"
       }
     },
     "linux-package-tmux-collect": {
@@ -26412,9 +26321,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "arch_tmux_install",
-        "sha256": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a"
+        "symbol": "HOST"
       }
     },
     "linux-package-tmux-preflight": {
@@ -26624,9 +26532,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "arch_tmux_install",
-        "sha256": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a"
+        "symbol": "HOST"
       }
     },
     "linux-package-tmux-resource-prepare": {
@@ -26836,9 +26743,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "arch_tmux_install",
-        "sha256": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a"
+        "symbol": "HOST"
       }
     },
     "linux-package-tmux-start": {
@@ -27048,9 +26954,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "arch_tmux_install",
-        "sha256": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a"
+        "symbol": "HOST"
       }
     },
     "linux-package-tmux-status": {
@@ -27260,9 +27165,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "arch_tmux_install",
-        "sha256": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a"
+        "symbol": "HOST"
       }
     },
     "linux-rpm-base-prepare-preflight": {
@@ -27481,9 +27385,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-rpm-base-prepare-start": {
@@ -27702,9 +27605,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-rpm-base-prepare-status": {
@@ -27923,9 +27825,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-rpm-fixture-dispatch": {
@@ -28153,9 +28054,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-rpm-fixture-server-start": {
@@ -28374,9 +28274,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-rpm-fixture-server-status": {
@@ -28595,9 +28494,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-rpm-fixture-server-stop": {
@@ -28816,9 +28714,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-rpm-fixture-status": {
@@ -29046,9 +28943,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-rpm-protected-job-observe": {
@@ -29267,9 +29163,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-rpm-workspace-cleanup-start": {
@@ -29488,9 +29383,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-rpm-workspace-cleanup-status": {
@@ -29709,9 +29603,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-rpm-workspace-recovery-status": {
@@ -29930,9 +29823,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "linux-vm-readonly-inventory": {
@@ -30142,9 +30034,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "linux_vm_readonly_inventory",
-        "sha256": "c7eed0a418d54afa7e5a41d93e5f952ee36f29b978a12ab1510dbba8e96d8a6a"
+        "symbol": "_HOST"
       }
     },
     "macos-fixture-guest-stage-status": {
@@ -31667,9 +31558,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "rpm-proc-observe-privileged": {
@@ -31888,9 +31778,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "rpm-public-install-collect": {
@@ -32110,9 +31999,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "rpm-public-install-start": {
@@ -32332,9 +32220,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "rpm-public-install-status": {
@@ -32554,9 +32441,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 329,
         "module": "linux_rpm_base_prepare",
-        "sha256": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a"
+        "symbol": "_request"
       }
     },
     "scenario-collect": {
@@ -33434,9 +33320,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-c32-archive-preflight": {
@@ -33696,9 +33581,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-c32-host-archive-status": {
@@ -33958,9 +33842,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-c32-retained-task-retire-preflight": {
@@ -34220,9 +34103,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-c32-retained-task-retire-status": {
@@ -34482,9 +34364,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-campaign-diagnostic": {
@@ -34744,9 +34625,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-campaign-status": {
@@ -35008,9 +34888,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-cp95-retained-tasks": {
@@ -35273,9 +35152,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-cp95-task-retire-diagnose": {
@@ -35539,9 +35417,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-cp95-task-retire-finish": {
@@ -35806,9 +35683,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-cp95-task-retire-finish-diagnose": {
@@ -36072,9 +35948,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-cp95-task-retire-preflight": {
@@ -36339,9 +36214,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-cp95-task-retire-status": {
@@ -36606,9 +36480,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-cp95-task-retire-successor-admission-diagnose": {
@@ -36872,9 +36745,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-cp95-task-retire-successor-status": {
@@ -37139,9 +37011,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-cp95-task-retire-tail-close-pre-effect": {
@@ -37406,9 +37277,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-cp95-task-retire-tail-diagnose": {
@@ -37672,9 +37542,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-cp95-task-retire-tail-status": {
@@ -37939,9 +37808,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-download-abort-current-successor-reconcile": {
@@ -38201,9 +38069,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-download-abort-current-successor-resume-begin": {
@@ -38463,9 +38330,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-download-abort-current-successor-resume-close": {
@@ -38725,9 +38591,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-download-abort-current-successor-status": {
@@ -38987,9 +38852,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-download-abort-successor-reconcile": {
@@ -39249,9 +39113,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-download-abort-successor-resume-begin": {
@@ -39511,9 +39374,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-download-abort-successor-resume-close": {
@@ -39773,9 +39635,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-download-abort-successor-status": {
@@ -40035,9 +39896,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-e66-successor-reconcile": {
@@ -40297,9 +40157,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-e66-successor-resume-begin": {
@@ -40559,9 +40418,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-e66-successor-status": {
@@ -40821,9 +40679,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-e848-http-task": {
@@ -41083,9 +40940,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-e848-http-task-retire-preflight": {
@@ -41350,9 +41206,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-e848-http-task-retire-status": {
@@ -41617,9 +41472,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-guest-abort-successor-reconcile": {
@@ -41879,9 +41733,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-guest-abort-successor-resume-begin": {
@@ -42141,9 +41994,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-guest-abort-successor-status": {
@@ -42403,9 +42255,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-guest-agent-recovery-diagnose": {
@@ -42666,9 +42517,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-guest-agent-recovery-journal": {
@@ -42929,9 +42779,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-guest-agent-recovery-preflight": {
@@ -43192,9 +43041,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-guest-agent-recovery-status": {
@@ -43455,9 +43303,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-guest-agent-recovery-successor-preflight": {
@@ -43718,9 +43565,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-guest-agent-recovery-successor-status": {
@@ -43981,9 +43827,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-historical-base-archives": {
@@ -44243,9 +44088,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-retirement-recovery-finish": {
@@ -44506,9 +44350,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-retirement-recovery-preflight": {
@@ -44769,9 +44612,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-retirement-recovery-status": {
@@ -45032,9 +44874,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-source-campaign-diagnose": {
@@ -45296,9 +45137,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-source-campaign-finish": {
@@ -45560,9 +45400,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-source-campaign-preflight": {
@@ -45824,9 +45663,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-source-campaign-reservation-diagnose": {
@@ -46088,9 +45926,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-source-campaign-status": {
@@ -46352,9 +46189,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-source-campaign-terminal-reconcile": {
@@ -46616,9 +46452,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-source-pre-effect-close": {
@@ -46878,9 +46713,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-source-pre-effect-diagnose": {
@@ -47140,9 +46974,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-source-pre-effect-status": {
@@ -47402,9 +47235,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-staged-fixture-retire-boundary": {
@@ -47666,9 +47498,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-staged-fixture-retire-diagnose": {
@@ -47930,9 +47761,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-staged-fixture-retire-guard-diagnostic": {
@@ -48194,9 +48024,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-staged-fixture-retire-locks": {
@@ -48458,9 +48287,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-staged-fixture-retire-preflight": {
@@ -48722,9 +48550,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-staged-fixture-retire-status": {
@@ -48986,9 +48813,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-cp117-staged-fixture-retire-tree": {
@@ -49250,9 +49076,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-credential-probe-start": {
@@ -50753,9 +50578,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-acl-preflight-status": {
@@ -51016,9 +50840,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-credentials-abort-collect": {
@@ -51278,9 +51101,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-credentials-abort-status": {
@@ -51540,9 +51362,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-credentials-cleanup-collect": {
@@ -51802,9 +51623,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-credentials-cleanup-status": {
@@ -52064,9 +51884,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-credentials-collect": {
@@ -52326,9 +52145,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-credentials-diagnostic": {
@@ -52588,9 +52406,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-credentials-failure-detail": {
@@ -52850,9 +52667,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-credentials-pre-effect-guard-probe": {
@@ -53112,9 +52928,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-credentials-provenance-acl-shape": {
@@ -53374,9 +53189,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-credentials-status": {
@@ -53636,9 +53450,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-network-probe-collect": {
@@ -53898,9 +53711,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-network-probe-status": {
@@ -54160,9 +53972,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-owner-network-collect": {
@@ -54422,9 +54233,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-owner-network-status": {
@@ -54684,9 +54494,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-package-mode-repair-collect": {
@@ -54947,9 +54756,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-package-mode-repair-diagnostic": {
@@ -55210,9 +55018,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-package-mode-repair-status": {
@@ -55473,9 +55280,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-python-acquire-collect": {
@@ -55738,9 +55544,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-python-acquire-failure-detail": {
@@ -56001,9 +55806,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-python-acquire-reconcile": {
@@ -56266,9 +56070,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-python-acquire-status": {
@@ -56531,9 +56334,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-python-download-preflight": {
@@ -56795,9 +56597,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-python-host-source-observe": {
@@ -57059,9 +56860,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-python-install-collect": {
@@ -57324,9 +57124,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-python-install-diagnostic": {
@@ -57589,9 +57388,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-python-install-status": {
@@ -57854,9 +57652,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-python-inventory-diagnostic": {
@@ -58116,9 +57913,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-python-preflight": {
@@ -58378,9 +58174,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-abort-collect": {
@@ -58640,9 +58435,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-abort-diagnostic": {
@@ -58902,9 +58696,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-abort-status": {
@@ -59164,9 +58957,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-abort-successor-diagnostic": {
@@ -59426,9 +59218,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-abort-successor-status": {
@@ -59688,9 +59479,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-acl-preflight": {
@@ -59950,9 +59740,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-collect": {
@@ -60212,9 +60001,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-diagnostic": {
@@ -60474,9 +60262,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-post-resource-diagnostic": {
@@ -60737,9 +60524,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-probe-events-acl-diagnostic": {
@@ -61000,9 +60786,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-second-abort-recovery-diagnose": {
@@ -61262,9 +61047,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-second-abort-recovery-status": {
@@ -61524,9 +61308,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-second-abort-successor-diagnostic": {
@@ -61786,9 +61569,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-second-abort-successor-status": {
@@ -62048,9 +61830,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-static-diagnostic": {
@@ -62310,9 +62091,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-status": {
@@ -62572,9 +62352,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-stop-collect": {
@@ -62834,9 +62613,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-server-stop-status": {
@@ -63096,9 +62874,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-stage-collect": {
@@ -63358,9 +63135,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-stage-diagnostic": {
@@ -63620,9 +63396,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-stage-recover-7f27": {
@@ -63882,9 +63657,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-stage-recover-7f27-diagnostic": {
@@ -64144,9 +63918,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-fixture-stage-status": {
@@ -64406,9 +64179,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-input-decision": {
@@ -64617,9 +64389,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 393,
         "module": "windows_guest_input",
-        "sha256": "216009ad85cb5babb7b52b8ba831050e3fe1bf166dfa65f0d5f75ad4b1d7418a"
+        "symbol": "_HOST"
       }
     },
     "windows-input-finish": {
@@ -64828,9 +64599,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 393,
         "module": "windows_guest_input",
-        "sha256": "216009ad85cb5babb7b52b8ba831050e3fe1bf166dfa65f0d5f75ad4b1d7418a"
+        "symbol": "_HOST"
       }
     },
     "windows-input-join": {
@@ -65039,9 +64809,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 393,
         "module": "windows_guest_input",
-        "sha256": "216009ad85cb5babb7b52b8ba831050e3fe1bf166dfa65f0d5f75ad4b1d7418a"
+        "symbol": "_HOST"
       }
     },
     "windows-input-observe": {
@@ -65250,9 +65019,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 393,
         "module": "windows_guest_input",
-        "sha256": "216009ad85cb5babb7b52b8ba831050e3fe1bf166dfa65f0d5f75ad4b1d7418a"
+        "symbol": "_HOST"
       }
     },
     "windows-input-start": {
@@ -65461,9 +65229,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 393,
         "module": "windows_guest_input",
-        "sha256": "216009ad85cb5babb7b52b8ba831050e3fe1bf166dfa65f0d5f75ad4b1d7418a"
+        "symbol": "_HOST"
       }
     },
     "windows-msi-base-diagnostic": {
@@ -65725,9 +65492,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-finish-observed": {
@@ -65987,9 +65753,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-pre-effect-close": {
@@ -66249,9 +66014,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-pre-effect-status": {
@@ -66511,9 +66275,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-preflight": {
@@ -66775,9 +66538,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-readiness": {
@@ -67039,9 +66801,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-reconcile": {
@@ -67303,9 +67064,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-stage-diagnostic": {
@@ -67567,9 +67327,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-status": {
@@ -67831,9 +67590,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-terminal-reconcile": {
@@ -68095,9 +67853,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-transfer-endpoint-probe": {
@@ -68359,9 +68116,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-transfer-endpoint-reconcile": {
@@ -68623,9 +68379,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-transfer-endpoint-status": {
@@ -68887,9 +68642,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-transfer-network-admission": {
@@ -69151,9 +68905,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-transfer-preflight": {
@@ -69415,9 +69168,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-unknown-close": {
@@ -69679,9 +69431,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-base-unknown-close-status": {
@@ -69943,9 +69694,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-fixture-collect": {
@@ -70243,9 +69993,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-census-preflight": {
@@ -70507,9 +70256,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-diagnostic": {
@@ -70770,9 +70518,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-liveness": {
@@ -71032,9 +70779,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-observe-collect": {
@@ -71295,9 +71041,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-observe-preflight": {
@@ -71558,9 +71303,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-observe-status": {
@@ -71821,9 +71565,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-public-status-collect": {
@@ -72083,9 +71826,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-public-status-diagnose": {
@@ -72345,9 +72087,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-public-status-retry-collect": {
@@ -72608,9 +72349,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-public-status-retry-diagnose": {
@@ -72871,9 +72611,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-public-status-retry-observe": {
@@ -73134,9 +72873,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-public-status-retry-preflight": {
@@ -73397,9 +73135,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-public-status-retry-status": {
@@ -73660,9 +73397,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-public-status-status": {
@@ -73922,9 +73658,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-public-status-third-collect": {
@@ -74186,9 +73921,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-public-status-third-observe": {
@@ -74450,9 +74184,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-public-status-third-status": {
@@ -74714,9 +74447,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-quit-collect": {
@@ -74977,9 +74709,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-quit-phase-collect": {
@@ -75239,9 +74970,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-quit-phase-status": {
@@ -75501,9 +75231,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-quit-preflight": {
@@ -75764,9 +75493,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-quit-status": {
@@ -76027,9 +75755,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-collect": {
@@ -76289,9 +76016,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-detail": {
@@ -76551,9 +76277,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-diagnose": {
@@ -76813,9 +76538,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-endpoint-access": {
@@ -77075,9 +76799,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-launch": {
@@ -77337,9 +77060,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-collect": {
@@ -77599,9 +77321,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-diagnose": {
@@ -77861,9 +77582,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-status": {
@@ -78123,9 +77843,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-v2-bootstrap-diagnostic": {
@@ -78386,9 +78105,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-v2-collect": {
@@ -78649,9 +78367,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-v2-diagnose": {
@@ -78912,9 +78629,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-v2-status": {
@@ -79175,9 +78891,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-v3-bootstrap-diagnostic": {
@@ -79437,9 +79152,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-v3-collect": {
@@ -79699,9 +79413,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-v3-diagnose": {
@@ -79961,9 +79674,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-v3-status": {
@@ -80223,9 +79935,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-v3-task-result": {
@@ -80485,9 +80196,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-v4-collect": {
@@ -80747,9 +80457,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-v4-diagnose": {
@@ -81009,9 +80718,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-quit-v4-status": {
@@ -81271,9 +80979,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-owner-relaunch-status": {
@@ -81533,9 +81240,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-powershell-preflight": {
@@ -81795,9 +81501,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-preinstall-status": {
@@ -82057,9 +81762,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-public-collect": {
@@ -82319,9 +82023,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-public-status": {
@@ -82581,9 +82284,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-stale-lock-diagnose": {
@@ -82843,9 +82545,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-stale-lock-reconcile": {
@@ -83105,9 +82806,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-stale-lock-reconcile-close": {
@@ -83367,9 +83067,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-stale-lock-reconcile-status": {
@@ -83629,9 +83328,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-stale-lock-reconciliation-status": {
@@ -83891,9 +83589,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-stale-lock-recover": {
@@ -84153,9 +83850,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-target-preflight": {
@@ -84415,9 +84111,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-target-readiness": {
@@ -84677,9 +84372,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msi-target-status": {
@@ -84939,9 +84633,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-msiexec-service-diagnostic": {
@@ -85202,9 +84895,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-parallel-vm-copy-status": {
@@ -85471,9 +85163,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-parallel-vm-source-inventory": {
@@ -85737,9 +85428,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-update-fixture-download-abort": {
@@ -85999,9 +85689,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-update-fixture-download-abort-current": {
@@ -86261,9 +85950,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-update-fixture-download-abort-current-status": {
@@ -86523,9 +86211,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-update-fixture-download-abort-current-task-cleanup": {
@@ -86785,9 +86472,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-update-fixture-download-abort-current-task-cleanup-status": {
@@ -87047,9 +86733,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-update-fixture-download-abort-status": {
@@ -87309,9 +86994,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-update-fixture-download-task-cleanup": {
@@ -87571,9 +87255,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-update-fixture-download-task-cleanup-status": {
@@ -87833,9 +87516,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-update-fixture-guest-create-abort": {
@@ -88095,9 +87777,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-update-fixture-guest-create-abort-status": {
@@ -88357,9 +88038,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-update-fixture-http-stage-extract-diagnostic": {
@@ -88619,9 +88299,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-update-fixture-phase-status": {
@@ -88882,9 +88561,8 @@
       ],
       "proof": {
         "kind": "validated-host",
-        "line": 171,
         "module": "windows_cp117_lease",
-        "sha256": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b"
+        "symbol": "_identity"
       }
     },
     "windows-vm-deploy-frame": {
@@ -91543,9 +91221,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-driver-fetch-status": {
@@ -91755,9 +91432,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 23,
         "module": "windows_vm_driver_fetch",
-        "sha256": "38da7a06dc1a2700508a7440b29eccb94927b28ec38befcededaed34c35a0f2a"
+        "symbol": "HOST"
       }
     },
     "windows-vm-fresh-screen-status": {
@@ -91967,9 +91643,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-fresh-status": {
@@ -92179,9 +91854,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-optical-attempt2-close-status": {
@@ -92394,9 +92068,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-optical-attempt2-phase-probe": {
@@ -92608,9 +92281,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-optical-attempt2-status": {
@@ -92823,9 +92495,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-optical-attempt3-frame-collect": {
@@ -93039,9 +92710,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-optical-attempt3-status": {
@@ -93255,9 +92925,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-optical-boot-status": {
@@ -93468,9 +93137,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-optical-close-status": {
@@ -93681,9 +93349,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-optical-current-screen-collect": {
@@ -93899,9 +93566,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-optical-current-screen-status": {
@@ -94117,9 +93783,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-secureboot-fresh-status": {
@@ -94329,9 +93994,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 21,
         "module": "windows_vm_secureboot_fresh",
-        "sha256": "996cffbb9af18f0f1e433adf990b7c96f4207a820f37cd9f8458ba82fbb882fd"
+        "symbol": "HOST"
       }
     },
     "windows-vm-secureboot-inventory": {
@@ -94541,9 +94205,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 13,
         "module": "windows_vm_secureboot_inventory",
-        "sha256": "cafe80495690a6a306f4964fc0686e5c6f0469cc82396134061d3a0100d1b0da"
+        "symbol": "HOST"
       }
     },
     "windows-vm-setup-install-ack-collect": {
@@ -94763,9 +94426,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-setup-install-ack-status": {
@@ -94985,9 +94647,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-setup-install-disk-proof": {
@@ -95205,9 +94866,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-setup-install-focus-collect": {
@@ -95426,9 +95086,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-setup-install-focus-status": {
@@ -95647,9 +95306,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-setup-install-next-collect": {
@@ -95870,9 +95528,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-setup-install-next-status": {
@@ -96093,9 +95750,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-setup-keyboard-next-collect": {
@@ -96312,9 +95968,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-setup-keyboard-next-status": {
@@ -96531,9 +96186,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-setup-language-next-collect": {
@@ -96749,9 +96403,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-setup-language-next-status": {
@@ -96967,9 +96620,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 28,
         "module": "windows_vm_fresh_setup",
-        "sha256": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe"
+        "symbol": "HOST"
       }
     },
     "windows-vm-swtpm-owner-observe": {
@@ -97180,9 +96832,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "windows_vm_swtpm_repair",
-        "sha256": "47190e2c3a0b0b2d56be4595904aa0b3c30c939aa5841c69850e1e263e24eca1"
+        "symbol": "HOST"
       }
     },
     "windows-vm-swtpm-repair-status": {
@@ -97393,9 +97044,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 27,
         "module": "windows_vm_swtpm_repair",
-        "sha256": "47190e2c3a0b0b2d56be4595904aa0b3c30c939aa5841c69850e1e263e24eca1"
+        "symbol": "HOST"
       }
     },
     "windows-vm-virt-firmware-install-status": {
@@ -97604,9 +97254,8 @@
       ],
       "proof": {
         "kind": "host-constant",
-        "line": 26,
         "module": "windows_vm_virt_firmware_install",
-        "sha256": "752863505733482fad930ec4b409c00beb5a705c0be581eba04e774f0691ef1a"
+        "symbol": "HOST"
       }
     },
     "windows-uac-decision": {
@@ -98223,398 +97872,5 @@
       ]
     }
   },
-  "schemaVersion": 1,
-  "sourcePins": {
-    "affected_agent_tests": "c8019514d941ba041d6b34e2a0426ff9d31bc9f5d2603170784424ab050f36d9",
-    "agent_ci_evidence": "f407e1026efcc55c7794de7514f17cfd2ef74d7971a59643ad1dd5d1a8627358",
-    "agent_test_footprints": "6238ddb6a2fda9a64b1a78c2ccb9a4b3bf9e1f867b4418229f467614e3491be2",
-    "agent_test_runner": "ccf7619f810fa53afb2b4f233331709961a946e9cf4d89e55f2848e8989f54bd",
-    "agent_test_session_observer": "b78d07b59a8356ed79141adcbcf17cd08e28db2215d5397b18af4c2dbc4920d0",
-    "android_action_acceptance": "869690efcfd15eae0d7d91b3107388d2a9897ed99b454eadd7ba58179dc7d616",
-    "android_admission_readback": "13150b482a6a4ce524950f8f6b0381cd2c266b18e0a4f9167711602f1538f8c9",
-    "android_api29_current_owner_observation": "3fdf093cb5bd0228722cf8472c545566637a4e4522dc9918db9091a7a56122c7",
-    "android_api29_current_permission_observation": "818fef810405e93f06f7665252044ffdf4440d1e8388029ffa4a80b4c1623838",
-    "android_api29_external_java_observation": "03b0ad004aed35ae0afa20664ed2aafa7aeeeefed76ea7cd4c0e529343ac4239",
-    "android_api35_coldboot_fd_observation": "0749ebd2313ae1c5d24ec94efea03cf92d4319ecc26504bd6791ef6e7cd5c336",
-    "android_api35_coldboot_product_observation": "7906f3fae29cc50a014b8090e9a4c224b44b65311975b917d897ca87f853e4b4",
-    "android_api35_current_proxy_dex_observation": "9979cf2ef451f5676242c90924f683c37068e63b3aeb7fcc51bcd342c1a4673e",
-    "android_api35_current_proxy_probe": "415f6992a47d10c453f292c13889db1dbbc5426d0c818ce245d7bae215927d48",
-    "android_api35_large_routing_observation": "246db8b813b6be8a40a0ba3605e3854192adbc2f4b205a2d06ca62f397959ab7",
-    "android_api35_large_routing_routes": "f1158df1ca5acea94999b9c9982b78e4013e11700ea74573a3df74c989f50469",
-    "android_api35_owned_proxy_restore": "17bad18ee4212c1a128c6fbe1a9d1102e76809643eec7c4a04196109bd6fba0d",
-    "android_api35_partial_proxy_diagnostic": "e76ce20734c02bde4f4cb9a31ebba93ad7556dcca1858c23880fffb01d358a33",
-    "android_api35_remaining_proxy_cleanup": "942d1b9738b444d539ee735e3c79e2f67d11f9193d14bfab58fc71e32d2e6ae7",
-    "android_api35_remaining_proxy_status_routes": "64fd9d1ba9de80d48c21d4ae0423f181b01c702db1bc711ec0937696d1674d22",
-    "android_avd_census_diagnostic": "89aa607d9f3571b9dd3ae854285a6ea37b678b2182fbbbd0669381c36e7773ae",
-    "android_avd_coldboot": "e80f7c833ca5dbf817afadb7c4fe896d6ddb6e1a792fcc2759311fcf996b0957",
-    "android_avd_fixture_recovery": "ef59c18409c4d28f5558d2dab815fd1c6f4f371f089d8b1363bcc8ac1da2ceb7",
-    "android_avd_launch_recovery": "0d4ac9875ef793d8d1ebfe613f5c89557e1ac027d8fbbc6ff6ab084fc6f57e4d",
-    "android_avd_sdk_alias_census": "98b86bf0570828af0d2f32882cbbcaf364cc826a88b6bceb9366b68165158b06",
-    "android_avd_sdk_alias_observation": "f41658d9b919f076615e4c4d9603e87410e580f1194e9d8dda3adbe3048522c5",
-    "android_cli_stage": "cb0129db1e88aed5e31f65cd3437912052ff4f5fa1b94de6a8cccd64ce721be3",
-    "android_coldboot_product_observation": "d90b7c6338163bd46ea0c89b8582af45f10e9376b94d9b08c4e6902cfdc1c885",
-    "android_coldboot_product_routes": "8b05ef4c4f101d37865e11c8c652010134b668f728f8916c31629d7120cd8633",
-    "android_component_command_transport": "cd241219e689ae6fd925ccfb05ae140d86ac0d4818cdcc0de84043b01617a367",
-    "android_component_continuity": "9e7c099de26239ac70711687a512d689e451fb0aca42627fd362e03065784589",
-    "android_consent_acceptance": "58f2c3ec7f48bbd94e29ea27fc066edfdebac08bc3a7f464a06c91e006e09b78",
-    "android_consent_grant_acceptance": "5a01892ab77a1bc779c02038ecd58b89ef25bd85df483adee8643ba65681c5ee",
-    "android_device_availability": "cf1c73ef15a432ff57eff452fd99cf27f2f9927f7305b56f642ee7c544e838ef",
-    "android_document_acceptance": "691e83dbcf651c9130195903824f7382fdc98f53aa67075489b1f60c02118b72",
-    "android_document_recovery": "517163930bf49abcd9161cda14f7b752be4d391b49dbf4d65edad15f9b46fb13",
-    "android_document_retry": "9d18c0d1bc36cbc725b8f2c052335531ffb60bc6b91ca6f44695cb534e49ecf4",
-    "android_document_retry_unknown": "cd89b9773f5face7715b42b22aee1289a76dbe36403718493943cc7a4575882b",
-    "android_endpoint_admission": "8274fffd51310221658a60686c8ffe4858ee4f5baa87197132b118df096cfca7",
-    "android_external_java_component_transport": "20aa6be0a8b6de65fa2d68ae8801bbdaf7426be31de8c28640144e1a63956e0c",
-    "android_installer_component_adapter": "5954dfaa45ecaf23cc739b947821a6fb153e8533a572ddb439ab25d4b3a125ac",
-    "android_installer_component_bundle": "a2899492daff4a6cfc58aec43b1a483dec123a828c06485718c1db9880f5d522",
-    "android_installer_dispatch": "48d853093b0e6b3b4a10704904c44333dc5e22d7725d703708c900b04b9b3d13",
-    "android_installer_failed_check_retirement": "b80edb795461815d1565148dc1eb32966c4de3aa6ad0f4bab1f53a378f537e31",
-    "android_installer_routing_backup": "88244da25bfc71447e46306f19d4e644d301360b657142a3355bc043bb8d0827",
-    "android_installer_target": "8ce1d37e76484d9febe122498a2b1f4b58afaf4af35ac2be57345f0c7f3c3cfe",
-    "android_installer_tool_bundle": "715c3c7254ecd2a8e478731a24972f749677ef6e0ecf87d1f3f6a188e9927168",
-    "android_native_fixture": "f38d515c593c678ccbc3bda757838e6cd5b4c59d2e84dba723e4f51a14e3639b",
-    "android_native_fixture_lifecycle": "490b77034b7fac5df2e4ece4c1e2182c8ece199dc83bf397fc0f59234d99ed12",
-    "android_observation": "7f20cad404885a03a3f5f52ea0a3ee66e9a043438688f4a887e2fea5cde01db1",
-    "android_obsolete_consent_denial": "6837c1ff9864d0138f4165c41a8212677b5a322d4b76092310ed5a09cf667980",
-    "android_original_host_status": "482f2373df34bf9870fba92703c5b478c05d6a5fc92c5ff2111f2000100bd056",
-    "android_original_host_wire": "99395e908ec1e33ec679f97d06c4e8f735c8cf13dcad6cec394cd831254bae9b",
-    "android_owned_endpoint_bind_recovery": "eb038ed44e150f0a053805abc107f9092122a61112aa43bb8f905b58e69c3f4b",
-    "android_package_install": "430cbf204720941a99fd6652de547404cf8c2654e48ece6a2d357f183c36fc8e",
-    "android_proxy_os_fresh_owner": "bbe10668da1824bbd09dba8e2aa2e396a27c4f46062d4547e62d8bb7b566b669",
-    "android_proxy_os_observation": "11d72ae85282669ed6ed62805bbb01f16b1300f8abc9bfcec672fd8ed16a474d",
-    "android_proxy_recovery": "f0f33d695921037a1cde632850b5b83cc15173f8ee71077d7208adca169dbcb8",
-    "android_public_inspect": "d2c1917e905ab21cb32e2dc94e22e06b515aecbad5df872f2949a2ea02367eef",
-    "android_qualified_cli_observation": "bb1f90c4f632df6ab110ad05e96eab49697ba1a75beed920dee384f692724758",
-    "android_recovered_endpoint_stage_cleanup": "202db4bba4e707299f75d0ebc51374ebafddc95f22e99af4cbde01bf42174c9b",
-    "android_runtime_acceptance": "896c1ab55f7475c309d63c0b5e60a10d8ec7db600b02dfd84428ca06a5f66535",
-    "android_shell_fd_probe": "21d78968b5810ca43d11009e1f0c56dece7493f7d1de83cb00cb28bec70531c4",
-    "android_vpn_permission_reset": "c7a18a54a390b7716fcf6bf3dfb412c876080a0dfcc13132f3eb5c23dabd3251",
-    "arch_ai_loop_observe": "edbed36135788964d94ceb0765a1fac808e31b8126a4f847a0f069eadafcbe6f",
-    "arch_package_integrity": "de236f3df4762b55c30ee5c02ec1261ee9ff3ea4d66038bad0a2555b70bd82bb",
-    "arch_qemu_holder_census": "107af13e1e005af698130b8abbfa8e6e3abd5aefa811c69464f0efc4de53ff8a",
-    "arch_tmux_install": "df6c1d011323cbff413e2e6be458cce435a709861e145533696b11e9ba50eb2a",
-    "check_output_retention": "223b5e01b4b7901ff760660d820f7033994f0856865d8323b4e28418610289d2",
-    "docs_assistant": "6e8230e0ce7670387db838619cd7c9539c0983258594123bf35a7a46180a8fc8",
-    "durable_remote_job": "f3b4707528c16f176b80781dd86208c324c1e10d6eb2c14451dcf4be08d0e734",
-    "linux_deb_arch_acceptance": "885e07a53f04a517052822c336942efed2ab324ec09f09dee5e0025a3e7fb310",
-    "linux_deb_arch_guest_prepare": "d1c8d376f6c49ec146c27761443f8d293fb045a69431689d7293de5923be7728",
-    "linux_deb_arch_guest_prepare_remote": "cc990595fd34ba7eddc1d4519ee36ced7ec9ed24b79e55593f543bf4ef5a12fb",
-    "linux_deb_arch_host_supervisor": "60d819641de471ad3b0a9d3f438c829c53da9133a6f7a870c4260b30df293d7d",
-    "linux_deb_arch_native_driver": "5544e27994c162368011ecb441823f08e7cce700bc294cc847e107ff83bb1710",
-    "linux_deb_arch_rollback": "3e3a4741b282bcf8336438dca208b8fdc9e2fc4d1f1d957f918daca63d8cf14c",
-    "linux_deb_arch_transport": "503e1f70a81b4b237e3c63b8120d8a68b0ecd5601a8bbd5773b9b3f3370c5363",
-    "linux_guest_park": "65db4bcf70e7775764fc49ef6d9c5bbe35b0a0f6c76351c3d4e48db7e3e447e0",
-    "linux_owner_public_quit": "9fbbdf3ea9e2e6e3fdfb05ef384b7c338afebc0776845c7f934bab0ff44ad6ea",
-    "linux_package_fixture_build": "5735a594076c28c70483e77012e84265bdc403c0f9d3312d17929caaa02a623e",
-    "linux_rpm_base_prepare": "738f956e3492365f7cc4f52df8216e71b7e1127926e03bc68fee2d604b43d29a",
-    "linux_rpm_fixture_server": "fb1be336b608aa38bb450082831146dd9729d8efc85f190164e3857c84a14209",
-    "linux_rpm_fixture_server_guest": "d21f2a5d760bed5bbcae6319dfc6bc21a2a306a817bb504ca8f21e01e99526e9",
-    "linux_rpm_fixture_server_lifecycle": "5147a7ed24703840913c3b81f40100431f4f70efbc43125f80d99af7f04a28b3",
-    "linux_rpm_protected_job_observe": "6f09f0e7b5f89da9b1c4410c96232ce9f9e21cce2a20e9303dbd72d43c052fc8",
-    "linux_rpm_workspace_recovery": "f4a6a30e83ac10e372fb286db956884bebb02062064060d7fce3e195258bbec2",
-    "linux_update_fixture_workflow": "6e436aa470bc622cde6cea862248a7e4c1d49187eb8a832642053ee5e969720d",
-    "linux_vm_readonly_inventory": "c7eed0a418d54afa7e5a41d93e5f952ee36f29b978a12ab1510dbba8e96d8a6a",
-    "local_build_environment": "095c83ac7cc44a85626dc7839c352bcda7ce04c5062cb26d6b187027365b4bf0",
-    "local_fixture_admission": "646abbfd026f42c0acc750c33665f9a095b591f4f5d025ad0f7dcbf4e2ee33f1",
-    "macos_fixture_guest_stage": "8267607128bffcf2d63f281271d606487f8e138025e4727a3cfe7921068e1eea",
-    "macos_fixture_stage": "6763bb47fe8ccdb052295f0033a7d75279593ae68f81b85dbf39adcec3169909",
-    "macos_machine_acceptance": "2e48609c3de4b6e709eb72a10baaeebc3ffb4b7e66df1bc9ff8e9195e21c5049",
-    "macos_machine_boundary": "252c01d9f60e7f6e1b30a2adc511642db314602a9df4539dfbf02bd3c01313f2",
-    "macos_machine_kernel_observer": "66651a67dfd713cf0fc8095aadb63d39340a5d9dd3f11a629f883a57f6fc0805",
-    "macos_machine_receipts": "12a7bb54be27a82e39eeeafef6f63c056f32ee7bc8e9525c33dde5e7fbca04e2",
-    "macos_machine_server_stop": "0ab0c81a72ada556476e0c9899b891faff01fa78c3d79312fd6bd8358e973945",
-    "macos_machine_tart_readonly": "38cf72e570c35b35466359794be4372749c32d5f304e607683d1d1a2070ea441",
-    "managed_check_lease": "aaf195173ba68bea697ce38c2788e7867690902b772d9217c003a1b32dcab519",
-    "mcp_server": "9fc965df373aa3fd7f1753b0e8959b917eea91f44a737eda33628edb2a3f9003",
-    "native_acceptance_matrix": "7939ff41593462f8ef332fde71decb2a73e77c67f1baabde2316fbd209a6c8aa",
-    "native_acceptance_overview": "261f7eb6439765441b5c9f520828f0931cf2d2eac2a8040035e2aca7eea026eb",
-    "native_artifact_registry": "2c0b960ce9a9af74eb96245b30e64d66f3bda8c92e3bbbf64de8386cc7ca23d4",
-    "native_artifact_reuse": "19dff9d3497938acdc41a2304878b546855ff0abfd6dfd1ea487dfe923a6e1e6",
-    "native_credentials": "8549e4471761351c3c8a2c7ffdd2a24d5cbad81e3c5b88202504923ca1039539",
-    "native_environment": "e842650c8308d5b2cd8d9770afcd86d930556c0ae0836dea9b76d4cb864147cf",
-    "native_execution_context": "5a4a93f96db99321cba915651788663c02460a7a6965df7a219738b1065871d1",
-    "native_fixture_preflight": "4a22c6cbc15729a8269051936922dea92931498ab865a6c63e268588b01c787d",
-    "native_host_observation": "f913eac3e10c7beaf4316d8e27424a5314ba889991b4ccb53dfe7574819b9c74",
-    "native_owner_gui_lifecycle_ssh": "55c7eaf2cd95bd03a6ba122427246867042d8d8de0c20304ab8bfd7786edd728",
-    "native_parity_response_projection": "4da9c2f89288ff1fded80e084a164a3c1a48feb814ad4c784ac45d29784ce7c0",
-    "native_review_source_closure": "0fac471b05e0e784913f5508a5d90b279fbc48c96751b83082d1f9c14cef95ae",
-    "native_rpm_public_install_adapter": "5479434011cf0e02e8743d4ffd510dc34d9b4ac5a681335ff2a82a653bce42c9",
-    "native_rpm_public_install_ssh": "3b9b590629db13ff3152eed4748793a695b24506ccf66b775903b3029513c715",
-    "native_scenario_batch": "034070dc3697b949410e334d3ba304b65a7faac01be873a127da4d29e99f35ce",
-    "native_scenario_bundle": "3d622289a054f054d671d6bdc18aa6d342ae8461c2bd619039d728c01f1e4642",
-    "native_scenario_execution": "ef669bf82ff5a8116f59d534a824d9218aab8743c3eb067f9fb2b95107ea7e29",
-    "native_scenario_ssh": "84df248f4c6ddc3ba0afb4302633122f09c8ded9270fc855280d62d537f1007e",
-    "native_scenario_windows": "a5d48c92a705840519ddbe759daf32b15b2222c2c8980b2381b039b269edf7a1",
-    "native_scheduled_refresh_ssh": "a02bd277452716e6688bdf4f0049a6a5272b8f3ba7844ed7650f7c8c0ca7e05d",
-    "native_vm_baseline": "1e9c30064543b484180f00b7adfd61b086ff8c92c7bc282022443f4a1ef0289e",
-    "native_vm_baseline_config": "8b9eaa028ec866aa331e6822e773460223a13b5aae757d06fd9998a3bb0ba723",
-    "native_vm_spec": "3430850bae6095d690eb5067ad70426b283ef9bafc8e36bf083a588edfd7bbe3",
-    "private_config_custody": "efc4b40e1f455444bd80ad3bbb5cb8753cad1d4cf737853010f1bccea32ea040",
-    "private_credential_file": "0bfb7bf2dc8fc6cf970112aea856a01193950aa400b4fc09d48c0c2cbd153a77",
-    "private_inventory_lock": "0ef6e2dda29a396a201368e1c3bce2ad52c441a3c9cc8647d8cadce198b73d42",
-    "readiness": "a8eee0699c9eeee1cb77da5be25ddfc58bca4381ac61ae3e57836984463f6677",
-    "readiness_adb_dispatch": "871436b26eb98fce59bf1eb3a3d0497641d7f9c4cbd1e67ab5d3b8e490424f58",
-    "readiness_adb_jobs": "b8d72e0f50ccb0bd8520060c97a961f2bed90102cda705da31dd3dec1e8ec0b9",
-    "readiness_adb_transport": "6d41aebe7f2dda3e7c9ac0f8361938c997edefcfc1eb428bc9941eaa0dfa957a",
-    "readiness_android": "f83886ed69b9efd3c147b38bb8b202a92fcf393e29b765967363cc80e1e8d7e6",
-    "readiness_android_processes": "b535be5027adc016983e244c74309a797feeb0ca0dc5e5dd4e03c4e732692835",
-    "readiness_entrypoints": "a6a74054ce3a6557794e21c49dcaac4c5ca0173a1e733ccf067f9c648f7260de",
-    "readiness_fixture_registry": "cb7d428f490be710975986b77e82fcb591b3a370b0b549f97de531d65515c970",
-    "readiness_guest_jobs": "12d2e00eb3973455aeeded57d7b37d3714d655d66142fd2f0fc860b0a7c1df92",
-    "readiness_gui_lease": "04de8a811c6813cc112980e5e693652e777bc05d7f5c8cc723c5744d6c956457",
-    "readiness_lease_reconciliation": "53c644648f03883d3ddb872d39860cc71058a31cfae0a6de7bbd8a2f7d6d2ec0",
-    "readiness_lease_workflow": "e3db5ca8f89c42c297608d3e9a3e5f0c3a6900d27907269d6ea18ca5f516491c",
-    "readiness_leases": "104ec0588179822f4ad851dc6a1a91df55a68f155540d93ce6c0b9be18a2ff6f",
-    "readiness_nested_channel": "52c62315bb9f048140f55ead786daccfcf8820425f8b5f861a50aaa1b0ad788e",
-    "readiness_nested_membership": "66e186810185c629cc246349fbd19581c0dfcdc600367af6ddbebb5266cb1c4c",
-    "readiness_providers": "2718db107ea0ee942580abdf2539714e35b05ba46a5123828731fcf95d5e8f49",
-    "readiness_qemu": "5fb5448908f8bf4aad8bee1ca16e4f93ddc41ad0061f8f4441eb4a9dcb2fa5fb",
-    "readiness_qemu_guest": "aa608ac670944f27b616ac3ebac16ba1a382b465a66fa383015eb60ca9cefc9c",
-    "readiness_qemu_idle": "febc70aca850af929736373a3ae92422f4cfec042c5cec6b76d328eb99fef9ef",
-    "readiness_qemu_jobs": "74c7d0038a87d8617ab166e6cc2dff84c28870e4df15048298c98e948ae3f19c",
-    "readiness_qemu_refusal": "8449daaac2701dcc59256562e3c2f7a19fc00d06d6db6b5a5ade2156094ddf46",
-    "readiness_qemu_remote": "241e8844ff5d8fcba856382167204be1cb6af4bbeb5af938b9958d40b615c04a",
-    "readiness_recovery_status": "2833e5f0c027c49eb414270f4e8afcebbe7efca73142853f01ff5165ff101147",
-    "readiness_reservation_observation": "736709e18b1ba52f5b6ad1e2958d1d23df39bf0e21160613029576ee790565d5",
-    "readiness_resources": "a128a8fa7ac27844760cc464d08e669506b8caf9261030650eee70ce2e98e7a8",
-    "readiness_ssh_master": "ee9fbb43f5413dd2b63d33d5c0db604694fa0c47ab9c13288bac689e00f91a29",
-    "readiness_tart": "cdba395c0d7718cb60b32f1a71868af29a1e8ed8348df903b748e93c57deb0ef",
-    "readiness_tart_macos": "22f70b81df2d51bb447f8999244e928dd3dd6959c3b71963f85a732deed7c198",
-    "readiness_tart_macos_active_work_original": "dd4dfae68537784c37029b12a11bfdfb7ee1b3ed4ef2ef1bd1d4b436960a2635",
-    "readiness_tart_macos_active_work_sources": "ee281babaee54533d1425d3194b5a10b8ef5dde41bd96023f43c6115797a856e",
-    "readiness_tart_macos_lease_bridge": "50428cd2540cb48f08c858c648a54ffaed888306ffa64110132ca504f3730163",
-    "readiness_tart_macos_lease_executor": "9776c2de7c696ccc5c3c9f91d8614d3227adf3a8d985a215649d5d69347a2ea9",
-    "readiness_tart_macos_lease_qualification": "3b0044dd5e766ada27116876f8d70fcb5fd505b57b8177e941c0a39de0f6eb03",
-    "readiness_tart_macos_leases": "721c397ffa4fe4c25ef7fc9da2470f6d925a43410986d596b215b255b94877e7",
-    "readiness_tart_macos_registry": "d156ac46e68b16e902ba09bf3bed0b6140b3bf0041608ff1e82b53364125a910",
-    "readiness_tart_macos_session": "63dcf42f0474115c3c878cea1df7b3cac94acd6c0b452f0875c2bf9f7b2f50dd",
-    "readiness_tart_macos_unlock": "432c1da0f267e2fa41243c20bc63736270ca592f101e00ee12ac13df47758e42",
-    "readiness_tart_macos_unlock_material": "e8e65f451e8f9dec5a354821a0a9d2a94637b5814d1f806265537489c4413077",
-    "readiness_tart_macos_unlock_observer": "7c9c9edf0422cbfa060006c4f3c519783b962f0ae8ca76cea95a14cc0e81a9ac",
-    "readiness_tart_macos_unlock_qualification": "50296a7561a2a90afd1f5765c131988603051cc8cb022ee5c28f60f23d310221",
-    "readiness_tart_macos_unlock_stream": "622988b9678d1ae093f3dc2eeb2510683c03557a6042aa3095aeec29f2bfed0a",
-    "readiness_tart_registry": "4395980aaac793f3a04a744abd454fb4c914322e526be868272bdc9d984d962c",
-    "readiness_tart_retirement": "b9ccf8cc485da08547eeaed17ff7b922f4b1ffd319281cc6de7af766a32293b1",
-    "readiness_tart_vnc": "e217651bf4a277133771c6a75c5d7ded2c3d60760092bc757058d20aa294ca68",
-    "readiness_transport": "ef45bb6ee12bd3886e3599d8269b9bc241826ef9791c5e2e06ce6db823833e93",
-    "readiness_windows": "0e69a55edbca4c8eb7854107b020d4436853b05cd60fa15b818ad7e5f6ba939b",
-    "readiness_windows_bootstrap_closure": "781596c5000048b1fb66f6ceeeee2299426e92713af5469f47acbc709f97de34",
-    "readiness_windows_bootstrap_durable": "8091cb9487ac4ad5eb4cec0f50bfddc1762f9a8374663d1dc673afc29bf93cfe",
-    "readiness_windows_creator_registry": "d1f06ac9df5f1ce232570b0fb077d7fbf857fdacf643ff93d23ed6e985f0ef7c",
-    "readiness_windows_display": "18268583b5d0a6d92d95cfd321b1a7ead36392970f847e2eb382707a2890e8b1",
-    "readiness_windows_guest": "11e1bee487b238ed99560a738e43350ca510c7d4a8c71dcfd271d264edb63585",
-    "readiness_windows_host_jobs": "b66e54ff485416422a4cfcf7fabe959fa0f8f2b117de0cbb614d6feeff56c0cb",
-    "readiness_windows_host_work": "6b3cf0dc58b7035b581f319b1d4e34c735b305e6e46d2763fcc1a9ae6847a9e2",
-    "readiness_windows_idle": "018beb2718b5dc2a536a3e82a87a79e5da4e5156f3546fc8f66c51d71784aef1",
-    "readiness_windows_jobs": "8e495511f0f86f9f7d3b3bd7810dcc1268876ce148a5ae19999a890ee68008fe",
-    "readiness_windows_leases": "f333486cbf799a7540d59c9ad8f9eb5c6e3189882460177876b9bb91fd95768c",
-    "readiness_windows_lifecycle": "1bfcba28623cc710b12dc869f2b2fe364d608833b229c4dbda714ea801ceb694",
-    "readiness_windows_login": "73240a83576e1ca6a4e5cdf30ea12f88a00f41ba34bfe5eeb581fa34abf179c5",
-    "readiness_windows_login_continuation": "bd5e36ea19a441cd11a56619ce309f3701084069b0dd85ce12a8e37eb45c6e67",
-    "readiness_windows_managed_admission": "4def3fa0a7564dff48cc14d205166621b19047f15b569531358a4568add2da44",
-    "readiness_windows_managed_create": "e778dda736c7752038ec599df43e79593334202cc8683b8e992e7fdcf8f758cc",
-    "readiness_windows_managed_start": "452ec0b73d05e17730d34cff56afe2e5a7a2c54cd15cdb1ff0014dea228b482d",
-    "readiness_windows_preexec": "1fbdf73651f5b2e71820ee2b36f0e918fad0e0a4417da93fca0d8e6b044868ed",
-    "readiness_windows_processes": "6a3e5402ac952f6ed2d9b310cc0aecf9cb9a3c1d39d34c8f2ced16e68ab7767f",
-    "readiness_windows_registration": "b83cdc075eeb18e4c9c02926b8cd6b9c7aae09b2c3650e606865fe5f9d75bcc5",
-    "readiness_windows_remote": "2d8887f99aaa6894d719b07f085f60b8d875a013bc3de43d7e2b8c02f2c83745",
-    "readiness_windows_seed_detach": "82ee7d3808c7f0e4a55a068d490a8432179247ca2b9122f2e52266b5a8c06ec8",
-    "readiness_windows_sleep": "b0e66314077276fde0338a7bc7174d60fa44d77bc648e416d57ac17dca870f5f",
-    "readiness_windows_start_closure": "d15fa678b8ee09a2640db9f328fff3a770d7dfb8975de04a483b8836656287d2",
-    "readiness_windows_tpm_owner": "9c814427aca14fcadd7935263af76af3e1fbf4b9ccf713fedc27f840e844bcd1",
-    "readiness_workflow": "67a971bfc81466e1b7dd7171c5c44abeb2d85a30ba3fa868ef6007e93ba994dc",
-    "source_module_loader": "7af8264432912a8b3c3c875989efff547928d9f58fcb183315b4c1c0975991b2",
-    "ssh_automatic_program": "6add7cba90f5e92be5ee128b5781c90270ec904e5549b93b3346318b1508e558",
-    "ssh_channel_inventory_diagnostics": "9152ea074b39f89c2fae4f0c8b02246c5e264abcc10d08c7bc4d27c2c1012c35",
-    "ssh_channel_keeper": "7689ebc8f2b8c534e9bcc31f1ccb70f5bfbdd1c5b0299a7ace429061a0e59eb0",
-    "ssh_channel_keeper_entry": "829d7a6da119e5520319629dd0c89d0136d15c360cba4b67aaaeecabe4b27251",
-    "ssh_channel_selection": "80c205532abe222a9ad9ef8785a6655445067db694c137200e0e2986222dc4a3",
-    "ssh_connection_recovery": "5937d793033d4478c401e561d7fd52696b63f2b97b23d01e143e60daacf2337f",
-    "ssh_connection_session": "dd0273609c7537237c159f82cf318745e27e4952ec784c63d251760b38adb887",
-    "ssh_direct_inventory": "41578ce01b919d5e027109d8a6a31a1552b0df142e19aea15ee8cf4779eb5693",
-    "ssh_direct_nested_channel": "6c42f6e5b1b146e76b094b5fe63e71d9db1294f44363ca00e22f575f394cf3ce",
-    "ssh_dispatch_admission": "be6913d574194414f3ac44eb295c855594f4b2d7f1da3818d50ec7e2cca1041f",
-    "ssh_dispatch_retry": "86737bbbbb77213be17b7352d2015561c5447646226dc0aacf611cec786afcca",
-    "ssh_expired_recovery_retirement": "33ad1e2cdf9f95d4c76b4f8e10683c4f99893882c1317ef79ab3a2a1fe2f82fb",
-    "ssh_fresh_nested_channel": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04",
-    "ssh_keeper_mcp_delivery": "4df30bec481b909d828c2aa66741ffe16241aed17ad3c6bef2eb4928e91f4114",
-    "ssh_keeper_mcp_relay": "ba1ecaa98c5d6a633f7f785766d0585a73f7b004ce9fe3b749045efca73d7e17",
-    "ssh_nested_socket_noninteractive_observation": "3ca002e128e0b887db78f39881955de6581d1d01f5dae2d8e34ba0ddbbde08f9",
-    "ssh_nested_socket_owned_home_observation": "9e595d01d4cccc319ed573788ced30ba168a49fe69e2217d50668278c5cde91f",
-    "ssh_nested_socket_retirement": "356985224da09aa4306e0c018b5afd92a86f018312df34bc68685d7da6188731",
-    "ssh_nested_socket_route_diagnostic": "d23217e1c64f3fd74fb049a721945885acabb3e82774a2eeb3ee32870d736160",
-    "ssh_privileged_program": "d52e7e725ff4f4c5d6fa94a0e8fb33d0accb247949eec9daf721c5d21c160f04",
-    "ssh_program_execution_remote": "b4bb3a52a0d4aa0c425bfe94043d704bfba428ad6f781e12bbdea8f1db9a38f1",
-    "ssh_program_mcp_client": "88ed44688510fc5c957a650ed83cc4db471777c4c9ab29dc5c29200761acf55a",
-    "ssh_recovery_adoption": "cb07b4c3ea864adb3f18a2509a19d6844c60ef0f61b500d58c9fe5c8c41d1775",
-    "ssh_source_file_stage": "e2eb9031c27597c6fbf0f19d0e9b60f3d1f6ebc39f58c2abf8f016212e523be4",
-    "ssh_source_file_stage_direct": "f67a567bb5623096c5f478ba9d989b917ad93b07748383bfc5d64184c048adb0",
-    "ssh_tmux_bounded_pipe_collection": "9e5d5e629c03c7cdefb42882f2d4459c7bcbafcb27455a407340e64b9d1d27f8",
-    "ssh_tmux_mcp_adapter": "fe6c4345611f330868dbec06405765a14c101a144eeb8b006ad17e08b31c1b16",
-    "ssh_tmux_resource_admission": "e2131fcb57c204b61c6303bc66df7d11fbb3599f4d9fcffba8497c76f023d792",
-    "ssh_tmux_session": "6fae107abb444ef300a124a754796961d206495143ea4ce522ff4aa1a60c58c7",
-    "ssh_tmux_session_ssh": "b61177cf4e9c2fcfaec0fca4aa5974bbc98eec1ca1f96fd4889898dffc19428a",
-    "ssh_tmux_source_staging_recovery": "6624aa898aaced378b4ee56fb18c4c024a028628786b492f0a5d5b45496f28cc",
-    "ssh_tmux_terminal_closure": "f8d49f05186f441594f28e59e2922b0145ac1bdfe363fcfbaf8d6510e0306304",
-    "ssh_transfer": "874d05ec19649f51667c45e7c8f0ed868f2ba1827360e416182b299c8823045c",
-    "ssh_transport": "257e53420212d6c7f4476e5caa5d9cc766b852c218cae19cdc32587b619a9ce8",
-    "tart_linux_probe": "3b0d59d7d097241a53418c3d13c013a9b3966966164bb8ae61723fa263af2112",
-    "tart_macos_probe": "dc535e8943efc18051bf606200174dd0c103aca80bc39bcddc90946f757cc157",
-    "tmux_public_projection": "6bd7c241288e3814cb394a429f563a0103ec60e7340c128bf5c47e93d3a26322",
-    "tmux_workflow_routes": "39d3bca5ae9b0843aefb3710e67a524a5799f16dbe901a59d46e65886e124c25",
-    "tool_action_policy": "21aeee81a466aa592ba13b614087f5f687942f39093fca0dfb65f357fd874bc0",
-    "vm_workflow": "d0db49f7c4fc67348dd6f7ba9ebb35cfad01f055ffde374858fa36ac02f6711c",
-    "windows_artifact_transfer": "2938a7c6c25d23adc9683ced126fe2d3c0a88614dab59a7b134a624d6f8b0ee8",
-    "windows_autostart_reboot": "76328cad6b77eb9716545e7c3bdc729b4fa16093c2ddad4002642c20458f6070",
-    "windows_cp117_bound_absence_completion": "33f9d0e4d029af69f8f1acd0ee86aac7e40dd5740879eb5adb982d631e1ad9c1",
-    "windows_cp117_c32_absence": "e469dfed8f2d2bf60dd585bd1bbf1ea922c7bb30030b8d9f9a550e52ff1be299",
-    "windows_cp117_c32_archive_admission": "e441cb6a858f272f4d2f366677fdf2ef28d54a0839a0d555940460f75fc650ad",
-    "windows_cp117_c32_host_archive": "be1eddd60cf0d94b5239569c764842248b68f524599e131cc1d556901a8716e4",
-    "windows_cp117_c32_retained_task_retire": "9d9bcf7831ec9ec63dd25140873acfb6ef05364ce8abea6e393dbd04ae4f0393",
-    "windows_cp117_campaign_rebase": "933204f2fcedbfe1ed930a9af736682adbcb094f64b7888d1f0f763e4070b0a6",
-    "windows_cp117_campaign_status": "8a89bf237fbecd3eff40324a14b1058bb62f190cd3b2d66bbc93ba19e347e695",
-    "windows_cp117_cp95_retained_tasks": "8bb1da0b0252489778d08f19ef1e79eaab91a0e9841f64a15d8c645ebffbba10",
-    "windows_cp117_cp95_task_retire": "edce01ece59453066f0dbab6955280a94be382e97ce4751262461dba3a969fd5",
-    "windows_cp117_download_abort_current_successor": "3ac55cf5c9326f65b08ae3f41bf88e20e00e80c046192baa801f4943bb6b7e4c",
-    "windows_cp117_download_abort_successor": "aa3f3497cc9847515fc846578b2044c2ca1d3f9b058e351544a5546806071976",
-    "windows_cp117_e66_successor": "3f194ac618de54ea49e1317c2dd353c84f93d695d85385d3c0a9675ed157555b",
-    "windows_cp117_e848_http_task": "4d52368e3bac4fb90acab4d5ed01fbd056fa2ca6920b4b1bc31336a5675cd3ab",
-    "windows_cp117_e848_http_task_retire": "53c4f3a5b3a0a000beb3fec630b39c4272f54a16d3667b86f7bfc9762de12d69",
-    "windows_cp117_guest_abort_successor": "cb8455ff319132529a0d45a338ab02250ec59bd2e3ad037f4d5c34b3d3fc10b0",
-    "windows_cp117_guest_agent_recovery": "942476dbbee873bdf4bb8c70fc1c9da110cb3096567cae8ab9a9bde35cc15003",
-    "windows_cp117_guest_agent_recovery_successor": "c95c08424b8257cad6f116ad69043c27414e7c562f235552eca66d86d1221683",
-    "windows_cp117_historical_base_archives": "84984c088a55aaa088f68a2a698ea502cd908dc0e2a499fb3a2902641263ba3a",
-    "windows_cp117_lease": "2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b",
-    "windows_cp117_protected_journal": "e8d902ec2a3378730b6da32b2fa81354aa17162336d3e0c638e8d5ceafbf4b57",
-    "windows_cp117_retirement_guards": "741c192cc488086a981a3ad1d162b19de3cff337df1e79566ca48b8d9081d00f",
-    "windows_cp117_retirement_recovery": "2411f92acafc8be06f2966c9fcf1ca3f92a99571c3428e5b28e10d2f26f5deb5",
-    "windows_cp117_source_campaign": "54c5d259327e10f782bfb3d78e6f19b29528960e92213994d733b945f1cfddf4",
-    "windows_cp117_source_pre_effect_close": "f862947da1457e8b7eaf16ca980b28a54c5e40ba0d85cce6dc81defe70a5f239",
-    "windows_cp117_source_projection": "b7e6cc28f4a65ecd520c1d7890f8eaf483c971a164e5177c9836107a94f8d52f",
-    "windows_cp117_staged_fixture_retire": "4e67acdeb33a9cd6f50b7c507efe48af06ad271d777e5d5af99f094c4a0370d0",
-    "windows_cp117_static_tasks_absence_close": "3a7870b6bbca40db99794a40509103d8a3bff802f71b64d333262c57384bc083",
-    "windows_cp117_static_tasks_retire": "406b142cb6b456f3bd9c34dff06bd93467fda6788a1a9b7e81e57bde77021ae8",
-    "windows_credential_probe_ssh": "322c3b8e86d20ca7c3de00491e67917f1a4d4f85506f58dff752b23024b4d4a1",
-    "windows_credential_recovery_ssh": "f4beb5ac39db6b1e05d7ce1a7a2b9ff338a2f26c48998840915f35f2102cee9b",
-    "windows_desktop_test": "18bdf659b9328d157d5942e29a7fb9bfe7fc46737af3488655ce0349f3944901",
-    "windows_desktop_test_guest": "6b8c1578f043ab6f55a9802fe1c31bdd8bb833237a3ad4aaec2803ac6c6b8f4e",
-    "windows_desktop_test_host_job": "a2a5229ab532b9dc252511e925155807a79a9ff06baf855076ba8a9c1b89d890",
-    "windows_diagnostic_authority_capture": "9f231543e1922a3554be4f42c006ddbf7f46cb206e85a71cc1d017d68e1a431f",
-    "windows_disconnected_cli_cases": "d8fe12e35288f102da06490aa3cf09f0ffda88af9236ebd8dee30282a6025578",
-    "windows_document_cache_fixture": "86731933d0db39fce1e88b98d1c5143c4aa3a1f7cc65a9973f488058094a6482",
-    "windows_document_cli_cases": "18f529a234e7c87214baf95733c5c376177828cff45de59559ff1e70b3cb9d5c",
-    "windows_document_client": "993c7833bf9933f8347509377f2a7f034facb0b4f42996b75b93561e935be41f",
-    "windows_document_cold_cases": "832eeec88a1aa7f10d20ba0840a144c402b28298d476dccaf8afad1c246d61b2",
-    "windows_document_export_race": "b886a09566d03d5308c731c87ac4972556f5c8c9176d9cc04ee67ca290d61263",
-    "windows_document_gated_https_fixture": "c74b153072e4b4ce464eb483b759bc38e02e208195aa6a5bd076feb17b42f971",
-    "windows_document_native": "302b52f486df7b6f5818ebf0e8c91a4bf14f9d447c69963cf52081272aeb57eb",
-    "windows_document_responsive_cases": "1ae4bea2eac10bfae57846871587e4c4004f3dfbcf2711cdf96f93c998f6eea6",
-    "windows_document_responsive_cli_cases": "e68261ac8d8a18a8a5d1e86ad83331a8374315d2ef2ce7e482e3a4f9cfeb8367",
-    "windows_fixture_acl_preflight": "5e8aece81516f2ff8c9c305b61478290bc9dd5e61768e8bcad8381f3da4ed2bc",
-    "windows_fixture_credentials": "c3c62bd1dc6cc1417a929a84ea70163f6fcf777851ad3bbd3049580e2b78bef3",
-    "windows_fixture_network_probe": "7424081e9d5cab63096c2fe43bf3be4fdd33c252dacc7b56aaff9c04a6fc4152",
-    "windows_fixture_owner_network": "b4809cd26f711d6b378dfeb6451ef936fc79cb28603ea9a7277864c9db76f686",
-    "windows_fixture_package_mode_repair": "616cf6cbb33428255fdc3a8798b53c2319ae015351e242fbe952044497adc00f",
-    "windows_fixture_phase_status": "b63143629d33154df2e2fd6e06faf8d21d1592b2711b07d695222ec8eaa39a04",
-    "windows_fixture_post_resource_diagnostic": "66ed87cbab6eb9ee7e5543a56aeb5b52974b47668b04647bbf0838ffdd45c046",
-    "windows_fixture_python_acquire_transfer": "b790bf21b45364dbd2603e649f8173500f09cb72f9cea3aaa88337eab101f370",
-    "windows_fixture_python_download_preflight": "a25127ae3306c96c34a29da352e2a928275cd91b7126b53ce98e3a2cb009ad05",
-    "windows_fixture_python_guest_install": "1197e1c854794c480ea2250be9a9d1271fd5788e395b7a2030f7d53c275e691b",
-    "windows_fixture_python_host_source": "5d7f527442e2718a389d190b6d40ad136384d008aabf88a2b8ebf039cbaada9c",
-    "windows_fixture_server_abort_successor": "233d090426a55cae9bec2f5a8bb6a00bc1c8b019dbf33a761da3084420adb789",
-    "windows_fixture_server_second_abort_successor": "1a0b4b9c2d54ed3ce842165f614a8e1d344aeb301ff7626041f71938b7578599",
-    "windows_guest_input": "216009ad85cb5babb7b52b8ba831050e3fe1bf166dfa65f0d5f75ad4b1d7418a",
-    "windows_guest_receipt_read": "c45b21ff90eff0802e9e1195c764dd75967a4cda370736a0ad1f0c131435d3fa",
-    "windows_large_artifact_transfer": "c7a7db4e4544e9e178718da8f4f3c809810c34208021c30cd7ce7231b11b1002",
-    "windows_lifecycle_cases": "9a965b3db065ca98bdfa8c63cccaa059e676cf53a49c6705cf648e0989a3f987",
-    "windows_lifecycle_runtime_fixture_worker": "cc30090de39143e260ad1b5e33aea4c5da0de8557118ec1c3b323ccf14b52c7a",
-    "windows_lifecycle_runtime_stages": "0b6b6c7c4c261a8996c140661b7631fb234115ed215e3d3a4a72fd60e25e676e",
-    "windows_lifecycle_scheduled_cases": "25aa7f14fdf5928006bf95a3f3fc8cd07e6c6d460ebbe2b44ac7b84fbb3877c2",
-    "windows_lifecycle_traffic_worker": "c37423c7627e6972eff2b7d717904f9b07fdaeb5b1d880d1606559b58d2e2e2d",
-    "windows_msi_base_prepare": "c153f0538e629bba7d6ab8f5d225f7388ab769462a8f81e2c466b39231b740ac",
-    "windows_msi_http_transfer": "eeb8884ac9466e3c55e869da79ab9cd97cc1a19dfed636bb57de24ae2fb51d04",
-    "windows_msi_owner_census": "c6c5a7fe87c16ec27928950a288a63c13f202d84158532ff294c0ae508eff018",
-    "windows_msi_owner_diagnostic": "a212cbb0552dcbba71e3abeba572780de4290b92c058f2bab28fbce9b3e64d8e",
-    "windows_msi_owner_liveness": "73d1dbf64b06705f594bfd63a935ba220f0aa3c5956ac5ab8b1557d6cda2a74f",
-    "windows_msi_owner_observe": "485593a2ea069d8f5ef62f49bff025c0f045aea85053eacbdeafe63225d25680",
-    "windows_msi_owner_public_status": "3ee6c30a73e9321db228fac8a03d98e846e09f3ac19a9c7963435b5f8f65e23e",
-    "windows_msi_owner_public_status_retry": "793658c7650012b5157c89e2972253f77f21abb47c1031f908adfbb639085ea1",
-    "windows_msi_owner_public_status_third": "dd540045ce7160f9f25195076c40e44230d8cf48fa05e04335ae61e9069a7310",
-    "windows_msi_owner_quit_phase_diagnostic": "53fc6e0b13fdab64fbda0d32d0b48ec25100ddc4e5d4a469cb5c6f8bf86a5af7",
-    "windows_msi_owner_relaunch": "9654a1b27303d9c0b94dc54cb99770ba39be0d23018a2cfc26af3feaa59b98ab",
-    "windows_msi_owner_relaunch_quit": "7c093f41dae05690d7fe682a7fc315521a65289c3939760c88abe65f9d9426d2",
-    "windows_msi_owner_relaunch_quit_v2": "398ad6886a2c1793ba14bf8606c4cdfae19dec06ba18ed5f45db66bb2966e7df",
-    "windows_msi_owner_relaunch_quit_v3": "594e20b3d655ef0af1e25e928c58bf763e5084019371d8256467d5ceace9d89a",
-    "windows_msi_owner_relaunch_quit_v4": "7d28302023a0ca876accc7bd2cd7d7f4143c3d15a5777263aa02f8e95df0cea8",
-    "windows_msi_public_scenario": "4e91a25418cd41ebfe183fd5d2d58b1a155ad06a37a24e40a8b1150254633c03",
-    "windows_msi_stale_lock_reconcile": "5155ea765ba9df7b9102f85e3a6ac5e68e3a49037c4d7fc56f73d1e237f607c1",
-    "windows_msi_stale_lock_recovery": "c9322f155b1fb1bb1145f120baa7494baaec596fe873e81a2da24276a0d53471",
-    "windows_msi_target_prepare": "c1700c90398d2c2b85a7d97215c72f8d07f86b5a019a85a59412e19d7432e1aa",
-    "windows_msi_transfer_endpoint": "f55b9b48ab1aaa07cd7b5f35cf2a10f922037084627d0665ea3349d64521c13b",
-    "windows_msiexec_service_diagnostic": "c36599d5fed2e141b9a928a319c77583a56062149646d20a546f324992b66838",
-    "windows_no_tray_desktop": "89b560bd8be11c4098a627fce00bf9a9f2ecb7a8298c80b2ddcc90bf1970b030",
-    "windows_ordinary_dedicated_driver": "900bf2e293d803dd74748e492d4117a34c3c26011ed0539a50fb6ac61a9a3174",
-    "windows_ordinary_process_owner": "6165257fb34e0c15d5f8529394d0ed34651c0e1589cdec7cfa20115b94212473",
-    "windows_ordinary_task": "970d217795d39c7ef984cbcdf90b80300f348be77600beeb63d432108b5978cc",
-    "windows_parallel_vm_prepare": "4ce0aec013698919c762f291897b906252e6371e7fb50a14790e74e312ff3050",
-    "windows_parallel_vm_prepare_transport": "d9e4ee3a6376a8d158fd61aecc577382a90d9434dff0d3a16fcec2f6e284f8bc",
-    "windows_parallel_vm_source_inventory": "5d3a087ce2f14f4199948fe6e28715a52ca67ee964e98fe400b598bd2b539110",
-    "windows_postboot_action": "fc4bb5c44e34fba4239c4798462d650492be224d644491836af9c6e6ebd97b5f",
-    "windows_postboot_source_roles": "20935673ed2dcc58c6a2214136dda371782a76e4084b46fa611088fafd7c601b",
-    "windows_preboot_action": "6c6e73890c0502ef983ea9155087a98f3c3a643f116d2ae813c05b7b2f17d18e",
-    "windows_ps_bootstrap": "16e75497abe7cd6da3367b620143cdd9209a61e078a6e02a94879f281fa9ea79",
-    "windows_runtime_branch_cases": "a3292caa396c3efe4e8c8d44d989615c98bbb9e0418d12487964bf17c9b6601e",
-    "windows_scenario_host_job": "3f56df5aea5ac431d320c58b45326c8ea385d322f8c9e0762cdc2cd3b1a4c48f",
-    "windows_scenario_proxy": "c9f98d07a83d09c692a3b191f8b8e5b518d17f621841a4b30ebaf7f0a3fbfde0",
-    "windows_secure_recovery": "4fd63c18fe3c7fd1a2ac59e32216e63a744d90e089e2468c67529cb6fd081966",
-    "windows_sleep_capability": "0afd991844aba1528ee1924c155f20111eda260ac09a54354fd24e46cd06309f",
-    "windows_source_custody": "71ae9e6d63278579cec5f18b749cb74950cacb980f507f5bfcbee76c0ff99d9e",
-    "windows_ssh_import_routing_cases": "ff71613d72264db2fc9969f8822a53e76c8f756c509e624737e73ef7d593eb83",
-    "windows_ssh_relay_cases": "a45881db9504a50c7860829dbf2bb05d989fd432e195405dc0376e879a41a186",
-    "windows_ssh_relay_fixture": "b903710460bf8d5ff28dcccdc9a39eaf0756a3ce0a62a62c474b3b6af1d7c753",
-    "windows_streaming_cli_cases": "63acf73bba8df3d065d2c23d31e1bd9a679efe6a42a3c159230f03e74e1dee20",
-    "windows_tun_direct_sampler": "e2915de32a47f46251e1af807f181950ceb120d2e3d998c8b3c679645553a697",
-    "windows_tun_native_observer": "5b64377c177bad09bbb1becf66a7b907797267111afe95534c1a465ca1a95828",
-    "windows_tun_reserved_cases": "913bfe4a03ac124154cff14089cb931ca357c16094107af37434e81964f764c7",
-    "windows_tun_stages": "b230ae385502c4e793943a5b44d39ef9e8e0fd5782b2c2c63ac45021f9e1b9c3",
-    "windows_uac_decision": "50e0d160fad16a0a321b55094ad0cf3ac1f7fd18d838e84ffa1df12d91a37cd7",
-    "windows_uac_visual": "fbe6de0c51935c3dae518d316d4991caaca5aa79176f36b8004f9bcb1d0349d2",
-    "windows_update_fixture_download_abort": "5978663fbb98d6eda1925e0e50bbe2081ac9b3161331cedc4ef19a7cf5214996",
-    "windows_update_fixture_download_abort_current": "fb52c38c4d7b4f2060c2529a3b22bce8c7c698f21255a9eca99172eb3e962076",
-    "windows_update_fixture_guest_create_abort": "68bb35316ecd2c8e034cd0a5063db1e5d89ce815a48baab929e781e4533c8354",
-    "windows_update_fixture_http_stage": "9d8924271116e906cca27e6f24db4f0f5e7f21e0f93c7f44393210969ee8da59",
-    "windows_update_fixture_server": "44c5f14a3bf3f1380870a2d818c3420b7f073d5681528d24bf370e15e2b65bde",
-    "windows_update_fixture_stage": "3e37a30445a3ea14057b010d205b92ac9907d278c0a57164fabeb63f49d07bed",
-    "windows_update_fixture_stage_recovery": "c0f7577eda5bc86e88506261cbd2d0af26255b79aa23cb6d4cc723c6f7fd1562",
-    "windows_update_fixture_workflow": "97fe06df072ff26a32d349393016c182013f6b5321499458a453c9fe7b2b406a",
-    "windows_visual_fixture": "eb599d0c4b1eaa95f33831debe526efc0513d1d95f08d363b21043d33cfa8ba7",
-    "windows_vm_deploy": "b4639cd3a91aa3be64f2d7fa6dfc5b854626aa5f1b512ef915dd47554eb98893",
-    "windows_vm_deploy_remote": "36d39cca455244445f1c4d654d96b0f7634f99e6545af8e0464aa5f486eb101a",
-    "windows_vm_driver_fetch": "38da7a06dc1a2700508a7440b29eccb94927b28ec38befcededaed34c35a0f2a",
-    "windows_vm_fresh_setup": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe",
-    "windows_vm_guest": "3d0292b3fb0eaa14bb4754a1051fbbb750ef5ba3f37e1b3af3ebd89abc883ab5",
-    "windows_vm_hardware": "541d9ad4c733b0092254e991915f5f7ae631fe12249b1bd984a0c74002a1d4ad",
-    "windows_vm_image": "c6502b08149f1127ada09d71c7b4b917906377028ed818df0481ac30bb03fcbd",
-    "windows_vm_instance": "50d624e9e79c3f6111b5b081455beaa3b73d2f0177569a54481e3baa527f548a",
-    "windows_vm_lifecycle": "4600ffc45389ca10b7979e015c5847529df137c87c8a4ba46a321bd2e5917b0f",
-    "windows_vm_media": "1f3b2e1139a4caf0e2b1bcc6c90daa42af1a2c24032ed341dfa16b7e9503f20c",
-    "windows_vm_optical_boot": "600cf4f9194f86a189da351a33bb6979365def9bb72e80b7920b04ea40dd9889",
-    "windows_vm_optical_boot_attempt2": "47ca50bd0891c9f20ff0a0115d58b1ff5a5ddcf79e5c2521a9190538bf833883",
-    "windows_vm_optical_boot_attempt3": "84d99618ffee9d613ccf831db5123b3a91410ea2b9b19620c8cded229caf7edd",
-    "windows_vm_optical_current_screen": "d2fb888bacda028f887d5c7bf25324cedeb479b772f3783f522d54bafd3a69b7",
-    "windows_vm_optical_post_collect": "61d9026f337d57cb1c89ee38f068e039b304a461191c712fcb85f032d11dc03f",
-    "windows_vm_reservation_release": "2c3ad00c93742a44e2a7a7ce20e85860ac4a66e0116523baa9a5b859c27700e9",
-    "windows_vm_resources": "7cc0abe35919350e7309e3ec21136892fe68728bdc65259bfc7590c7a32570c7",
-    "windows_vm_secureboot_fresh": "996cffbb9af18f0f1e433adf990b7c96f4207a820f37cd9f8458ba82fbb882fd",
-    "windows_vm_secureboot_inventory": "cafe80495690a6a306f4964fc0686e5c6f0469cc82396134061d3a0100d1b0da",
-    "windows_vm_setup_install_ack": "af0c76bd920cf2be6bc9f21388747e63124b3c7bf78492a6f4cd77f2cf60b93e",
-    "windows_vm_setup_install_disk_proof": "7f4bc58cb18fb7f7cf2c11ec60c91009d84be4c23b545f070ae4b4121ab194e5",
-    "windows_vm_setup_install_focus": "3978429579525a5fa1cebff8f2a5f85f7c039ee5d93035a15b2ab79925a3288c",
-    "windows_vm_setup_install_next": "28ea48ee931a2d574adc72ca74fe57ee8d9c7ce0fbbab6d38cce99c9edb4c258",
-    "windows_vm_setup_keyboard_next": "200f86f50356763242d813c04c6104401bd4da3463e81ee0bd3f4cf07f68e48f",
-    "windows_vm_setup_language_next": "987509c25ef36843d9dbae573bb3db37e124979d3a5c3fc80668133eabcc5c67",
-    "windows_vm_swtpm_repair": "47190e2c3a0b0b2d56be4595904aa0b3c30c939aa5841c69850e1e263e24eca1",
-    "windows_vm_unattend": "741cc30a0baf910b584d05ea4579d59a4e16cd420c1357c8d15f955c1e96a855",
-    "windows_vm_virt_firmware_install": "752863505733482fad930ec4b409c00beb5a705c0be581eba04e774f0691ef1a"
-  }
+  "schemaVersion": 2
 }

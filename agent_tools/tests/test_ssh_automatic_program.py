@@ -293,13 +293,8 @@ class AutomaticProgramTests(unittest.TestCase):
             " return {'ok':code==0,'state':'observed','nativeActionAllowed':False,"
             "'replayAllowed':False,'localFixtureOnly':True,'observed':json.loads(output)}\n"
         )
-        # This deliberately inert adapter has its own explicitly reviewed
-        # physical fixture digest; retain the production target-source guards.
-        manifest=directory/'readiness_vm_dispatch.json'
-        body=json.loads(manifest.read_bytes())
-        body['sourcePins']['android_proxy_recovery']=hashlib.sha256(adapter.read_bytes()).hexdigest()
-        manifest.write_text(json.dumps(body,sort_keys=True)+'\n')
-        # The copy is a temporary repository whose origin/dev holds exactly
+        # This deliberately inert adapter is committed with the rest of the copy:
+        # the copy is a temporary repository whose origin/dev holds exactly
         # these bytes, so the real committed-source rule admits the route.
         committed_repository(self.root)
         readiness_binary=self.root/'readiness-fixture-ssh'
