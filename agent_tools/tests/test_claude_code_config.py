@@ -88,14 +88,17 @@ class ClaudeCodeConfigTest(unittest.TestCase):
                     self.assertEqual(result.stdout, "")
                     self.assertIn("[vpn-control MCP] CLAUDE_PROJECT_DIR", result.stderr)
 
-    def test_config_changes_select_this_consumer_and_bridge_is_prose(self):
+    def test_config_and_instruction_bridge_changes_select_this_consumer(self):
         sources = {"agent_tools/tests/test_claude_code_config.py": Path(__file__).read_text(),
                    ".mcp.json": None, ".claude/settings.json": None, "CLAUDE.md": None}
-        for changed in (".mcp.json", ".claude/settings.json"):
+        # The bridge's @AGENTS.md line is asserted above, so CLAUDE.md is agent
+        # input: it selects this test and never counts as documentation-only.
+        for changed in (".mcp.json", ".claude/settings.json", "CLAUDE.md"):
             with self.subTest(changed=changed):
                 self.assertEqual(selector.select_from_sources(sources, {changed}).modules,
                                  ("agent_tools.tests.test_claude_code_config",))
-        self.assertEqual(selector.select_from_sources(sources, {"CLAUDE.md"}).modules, ())
+                self.assertFalse(selector.is_document(changed))
+                self.assertTrue(selector.potentially_agent_input(changed))
         # Unconsumed client configuration is reported (TEST-004); CI runs the full suite.
         selection = selector.select_from_sources({".mcp.json": None, "agent_tools/tests/test_other.py": "pass\n"}, {".mcp.json"})
         self.assertEqual(((), (".mcp.json",)), (selection.modules, selection.unconsumed))

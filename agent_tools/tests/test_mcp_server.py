@@ -1028,6 +1028,8 @@ class FakeGitHub:
         self.dev_pushes: list[tuple[str, str]] = []
         # (gh workflow run arguments, dev tip at dispatch time).
         self.dispatches: list[tuple[list[str], str]] = []
+        # Paths in origin/main's tree; the cache warm can only be dispatched once it is there.
+        self.main_files: set[str] = {".github/workflows/gradle-cache-warm.yml"}
 
     @staticmethod
     def ok(stdout: str = "", returncode: int = 0, stderr: str = "") -> dict[str, object]:
@@ -1103,6 +1105,11 @@ class FakeGitHub:
             return self.ok("\n".join(lines))
         if git and command[1] == "log":
             return self.ok(str(self.commit_times.get(command[-1], 0)))
+        if git and command[1:3] == ["cat-file", "-e"]:
+            ref, path = command[3].split(":", 1)
+            self.test.assertEqual("refs/remotes/origin/main", ref)
+            return self.ok(returncode=0 if path in self.main_files else 128,
+                           stderr="" if path in self.main_files else f"fatal: path '{path}' does not exist in 'main'")
         if command[:3] == ["gh", "run", "list"]:
             sha = command[command.index("--commit") + 1]
             self.polls[sha] = self.polls.get(sha, 0) + 1
@@ -1156,6 +1163,7 @@ class CiBranchGateTest(unittest.TestCase):
                     for name in FakeGitHub.WORKFLOWS]
         for patcher in (
             mock.patch.object(mcp_server, "CI_GATE_LEDGER_DIR", root / "ci-gate", create=True),
+            mock.patch.object(mcp_server, "CI_CLEANUP_UNRUN_PATH", root / "ci-cleanup-unrun.json", create=True),
             # The unfixed source demanded a local receipt; the ci/* gate does not (see McpSurfaceTest).
             mock.patch.object(mcp_server, "_receipt_error", return_value=None, create=True),
             mock.patch.object(mcp_server, "DISCOVERY_TIMEOUT_SECONDS", 0),
@@ -1241,7 +1249,24 @@ class CiBranchGateTest(unittest.TestCase):
         self.assertTrue(mcp_server.git_workflow("push")["ok"])
         self.assertEqual([], same.dispatches)
 
-    def test_red_result_is_recorded_complete_then_the_branch_is_deleted_and_dev_kept(self) -> None:
+    def test_cache_warm_not_on_main_yet_is_recorded_quietly_without_a_dispatch(self) -> None:
+        # Dispatch runs main's copy of the workflow; before a release merges it there,
+        # gh workflow run --ref main can only fail, so the gate records that quietly.
+        fake = self.fake()
+        fake.main_files.clear()
+        fake.plans[self.HEAD] = {name: ("success", 1) for name in FakeGitHub.WORKFLOWS}
+        result = mcp_server.git_workflow("push")
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(self.HEAD, fake.remote["dev"])
+        self.assertEqual([], fake.dispatches)
+        warm = self.record()["cacheWarm"]
+        self.assertEqual({"workflow": "gradle-cache-warm.yml", "ref": "main", "devSha": self.HEAD,
+                          "dispatched": False, "notOnMain": True}, warm)
+        self.assertEqual(warm, result["result"]["cacheWarm"])
+        self.assertNotIn("cache-warm", result["summary"])
+        self.assertNotIn("error", warm)
+
+    def test_red_result_is_recorded_complete_and_keeps_its_branch_and_dev(self) -> None:
         fake = self.fake()
         fake.local_refs.add(f"refs/heads/{self.BRANCH}")
         # Fast Checks fails first; the gate still waits for Windows so the failure set is complete (TEST-006).
@@ -1256,9 +1281,22 @@ class CiBranchGateTest(unittest.TestCase):
         excerpts = result["blockers"][0]["failed_log_excerpts"]
         self.assertEqual(2, len(excerpts))
         self.assertIn("AssertionError", excerpts[0]["excerpt"])
+        # The red branch stays so its failed jobs can be re-run; cleanup removes it later.
+        self.assertEqual(self.HEAD, fake.remote[self.BRANCH])
+        self.assertIn(f"refs/heads/{self.BRANCH}", fake.local_refs)
+        self.assertFalse(result["result"]["branchDeleted"])
+        self.assertEqual([], [command for command in fake.calls if "--delete" in command])
+        # "Re-run failed jobs" on the kept branch, then push resumes it without a new push.
+        for run in fake.runs:
+            run["status"], run["conclusion"], run["_conclusion"], run["_done_after"] = "in_progress", "", "success", 1
+        resumed = mcp_server.git_workflow("push")
+        self.assertTrue(resumed["ok"], resumed)
+        self.assertEqual(1, len(fake.pushes(self.BRANCH)))
+        self.assertEqual([(self.HEAD, "success")], fake.dev_pushes)
+        self.assertEqual("merged", self.record()["outcome"])
+        # A merged branch is deleted at once.
         self.assertNotIn(self.BRANCH, fake.remote)
-        self.assertNotIn(f"refs/heads/{self.BRANCH}", fake.local_refs)
-        self.assertTrue(result["result"]["branchDeleted"])
+        self.assertTrue(resumed["result"]["branchDeleted"])
 
     def test_missing_workflow_is_a_failed_gate_and_pending_keeps_the_branch(self) -> None:
         fake = self.fake()
@@ -1269,7 +1307,7 @@ class CiBranchGateTest(unittest.TestCase):
         self.assertEqual(["Windows Desktop Package"], self.record()["missing"])
         self.assertEqual("ci_discovery", missing["blockers"][0]["phase"])
         self.assertEqual(self.DEV, fake.remote["dev"])
-        self.assertNotIn(self.BRANCH, fake.remote)
+        self.assertEqual(self.HEAD, fake.remote[self.BRANCH])
 
         pending = self.fake()
         pending.plans[self.HEAD] = {name: (None, 1) for name in FakeGitHub.WORKFLOWS}
@@ -1310,9 +1348,9 @@ class CiBranchGateTest(unittest.TestCase):
         self.assertEqual("rebase-needed", self.record()["outcome"])
         self.assertEqual(moved, racing.remote["dev"])
         self.assertEqual([], racing.pushes("dev"))
-        self.assertNotIn(self.BRANCH, racing.remote)
+        self.assertEqual(self.HEAD, racing.remote[self.BRANCH])
 
-    def test_abandon_cancels_unfinished_runs_records_and_deletes(self) -> None:
+    def test_abandon_cancels_unfinished_runs_records_and_keeps_the_branch_until_cleanup(self) -> None:
         fake = self.fake()
         fake.remote[self.BRANCH] = self.HEAD
         fake.local_refs.add(f"refs/remotes/origin/{self.BRANCH}")
@@ -1322,14 +1360,23 @@ class CiBranchGateTest(unittest.TestCase):
         self.assertTrue(result["ok"], result)
         self.assertEqual(2, len([command for command in fake.calls if command[:3] == ["gh", "run", "cancel"]]))
         self.assertEqual("abandoned", self.record()["outcome"])
-        self.assertNotIn(self.BRANCH, fake.remote)
+        self.assertEqual(self.HEAD, fake.remote[self.BRANCH])
+        self.assertFalse(result["result"]["branchDeleted"])
         self.assertEqual(self.DEV, fake.remote["dev"])
+        # Cleanup's age rule removes it: kept while recent, deleted once its newest run aged.
+        for day, expected in ((18, "kept"), (24, "deleted")):
+            now = datetime(2026, 11, day, tzinfo=timezone.utc).timestamp()
+            with mock.patch.object(mcp_server.time, "time", return_value=now):
+                cleaned = mcp_server.git_workflow("cleanup")
+            self.assertEqual([self.BRANCH], [item["branch"] for item in cleaned["result"][expected]], day)
+        self.assertNotIn(self.BRANCH, fake.remote)
+        self.assertEqual("abandoned", self.record()["outcome"])
 
     def test_cleanup_deletes_contained_and_stale_ci_branches_only(self) -> None:
         contained, stale, flying, recent = ("1" * 40, "2" * 40, "3" * 40, "4" * 40)
         fake = self.fake(ancestry={(contained, self.DEV)})
-        for sha, created, polls in ((stale, "2026-11-01T00:00:00Z", 0), (flying, "2026-11-01T00:00:00Z", 99),
-                                    (recent, "2026-11-15T00:00:00Z", 0)):
+        for sha, created, polls in ((contained, "2026-11-15T00:00:00Z", 0), (stale, "2026-11-01T00:00:00Z", 0),
+                                    (flying, "2026-11-01T00:00:00Z", 99), (recent, "2026-11-15T00:00:00Z", 0)):
             fake.add_runs(sha, f"ci/{sha[:12]}", {"Fast Checks": ("success", polls)}, created)
             for run in fake.runs:
                 if run["headSha"] == sha and polls == 0:
@@ -1349,6 +1396,79 @@ class CiBranchGateTest(unittest.TestCase):
         self.assertEqual({"dev", f"ci/{flying[:12]}", f"ci/{recent[:12]}"}, set(fake.remote))
         self.assertEqual("cleaned", self.record(stale)["outcome"])
         self.assertEqual(set(), {ref for ref in fake.local_refs if ref.startswith("refs/heads/ci/")})
+
+    def test_cleanup_keeps_a_contained_branch_with_in_flight_runs(self) -> None:
+        # dev may contain a SHA whose ci/* runs another agent is still watching
+        # (a checkpoint, or a re-run of failed jobs); deleting it would orphan them.
+        flying = "5" * 40
+        fake = self.fake(ancestry={(flying, self.DEV)})
+        fake.add_runs(flying, f"ci/{flying[:12]}", {"Fast Checks": ("success", 99)}, "2026-11-01T00:00:00Z")
+        fake.remote[f"ci/{flying[:12]}"] = flying
+        now = datetime(2026, 11, 16, tzinfo=timezone.utc).timestamp()
+        with mock.patch.object(mcp_server.time, "time", return_value=now):
+            result = mcp_server.git_workflow("cleanup")
+        self.assertTrue(result["ok"], result)
+        self.assertEqual([], result["result"]["deleted"])
+        self.assertEqual([{"branch": f"ci/{flying[:12]}", "sha": flying, "reason": "in-flight"}],
+                         result["result"]["kept"])
+        self.assertEqual(flying, fake.remote[f"ci/{flying[:12]}"])
+        self.assertFalse(any("--delete" in command for command in fake.calls))
+
+    def test_cleanup_ages_an_unrun_branch_from_its_first_sighting_not_its_commit_time(self) -> None:
+        # A just-pushed branch has no runs yet; an old commit time or dev already
+        # containing it says nothing about when it was pushed.
+        old, contained = "6" * 40, "7" * 40
+        fake = self.fake(ancestry={(contained, self.DEV)})
+        fake.commit_times[old] = int(datetime(2026, 10, 1, tzinfo=timezone.utc).timestamp())
+        for sha in (old, contained):
+            fake.remote[f"ci/{sha[:12]}"] = sha
+        branches = sorted(f"ci/{sha[:12]}" for sha in (old, contained))
+        start = datetime(2026, 11, 16, tzinfo=timezone.utc).timestamp()
+        for offset, expected in ((0, "kept"), (60, "kept"), (6 * 86400, "kept"), (7 * 86400, "deleted")):
+            with mock.patch.object(mcp_server.time, "time", return_value=start + offset):
+                result = mcp_server.git_workflow("cleanup")
+            self.assertTrue(result["ok"], result)
+            self.assertEqual(branches, sorted(item["branch"] for item in result["result"][expected]), offset)
+            if expected == "kept":
+                self.assertEqual({"no-runs-yet"}, {item["reason"] for item in result["result"]["kept"]})
+                self.assertEqual(set(branches) | {"dev"}, set(fake.remote))
+        self.assertEqual({"stale-unrun"}, {item["reason"] for item in result["result"]["deleted"]})
+        self.assertEqual({"dev"}, set(fake.remote))
+        # Even max_age_days=0 keeps a branch first seen now for the unrun grace.
+        fresh = "8" * 40
+        fake.remote[f"ci/{fresh[:12]}"] = fresh
+        with mock.patch.object(mcp_server.time, "time", return_value=start + 8 * 86400):
+            first = mcp_server.git_workflow("cleanup", max_age_days=0)
+        self.assertEqual("no-runs-yet", first["result"]["kept"][0]["reason"], first)
+        with mock.patch.object(mcp_server.time, "time",
+                               return_value=start + 8 * 86400 + mcp_server.CI_UNRUN_GRACE_SECONDS):
+            later = mcp_server.git_workflow("cleanup", max_age_days=0)
+        self.assertEqual(f"ci/{fresh[:12]}", later["result"]["deleted"][0]["branch"])
+
+    def test_docs_only_reuse_never_overrides_the_candidates_own_red_pending_or_partial_runs(self) -> None:
+        # RELEASE-001: reuse needs a candidate with no runs at all; its own result always decides.
+        own = {"red": {name: ("failure", 0) for name in FakeGitHub.WORKFLOWS},
+               "pending": {name: ("success", 99) for name in FakeGitHub.WORKFLOWS},
+               "partial": {"Fast Checks": ("success", 0)}}
+        for label, plan in own.items():
+            with self.subTest(label):
+                fake = self.fake(diffs={(self.DEV, self.HEAD): ["agent_docs/development.md"]})
+                fake.add_runs(self.DEV, "ci/" + self.DEV[:12], {name: ("success", 0) for name in FakeGitHub.WORKFLOWS},
+                              "2026-11-16T09:00:00Z")
+                fake.add_runs(self.HEAD, self.BRANCH, plan, "2026-11-16T10:00:00Z")
+                for run in fake.runs:
+                    if run["_done_after"] == 0:
+                        run["status"], run["conclusion"] = "completed", run["_conclusion"]
+                fake.remote[self.BRANCH] = self.HEAD
+                with mock.patch.object(mcp_server, "WATCH_TIMEOUT_SECONDS", 0):
+                    result = mcp_server.git_workflow("push")
+                self.assertFalse(result["ok"], result)
+                self.assertNotIn("docsOnlyReuse", result.get("result", {}))
+                self.assertEqual([], fake.dev_pushes)
+                self.assertEqual(self.DEV, fake.remote["dev"])
+                self.assertNotIn(["./scripts/check_docs_hygiene.sh"], fake.calls)
+                self.assertEqual({"red": "failed", "pending": "pending", "partial": "failed"}[label],
+                                 self.record()["outcome"])
 
     def test_docs_only_change_reuses_the_nearest_green_sha_after_docs_checks(self) -> None:
         middle = "c" * 40
@@ -1374,8 +1494,9 @@ class CiBranchGateTest(unittest.TestCase):
         self.assertEqual(self.DEV, checked["result"]["docsOnlyReuse"]["reference"])
 
     def test_docs_reuse_refuses_failed_docs_checks_and_non_documentation_paths(self) -> None:
+        # CLAUDE.md is asserted by a test (test_claude_code_config), so it is never documentation-only.
         for paths in (["docs/CHANGELOG.md"], ["README.md"], ["gradle.properties"], ["agent_tools/README.md", "x.py"],
-                      ["agent_tools/tests/fixtures/notes.md"]):
+                      ["agent_tools/tests/fixtures/notes.md"], ["CLAUDE.md"]):
             with self.subTest(paths=paths):
                 fake = self.fake(diffs={(self.DEV, self.HEAD): paths})
                 fake.add_runs(self.DEV, "ci/" + self.DEV[:12], {name: ("success", 0) for name in FakeGitHub.WORKFLOWS},

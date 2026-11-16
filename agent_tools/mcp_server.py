@@ -176,9 +176,14 @@ RELEASE_BRANCH = "main"
 # RELEASE-001: a candidate runs every required workflow on its own ci/<sha12>
 # branch; dev only fast-forwards to a SHA whose exact runs succeeded (or, by
 # documentation-only equivalence, one whose non-documentation tree equals such a
-# SHA). Results are recorded before the branch is deleted.
+# SHA). Results are recorded first; only a merged branch is deleted at once, and
+# action="cleanup" deletes the rest once dev contains them or they aged.
 CI_BRANCH_PREFIX = "ci/"
 CI_GATE_LEDGER_DIR = INDEX_DIR / "ci-gate"
+# First time action="cleanup" saw each ci/* branch without runs: its push time.
+CI_CLEANUP_UNRUN_PATH = INDEX_DIR / "ci-cleanup-unrun.json"
+# Workflows normally appear within seconds of a push; an unrun branch is kept at least this long.
+CI_UNRUN_GRACE_SECONDS = 15 * 60
 CI_STALE_DAYS = 7
 DOCS_REUSE_MAX_ANCESTORS = 50
 # Version and release metadata are product inputs checked by release hygiene,
@@ -1974,7 +1979,7 @@ def _docs_reuse_path(path: str) -> bool:
 
 
 def _record_ci_gate(sha: str, outcome: str, **details: Any) -> Path:
-    """Record a gate result before its ci/* branch is deleted."""
+    """Record a gate result before any deletion of its ci/* branch."""
     path = CI_GATE_LEDGER_DIR / f"{sha}.json"
     _write_json(path, {"sha": sha, "branch": _ci_branch(sha), "outcome": outcome,
                        "recorded_at_epoch": int(time.time()), **details})
@@ -2084,14 +2089,33 @@ def _advance_dev(sha: str) -> dict[str, Any]:
     return {"state": "merged", "dev": dev_sha, "advanced": True, "command_results": [fetch, push]}
 
 
-def _dispatch_cache_warm(sha: str) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Best effort: warm the Gradle cache for the new dev SHA; a failed dispatch is recorded, never a gate failure."""
+def _dispatch_cache_warm(sha: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Best effort: warm the Gradle cache for the new dev SHA; a failed dispatch is recorded, never a gate failure.
+
+    Dispatch runs main's copy of the workflow, so until a release merges it there
+    the gate records ``notOnMain`` quietly instead of attempting a dispatch.
+    """
+    state: dict[str, Any] = {"workflow": CACHE_WARM_WORKFLOW, "ref": RELEASE_BRANCH, "devSha": sha,
+                             "dispatched": False}
+    commands = []
+    fetch = _run(["git", "fetch", "origin", f"+refs/heads/{RELEASE_BRANCH}:refs/remotes/origin/{RELEASE_BRANCH}"],
+                 timeout=180)
+    commands.append(fetch)
+    if fetch["ok"]:
+        present = _run(["git", "cat-file", "-e",
+                        f"refs/remotes/origin/{RELEASE_BRANCH}:.github/workflows/{CACHE_WARM_WORKFLOW}"])
+        commands.append(present)
+        if not present["ok"]:
+            state["notOnMain"] = True
+            return state, commands
+    # An unknown main state still tries the dispatch; its error is the record.
     dispatch = _run(["gh", "workflow", "run", CACHE_WARM_WORKFLOW, "--ref", RELEASE_BRANCH, "-f", f"dev_sha={sha}"],
                     timeout=120)
-    state = {"workflow": CACHE_WARM_WORKFLOW, "ref": RELEASE_BRANCH, "devSha": sha, "dispatched": bool(dispatch["ok"])}
+    commands.append(dispatch)
+    state["dispatched"] = bool(dispatch["ok"])
     if not dispatch["ok"]:
         state["error"] = _command_blocker("cache-warm", dispatch)
-    return state, dispatch
+    return state, commands
 
 
 def _await_required_terminal(sha: str, min_ids: dict[str, int]) -> dict[str, Any]:
@@ -2141,9 +2165,11 @@ def _ci_gate(sha: str, *, exact: bool = False) -> dict[str, Any]:
     branch = _ci_branch(sha)
 
     def finish(outcome: str, ok: bool, summary: str, details: dict[str, Any],
-               blockers: list[dict[str, Any]] | None = None, delete: bool = True) -> dict[str, Any]:
+               blockers: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         record = _record_ci_gate(sha, outcome, **details)
-        cleanup = _delete_ci_branch(branch) if delete else None
+        # Only a merged branch goes at once; a red, rebase-needed or pending one stays
+        # for "re-run failed jobs" until action="cleanup" ages or supersedes it.
+        cleanup = _delete_ci_branch(branch) if outcome == "merged" else None
         if cleanup is not None:
             commands.extend(cleanup["command_results"])
         result = {"sha": sha, "branch": branch, "outcome": outcome, "record": str(record),
@@ -2162,9 +2188,9 @@ def _ci_gate(sha: str, *, exact: bool = False) -> dict[str, Any]:
             details = {**details, "devAdvanced": True, "previousDev": advanced["dev"]}
             if advanced.get("advanced"):
                 warm, dispatch = _dispatch_cache_warm(sha)
-                commands.append(dispatch)
+                commands.extend(dispatch)
                 details["cacheWarm"] = warm
-                if not warm["dispatched"]:
+                if not warm["dispatched"] and not warm.get("notOnMain"):
                     summary += " The Gradle cache-warm dispatch failed (recorded; the gate is unaffected)."
             return finish("merged", True, summary, details)
         if advanced["state"] == "rebase":
@@ -2181,7 +2207,9 @@ def _ci_gate(sha: str, *, exact: bool = False) -> dict[str, Any]:
     if current["state"] == "success":
         return merge({"workflows": current["runs"], "requiredWorkflowsVerified": True, "reused": "exact-sha"},
                      "Exact-SHA required workflows already passed; fast-forwarded origin/dev.")
-    if not exact:
+    # Only a candidate with no runs of its own may reuse a reference: its own red,
+    # pending or partial result always decides (RELEASE-001).
+    if not exact and current["state"] == "missing" and not current["runs"]:
         reference = _docs_only_reference(sha)
         if reference is not None:
             checks = _run_docs_reuse_checks(reference["reference"], sha)
@@ -2220,17 +2248,22 @@ def _ci_gate(sha: str, *, exact: bool = False) -> dict[str, Any]:
         return finish("pending", False, f"Required workflows did not finish within the watch window; "
                       f"origin/{branch} is kept. Resume with action='push' or stop with action='abandon'.",
                       {**details, "devAdvanced": False},
-                      [{"phase": "ci_timeout", "sha": sha, "missing": details["missing"]}], delete=False)
+                      [{"phase": "ci_timeout", "sha": sha, "missing": details["missing"]}])
     failures = outcome.get("failures", {})
-    return finish("failed", False, "Required workflows failed or never started for the exact SHA; dev was not "
-                  "changed. Fix every reported failure and gate a new commit.",
+    return finish("failed", False, f"Required workflows failed or never started for the exact SHA; dev was not "
+                  f"changed and origin/{branch} is kept. Fix every reported failure and gate a new commit, or "
+                  "re-run the failed jobs and resume with action='push'.",
                   {**details, "devAdvanced": False, "failures": failures},
                   [{"phase": "ci" if failures else "ci_discovery", "failures": failures,
                     "missing": details["missing"], "failed_log_excerpts": _failed_log_excerpts(failures)}])
 
 
 def _abandon_ci_branch(sha: str) -> dict[str, Any]:
-    """Cancel unfinished runs of an abandoned candidate, record it, then delete its ci branch."""
+    """Cancel unfinished runs of an abandoned candidate and record it.
+
+    The ci branch stays until action="cleanup" deletes it by its age or supersede
+    rule, so the cancelled runs can still be inspected or re-run.
+    """
     branch = _ci_branch(sha)
     listed = _run(["gh", "run", "list", "--commit", sha, "--limit", "100", "--json",
                    "databaseId,workflowName,status,conclusion,headSha,headBranch"], timeout=120)
@@ -2252,13 +2285,13 @@ def _abandon_ci_branch(sha: str) -> dict[str, Any]:
             cancelled.append({"run_id": run.get("databaseId"), "workflow": run.get("workflowName"),
                               "cancelled": bool(result["ok"])})
     record = _record_ci_gate(sha, "abandoned", runs=owned, cancelled=cancelled)
-    cleanup = _delete_ci_branch(branch)
-    commands.extend(cleanup["command_results"])
-    return {"ok": cleanup["deleted"], "tool": "git_workflow",
-            "summary": f"Abandoned {branch}: recorded, unfinished runs cancelled, branch deleted."
-            if cleanup["deleted"] else f"Abandoned {branch} was recorded, but the branch could not be deleted.",
+    failed = [item for item in cancelled if not item["cancelled"]]
+    return {"ok": not failed, "tool": "git_workflow",
+            "summary": (f"Abandoned {branch}: recorded and unfinished runs cancelled; action='cleanup' deletes "
+                        "the branch once it is superseded or aged.") if not failed else
+                       f"Abandoned {branch} was recorded, but {len(failed)} unfinished run(s) could not be cancelled.",
             "result": {"sha": sha, "branch": branch, "outcome": "abandoned", "record": str(record),
-                       "cancelled": cancelled, "branchDeleted": cleanup["deleted"]},
+                       "cancelled": cancelled, "branchDeleted": False},
             "command_results": commands}
 
 
@@ -2273,8 +2306,12 @@ def _iso_epoch(value: Any) -> float | None:
 def _cleanup_ci_branches(max_age_days: int = CI_STALE_DAYS) -> dict[str, Any]:
     """Delete ci/* branches that dev already contains or whose finished runs are older than max_age_days.
 
-    A branch with an unfinished run, or a newer one, may still be another
-    agent's gate in flight and is kept.
+    Containment is the supersede rule: dev holds the SHA because it merged, or
+    because a merged descendant replaced a red or abandoned candidate. Every
+    branch is checked for runs first: one with an unfinished run may still be
+    another agent's gate in flight and is kept even when dev contains it. A
+    branch with no runs yet may have just been pushed, and its commit time says
+    nothing about that, so it is aged from the first cleanup that saw it unrun.
     """
     if type(max_age_days) is not int or max_age_days < 0:
         return _error("git_workflow", "max_age_days must be a non-negative integer")
@@ -2311,43 +2348,57 @@ def _cleanup_ci_branches(max_age_days: int = CI_STALE_DAYS) -> dict[str, Any]:
     now = time.time()
     deleted: list[dict[str, Any]] = []
     kept: list[dict[str, Any]] = []
+    seen_before = _read_json(CI_CLEANUP_UNRUN_PATH)
+    unrun: dict[str, dict[str, Any]] = {}
     for branch, target in sorted(remote.items()):
+        listed = _run(["gh", "run", "list", "--commit", target, "--limit", "100", "--json",
+                       "databaseId,workflowName,status,conclusion,headSha,headBranch,createdAt"], timeout=120)
+        commands.append(listed)
+        try:
+            parsed = json.loads(str(listed["stdout"]) or "[]") if listed["ok"] else None
+        except json.JSONDecodeError:
+            parsed = None
+        if not isinstance(parsed, list):
+            kept.append({"branch": branch, "sha": target, "reason": "runs-unknown"})
+            continue
+        runs = [run for run in parsed if isinstance(run, dict)
+                and run.get("headBranch") == branch and run.get("headSha") == target]
+        if any(run.get("status") != "completed" for run in runs):
+            kept.append({"branch": branch, "sha": target, "reason": "in-flight"})
+            continue
         contained = _run(["git", "merge-base", "--is-ancestor", target, dev_sha])["ok"]
-        reason = "contained-in-dev" if contained else None
-        runs: list[dict[str, Any]] = []
-        if reason is None:
-            listed = _run(["gh", "run", "list", "--commit", target, "--limit", "100", "--json",
-                           "databaseId,workflowName,status,conclusion,headSha,headBranch,createdAt"], timeout=120)
-            commands.append(listed)
-            try:
-                parsed = json.loads(str(listed["stdout"]) or "[]") if listed["ok"] else None
-            except json.JSONDecodeError:
-                parsed = None
-            if not isinstance(parsed, list):
-                kept.append({"branch": branch, "sha": target, "reason": "runs-unknown"})
-                continue
-            runs = [run for run in parsed if isinstance(run, dict) and run.get("headBranch") == branch]
-            if any(run.get("status") != "completed" for run in runs):
-                kept.append({"branch": branch, "sha": target, "reason": "in-flight"})
-                continue
+        if runs:
             stamps = [stamp for stamp in (_iso_epoch(run.get("createdAt")) for run in runs) if stamp is not None]
-            if not stamps:
-                committed = _run(["git", "log", "-1", "--format=%ct", target])
-                try:
-                    stamps = [float(str(committed.get("stdout", "")).strip())]
-                except ValueError:
-                    kept.append({"branch": branch, "sha": target, "reason": "age-unknown"})
-                    continue
-            if now - max(stamps) < max_age_days * 86400:
+            if not contained and not stamps:
+                kept.append({"branch": branch, "sha": target, "reason": "age-unknown"})
+                continue
+            if not contained and now - max(stamps) < max_age_days * 86400:
                 kept.append({"branch": branch, "sha": target, "reason": "recent"})
                 continue
-            reason = "stale"
+            reason = "contained-in-dev" if contained else "stale"
+        else:
+            previous = seen_before.get(branch)
+            first_seen = (float(previous["firstSeenEpoch"]) if isinstance(previous, dict)
+                          and previous.get("sha") == target
+                          and isinstance(previous.get("firstSeenEpoch"), (int, float)) else now)
+            # Even max_age_days=0 keeps an unrun branch for the grace a push needs to show runs.
+            if now - first_seen < max(max_age_days * 86400, CI_UNRUN_GRACE_SECONDS):
+                unrun[branch] = {"sha": target, "firstSeenEpoch": first_seen}
+                kept.append({"branch": branch, "sha": target, "reason": "no-runs-yet"})
+                continue
+            reason = "stale-unrun"
         if not (CI_GATE_LEDGER_DIR / f"{target}.json").is_file():
             _record_ci_gate(target, "cleaned", reason=reason, runs=runs)
         cleanup = _delete_ci_branch(branch)
         commands.extend(cleanup["command_results"])
         (deleted if cleanup["deleted"] else kept).append(
             {"branch": branch, "sha": target, "reason": reason if cleanup["deleted"] else "delete-failed"})
+    # An undecided branch keeps its first unrun sighting; deleted or run branches drop it.
+    for item in kept:
+        if item["reason"] in {"runs-unknown", "delete-failed"} and item["branch"] in seen_before:
+            unrun.setdefault(item["branch"], seen_before[item["branch"]])
+    if unrun or seen_before:
+        _write_json(CI_CLEANUP_UNRUN_PATH, unrun)
     for branch, target in sorted(local.items()):
         if branch in remote:
             continue

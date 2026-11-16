@@ -192,9 +192,11 @@ def changed_paths(root, baseline):
 
 
 VERSION_ONLY_METADATA = {"gradle.properties"}
-PROSE_FILES = {"README.md", "AGENTS.md", "CLAUDE.md", "agent_tools/README.md"}
+PROSE_FILES = {"README.md", "AGENTS.md", "agent_tools/README.md"}
 # Tracked client configuration outside agent_tools/ that tests must consume.
-ROOT_AGENT_CONFIG = {".mcp.json", ".claude/settings.json"}
+# CLAUDE.md is the Claude Code instruction bridge whose content a test asserts,
+# so it is agent input, never documentation-only.
+ROOT_AGENT_CONFIG = {".mcp.json", ".claude/settings.json", "CLAUDE.md"}
 
 
 def is_document(path):
