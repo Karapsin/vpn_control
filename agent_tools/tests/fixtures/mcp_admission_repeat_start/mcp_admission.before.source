@@ -1,0 +1,32 @@
+def mcp_admission(root: Path | str, correlation: Any) -> dict[str, Any]:
+    """Read only: would an MCP start of this journaled operation be admitted now, through the route's own resolvers and
+    admission, without running it. Nothing is written, submitted or connected."""
+    root = Path(root).resolve()
+    _canonical_uuid(correlation, "windows_matrix_correlations_invalid")
+    try:
+        record = native_scenario_execution.ScenarioExecutor(root.joinpath(*_JOURNALS), None)._read(correlation)
+    except (native_scenario_execution.ScenarioExecutionError, OSError, ValueError):
+        record = None
+    _need(record is not None, "windows_matrix_journal_unavailable:" + correlation)
+    plan = native_scenario_execution.ScenarioPlan.from_mapping(record["plan"])
+    _need(plan.scenario_id in RECIPES, "windows_matrix_not_windows_row:" + correlation)
+    adapter = _mcp_adapter()
+    checks = {"artifact-keys": "passed" if adapter.SCENARIO_ARTIFACT_KEYS.get(plan.scenario_id) == frozenset(plan.artifact_ids)
+              else "mcp_artifact_keys_differ"}
+    try:
+        resolve_bundle, resolve_input = _mcp_resolvers(root, adapter)
+    except (NativeScenarioWindowsError, OSError, SyntaxError, ValueError):
+        resolve_bundle = resolve_input = None
+    if resolve_bundle is None:
+        checks.update({name: "windows_mcp_route_resolvers_unavailable" for name in MCP_ADMISSION_CHECKS if name != "artifact-keys"})
+    else:
+        checks["bundle-single-location"] = _check(lambda: resolve_bundle(plan))
+        checks["input-at-collect"] = _check(lambda: resolve_input(plan)) if "scenarioInput" in plan.artifact_ids else "passed"
+        checks["admission-gates"] = (_check(lambda: adapter.admit_start(root, plan.as_dict(), resolve_bundle))
+                                     if checks["bundle-single-location"] == "passed" else "mcp_bundle_unresolved")
+        # The executor answers a repeat of a journaled correlation with its record only after that admission, and only
+        # for the same immutable plan.
+        checks["repeat-start"] = ("passed" if checks["admission-gates"] == "passed" and record["plan"] == plan.as_dict()
+                                  else "mcp_repeat_start_refused")
+    return {"correlationId": correlation, "scenarioId": plan.scenario_id, "admitted": all(value == "passed" for value in checks.values()),
+            "checks": {name: checks[name] for name in MCP_ADMISSION_CHECKS}}

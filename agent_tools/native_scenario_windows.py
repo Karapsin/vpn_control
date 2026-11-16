@@ -31,6 +31,7 @@ from typing import Any, Callable, Mapping
 
 try:
     from . import durable_remote_job, native_artifact_registry, native_artifact_reuse, native_scenario_bundle, native_scenario_execution
+    from . import native_row_queue
     from . import ssh_program_execution_remote as carrier
     from . import ssh_transport
     from . import windows_ordinary_task as planner
@@ -41,6 +42,7 @@ except ImportError:  # pragma: no cover - MCP CLI fallback executes mcp_server.p
     import native_artifact_reuse  # type: ignore[no-redef]
     import native_scenario_bundle  # type: ignore[no-redef]
     import native_scenario_execution  # type: ignore[no-redef]
+    import native_row_queue  # type: ignore[no-redef]
     import ssh_program_execution_remote as carrier  # type: ignore[no-redef]
     import ssh_transport  # type: ignore[no-redef]
     import windows_ordinary_task as planner  # type: ignore[no-redef]
@@ -2067,6 +2069,9 @@ def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
         elif receipt.get("result") == "passed":
             proven = public["evidenceClass"] == "installed-package" and (update is None or update["proven"])
             kind = ("passed" if approval is None or approval["proven"] else "approval-unproven") if proven else "installed-package-unproven"
+            if kind == "passed" and native_row_queue.suspect(root, correlation) is not None:
+                # The next row's clean start found what this row left behind (native_row_queue): its pass never counts.
+                kind = "suspect"
         elif receipt.get("result") == "failed":
             # A verdict on the installed product needs its task to have run, and is the owner's own: its exit 1, which a
             # case oracle failure ends with. An earlier stop is the row's setup; a failure after the task (the task journal,
@@ -2214,6 +2219,25 @@ def _check(action: Callable[[], Any]) -> str:
     return "passed"
 
 
+class _NoSubmitDriver:
+    """A driver for the repeat-start dry run: any use of it means the executor did not answer with the duplicate."""
+
+    def __getattr__(self, name: str) -> Any:
+        raise NativeScenarioWindowsError("mcp_repeat_start_reached_driver")
+
+
+def _repeat_start(root: Path, plan: native_scenario_execution.ScenarioPlan) -> str:
+    """Exercise the MCP route's duplicate path: ScenarioExecutor.start of this plan on the real journal."""
+    executor = native_scenario_execution.ScenarioExecutor(root.joinpath(*_JOURNALS), _NoSubmitDriver())
+    try:
+        result = executor.start(plan.as_dict())
+    except (native_scenario_execution.ScenarioExecutionError, NativeScenarioWindowsError, OSError, ValueError):
+        return "mcp_repeat_start_refused"
+    duplicate = (result.get("duplicate") is True and result.get("correlationId") == plan.correlation_id
+                 and result.get("scenarioId") == plan.scenario_id)
+    return "passed" if duplicate else "mcp_repeat_start_refused"
+
+
 def mcp_admission(root: Path | str, correlation: Any) -> dict[str, Any]:
     """Read only: would an MCP start of this journaled operation be admitted now, through the route's own resolvers and
     admission, without running it. Nothing is written, submitted or connected."""
@@ -2240,9 +2264,9 @@ def mcp_admission(root: Path | str, correlation: Any) -> dict[str, Any]:
         checks["input-at-collect"] = _check(lambda: resolve_input(plan)) if "scenarioInput" in plan.artifact_ids else "passed"
         checks["admission-gates"] = (_check(lambda: adapter.admit_start(root, plan.as_dict(), resolve_bundle))
                                      if checks["bundle-single-location"] == "passed" else "mcp_bundle_unresolved")
-        # The executor answers a repeat of a journaled correlation with its record only after that admission, and only
-        # for the same immutable plan.
-        checks["repeat-start"] = ("passed" if checks["admission-gates"] == "passed" and record["plan"] == plan.as_dict()
+        # A repeat MCP start of this journaled correlation, after that admission: the route's own executor must reach
+        # its duplicate answer for this same immutable plan. The driver refuses every call, so nothing is submitted.
+        checks["repeat-start"] = (_repeat_start(root, plan) if checks["admission-gates"] == "passed"
                                   else "mcp_repeat_start_refused")
     return {"correlationId": correlation, "scenarioId": plan.scenario_id, "admitted": all(value == "passed" for value in checks.values()),
             "checks": {name: checks[name] for name in MCP_ADMISSION_CHECKS}}

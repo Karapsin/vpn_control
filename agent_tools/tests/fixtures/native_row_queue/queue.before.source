@@ -1,0 +1,100 @@
+"""Discovery queue with a reset only where one is needed (S6): after a known failure, a drift, or a row that changes
+what is installed. Each row is a new operation; nothing is retried or replayed.
+
+Usage (from the recovery checkout, under caffeinate):
+  .agent_venv/bin/python -B .runtime/windows-parity-20261107/family/queue.py <tag> <deployment>
+      --package ID --set SET --source SHA --version V [--prior <passed install or reset op>] <scenario> ...
+
+Every row runs with register_and_run.py --clean-start: right after a reset it is exactly the row it always was; after
+passed rows its job refuses unless every job since the reset passed, then proves the start with a read-only census
+before any publish, and its publish stage checks the registration and complete installed tree as always.
+
+  rc 0 (passed)                 -> next row, no reset (unless the row changes the install: update and reboot rows).
+  rc 1 with drift (start differs from the install: clean_start_*, installed_tree_differs, installed_registration_differs:*)
+                                -> reset, then the same row once more as a new operation; a second drift stops.
+  rc 1 (any other known end)    -> reset before the next row.
+  rc 3 or a reset that did not pass -> stop: read the original's status, never replay, never reset over it.
+No fixed sleep anywhere: each operation's own readiness admission is what it waits for.
+"""
+import argparse
+import json
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+ROOT = Path.cwd().resolve()
+FAMILY = ROOT / ".runtime/windows-parity-20261107/family"
+PYTHON = str(ROOT / ".agent_venv/bin/python")
+RESET = "windows-msi-base-reset"
+# Rows whose pass leaves another install or an open chain behind: the next row needs a reset.
+CHANGES_INSTALL = ("windows-public-update.", "windows-reboot-", "windows-autostart-migration.")
+
+
+def run(label, argv, tag, runner=subprocess.run):
+    out = FAMILY / ("queue-" + tag + "-" + label + ".out")
+    err = FAMILY / ("queue-" + tag + "-" + label + ".err")
+    started = time.monotonic()
+    with out.open("wb") as stdout, err.open("wb") as stderr:
+        code = runner(argv, cwd=ROOT, stdout=stdout, stderr=stderr).returncode
+    end = None
+    for line in out.read_text(errors="replace").splitlines():
+        if line.startswith('{"rowEnd"'):
+            try:
+                end = json.loads(line)["rowEnd"]
+            except (ValueError, KeyError):
+                end = None
+    print(json.dumps({"step": label, "rc": code, "rowEnd": end, "seconds": round(time.monotonic() - started)}), flush=True)
+    return code, end
+
+
+def main(argv, runner=subprocess.run):
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("tag")
+    parser.add_argument("deployment")
+    for name in ("package", "set", "source", "version"):
+        parser.add_argument("--" + name, required=True)
+    parser.add_argument("--prior")
+    parser.add_argument("scenarios", nargs="+")
+    options = parser.parse_args(argv)
+    common = ["--package", options.package, "--set", options.set, "--source", options.source, "--version", options.version]
+    base = [PYTHON, "-B", str(FAMILY / "register_and_run.py"), "run"]
+    prior, step = options.prior, 0
+
+    def reset():
+        nonlocal step
+        step += 1
+        code, end = run("%02d-reset" % step, [*base, RESET, "archlinux", options.deployment, *common], options.tag, runner)
+        if code != 0 or not end or end.get("rc") != 0:
+            print(json.dumps({"stop": "reset", "rc": code}), flush=True)
+            return None
+        return end["operation"]
+
+    for scenario in options.scenarios:
+        attempts = 0
+        while True:
+            if prior is None:
+                prior = reset()
+                if prior is None:
+                    return 3
+            attempts += 1
+            step += 1
+            code, end = run("%02d-%s" % (step, scenario),
+                            [*base, scenario, "archlinux", options.deployment, "--prior", prior, *common, "--clean-start"],
+                            options.tag, runner)
+            if code == 0 and end and end.get("rc") == 0:
+                if scenario.startswith(CHANGES_INSTALL):
+                    prior = None
+                break
+            if code == 1 and end and end.get("rc") == 1:
+                prior = None  # Whatever this row left, only a reset gives the next one its start.
+                if end.get("drift") and attempts == 1:
+                    continue  # Its start differed from the install: once more after a reset, as a new operation.
+                break
+            print(json.dumps({"stop": scenario, "rc": code}), flush=True)
+            return 3
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

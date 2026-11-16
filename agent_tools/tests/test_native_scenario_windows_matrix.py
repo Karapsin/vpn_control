@@ -1209,6 +1209,41 @@ class McpRouteTests(MatrixBase):
         # The matrix reads that input the same way, so the whole observation refuses rather than count the row.
         self.assert_refused([*twins, direct], "windows_matrix_input_unavailable:" + direct)
 
+    def test_repeat_start_runs_the_executors_duplicate_path_RED_self_compare_GREEN(self):
+        """Review finding 14: the repeat-start check compared a journaled plan with itself."""
+        from agent_tools.tests import red_gate
+        fixture = Path(__file__).parent / "fixtures" / "mcp_admission_repeat_start"
+        source = fixture / "mcp_admission.before.source"
+        self.assertEqual(json.loads((fixture / "provenance.json").read_bytes())["sha256"],
+                         hashlib.sha256(source.read_bytes()).hexdigest())
+        direct = self.row(SSH, "direct")
+        journal = self.root.joinpath(*windows._JOURNALS)
+        record = journal / (direct + ".json")
+        raw = record.read_bytes()
+        passed = windows.mcp_admission(self.root, direct)
+        self.assertEqual("passed", passed["checks"]["repeat-start"])
+        # The dry run wrote nothing: the journal record is byte-identical.
+        self.assertEqual(raw, record.read_bytes())
+        # The MCP route's executor cannot reach its duplicate answer: the journal lock is no longer private.
+        lock = journal / ".scenario.lock"
+        lock.chmod(0o644)
+        self.addCleanup(lock.chmod, 0o600)
+        if red_gate.red_required(self, source):
+            namespace = dict(windows.__dict__)
+            exec(compile(source.read_bytes(), str(source), "exec"), namespace)
+            # RED: the bf8d2da2 check passed, because it compared the record's plan with itself.
+            self.assertEqual("passed", namespace["mcp_admission"](self.root, direct)["checks"]["repeat-start"])
+        result = windows.mcp_admission(self.root, direct)
+        self.assertEqual(("mcp_repeat_start_refused", False), (result["checks"]["repeat-start"], result["admitted"]))
+        lock.chmod(0o600)
+        # A driver call is never a duplicate answer: the dry run can submit nothing.
+        plan = execution.ScenarioPlan.from_mapping(execution.ScenarioExecutor(journal, None)._require(direct)["plan"])
+        with mock.patch.object(execution.ScenarioExecutor, "_read", return_value=None), \
+             mock.patch.object(execution.ScenarioExecutor, "_create_intent", return_value=True), \
+             mock.patch.object(execution.ScenarioExecutor, "_write"):
+            self.assertEqual("mcp_repeat_start_refused", windows._repeat_start(self.root, plan))
+        self.assertEqual(raw, record.read_bytes())
+
     def test_a_failed_or_unknown_run_of_either_route_still_wins(self):
         twins = [self.row(SMK, "direct"), self.row(SMK, "mcp"), self.large(), self.large("mcp"), self.row(SSH, "direct")]
         self.assertEqual("failed", self.observe([*twins, self.row(SSH, "mcp", "failed")])["result"])
@@ -1248,6 +1283,31 @@ class McpRouteTests(MatrixBase):
 
 
 @unittest.skipUnless(os.name == "posix", "private scenario journals are POSIX")
+class SuspectRowTests(MatrixBase):
+    """Review finding 10: a pass whose leftovers the next row's clean start found (native_row_queue) never counts."""
+
+    def test_a_suspect_pass_never_counts_RED_counted_GREEN(self):
+        from agent_tools import native_row_queue
+        from agent_tools.tests import red_gate
+        fixture = Path(__file__).parent / "fixtures" / "native_row_queue"
+        source = fixture / "matrix_row.before.source"
+        self.assertEqual(json.loads((fixture / "provenance.json").read_bytes())["files"]["matrix_row.before.source"]["sha256"],
+                         hashlib.sha256(source.read_bytes()).hexdigest())
+        leaker, detector = self.row(SMK, "direct"), str(uuid.uuid4())
+        self.assertEqual("passed", windows._matrix_row(self.root, leaker)["classification"])
+        native_row_queue.mark_suspect(self.root, leaker, detected_by=detector, failure="clean_start_drift:task")
+        if red_gate.red_required(self, source):
+            namespace = dict(windows.__dict__)
+            exec(compile(source.read_bytes(), str(source), "exec"), namespace)
+            # RED: the bf8d2da2 matrix counted the leaking row's pass.
+            self.assertEqual("passed", namespace["_matrix_row"](self.root, leaker)["classification"])
+        self.assertEqual("suspect", windows._matrix_row(self.root, leaker)["classification"])
+        self.assertEqual("missing", windows._matrix_row_state([windows._matrix_row(self.root, leaker)], SMK))
+        # Another pass of the same row, after a reset, counts as always.
+        again = self.row(SMK, "direct")
+        self.assertEqual(["suspect", "passed"], [windows._matrix_row(self.root, row)["classification"] for row in (leaker, again)])
+
+
 class SweepEligibilityTests(MatrixBase):
     """QW5: before a sweep, whether a pass of each planned row on a frozen set would count at HEAD."""
 

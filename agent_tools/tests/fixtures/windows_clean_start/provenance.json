@@ -1,0 +1,16 @@
+{
+  "commit": "bf8d2da243cd39a40a88dae0b060d709e13d6a0c",
+  "files": {
+    "since_install.before.source": {
+      "path": "agent_tools/windows_scenario_host_job.py",
+      "extract": "Job._since_install, dedented",
+      "sha256": "9b2044cbdedf41de30b9555f89fbdc42aec358d4178906a811216a442362c94f"
+    },
+    "clean_start_census.before.source": {
+      "path": "agent_tools/windows_scenario_host_job.py",
+      "extract": "clean_start_source and Job._clean_start_census, dedented",
+      "sha256": "0ab7702502bc2885e70cdc018be481ef4bcae42fb00be397e5f404d4abaf2ed9"
+    }
+  },
+  "reason": "Clean start before review findings 10 and 14: the census saw only product processes and VpnControlOrdinary-* tasks, so a service, firewall rule or Run entry a passed row left behind went unseen; and _since_install stat'ed every other job's job-exit.json, so an old job directory without one, from before the install, refused the clean start as clean_start_unordered."
+}

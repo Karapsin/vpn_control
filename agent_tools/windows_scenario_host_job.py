@@ -417,18 +417,38 @@ def _ps_literal(text):
     return "'" + text.replace("'", "''") + "'"
 
 
+# What else a row could leave behind that the next row's start would inherit, by the product's names (review finding 10):
+# a service, a firewall rule, a Run entry (machine or any loaded user hive) named for the product or pointing into its
+# install or Python folder.
+CLEAN_START_NAMES = ("VPN Control", "vpn-control", "VpnControl")
+CLEAN_START_COUNTS = ("tasks", "services", "firewallRules", "runEntries")
+
+
 def clean_start_source(installed, python):
     """Read-only, as SYSTEM: the lower-case image names of every process of the product's images, or running from the
-    install or Python folder, and how many ordinary tasks (VpnControlOrdinary-*) still exist. Nothing is changed."""
+    install or Python folder, and how many ordinary tasks (VpnControlOrdinary-*), services, firewall rules and Run
+    entries named for the product (or, for a service or Run entry, pointing into those folders) exist. Nothing is
+    changed."""
     roots = "@(" + ",".join(_ps_literal(path + "\\") for path in (installed, python)) + ")"
     images = "@(" + ",".join(_ps_literal(name) for name in CLEAN_START_IMAGES) + ")"
+    names = "@(" + ",".join(_ps_literal(name) for name in CLEAN_START_NAMES) + ")"
     body = ("$ErrorActionPreference='Stop'\n"
-            "$images=" + images + "\n$roots=" + roots + "\n"
+            "$images=" + images + "\n$roots=" + roots + "\n$names=" + names + "\n"
+            "function Test-Product([string]$text){if(-not $text){return $false};foreach($n in $names){if($text.IndexOf($n,[StringComparison]::OrdinalIgnoreCase) -ge 0){return $true}};"
+            "foreach($r in $roots){if($text.IndexOf($r,[StringComparison]::OrdinalIgnoreCase) -ge 0){return $true}};return $false}\n"
             "$found=@(Get-CimInstance Win32_Process|Where-Object{$name=([string]$_.Name).ToLowerInvariant();$path=[string]$_.ExecutablePath;"
             "($images -contains $name) -or ($path -and @($roots|Where-Object{$path.StartsWith($_,[StringComparison]::OrdinalIgnoreCase)}).Count -gt 0)}"
             "|ForEach-Object{([string]$_.Name).ToLowerInvariant()}|Sort-Object -Unique)\n"
             "$tasks=@(Get-ScheduledTask|Where-Object{$_.TaskName -like 'VpnControlOrdinary-*'})\n"
-            "[pscustomobject]@{processes=[string[]]$found;tasks=[int]$tasks.Count}\n")
+            "$services=@(Get-CimInstance Win32_Service|Where-Object{(Test-Product ([string]$_.Name)) -or (Test-Product ([string]$_.DisplayName)) -or (Test-Product ([string]$_.PathName))})\n"
+            "$rules=@(foreach($n in $names){Get-NetFirewallRule -DisplayName ('*'+$n+'*')})\n"
+            "$keys=@('Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run',"
+            "'Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run')+"
+            "@(Get-ChildItem -LiteralPath 'Registry::HKEY_USERS'|ForEach-Object{'Registry::HKEY_USERS\\'+$_.PSChildName+'\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'})\n"
+            "$run=0\nforeach($k in $keys){if(Test-Path -LiteralPath $k){$item=Get-Item -LiteralPath $k;"
+            "foreach($v in $item.GetValueNames()){if((Test-Product $v) -or (Test-Product ([string]$item.GetValue($v)))){$run++}}}}\n"
+            "[pscustomobject]@{processes=[string[]]$found;tasks=[int]$tasks.Count;services=[int]$services.Count;"
+            "firewallRules=[int]$rules.Count;runEntries=[int]$run}\n")
     return wrap_output(body)
 
 
@@ -1841,7 +1861,8 @@ class Job:
         already (_admit), and the host's own job-exit.json times order them. A job that failed or ended unknown since
         the install may have left anything behind, so only a reset can give this row its start: refused before any
         guest effect. With none, the row runs right after its install, exactly as after a reset; with some, the context
-        stage adds the clean-start census (_clean_start_census).
+        stage adds the clean-start census (_clean_start_census). An old job without an exit record that predates the
+        install never refuses the row; one after it is an unknown end.
         """
         prior = self.plan["prior"]["install"]
         try:
@@ -1851,8 +1872,19 @@ class Job:
                 if other.name in (self.op, prior) or _UUID.fullmatch(other.name) is None:
                     continue
                 path = other / "job-exit.json"
+                try:
+                    stamp = os.stat(path, follow_symlinks=False).st_mtime_ns
+                except FileNotFoundError:
+                    # A job with no exit record is ordered by its own directory, which nothing touches once it ended:
+                    # one older than the install predates it and cannot have changed this row's start; a later one is
+                    # an unknown end since the install.
+                    stamp = os.stat(other, follow_symlinks=False).st_mtime_ns
+                    if stamp < anchor:
+                        continue
+                    later.append(None)
+                    continue
                 # Not older than the install: a tie counts as later, so a coarse clock can only add a census or a refusal.
-                if os.stat(path, follow_symlinks=False).st_mtime_ns >= anchor:
+                if stamp >= anchor:
                     later.append((self._read_record(path) or {}).get("exitCode"))
         except OSError:
             raise Refused("clean_start_unordered") from None
@@ -1862,26 +1894,30 @@ class Job:
 
     def _clean_start_census(self):
         """A read-only SYSTEM census before any publish: no process of the product, its helpers or the bundled runtime,
-        none running from the install or Python folder, and no ordinary task left. The row's publish stage then checks
-        the registration and the complete installed tree against the install, as it always does. Drift is this row's
-        known failure before any file effect; its caller resets and runs the row again as a new operation."""
+        none running from the install or Python folder, no ordinary task, and no service, firewall rule or Run entry of
+        the product left (clean_start_source). The row's publish stage then checks the registration and the complete
+        installed tree against the install, as it always does. Drift is this row's known failure before any file
+        effect; its caller (native_row_queue) marks the previous row's evidence suspect, resets and runs the row again
+        as a new operation."""
         terminal, _ = self.guest_program("clean-start-census", self._rendered(
             lambda: clean_start_source(self.paths["installed"], self.paths["python"])))
         try:
             value = decode_stdout(terminal)
-            processes, tasks = value["processes"], value["tasks"]
+            processes = value["processes"]
             processes = [] if processes is None else [processes] if type(processes) is str else processes
-            if (set(value) != {"processes", "tasks"} or type(processes) is not list or len(processes) > CENSUS_LIMIT
+            counts = {name: value[name] for name in CLEAN_START_COUNTS}
+            if (set(value) != {"processes", *CLEAN_START_COUNTS} or type(processes) is not list or len(processes) > CENSUS_LIMIT
                     or any(type(name) is not str or _CENSUS_IMAGE.fullmatch(name) is None for name in processes)
-                    or type(tasks) is not int or tasks < 0):
+                    or any(type(count) is not int or count < 0 for count in counts.values())):
                 raise ValueError("clean_start_census_shape")
         except (ValueError, TypeError, KeyError):
             raise KnownFailure("clean_start_census_unreadable") from None
-        self.clean_start = {"after": self.since_install, "processes": len(processes), "tasks": tasks}
+        self.clean_start = {"after": self.since_install, "processes": len(processes), **counts}
         if processes:
             raise KnownFailure("clean_start_drift:process:" + token(sorted(processes)[0], 60))
-        if tasks:
-            raise KnownFailure("clean_start_drift:task")
+        for name, word in (("tasks", "task"), ("services", "service"), ("firewallRules", "firewall-rule"), ("runEntries", "run-entry")):
+            if counts[name]:
+                raise KnownFailure("clean_start_drift:" + word)
 
     def _target_install(self):
         """The earlier install of this very target package on this VM, with the inventory msiexec left: the tree a

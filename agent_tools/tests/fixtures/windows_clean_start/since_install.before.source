@@ -1,0 +1,25 @@
+def _since_install(self):
+    """How many jobs on this VM ended after the prior install this row names, refused unless each passed or was refused.
+
+    A caller that skips the reset after a passed row asks for this (plan cleanStart). Every job's exit is known here
+    already (_admit), and the host's own job-exit.json times order them. A job that failed or ended unknown since
+    the install may have left anything behind, so only a reset can give this row its start: refused before any
+    guest effect. With none, the row runs right after its install, exactly as after a reset; with some, the context
+    stage adds the clean-start census (_clean_start_census).
+    """
+    prior = self.plan["prior"]["install"]
+    try:
+        anchor = os.stat(self.data.parent / prior / "job-exit.json", follow_symlinks=False).st_mtime_ns
+        later = []
+        for other in sorted(self.data.parent.iterdir()):
+            if other.name in (self.op, prior) or _UUID.fullmatch(other.name) is None:
+                continue
+            path = other / "job-exit.json"
+            # Not older than the install: a tie counts as later, so a coarse clock can only add a census or a refusal.
+            if os.stat(path, follow_symlinks=False).st_mtime_ns >= anchor:
+                later.append((self._read_record(path) or {}).get("exitCode"))
+    except OSError:
+        raise Refused("clean_start_unordered") from None
+    if any(code not in (EXIT_PASSED, EXIT_REFUSED) for code in later):
+        raise Refused("clean_start_unclean_job")
+    return len(later)

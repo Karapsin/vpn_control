@@ -1,0 +1,90 @@
+def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
+    """One row as the matrix reads it, from its journal, its input and its route only; nothing is collected.
+
+    An update row also names its base install, the package that install admitted, its target's install and the package
+    the job read installed after the task (_update_facts); it passes only with that last one bound and its own. A grant
+    row (its collector has an authorization stage) also names who approved and who installed (_approval_facts) and passes
+    only with that proven; a run whose package is proven but whose approval is not is approval-unproven.
+    """
+    try:
+        record = native_scenario_execution.ScenarioExecutor(root.joinpath(*_JOURNALS), None)._read(correlation)
+    except (native_scenario_execution.ScenarioExecutionError, OSError, ValueError):
+        record = None
+    _need(record is not None, "windows_matrix_journal_unavailable:" + correlation)
+    plan = native_scenario_execution.ScenarioPlan.from_mapping(record["plan"])
+    _need(plan.scenario_id in RECIPES, "windows_matrix_not_windows_row:" + correlation)
+    row = RECIPES[plan.scenario_id]
+    facts = {"correlationId": correlation, "scenarioId": plan.scenario_id, "deploymentId": plan.environment,
+             "route": _route(root, correlation), "classification": "setup", "receiptSha256": None,
+             "exitCode": record.get("exitCode"), "stage": None, "failure": None}
+    if row["evidenceClass"] in SETUP_OR_COMPONENT:
+        return facts
+    try:
+        value = scenario_input(root, plan, row)
+    except NativeScenarioWindowsError:
+        raise NativeScenarioWindowsError("windows_matrix_input_unavailable:" + correlation) from None
+    # A native-install-failed run's failing MSI and its derivation receipt are artifacts of the same frozen set and
+    # source, so the record binds them beside the target and the fixture receipt.
+    facts.update(sourceSha=value["sourceSha"], productVersion=value["productVersion"], artifactSetId=value["artifactSetId"],
+                 packages=sorted(plan.artifact_ids[key] for key in ("targetPackage", "fixtureReceipt", "faultPackage", "faultReceipt")
+                                 if key in plan.artifact_ids),
+                 targetPackage=plan.artifact_ids["targetPackage"])
+    update = _update_facts(root, plan, row, value, None) if row.get("update") else None
+    approval = _approval_facts(row, None) if row.get("update") and "authorization" in row["update"]["collectorStages"] else None
+    collection = record.get("collection") or {}
+    if record["state"] == native_scenario_execution.ExecutionState.TERMINAL.value and collection.get("state") == "complete":
+        summary = json.loads(collection["rawJson"])
+        raw = summary["actualReceiptRaw"]
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        _need(digest == summary["actualReceiptSha256"], "windows_matrix_receipt_changed:" + correlation)
+        receipt = json.loads(raw)
+        task = receipt.get("task") if isinstance(receipt.get("task"), dict) else {}
+        facts.update(receiptSha256=digest, stage=host_job.token(receipt.get("stage")) if receipt.get("stage") else None,
+                     failure=host_job.token(receipt.get("failure")) if receipt.get("failure") else None,
+                     # The run's measured size: the collection the route carried back and the job's status polls of
+                     # its owner, which pick the set's largest-evidence and longest rows (_mcp_route).
+                     collectedBytes=len(collection["rawJson"].encode("utf-8")),
+                     polls=task["polls"] if type(task.get("polls")) is int and task["polls"] >= 0 else 0)
+        public = public_evidence(native_scenario_execution.ScenarioExecutor._public(record))
+        if update is not None:
+            update = _update_facts(root, plan, row, value, receipt)
+        if approval is not None:
+            approval = _approval_facts(row, receipt)
+        if receipt.get("stoppedAfter") is not None:
+            kind = "stopped"
+        elif receipt.get("result") == "passed":
+            proven = public["evidenceClass"] == "installed-package" and (update is None or update["proven"])
+            kind = ("passed" if approval is None or approval["proven"] else "approval-unproven") if proven else "installed-package-unproven"
+        elif receipt.get("result") == "failed":
+            # A verdict on the installed product needs its task to have run, and is the owner's own: its exit 1, which a
+            # case oracle failure ends with. An earlier stop is the row's setup; a failure after the task (the task journal,
+            # the command line read, the evidence copy, the declaration, another exit) is the harness's.
+            if task.get("state") != "task-finished":
+                kind = "failed-before-task"
+            elif receipt.get("failure") == "task_exit_code" and all(type(task.get(key)) is int and task[key] == 1
+                                                                   for key in ("ownerExitCode", "terminalExitCode")):
+                kind = "failed"
+            elif (receipt.get("failure") == _PRINCIPAL_FAILURE and (row.get("document") or {}).get("principalProbe") is True
+                  and all(type(task.get(key)) is int and task[key] == row["expectedExit"] for key in ("ownerExitCode", "terminalExitCode"))):
+                # The owner passed, and the row's own LOCAL SERVICE probe proved no denial: the product's verdict on its
+                # owner-private endpoint (MATRIX_PRINCIPAL). The probe's other ends are the harness's.
+                kind = "failed-principal"
+            else:
+                kind = "failed-after-task"
+        else:
+            raise NativeScenarioWindowsError("windows_matrix_receipt_changed:" + correlation)
+    elif record["state"] == native_scenario_execution.ExecutionState.TERMINAL.value and record["exitCode"] == host_job.EXIT_REFUSED:
+        kind = "refused"  # Refused before any guest effect: no claim of any kind.
+    elif (record["state"] == native_scenario_execution.ExecutionState.UNKNOWN.value
+          and (record["lastReason"].startswith("job_exit_unknown:") or record["lastReason"] in _DURABLE_FINAL_UNKNOWN)
+          or record["state"] == native_scenario_execution.ExecutionState.TERMINAL.value
+          and collection.get("reason") in _COLLECTION_FINAL_UNKNOWN):
+        kind = "unknown"
+    else:
+        raise NativeScenarioWindowsError("windows_matrix_row_unsettled:" + correlation)
+    facts["classification"] = kind
+    if update is not None:
+        facts["update"] = {key: update[key] for key in ("baseInstall", "basePackage", "targetInstall", "installedPackage")}
+    if approval is not None:
+        facts["approval"] = {key: approval[key] for key in _APPROVAL_FACTS}
+    return facts

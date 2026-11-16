@@ -1,0 +1,7 @@
+{
+  "commit": "bf8d2da243cd39a40a88dae0b060d709e13d6a0c",
+  "path": "agent_tools/native_scenario_windows.py",
+  "extract": "the mcp_admission function",
+  "sha256": "22972cb674652c30123e157359701d634cea9b8c3b1c00a8498a4e1f69522435",
+  "reason": "MCP admission dry run before review finding 14: its repeat-start check compared the journaled plan with the plan just read from that same record, so it passed although the MCP route's executor could not reach its duplicate answer (for example, when the journal's lock or directory had unsafe permissions)."
+}

@@ -1,0 +1,37 @@
+def clean_start_source(installed, python):
+    """Read-only, as SYSTEM: the lower-case image names of every process of the product's images, or running from the
+    install or Python folder, and how many ordinary tasks (VpnControlOrdinary-*) still exist. Nothing is changed."""
+    roots = "@(" + ",".join(_ps_literal(path + "\\") for path in (installed, python)) + ")"
+    images = "@(" + ",".join(_ps_literal(name) for name in CLEAN_START_IMAGES) + ")"
+    body = ("$ErrorActionPreference='Stop'\n"
+            "$images=" + images + "\n$roots=" + roots + "\n"
+            "$found=@(Get-CimInstance Win32_Process|Where-Object{$name=([string]$_.Name).ToLowerInvariant();$path=[string]$_.ExecutablePath;"
+            "($images -contains $name) -or ($path -and @($roots|Where-Object{$path.StartsWith($_,[StringComparison]::OrdinalIgnoreCase)}).Count -gt 0)}"
+            "|ForEach-Object{([string]$_.Name).ToLowerInvariant()}|Sort-Object -Unique)\n"
+            "$tasks=@(Get-ScheduledTask|Where-Object{$_.TaskName -like 'VpnControlOrdinary-*'})\n"
+            "[pscustomobject]@{processes=[string[]]$found;tasks=[int]$tasks.Count}\n")
+    return wrap_output(body)
+
+
+def _clean_start_census(self):
+    """A read-only SYSTEM census before any publish: no process of the product, its helpers or the bundled runtime,
+    none running from the install or Python folder, and no ordinary task left. The row's publish stage then checks
+    the registration and the complete installed tree against the install, as it always does. Drift is this row's
+    known failure before any file effect; its caller resets and runs the row again as a new operation."""
+    terminal, _ = self.guest_program("clean-start-census", self._rendered(
+        lambda: clean_start_source(self.paths["installed"], self.paths["python"])))
+    try:
+        value = decode_stdout(terminal)
+        processes, tasks = value["processes"], value["tasks"]
+        processes = [] if processes is None else [processes] if type(processes) is str else processes
+        if (set(value) != {"processes", "tasks"} or type(processes) is not list or len(processes) > CENSUS_LIMIT
+                or any(type(name) is not str or _CENSUS_IMAGE.fullmatch(name) is None for name in processes)
+                or type(tasks) is not int or tasks < 0):
+            raise ValueError("clean_start_census_shape")
+    except (ValueError, TypeError, KeyError):
+        raise KnownFailure("clean_start_census_unreadable") from None
+    self.clean_start = {"after": self.since_install, "processes": len(processes), "tasks": tasks}
+    if processes:
+        raise KnownFailure("clean_start_drift:process:" + token(sorted(processes)[0], 60))
+    if tasks:
+        raise KnownFailure("clean_start_drift:task")

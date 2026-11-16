@@ -39,6 +39,9 @@ from agent_tools import windows_scenario_host_job as job
 from agent_tools.tests.test_readiness_windows_guest import facts
 from agent_tools.tests.test_windows_idle_receipt_classes import Receipts, current_source
 
+# What a clean-start census reports when a row left nothing behind (job.clean_start_source).
+CLEAN_CENSUS = {"processes": [], "tasks": 0, "services": 0, "firewallRules": 0, "runEntries": 0}
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -276,7 +279,7 @@ class FakeQga:
         self.runtime_bytes = b"MZ bundled sing-box"
         self.read_pin_records = {}
         self.runtime_reply = None
-        self.census = {"processes": [], "tasks": 0}  # What the clean-start census finds: nothing left behind.
+        self.census = dict(CLEAN_CENSUS)  # What the clean-start census finds: nothing left behind.
 
     def file_security(self):
         return {"ownerSid": "S-1-5-18", "sddl": "O:SYD:" + self.endpoint_form + "(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;" + SID + ")"}
@@ -2139,29 +2142,36 @@ class CleanStartTests(FamilyBase):
         plan, code, receipt, kinds = self.run_family("windows-disconnected-cli-config", prior=install, clean_start=True)
         self.assertEqual((0, "passed"), (code, receipt["result"]))
         self.assertEqual(["context", "clean-start-census", "initialize"], kinds[:3])
-        self.assertEqual({"after": 2, "processes": 0, "tasks": 0}, receipt["cleanStart"])
+        self.assertEqual({"after": 2, "processes": 0, "tasks": 0, "services": 0, "firewallRules": 0, "runEntries": 0},
+                         receipt["cleanStart"])
         self.assertEqual({"installedPackage": True, "packageSha256": self.packages["targetPackage"]["sha256"]}, receipt["windows"])
         census = [source for kind, source in self.qga.programs if kind == "clean-start-census"][-1]
         for word in ("vpn-control.exe", "vpn-control-cli.exe", "sing-box.exe", "vpn-control-install-helper.exe", "vpn-control-vpn-broker.exe",
-                     INSTALLED_ROOT + "\\", PYTHON_ROOT + "\\", "VpnControlOrdinary-*"):
+                     INSTALLED_ROOT + "\\", PYTHON_ROOT + "\\", "VpnControlOrdinary-*", "VPN Control", "vpn-control"):
             self.assertIn("'" + word + "'", census)
+        for reader in ("Win32_Service", "Get-NetFirewallRule -DisplayName", "CurrentVersion\\Run", "HKEY_USERS"):
+            self.assertIn(reader, census)
         for verb in ("Stop-", "Remove-", "Set-", "New-", "Unregister-", "Start-"):
             self.assertNotIn(verb, census.split("$protocolResult= & {", 1)[1].split("\n}\n", 1)[0], "read only")
 
     def test_what_the_census_finds_left_behind_is_drift_before_any_file_effect(self):
-        cases = (({"processes": ["vpn-control.exe"], "tasks": 0}, "clean_start_drift:process:vpn-control.exe", 1),
-                 ({"processes": "sing-box.exe", "tasks": 0}, "clean_start_drift:process:sing-box.exe", 1),
-                 ({"processes": [], "tasks": 2}, "clean_start_drift:task", 0),
-                 ({"processes": ["C:\\Users\\x\\vpn-control.exe"], "tasks": 0}, "clean_start_census_unreadable", None),
-                 ({"processes": [], "tasks": -1}, "clean_start_census_unreadable", None),
-                 ({"processes": [], "tasks": 0, "other": 1}, "clean_start_census_unreadable", None))
+        cases = (({**CLEAN_CENSUS, "processes": ["vpn-control.exe"]}, "clean_start_drift:process:vpn-control.exe", 1),
+                 ({**CLEAN_CENSUS, "processes": "sing-box.exe"}, "clean_start_drift:process:sing-box.exe", 1),
+                 ({**CLEAN_CENSUS, "tasks": 2}, "clean_start_drift:task", 0),
+                 ({**CLEAN_CENSUS, "services": 1}, "clean_start_drift:service", 0),
+                 ({**CLEAN_CENSUS, "firewallRules": 2}, "clean_start_drift:firewall-rule", 0),
+                 ({**CLEAN_CENSUS, "runEntries": 1}, "clean_start_drift:run-entry", 0),
+                 ({**CLEAN_CENSUS, "processes": ["C:\\Users\\x\\vpn-control.exe"]}, "clean_start_census_unreadable", None),
+                 ({**CLEAN_CENSUS, "tasks": -1}, "clean_start_census_unreadable", None),
+                 ({"processes": [], "tasks": 0}, "clean_start_census_unreadable", None),
+                 ({**CLEAN_CENSUS, "other": 1}, "clean_start_census_unreadable", None))
         for census, failure, processes in cases:
             with self.subTest(failure=failure, census=census):
                 install = self.baseline()
                 self.assertEqual(0, self.run_family("windows-packaged-cli-smoke", prior=install)[1])
                 self.qga.census = census
                 plan, code, receipt, kinds = self.run_family("windows-packaged-cli-smoke", prior=install, clean_start=True)
-                self.qga.census = {"processes": [], "tasks": 0}
+                self.qga.census = dict(CLEAN_CENSUS)
                 self.assertEqual((1, failure, "context"), (code, receipt["failure"], receipt["stage"]))
                 self.assertEqual(["context", "clean-start-census"], kinds, "no publish, no task")
                 self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
@@ -2183,6 +2193,72 @@ class CleanStartTests(FamilyBase):
         plan, code, receipt, kinds = self.run_family("windows-packaged-cli-smoke", prior=reset, clean_start=True)
         self.assertEqual((0, "passed"), (code, receipt["result"]), "after the reset the row runs as after any reset")
         self.assertNotIn("cleanStart", receipt)
+
+    def before(self, name):
+        fixture = Path(__file__).parent / "fixtures" / "windows_clean_start"
+        source = fixture / name
+        self.assertEqual(json.loads((fixture / "provenance.json").read_bytes())["files"][name]["sha256"],
+                         hashlib.sha256(source.read_bytes()).hexdigest())
+        return source
+
+    def test_a_service_firewall_rule_or_run_entry_left_behind_is_drift_RED_unseen_GREEN(self):
+        """Review finding 10: the census saw only processes and ordinary tasks."""
+        from agent_tools.tests import red_gate
+        source = self.before("clean_start_census.before.source")
+        leaks = {"service": {"services": 1}, "firewall-rule": {"firewallRules": 1}, "run-entry": {"runEntries": 1}}
+        if red_gate.red_required(self, source):
+            namespace = dict(job.__dict__)
+            exec(compile(source.read_bytes(), str(source), "exec"), namespace)
+            census = namespace["clean_start_source"](INSTALLED_ROOT, PYTHON_ROOT)
+            # RED: the bf8d2da2 census read neither services, firewall rules nor Run keys, so nothing could report them.
+            for reader in ("Win32_Service", "NetFirewallRule", "CurrentVersion\\Run"):
+                self.assertNotIn(reader, census)
+            with mock.patch.object(job.Job, "_clean_start_census", namespace["_clean_start_census"]):
+                for word, counts in leaks.items():
+                    with self.subTest(before=word):
+                        install = self.baseline()
+                        self.assertEqual(0, self.run_family("windows-packaged-cli-smoke", prior=install)[1])
+                        self.qga.census = {"processes": [], "tasks": 0}  # all the old census could say
+                        plan, code, receipt, kinds = self.run_family("windows-packaged-cli-smoke", prior=install, clean_start=True)
+                        self.assertEqual((0, "passed"), (code, receipt["result"]), "the leak went unseen")
+        for word, counts in leaks.items():
+            with self.subTest(word=word):
+                install = self.baseline()
+                self.assertEqual(0, self.run_family("windows-packaged-cli-smoke", prior=install)[1])
+                self.qga.census = {**CLEAN_CENSUS, **counts}
+                plan, code, receipt, kinds = self.run_family("windows-packaged-cli-smoke", prior=install, clean_start=True)
+                self.qga.census = dict(CLEAN_CENSUS)
+                self.assertEqual((1, "clean_start_drift:" + word, ["context", "clean-start-census"]), (code, receipt["failure"], kinds))
+                self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+
+    def test_an_old_job_without_an_exit_record_before_the_install_never_refuses_RED_unordered_GREEN(self):
+        """Review finding 14: _since_install stat'ed every job's job-exit.json, so an old job without one refused."""
+        from agent_tools.tests import red_gate
+        install = self.baseline()
+        plan = self.family_plan("windows-packaged-cli-smoke", prior=install, clean_start=True)
+        jobs = Path(plan["dataDirectory"]).parent
+        anchor = os.stat(jobs / install / "job-exit.json").st_mtime_ns
+        old = jobs / str(uuid.uuid4())
+        old.mkdir(mode=0o700)
+        os.utime(old, ns=(anchor - 10**9, anchor - 10**9))
+        state = types.SimpleNamespace(data=Path(plan["dataDirectory"]), op=plan["operationId"], plan=plan,
+                                      _read_record=lambda path: job.Job._read_record(None, path))
+        source = self.before("since_install.before.source")
+        if red_gate.red_required(self, source):
+            namespace = dict(job.__dict__)
+            exec(compile(source.read_bytes(), str(source), "exec"), namespace)
+            with self.assertRaises(job.Refused) as caught:
+                namespace["_since_install"](state)
+            # RED: the old job, from before the install, refused this row's clean start.
+            self.assertEqual("clean_start_unordered", str(caught.exception))
+        self.assertEqual(0, job.Job._since_install(state))
+        # One without an exit record after the install is an unknown end since it: only a reset gives the row its start.
+        later = jobs / str(uuid.uuid4())
+        later.mkdir(mode=0o700)
+        os.utime(later, ns=(anchor + 10**9, anchor + 10**9))
+        with self.assertRaises(job.Refused) as caught:
+            job.Job._since_install(state)
+        self.assertEqual("clean_start_unclean_job", str(caught.exception))
 
     def test_without_the_request_nothing_changes(self):
         install = self.baseline()
