@@ -2864,6 +2864,21 @@ failed commit, whether the broker removes its private stage then, whether a larg
 document crosses the broker channel, the configuration digest the collector reads, and
 whether a CUSTOM config in VPN mode keeps the product's direct-probe rules as in proxy mode.
 
+### Windows Desktop Package run 43877068415 on `89b2e9c6`: three desktop tests (hosted CI, 2026-11-16)
+
+`:desktopApp:test` on the hosted Windows runner finished 1452 tests with 3 failed and 81 skipped,
+so no MSI was built. The saved log is the native RED evidence:
+`.runtime/windows-parity-20261107/evidence/ci-89b2e9c6/windows-43877068415-full.log`. All three
+are test defects. The SSH Routing bootstrap's tie to its owner's lifetime works natively: in the
+same run, `DesktopHomeSshBootstrapCleanupNativeTest` ties a real child started with the product's
+launcher, and passed.
+
+| Failure type | Regression | Cause and fix |
+| --- | --- | --- |
+| A fake child had no pid, so the platform tie warned on Windows only | `DesktopBootstrapCleanupTest.theBootstrapDeletesItsConfigurationBeforeTheDownloadAndEndsTheChildAfterIt` | The test gave `DesktopHomeSshBootstrapProxy` its `FakeChild`, a `Process` with no `pid()` override, and kept the default `tie`. On Windows, `tieToOwnerLifetime` calls `process.pid()`, and `Process.pid()` throws `UnsupportedOperationException` for any process that is not an OS process. Elsewhere the tie returns null before that call, so the test never failed off Windows. The test now injects a recording tie and asserts the order tied, destroy, released, untied on every platform. RED is native only (this run). The tie with a real `ProcessImpl` keeps its native coverage. |
+| The probe passed Join-Path output to a reflected method (second site) | `DesktopWindowsNativeHelperPinSharingTest.theNativePinSharingProbePassesCmdletOutputToReflectedMethodsAsStrings` | The junction checks added by `4de91184` called `$method.Invoke($null,[object[]]@($empty,$null))` at line 97 of `windows-native-pin-sharing-probe.ps1`. `MethodInfo.Invoke` cannot convert the PSObject that Join-Path returns to the `string` parameter of `PinParents`. This is the same failure that `f5246b75` fixed for `$pinned` (run 43474296998). The probe now passes `[string]$empty`. The regression reads the probe on every platform and refuses any cmdlet-output variable passed uncast to `.Invoke(`. It was RED on the unfixed probe (line 97, `$empty`) and is GREEN on the fix. The probe's junction and `Linked` checks run natively for the first time on the next Windows run. |
+| A failure in the witness test was replaced by its cleanup's sharing violation | `DesktopWindowsPinnedFolderJunctionNativeTest.nativeFolderOthersMayWriteIsUsedOnlyBesideAnEntryTheUserCanOpen` (native only) | The `finally` deletion of `drop\dropped.txt` threw `FileSystemException` 32 and replaced whatever happened first. Only a handle without delete sharing on that file explains 32. The test's own `assertFailsWith { native.open(dropped, PINNED_DIRECTORY) }` leaks exactly such a handle when the open succeeds, and so does the refused `DesktopWindowsTransferPins.open`, whose pins are never closed when it succeeds. Every pin opens with `FILE_FLAG_BACKUP_SEMANTICS`, so a token with `SeBackupPrivilege` enabled reads the private file despite its DACL. That is the probable cause on the hosted runner, but the run that would show it has not happened yet. The test now runs impersonating its process with backup and restore disabled, as an interactive user's process runs (it names any it disabled in its messages). It closes whatever an unexpected open returns before it fails, and it deletes the tree with bounded retries that never hide the body's own failure. Not a PLATFORM-003 defect: the pins were closed and `mine.txt` was deleted before `dropped.txt`. Open: if the next run's messages show the privilege was enabled, decide whether the product's witness search should refuse an entry that only a privilege opened. |
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals
