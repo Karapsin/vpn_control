@@ -631,10 +631,21 @@ accepted.
 
 1. `prepare` (direct only; coordinator network, no VM):
    `.agent_venv/bin/python -m agent_tools.windows_desktop_test prepare
-   --source-commit <sha>`. It downloads the CI toolchain, Temurin 17.0.21+9
-   Windows x64 and Gradle 8.10.2. Each is used only after its pinned size and
-   sha256 match. It then archives the commit. Once per build-definition digest,
-   it exports the offline dependency repository: the commit's own wrapper runs
+   --source-commit <sha>`. It downloads the CI toolchain: Temurin 17.0.21+9
+   Windows x64, Gradle 8.10.2 and the .NET SDK 10.0.403 win-x64 zip that
+   `desktopApp/native/windows/toolchain.lock.json` names. It also downloads
+   the one package the desktop tests restore from nuget.org with that SDK:
+   `Microsoft.NET.ILLink.Tasks` 10.0.14, the SDK's ILLink pack that
+   `EnableAotAnalyzer` adds. Each download is used only after its pinned size
+   and digests match: sha256, plus the publisher's own SHA-512 for the SDK
+   (the lock's) and the package (nuget.org's catalog `packageHash`). The SDK
+   zip must be one the runner can extract and must hold its muxer, the SDK
+   and the runtime it ships (`desktop_test_dotnet_archive_refused:<code>`).
+   The package becomes the NuGet seed: a deterministic zip of one flat local
+   folder. A commit whose own lock or `global.json` pins another SDK is
+   refused (`desktop_test_dotnet_sdk_unpinned`). It then archives the commit.
+   Once per build-definition digest, it exports the offline dependency
+   repository: the commit's own wrapper runs
    `:desktopApp:vcdtExportResolution` in a fresh private Gradle home, with the
    Compose and Skiko natives replaced by their Windows x64 variants, and the
    download cache becomes a deterministic Maven-layout zip. The init script
@@ -649,13 +660,15 @@ accepted.
    --deployment-id --operation-id --source-commit`) refuses before any
    journal: a foreign deployment (a `windowsUacVisual` clone or an image
    template), an existing operation, an unknown commit and an unprepared one.
-   It stages the four archives into the VM host's content-addressed cache.
+   It stages the six archives (source, JDK, Gradle, dependency repository,
+   SDK and NuGet seed) into the VM host's content-addressed cache.
    Then it submits one durable host job under `ScenarioExecutor`, journaled
    in `.rag_index/windows-desktop-test-executions`. A lost reply is recovered
    with status on the same operation; a start is never sent twice.
 3. In the guest, the host job (`windows_desktop_test_host_job` over the
-   scenario host job) first checks the profile drive's free space, then lists
-   the scenario Python and checks the worker request's pin bound, all before
+   scenario host job) first checks the profile drive's free space (the six
+   archives plus 11 GiB), then lists the scenario Python and checks the
+   worker request's pin bound, all before
    anything is pushed. It publishes the archives as pinned endpoints and runs
    the pinned runner (`windows_desktop_test_guest`) through the ordinary task's
    `qualification` worker action; the worker request pins the interpreter and
@@ -667,13 +680,30 @@ accepted.
    `gradle-wrapper.jar` runs with `--offline --no-daemon` and an init script
    that replaces every repository with the extracted one, inside a
    kill-on-close job object, at normal priority. `ANDROID_HOME` names a missing
-   folder and the test JVMs get `user.home` inside the work folder. CI's
-   pinned .NET SDK is not provisioned: `VPN_CONTROL_TEST_DOTNET` names a
-   missing `dotnet.exe` in the work folder, so the desktop tests that build
-   native .NET probes fail to start it on every fixture, and no SDK of the
-   fixture's own restores NuGet packages from the network. The runner
-   compares the product processes, the product state folders and the names in
-   the profile before and after. It zips
+   folder and the test JVMs get `user.home` inside the work folder.
+   CI's .NET SDK is extracted into the work folder and run once before Gradle
+   (`dotnet --version` from the folder of the source's own `global.json`, which
+   the tests copy into every probe). `VPN_CONTROL_TEST_DOTNET` names its
+   `dotnet.exe`, `DOTNET_ROOT` its folder, and it follows the JDK at the front
+   of `PATH`, as in CI. MSBuild reads every environment variable as a
+   property, so `RestoreConfigFile` makes NuGet load only the runner's
+   `NuGet.Config`: one local folder holding the seed, with the packages folder
+   in the work folder. The probes' own `NuGet.Config`, which adds nuget.org
+   for two tests, is not read, and a package the seed lacks fails that
+   restore (NU1101) instead of being downloaded. The SDK's first run makes no
+   development certificate and adds nothing to the user's `PATH`, telemetry is
+   off, and certificate revocation is read offline. `HTTP_PROXY`, `HTTPS_PROXY`
+   and `ALL_PROXY` name a refused loopback port: one desktop test sets
+   `DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE=1`, which the SDK does not read
+   as true, and its CLI would otherwise look for workload manifest updates on
+   nuget.org. An SDK archive without its pinned layout, a seed that is not the
+   requested packages and an SDK that does not report the source's pinned
+   version fail their own stages: `extract-dotnet`, `extract-nuget` and
+   `dotnet-check`. The runner compares the product processes, the product
+   state folders, the user's own NuGet folders and the names in the profile
+   before and after: NuGet records a once-per-user migration under
+   `%LOCALAPPDATA%\NuGet\Migrations`, which no variable moves without moving
+   `LOCALAPPDATA` for every test. It zips
    `desktopApp/build/test-results/test` with the console log and deletes its
    work folder. Once the exit is known and nothing can hold them (the owner
    exited, or no task was launched after the push), one identity-checked
@@ -690,20 +720,24 @@ accepted.
    `.runtime/windows-desktop-test/operations/<operationId>/` and writes
    `summary.json`. The summary holds:
    - `toolOutcome`, with `failedStage` naming the stage of a tool failure;
-   - `testOutcome`: `passed`, `passed-except-excluded`, `failed`,
-     `build-failed`, `timed-out` or `not-run`;
-   - totals, per-class counts, skipped and failed tests, and `excludedTests`:
-     the tests whose only failure was starting the absent `dotnet.exe`;
-   - the JDK release, the Gradle version, the commit and the archive digests;
-   - hygiene: work folder and archive cleanup, guest disk space, and any new
-     name the run left in the profile.
+   - `testOutcome`: `passed`, `failed`, `build-failed`, `timed-out` or
+     `not-run`;
+   - totals, per-class counts, skipped tests, and failed tests, a failure the
+     seed caused marked `toolCause: dotnet-packages`;
+   - the JDK release, the Gradle version, the SDK version and the version the
+     SDK reported, the commit and the archive digests;
+   - hygiene: work folder and archive cleanup, guest disk space, any new
+     name the run left in the profile, and any of the user's NuGet folders the
+     run changed.
 
-A failing test is a completed tool run with `testOutcome: failed`;
-`passed-except-excluded` means Gradle reported failing tests and every one of
-them is an excluded .NET test. A dependency the offline repository lacks is
-the tool's failure (`failedStage: gradle-dependencies`), even though Gradle
-names `:desktopApp:test` for it. An UNKNOWN job exit is still copied back,
-resuming any partial copy, and summarized as `toolOutcome: unknown` in
+A failing test is a completed tool run with `testOutcome: failed`; no failure
+is excluded. A test whose probe restore names the seed's source in a NuGet
+resolution error (NU1101 to NU1103) is the tool's failure, not the source's:
+`failedStage: dotnet-packages`, and the tests' own outcome is kept. A
+dependency the offline repository lacks is the tool's failure too
+(`failedStage: gradle-dependencies`), even though Gradle names
+`:desktopApp:test` for it. An UNKNOWN job exit is still copied back, resuming
+any partial copy, and summarized as `toolOutcome: unknown` in
 `summary-unknown.json`, but only once every file its receipt names is here and
 verified; until then each status reports `copyBack: incomplete` and tries
 again. One copy-back or summary of an operation runs at a time; a concurrent

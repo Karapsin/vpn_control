@@ -2329,6 +2329,28 @@ known digest. Closing it means committing Gradle dependency verification (sha256
 both the export and the guest build with `--dependency-verification strict`, which changes every
 build of the repository, or committing a reviewed export manifest that `prepare` must match.
 
+### Windows in-guest desktop test, CI's .NET SDK and an offline NuGet seed (2026-11-13)
+
+The user's default decision on the row above: the 24 Windows-only .NET tests run in the guest,
+offline, instead of being excluded. Built in `4aa1293f` on `guest-desktop-test`; nothing here has
+reached a VM. The RED tree is `git archive dd3d30ab` with only the three updated test modules copied
+in. `red_green.sh` and one log per failure type and interpreter are under `.runtime/followup2/` of
+the build clone. RED and GREEN counts are the same on Python 3.14 and 3.12. The real-SDK
+regression runs the osx-arm64 SDK 10.0.403, verified against the SHA-512 Microsoft's release
+manifest lists, through `VPN_CONTROL_TEST_DOTNET`, and skips without it.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| CI's SDK was not staged | `InputTests.test_the_dotnet_pin_is_this_checkouts_toolchain_lock_and_global_json`, `ToolchainTests.test_a_publisher_sha512_is_checked_with_the_size_and_sha256`, `PrepareTests.test_prepare_keeps_cis_sdk_and_the_nuget_seed_as_the_fifth_and_sixth_archives`, `PrepareTests.test_an_sdk_zip_the_runner_could_not_use_is_refused_by_prepare`, `StartTests.test_cis_sdk_and_the_nuget_seed_are_staged_and_given_to_the_job_with_their_pins`, `DesktopJobTests.test_cis_sdk_and_the_nuget_seed_are_pushed_pinned_by_the_worker_and_named_in_the_runner_request` | `dotnet-sdk-10.0.403-win-x64.zip` (300745255 bytes) is used only after the lock's SHA-512 and the recorded size and sha256 match, and an SDK zip without its muxer, SDK or runtime is refused by `prepare`. RED (6 tests): failures=4, errors=3, no `DOTNET` and four archives staged. GREEN: OK. |
+| No offline NuGet seed | `SeedTests` | `Microsoft.NET.ILLink.Tasks` 10.0.14 (1535193 bytes), the one package the probes restore from nuget.org (the SDK's `KnownILLinkPack` for net10.0 that `EnableAotAnalyzer` adds), is pinned by the `packageHash` and `packageSize` of its nuget.org catalog entry and zipped into a deterministic flat-folder seed. RED (2 tests): errors=2, no `nuget_seed`. GREEN: OK. |
+| The build saw no SDK and could reach nuget.org | `RunnerTests.test_the_build_gets_cis_pinned_sdk_and_a_nuget_configuration_with_only_the_seed_folder`, `RunnerTests.test_the_users_own_nuget_folders_are_compared_before_and_after`, `OfflineRestoreTests.test_a_probe_restores_only_from_the_seed_folder_and_nothing_reaches_its_own_remote_source` | `VPN_CONTROL_TEST_DOTNET`, `DOTNET_ROOT`, the first-run, telemetry and logo switches, `RestoreConfigFile` naming a NuGet.Config whose only source is the seed folder, and refused loopback proxies. The real SDK restores a probe whose own config names a decoy feed: with the seed it succeeds and the decoy sees no request; with an empty seed it fails NU1101 against the seed source only. RED (3 tests): failures=1, errors=2, the RED runner read the probe's own config (NU1301 from the decoy). GREEN: OK. |
+| An incomplete SDK or seed had no stage of its own | `RunnerTests.test_an_sdk_archive_without_its_pinned_layout_fails_its_own_stage`, `test_a_seed_that_is_not_the_requested_packages_fails_its_own_stage`, `test_an_sdk_that_does_not_run_as_the_source_pins_it_fails_the_dotnet_check`, `RequestTests.test_the_windows_request_is_closed_and_derived_from_its_operation` | `extract-dotnet`, `extract-nuget` and `dotnet-check` are tool failures before Gradle. RED (4 tests): errors=4, the request has no `dotnet`. GREEN: OK. |
+| The exclusion hid real failures, and a missing package read as the source's | `StatusTests.test_a_test_that_could_not_start_dotnet_is_a_failure_like_any_other`, `StatusTests.test_a_package_the_offline_seed_lacks_is_the_tools_failure_not_the_sources`, `ResultTests.test_only_a_restore_error_naming_the_seed_marks_a_failure_as_the_tools`, `ResultTests.test_the_tool_outcome_and_the_test_outcome_are_apart`; controls `StatusTests.test_restore_words_that_do_not_name_the_seed_stay_the_sources_failure`, `test_any_other_failure_to_start_a_program_still_fails_the_source` | `excludedTests` and `passed-except-excluded` are gone. A NuGet resolution error (NU1101 to NU1103) naming the seed's source is `failedStage: dotnet-packages`, the tests' own outcome kept. RED (4 tests): failures=3, errors=2, `('completed', None, 'failed')`. Controls pass on both trees. GREEN: OK. |
+| A commit pinning another SDK would run with this one | `SourceTests.test_a_commit_whose_dotnet_sdk_pin_is_not_the_tools_is_refused_before_anything_else` | The commit's own `toolchain.lock.json` and `global.json` must name the tool's SDK, url and SHA-512 (`desktop_test_dotnet_sdk_unpinned`). RED (1 test, 7 subtests): failures=7. GREEN: OK. |
+
+Native only: extraction and `dotnet --version` on Windows, the seed restore with the win-x64 SDK,
+the 24 tests' own outcome, and the user's NuGet migration folder comparison.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals
