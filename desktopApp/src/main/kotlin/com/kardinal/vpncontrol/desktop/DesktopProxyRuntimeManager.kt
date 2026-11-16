@@ -92,6 +92,7 @@ class DesktopProxyRuntimeManager(
     }
 
     private var nativeOperations: DesktopRuntimeManagerNative? = null
+    private val runtimeCleanup = DesktopBootstrapCleanup(label = CONNECTION_RUNTIME_LABEL)
     private var resourceScopeProvider: DesktopWindowsRuntimeResourceScopeProvider? = null
 
     @Synchronized internal fun bindRuntimeResourceScopeProvider(provider: DesktopWindowsRuntimeResourceScopeProvider) {
@@ -315,14 +316,26 @@ class DesktopProxyRuntimeManager(
         throw DesktopWindowsRuntimeFailure("RUNTIME_FAILED")
     }
 
+    /**
+     * Removes a launch's candidate folder: the captured SSH key copy, the configuration (the location's credentials),
+     * the log (kept first as [defaultLogFile]) and the folder. Windows refuses a deletion while any handle without delete
+     * sharing is open, which a scanner, or a child whose handles are not closed yet, can hold for a while after the
+     * runtime ended, so each refusal is retried with [runtimeCleanup]'s bounded backoff, and a log that cannot be kept
+     * never keeps the credential-bearing files. What still stays is one stderr line per leaf and a failure, which keeps
+     * the launch for the transition's next retirement (its next start or stop) instead of being swallowed.
+     */
     private fun retireLaunch(launch: DesktopRuntimeLaunch) {
         launch.captured?.close()
-        if (Files.exists(launch.logFile) && Files.size(launch.logFile) > 0)
-            Files.copy(launch.logFile, defaultLogFile(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-        Files.deleteIfExists(launch.configPath.parent.resolve("home-ssh-private-key"))
-        Files.deleteIfExists(launch.configPath)
-        Files.deleteIfExists(launch.logFile)
-        Files.deleteIfExists(launch.configPath.parent) // Never recursively remove unexpected files.
+        try {
+            if (Files.exists(launch.logFile) && Files.size(launch.logFile) > 0)
+                Files.copy(launch.logFile, defaultLogFile(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        } catch (failure: IOException) {
+            runtimeCleanup.note("the runtime log was not kept (${failure.javaClass.simpleName})")
+        }
+        val folder = launch.configPath.parent
+        // Never recursively remove unexpected files: a folder still holding one is refused and reported.
+        val left = runtimeCleanup.removeAll(listOf(folder.resolve("home-ssh-private-key"), launch.configPath, launch.logFile, folder))
+        if (left.isNotEmpty()) throw IOException("RUNTIME_RETIREMENT_INCOMPLETE")
         if (logFile == launch.logFile) logFile = null
     }
 

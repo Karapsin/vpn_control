@@ -299,6 +299,9 @@ internal class DesktopBootstrapCleanup(
         return awaitProcessObject(process)
     }
 
+    /** Whether [process]'s process object (not only its exit code) ended within [exitMillis]; never asks it to end. */
+    fun awaitEnded(process: Process): Boolean = awaitProcessObject(process)
+
     /** A sing-box an earlier owner left running: asked to end, killed after [graceMillis], reported by pid. */
     fun endStale(handle: ProcessHandle) {
         val ended = try {
@@ -333,6 +336,38 @@ internal class DesktopBootstrapCleanup(
         }
     }
 
+    /**
+     * Removes [paths] in their order, a folder after what it held: each pass tries every path still present, and the
+     * passes follow the bounded backoff, so the whole set takes one bound however many paths the OS keeps refusing.
+     * Each path that stays is reported by leaf like [finish] does; they are returned in their order.
+     */
+    fun removeAll(paths: List<Path>): List<Path> {
+        val refusals = LinkedHashMap<Path, Pair<IOException, Int>>()
+        var pending = paths
+        for (attempt in 0..retryDelaysMillis.size) {
+            if (attempt > 0) {
+                try {
+                    sleep(retryDelaysMillis[attempt - 1])
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+            }
+            pending = pending.filter { path ->
+                val refusal = deleteOnce(path)
+                if (refusal == null) refusals.remove(path) else refusals[path] = refusal.first to attempt + 1
+                refusal?.second == true
+            }
+            if (pending.isEmpty()) break
+        }
+        for ((path, refusal) in refusals) {
+            val (failure, attempts) = refusal
+            note("${path.fileName} was not removed after $attempts ${if (attempts == 1) "attempt" else "attempts"} " +
+                "(${describe(failure)})")
+        }
+        return paths.filter(refusals::containsKey)
+    }
+
     /** The last refusal, or null once [path] is gone, with the number of deletions tried. */
     private fun removeCounting(path: Path): Pair<IOException?, Int> {
         var refusal: IOException? = null
@@ -345,18 +380,23 @@ internal class DesktopBootstrapCleanup(
                     return refusal to attempt
                 }
             }
-            try {
-                delete(path)
-                if (gone(path)) return null to attempt + 1
-                refusal = FileSystemException(path.fileName.toString(), null, "still listed after its deletion")
-            } catch (failure: FileSystemException) {
-                // A sharing violation or access denied (a delete-pending name) on Windows; EACCES, EPERM or EBUSY elsewhere.
-                refusal = failure
-            } catch (failure: IOException) {
-                return failure to attempt + 1
-            }
+            val outcome = deleteOnce(path) ?: return null to attempt + 1
+            refusal = outcome.first
+            if (!outcome.second) return refusal to attempt + 1
         }
         return refusal to retryDelaysMillis.size + 1
+    }
+
+    /** Null once [path] is gone; otherwise the refusal and whether another attempt may succeed. */
+    private fun deleteOnce(path: Path): Pair<IOException, Boolean>? = try {
+        delete(path)
+        if (gone(path)) null else FileSystemException(path.fileName.toString(), null, "still listed after its deletion") to true
+    } catch (failure: FileSystemException) {
+        // A sharing violation or access denied (a delete-pending name) on Windows; EACCES, EPERM or EBUSY elsewhere;
+        // a folder that still holds a file (DirectoryNotEmptyException) until that file is gone.
+        failure to true
+    } catch (failure: IOException) {
+        failure to false
     }
 
     private fun awaitHandle(handle: ProcessHandle, millis: Long): Boolean = try {
@@ -404,6 +444,7 @@ internal class DesktopBootstrapCleanup(
 
 /** Labels of the owner's short-lived runtimes on its stderr. */
 internal const val VALIDATION_RUNTIME_LABEL = "Find Best validation"
+internal const val CONNECTION_RUNTIME_LABEL = "Connection runtime"
 internal const val DIRECT_PROBE_LABEL = "Direct probe"
 internal const val VALIDATION_FILE_PREFIX = "validate-"
 internal const val DIRECT_PROBE_FILE_PREFIX = "direct-probe-"
