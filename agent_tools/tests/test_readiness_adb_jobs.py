@@ -86,6 +86,13 @@ if command=='head' and len(args)==2 and args[0]=='-c':
   if not b:break
   if len(kept)<limit:kept.extend(b[:limit-len(kept)])
  os.write(1,kept);raise SystemExit
+if command=='mkdir':
+ # Toybox mkdir fails with EEXIST, so guest admission is exclusive. A host
+ # mkdir may report success for a directory a concurrent caller just created.
+ assert len(args)==3 and args[0]=='-m'
+ try:os.mkdir(args[2],0o700)
+ except OSError as error:os.write(2,('mkdir: '+error.strerror).encode());raise SystemExit(1)
+ os.chmod(args[2],int(args[1],8));raise SystemExit
 if command=='mkfifo':
  os.write(2,b'mkfifo: Permission denied');raise SystemExit(1)
 if command=='nohup':
@@ -268,6 +275,33 @@ class AdbJobTests(unittest.TestCase):
         terminal=self.peer.terminal(original)
         self.assertEqual(8,len(terminal['stdout'].splitlines()))
         self.assertEqual('once\n',(Path(original.guest.path)/original.operation_id/'executions').read_text())
+
+    def test_guest_admission_stays_exclusive_with_a_host_mkdir_that_accepts_a_raced_directory(self):
+        # On ubuntu-26.04 (Fast Checks run 43474297086) both concurrent admissions
+        # were acknowledged, so the controlled guest's "mkdir -m 700" succeeded for
+        # an existing directory. Android toybox mkdir fails with EEXIST. Here the
+        # host mkdir is a racing loser that only checks the directory exists.
+        existing=self.root/'admitted';existing.mkdir(mode=0o700)
+        fresh=self.root/'fresh'
+        host=r'''
+import os,runpy,sys
+def execv(path,argv):
+    if os.path.basename(path)!='mkdir':raise SystemExit(96)
+    target=argv[-1]
+    try:os.mkdir(target,0o700)
+    except FileExistsError:
+        if not os.path.isdir(target):raise SystemExit(1)
+    os.chmod(target,int(argv[argv.index('-m')+1],8));raise SystemExit(0)
+os.execv=execv;sys.argv=sys.argv[1:];runpy.run_path(sys.argv[0],run_name='__main__')
+'''
+        def toybox(target):
+            return subprocess.run([sys.executable,'-c',host,str(self.peer.tools),'mkdir','-m','700',str(target)],
+                                  stdin=subprocess.DEVNULL,capture_output=True,timeout=10)
+        refused=toybox(existing)
+        self.assertEqual(1,refused.returncode,refused.stderr.decode())
+        created=toybox(fresh)
+        self.assertEqual(0,created.returncode,created.stderr.decode())
+        self.assertEqual(0o700,stat.S_IMODE(fresh.lstat().st_mode))
 
     def test_bounded_spools_drain_overflow_without_replacing_mutation(self):
         source=b'i=0; while [ "$i" -lt 2000 ]; do printf "public output\\n"; i=$((i+1)); done; printf "once\\n" > "$J/effect"'
