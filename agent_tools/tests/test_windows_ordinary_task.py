@@ -723,7 +723,7 @@ class BoundedCaseFileTests(unittest.TestCase):
 
 
 class FiniteEnrollmentTests(unittest.TestCase):
-    def test_reviewed_test_source_has_only_finite_resources_and_changed_source_refuses(self):
+    def test_reviewed_test_source_has_only_finite_resources(self):
         source_path = "agent_tools/tests/test_windows_ordinary_task.py"
         source = Path(__file__).read_text(encoding="utf-8")
         record = selector.REVIEWED_DYNAMIC_DEPENDENCIES[source_path]
@@ -738,8 +738,8 @@ class FiniteEnrollmentTests(unittest.TestCase):
             "agent_tools/tests/fixtures/windows_ordinary_task/disconnected-file-read.provenance.json"}
         self.assertLessEqual(required, edges)
         self.assertNotIn(unrelated, edges)
-        with self.assertRaises(selector.SelectionError):
-            selector.dependencies(source_path, source + "\n# unreviewed loader change\n", inventory)
+        # Declarations are keyed by path, not by source digest (TEST-004).
+        self.assertEqual(edges, selector.dependencies(source_path, source + "\n# edited loader\n", inventory))
 
     def test_new_resource_changes_select_this_existing_routine_suite(self):
         source_path = "agent_tools/tests/test_windows_ordinary_task.py"
@@ -778,7 +778,7 @@ def document_cli_inputs():
 
 
 class DocumentActionTests(unittest.TestCase):
-    def test_document_helper_sources_have_exact_hash_bound_dependency_scope(self):
+    def test_document_helper_sources_have_exact_dependency_scope(self):
         path = "agent_tools/windows_document_cli_cases.py"
         source = Path(document_cases.__file__).read_text(encoding="utf-8")
         record = selector.REVIEWED_DYNAMIC_DEPENDENCIES[path]
@@ -787,8 +787,7 @@ class DocumentActionTests(unittest.TestCase):
         self.assertEqual({"agent_tools/windows_document_client.py",
                           "agent_tools/windows_document_native.py",
                           "agent_tools/windows_document_export_race.py"}, set(record["scopes"]))
-        with self.assertRaises(selector.SelectionError):
-            selector.dependencies(path, source + "\n# unreviewed helper loader change\n", inventory)
+        self.assertEqual(set(record["scopes"]), selector.dependencies(path, source + "\n# edited helper loader\n", inventory))
 
     def test_closed_document_action_inputs_are_pinned_and_baseline_excluded(self):
         common, fields = document_cli_inputs()

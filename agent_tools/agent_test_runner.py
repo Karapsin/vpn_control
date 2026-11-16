@@ -300,6 +300,10 @@ class TimingResult(unittest.TextTestResult):
         self.fixture_started = None
 
     def startTest(self, test):
+        recorder = getattr(self, "footprints", None)
+        if recorder is not None:
+            module = type(test).__module__ or ""
+            recorder.current = module.replace(".", "/") + ".py" if MODULE.fullmatch(module) else recorder.current
         identity = self.public_identities.get(id(test), "unclassified-test")
         self.active[id(test)] = {"testId": identity, "publicTestId": identity,
                                 "startedMonotonic": time.monotonic(), "outcome": "incomplete"}
@@ -466,19 +470,43 @@ def load_suite(names: list[str], *, exact=False):
     return suite
 
 
+def _footprint_recorder(isolation):
+    """CI opt-in: record what each test module reads (agent_test_footprints)."""
+    target = os.environ.get("AGENT_TEST_FOOTPRINT_DIR")
+    if not target or isolation is not None:
+        return None, None
+    if __package__:
+        from . import agent_test_footprints
+    else:
+        import agent_test_footprints
+    recorder = agent_test_footprints.Recorder(Path.cwd(), exclude={RUNNER_SELF_PATH}).install()
+    return recorder, lambda: agent_test_footprints.write_worker(Path(target), recorder, os.environ.get("GITHUB_SHA"))
+
+
 def worker(plan: dict, directory: Path, *, isolation=None) -> int:
     context = directory / "sources" if isolation is not None else Path.cwd()
     sys.path.insert(0, str(context))
     started = time.monotonic()
+    recorder, save_footprints = _footprint_recorder(isolation)
     with create_file(directory / "timings.jsonl") as journal:
         if isolation is not None and not sources_match(context, isolation):
             print("Agent unittest isolation refused: source-drift", file=sys.stderr)
             return 2
         suite = load_suite(plan["modules"])
         runner = unittest.TextTestRunner(verbosity=1)
-        runner.resultclass = lambda *args, **kwargs: TimingResult(*args, journal=journal, public_identities=suite.public_identities,
-                                                                fixture_identities=suite.fixture_identities, **kwargs)
+        def result_class(*args, **kwargs):
+            result = TimingResult(*args, journal=journal, public_identities=suite.public_identities,
+                                  fixture_identities=suite.fixture_identities, **kwargs)
+            result.footprints = recorder
+            return result
+        runner.resultclass = result_class
         result = runner.run(suite)
+        if save_footprints is not None:
+            try:
+                save_footprints()
+            except OSError as error:
+                # Footprints only narrow local selection; never a test outcome.
+                print("Agent test footprint not retained: " + type(error).__name__, file=sys.stderr)
         terminal = {"schemaVersion": 1, "state": "complete", "sourceFingerprint": plan["sourceFingerprint"],
                     "modules": plan["modules"], "startedMonotonic": started, "endedMonotonic": time.monotonic(),
                     "counts": counts(result), "timings": result.timings, "successful": result.wasSuccessful()}

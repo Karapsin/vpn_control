@@ -1,5 +1,6 @@
 """Causal selection controls; inert sources and temporary real Git only."""
 import ast
+import importlib.util
 import gzip
 import hashlib
 import json
@@ -19,9 +20,9 @@ class DependencySelectionTests(unittest.TestCase):
         return {'agent_tools/leaf.py':'value=1', 'agent_tools/adapter.py':'from . import leaf',
                 'agent_tools/other.py':'value=2', 'agent_tools/tests/test_adapter.py':'from agent_tools import adapter',
                 'agent_tools/tests/test_other.py':'from agent_tools import other', 'Feature.kt':None}
-    def plan(self, changed, additions=None):
-        return selector.select_from_sources(self.sources() | (additions or {}), changed)
-    def test_reviewed_frozen_transport_package_context_is_finite_and_hash_bound(self):
+    def plan(self, changed, additions=None, **options):
+        return selector.select_from_sources(self.sources() | (additions or {}), changed, **options)
+    def test_reviewed_frozen_transport_package_context_is_finite(self):
         root=Path(__file__).resolve().parents[2]
         for name in ('ssh_transport.before-reviewed74.py.gz','ssh_transport.checkpoint74.py.gz'):
             with self.subTest(name=name):
@@ -31,7 +32,6 @@ class DependencySelectionTests(unittest.TestCase):
                 edges=selector.dependencies(path,source,inventory)
                 self.assertIn('agent_tools/ssh_connection_session.py',edges)
                 self.assertNotIn('agent_tools/unrelated.py',edges)
-                with self.assertRaises(selector.SelectionError):selector.dependencies(path,source+'\n# changed loader bytes\n',inventory)
     def test_literal_self_import_is_bounded(self):
         sources=self.sources()|{'agent_tools/tests/test_self.py':"__import__('agent_tools.tests.test_self',fromlist=['VALUE'])"}
         self.assertEqual(('agent_tools.tests.test_adapter',),selector.select_from_sources(sources,{'agent_tools/leaf.py'}).modules)
@@ -41,13 +41,27 @@ class DependencySelectionTests(unittest.TestCase):
         self.assertEqual((), self.plan(['agent_docs/development.md','AGENTS.md','docs/CHANGELOG.md','gradle.properties']).modules)
     def test_transitive_consumer_only(self):
         self.assertEqual(('agent_tools.tests.test_adapter',), self.plan(['agent_tools/leaf.py']).modules)
-    def test_fixture_pin_dependency(self):
-        self.assertEqual(('agent_tools.tests.test_pin',), self.plan(['agent_tools/tests/fixtures/frozen.py.gz'],
-          {'agent_tools/tests/fixtures/frozen.py.gz':None, 'agent_tools/tests/test_pin.py':"from pathlib import Path\np=Path('fixtures')/'frozen.py.gz'\nPIN='ab'*32"}).modules)
-    def test_computed_fixture_resource_read_includes_shared_consumers(self):
+    def test_literal_fixture_path_dependency(self):
+        additions={'agent_tools/tests/fixtures/frozen.py.gz':None,
+                   'agent_tools/tests/test_pin.py':"from pathlib import Path\np=Path(__file__).parent/'fixtures/frozen.py.gz'"}
+        self.assertEqual(('agent_tools.tests.test_pin',), self.plan(['agent_tools/tests/fixtures/frozen.py.gz'],additions).modules)
+    def test_named_fixture_directory_selects_its_test(self):
+        additions={'agent_tools/tests/fixtures/windows_family/before.source':None,'agent_tools/tests/fixtures/windows_family/provenance.json':None,
+                   'agent_tools/tests/test_family.py':"from pathlib import Path\nFIXTURE=Path(__file__).parent/'fixtures'/'windows_family'"}
+        for changed in ('agent_tools/tests/fixtures/windows_family/before.source','agent_tools/tests/fixtures/windows_family/provenance.json'):
+            with self.subTest(changed=changed):
+                self.assertEqual(('agent_tools.tests.test_family',),self.plan([changed],additions).modules)
+    def test_bare_file_names_and_comments_name_nothing(self):
+        # A shared name such as before.source or provenance.json, a comment and an
+        # identifier are not dependencies: the old token scan linked them all.
+        additions={'agent_tools/tests/fixtures/a/before.source':None,'agent_tools/tests/fixtures/b/before.source':None,
+                   'agent_tools/tests/test_a.py':"from pathlib import Path\nA=Path(__file__).parent/'fixtures/a'/'before.source'",
+                   'agent_tools/tests/test_b.py':"# see agent_tools/leaf.py and fixtures/a\nleaf=1\nNAME='before.source'"}
+        self.assertEqual(('agent_tools.tests.test_a',),self.plan(['agent_tools/tests/fixtures/a/before.source'],additions).modules)
+        self.assertEqual(('agent_tools.tests.test_adapter',),self.plan(['agent_tools/leaf.py'],additions).modules)
+    def test_computed_fixture_resource_read_uses_its_declaration(self):
         text="from pathlib import Path\nROOT=Path(__file__).parent/'fixtures'\ndef read(name):\n return (ROOT/(name+'.json')).read_text()"
-        declaration={'sourceSha256':[hashlib.sha256(text.encode()).hexdigest()],'scopes':['agent_tools/tests/fixtures/shared.json']}
-        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/tests/test_computed.py':declaration}):
+        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/tests/test_computed.py':{'scopes':['agent_tools/tests/fixtures/shared.json']}}):
             self.assertEqual(('agent_tools.tests.test_computed','agent_tools.tests.test_literal'),self.plan(['agent_tools/tests/fixtures/shared.json'],
               {'agent_tools/tests/fixtures/shared.json':None,'agent_tools/tests/test_computed.py':text,'agent_tools/tests/test_literal.py':"filename='fixtures/shared.json'"}).modules)
     def test_fixture_transitive_dependency(self):
@@ -56,82 +70,138 @@ class DependencySelectionTests(unittest.TestCase):
     def test_literal_dynamic_loader(self):
         self.assertIn('agent_tools.tests.test_loader', self.plan(['agent_tools/leaf.py'],
           {'agent_tools/tests/test_loader.py':"import importlib.util\nfrom pathlib import Path\np=Path('agent_tools/leaf.py')\nmodule=importlib.util.spec_from_file_location('loaded',p)"}).modules)
-    def test_local_dispatcher_consumes_package(self):
-        self.assertEqual(('agent_tools.tests.test_adapter','agent_tools.tests.test_dispatch'), self.plan(['agent_tools/leaf.py'],
-          {'agent_tools/dispatcher.py':"import importlib\ndef load(name):\n return importlib.import_module('agent_tools.'+name)", 'agent_tools/tests/test_dispatch.py':'from agent_tools import dispatcher'}).modules)
-    def test_unknown_loader_refuses_even_with_known_unrelated_import(self):
-        with self.assertRaisesRegex(selector.SelectionError,'Unresolved source loader'):
-            self.plan(['agent_tools/leaf.py'], {'agent_tools/tests/test_adapter.py':"from agent_tools import adapter\nimport importlib.util\ndef load(path):\n return importlib.util.spec_from_file_location('x',path)"})
-    def test_unknown_new_source_refuses(self):
-        with self.assertRaisesRegex(selector.SelectionError,'no known consumers'):
-            self.plan(['agent_tools/new.py'], {'agent_tools/new.py':'x=1'})
+        self.assertIn('agent_tools.tests.test_named', self.plan(['agent_tools/leaf.py'],
+          {'agent_tools/tests/test_named.py':"import importlib\nmodule=importlib.import_module('agent_tools.leaf')"}).modules)
+    def test_computed_dispatch_is_left_to_recorded_footprints(self):
+        additions={'agent_tools/dispatcher.py':"import importlib\ndef load(name):\n return importlib.import_module('agent_tools.'+name)",
+                   'agent_tools/tests/test_dispatch.py':'from agent_tools import dispatcher'}
+        self.assertEqual(('agent_tools.tests.test_adapter',),self.plan(['agent_tools/leaf.py'],additions).modules)
+        footprints={'schemaVersion':1,'sourceCommit':'a'*40,'edges':{'agent_tools/tests/test_dispatch.py':['agent_tools/leaf.py']},'directories':{}}
+        selection=self.plan(['agent_tools/leaf.py'],additions,footprints=footprints)
+        self.assertEqual(('agent_tools.tests.test_adapter','agent_tools.tests.test_dispatch'),selection.modules)
+        self.assertEqual('a'*40,selection.footprint_commit)
+    def test_recorded_module_reads_reach_every_importing_test(self):
+        # leaf reads its data file while it is imported; both importers select.
+        additions={'agent_tools/data.json':None,'agent_tools/tests/test_leaf_direct.py':'from agent_tools import leaf'}
+        footprints={'schemaVersion':1,'edges':{'agent_tools/leaf.py':['agent_tools/data.json'],'agent_tools/gone.py':['agent_tools/data.json']}}
+        self.assertEqual(('agent_tools.tests.test_adapter','agent_tools.tests.test_leaf_direct'),
+                         self.plan(['agent_tools/data.json'],additions,footprints=footprints).modules)
+        self.assertEqual((),self.plan(['agent_tools/data.json'],additions).modules)
+    def test_listed_directory_selects_only_on_added_or_removed_children(self):
+        additions={'agent_tools/tests/fixtures/set/one.json':None,'agent_tools/tests/test_lister.py':'pass'}
+        footprints={'schemaVersion':1,'edges':{},'directories':{'agent_tools/tests/test_lister.py':['agent_tools/tests/fixtures/set']}}
+        changed=['agent_tools/tests/fixtures/set/one.json']
+        self.assertEqual((),self.plan(changed,additions,footprints=footprints).modules)
+        self.assertEqual(('agent_tools.tests.test_lister',),self.plan(changed,additions,footprints=footprints,structural=frozenset(changed)).modules)
+    def test_production_function_import_is_left_to_footprints(self):
+        additions={'agent_tools/router.py':'def route():\n from agent_tools import leaf\n return leaf.value',
+                   'agent_tools/tests/test_router.py':'from agent_tools import router',
+                   'agent_tools/tests/test_lazy.py':'def test_body():\n from agent_tools import leaf'}
+        self.assertEqual(('agent_tools.tests.test_adapter','agent_tools.tests.test_lazy'),self.plan(['agent_tools/leaf.py'],additions).modules)
+        footprints={'schemaVersion':1,'edges':{'agent_tools/router.py':['agent_tools/leaf.py']}}
+        self.assertEqual(('agent_tools.tests.test_adapter','agent_tools.tests.test_lazy','agent_tools.tests.test_router'),
+                         self.plan(['agent_tools/leaf.py'],additions,footprints=footprints).modules)
+    def test_unconsumed_agent_change_is_reported_not_refused(self):
+        selection=self.plan(['agent_tools/new.py'], {'agent_tools/new.py':'x=1'})
+        self.assertEqual((),selection.modules)
+        self.assertEqual(('agent_tools/new.py',),selection.unconsumed)
+        self.assertEqual(['agent_tools/new.py'],selection.as_dict()['unconsumedPaths'])
+    def test_unknown_loaders_never_refuse(self):
+        for text in ("import importlib.util\ndef load(path):\n return importlib.util.spec_from_file_location('x',path)",
+                     "import importlib\ndef load(name):\n return importlib.import_module('json' if name=='public' else name)",
+                     "from pathlib import Path\ndef read(name):\n return (Path('agent_tools/tests/fixtures')/str(name)).read_bytes()",
+                     "def broken(:\n"):
+            with self.subTest(text=text):
+                self.assertEqual(('agent_tools.tests.test_adapter',),self.plan(['agent_tools/leaf.py'],{'agent_tools/tests/test_unknown.py':text}).modules)
     def test_requirements_select_only_real_sdk_consumers(self):
         self.assertEqual(('agent_tools.tests.test_sdk',),self.plan(['agent_tools/requirements-mcp.txt'],
           {'agent_tools/requirements-mcp.txt':None,'agent_tools/sdk.py':'import mcp','agent_tools/tests/test_sdk.py':'from agent_tools import sdk'}).modules)
     def test_applicable_close_gate_first(self):
-        path='agent_tools/tests/test_ssh_connection_session_close.py';source='from agent_tools import leaf'
+        path='agent_tools/tests/test_ssh_connection_session_close.py';source='VALUE=1'
         # This inert source models command ordering, not the real close module.
-        declaration={'sourceSha256':[hashlib.sha256(source.encode()).hexdigest()],'scopes':['agent_tools/leaf.py']}
-        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{path:declaration}):
+        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{path:{'scopes':['agent_tools/leaf.py']}}):
             selection=self.plan(['agent_tools/leaf.py'], {path:source})
         self.assertEqual(['python','-m','unittest','agent_tools.tests.test_ssh_connection_session_close'],selection.commands('python')[0])
         self.assertEqual([],self.plan(['Feature.kt']).commands('python'))
-    def test_unrelated_unknown_loader_cannot_silently_lose_consumer(self):
-        with self.assertRaisesRegex(selector.SelectionError,'Unresolved source loader'):
-            self.plan(['agent_tools/leaf.py'], {'agent_tools/tests/test_unknown.py':"import importlib.util\ndef load(path):\n return importlib.util.spec_from_file_location('x',path)"})
-    def test_reviewed_loader_hash_cannot_auto_accept_edits(self):
+    def test_declarations_apply_by_path_without_a_source_digest(self):
         text="import importlib.util\ndef load(path):\n return importlib.util.spec_from_file_location('x',path)"
-        declaration={'sourceSha256':[hashlib.sha256(text.encode()).hexdigest()],'scopes':['agent_tools/leaf.py']}
-        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/tests/test_loader.py':declaration}):
-            self.assertIn('agent_tools.tests.test_loader',self.plan(['agent_tools/leaf.py'],{'agent_tools/tests/test_loader.py':text}).modules)
-            with self.assertRaisesRegex(selector.SelectionError,'Unresolved source loader'):
-                self.plan(['agent_tools/leaf.py'],{'agent_tools/tests/test_loader.py':text+'\n# changed opaque loader'})
+        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/tests/test_loader.py':{'scopes':['agent_tools/leaf.py']}}):
+            for version in (text,text+'\n# edited loader'):
+                self.assertIn('agent_tools.tests.test_loader',self.plan(['agent_tools/leaf.py'],{'agent_tools/tests/test_loader.py':version}).modules)
     def test_reviewed_literal_registry_selects_its_finite_consumers(self):
         text="import importlib\nREGISTRY=('leaf',)\ndef load(name):\n if name not in REGISTRY: raise ValueError()\n return importlib.import_module('agent_tools.'+name)"
-        declaration={'sourceSha256':[hashlib.sha256(text.encode()).hexdigest()],'scopes':['@modules:REGISTRY']}
-        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/dispatcher.py':declaration}):
+        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/dispatcher.py':{'scopes':['@modules:REGISTRY']}}):
             additions={'agent_tools/dispatcher.py':text,'agent_tools/tests/test_dispatch.py':'from agent_tools import dispatcher'}
             self.assertEqual(('agent_tools.tests.test_adapter','agent_tools.tests.test_dispatch'),self.plan(['agent_tools/leaf.py'],additions).modules)
             self.assertEqual(('agent_tools.tests.test_other',),self.plan(['agent_tools/other.py'],additions).modules)
-    def test_reviewed_provenance_reader_enrolls_its_finite_source_inputs(self):
-        text="def read(root,row):\n return compile((root/row['fixture']).read_bytes(),'owned','exec')"
-        fixture='agent_tools/tests/fixtures/provenance-selected.source'
-        declaration={'sourceSha256':[hashlib.sha256(text.encode()).hexdigest()],'scopes':[fixture]}
-        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/tests/test_provenance.py':declaration}):
-            self.assertEqual(('agent_tools.tests.test_provenance',),self.plan([fixture],
-                {fixture:'VALUE=1','agent_tools/tests/test_provenance.py':text}).modules)
-    def test_reviewed_static_reader_edits_and_missing_inputs_refuse(self):
-        text="def read(root,row):\n return compile((root/row['fixture']).read_bytes(),'owned','exec')"
-        fixture='agent_tools/tests/fixtures/provenance-selected.source'
-        declaration={'sourceSha256':[hashlib.sha256(text.encode()).hexdigest()],'scopes':[fixture]}
-        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/tests/test_provenance.py':declaration}):
-            with self.assertRaises(selector.SelectionError):
-                self.plan(['agent_tools/leaf.py'],{fixture:'VALUE=1','agent_tools/tests/test_provenance.py':text+'\n# unreviewed reader change\n'})
-            with self.assertRaisesRegex(selector.SelectionError,'Declared dependency is unavailable'):
-                self.plan(['agent_tools/leaf.py'],{'agent_tools/tests/test_provenance.py':text})
+    def test_hub_scopes_are_never_edges(self):
+        additions={'agent_tools/loader.py':'pass','agent_tools/tests/test_loader.py':'from agent_tools import loader'}
+        for scope in sorted(selector.HUB_SCOPES):
+            with self.subTest(scope=scope), mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/loader.py':{'scopes':[scope]}}):
+                self.assertEqual(('agent_tools.tests.test_adapter',),self.plan(['agent_tools/leaf.py'],additions).modules)
+    def test_actual_manifest_declares_no_hub_scope(self):
+        hubs=sorted((path,scope) for path,row in selector.REVIEWED_DYNAMIC_DEPENDENCIES.items() for scope in row['scopes'] if scope in selector.HUB_SCOPES)
+        self.assertEqual([],hubs)
     def test_reviewed_current_and_previous_sources_keep_both_consumers(self):
         current='from agent_tools import leaf';previous='from agent_tools import other'
         path='agent_tools/tests/test_versioned.py'
-        declaration={'sourceSha256':[hashlib.sha256(value.encode()).hexdigest() for value in (current,previous)],'scopes':['agent_tools/leaf.py']}
-        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{path:declaration}):
-            self.assertEqual(('agent_tools.tests.test_other','agent_tools.tests.test_versioned'),
-                self.plan(['agent_tools/other.py'],{path:(current,previous)}).modules)
-            declaration['sourceSha256'].pop()
-            with self.assertRaisesRegex(selector.SelectionError,'Reviewed source dependency declaration changed'):
-                self.plan(['agent_tools/other.py'],{path:(current,previous)})
+        self.assertEqual(('agent_tools.tests.test_other','agent_tools.tests.test_versioned'),
+            self.plan(['agent_tools/other.py'],{path:(current,previous)}).modules)
     def test_ordinary_variable_name_is_not_a_module_dependency(self):
         self.assertEqual(('agent_tools.tests.test_adapter',),self.plan(['agent_tools/leaf.py'],{'agent_tools/tests/test_other.py':'leaf=3'}).modules)
-    def test_declared_missing_resource_refuses(self):
-        text="import importlib.util\ndef load(path):\n return importlib.util.spec_from_file_location('x',path)"
-        declaration={'sourceSha256':[hashlib.sha256(text.encode()).hexdigest()],'scopes':['agent_tools/missing.py']}
-        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/tests/test_loader.py':declaration}):
-            with self.assertRaisesRegex(selector.SelectionError,'Declared dependency is unavailable'):
-                self.plan(['agent_tools/leaf.py'],{'agent_tools/tests/test_loader.py':text})
     def test_compressed_frozen_source_dependencies(self):
         raw=gzip.compress(b'from agent_tools import leaf')
         text=selector.read_source('agent_tools/tests/fixtures/frozen.py.gz',raw)
         self.assertEqual(('agent_tools.tests.test_adapter','agent_tools.tests.test_frozen'),self.plan(['agent_tools/leaf.py'],
           {'agent_tools/tests/fixtures/frozen.py.gz':text,'agent_tools/tests/test_frozen.py':"path='fixtures/frozen.py.gz'"}).modules)
+
+
+class HubEdgeCausalTests(unittest.TestCase):
+    """TEST-001: the preserved pre-change selector linked every tool to hundreds of suites."""
+    FIXTURE = Path(__file__).parent/'fixtures'/'selector_hub_edges'
+
+    def load(self, before):
+        temporary=tempfile.TemporaryDirectory();self.addCleanup(temporary.cleanup);folder=Path(temporary.name)
+        manifest={'schemaVersion':1,'nonPythonResources':{},'loaders':{}}
+        if before:
+            raw=(self.FIXTURE/'affected_agent_tests.before.source').read_bytes()
+            provenance=json.loads((self.FIXTURE/'provenance.json').read_bytes())
+            self.assertEqual(provenance['sha256'],hashlib.sha256(raw).hexdigest())
+        else:
+            raw=Path(selector.__file__).read_bytes()
+        server="import importlib\n_VM_NATIVE_ADAPTERS=('readiness_alpha',)\ndef _agent_module(name):\n return importlib.import_module('agent_tools.'+name)\n"
+        loader="import importlib.util\ndef adapter(directory,name):\n return importlib.util.spec_from_file_location(name,directory/(name+'.py'))\n"
+        self.sources={'agent_tools/mcp_server.py':server,'agent_tools/source_module_loader.py':loader,
+                      'agent_tools/readiness_alpha.py':'VALUE=1','agent_tools/windows_tool.py':'VALUE=2',
+                      'agent_tools/tests/test_server.py':'from agent_tools import mcp_server',
+                      'agent_tools/tests/test_loader.py':'from agent_tools import source_module_loader',
+                      'agent_tools/tests/test_alpha.py':'from agent_tools import readiness_alpha',
+                      'agent_tools/tests/test_windows_tool.py':'from agent_tools import windows_tool',
+                      'agent_tools/tests/test_comment.py':"# Unlike windows_tool.py this suite reads nothing.\nVALUE='notes'"}
+        manifest['loaders']={'agent_tools/mcp_server.py':{'reason':'r','scopes':['@modules:_VM_NATIVE_ADAPTERS']},
+                             'agent_tools/source_module_loader.py':{'reason':'r','scopes':['agent_tools/','scripts/']}}
+        if before:
+            # The preserved selector's schema bound each declaration to reviewed source digests.
+            manifest['loaders']['agent_tools/mcp_server.py']['sourceSha256']=[hashlib.sha256(server.encode()).hexdigest()]
+            manifest['loaders']['agent_tools/source_module_loader.py']['sourceSha256']=[hashlib.sha256(loader.encode()).hexdigest()]
+        else:
+            manifest={'schemaVersion':2,'loaders':manifest['loaders']}
+        (folder/'affected_agent_test_dependencies.json').write_text(json.dumps(manifest))
+        path=folder/'affected_agent_tests.py';path.write_bytes(raw)
+        name='selector_hub_edges_'+('before' if before else 'current')
+        spec=importlib.util.spec_from_file_location(name,path);module=importlib.util.module_from_spec(spec)
+        sys.modules[name]=module;self.addCleanup(sys.modules.pop,name,None);spec.loader.exec_module(module)
+        return module
+
+    def assert_precise(self, module):
+        self.assertEqual(('agent_tools.tests.test_windows_tool',),module.select_from_sources(self.sources,{'agent_tools/windows_tool.py'}).modules)
+        self.assertEqual(('agent_tools.tests.test_alpha',),module.select_from_sources(self.sources,{'agent_tools/readiness_alpha.py'}).modules)
+
+    def test_preserved_selector_hubs_RED_current_precise_GREEN(self):
+        with self.assertRaises(AssertionError):
+            self.assert_precise(self.load(before=True))
+        self.assert_precise(self.load(before=False))
+
 
 class RepairDeclarationTests(unittest.TestCase):
     """Exercise the real reviewed loader inputs, without importing their code."""
@@ -155,11 +225,8 @@ class RepairDeclarationTests(unittest.TestCase):
             elif not scope.startswith('@'):
                 inventory.add(scope)
         edges=selector.dependencies(path,source,inventory)
-        self.assertLessEqual(required,edges)
+        self.assertLessEqual(set(required)-{path},edges)
         self.assertNotIn(unrelated,edges)
-        # An exact review of an opaque source does not authorize future edits.
-        with self.assertRaises(selector.SelectionError):
-            selector.dependencies(path,source+'\n# unreviewed loader change\n',inventory)
 
     def test_current_linux_worker_review_remains_finite(self):
         self.assert_reviewed('agent_tools/linux_deb_arch_guest_prepare_remote.py',
@@ -254,7 +321,9 @@ class RepairDeclarationTests(unittest.TestCase):
     def test_old_resource_control_enrolls_authentic_original_host_inputs(self):
         path='agent_tools/tests/test_ssh_tmux_resource_admission.py'
         fixture='agent_tools/tests/fixtures/resource_instance/'
-        inputs={fixture+'before.source',fixture+'native_host.before.source',fixture+'native_host.provenance.json'}
+        # Its literal fixture path is a static edge; the sibling inputs it derives
+        # from that path are recorded by its CI footprint.
+        inputs={fixture+'before.source'}
         source=(self.root/path).read_text(encoding='utf-8')
         edges=selector.dependencies(path,source,{path,*inputs,'agent_tools/unrelated.py'})
         self.assertLessEqual(inputs,edges)
@@ -670,23 +739,13 @@ class IndependentReviewPolicyControls(unittest.TestCase):
         self.assertEqual((),selector.select_from_sources(sources,{'Feature.kt'}).modules)
     def test_shared_mcp_selects_only_actual_consumers(self):
         sources={'agent_tools/mcp_server.py':'value=1','agent_tools/other.py':'value=2','agent_tools/tests/test_mcp.py':'from agent_tools import mcp_server','agent_tools/tests/test_other.py':'from agent_tools import other'}
-        # The synthetic server has its own exact finite declaration; current
-        # production source metadata cannot authorize these fixture bytes.
-        declaration={'sourceSha256':[hashlib.sha256(sources['agent_tools/mcp_server.py'].encode()).hexdigest()],'scopes':[]}
+        # The synthetic server has its own finite declaration.
+        declaration={'scopes':[]}
         with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/mcp_server.py':declaration}):
             self.assertEqual(('agent_tools.tests.test_mcp',),selector.select_from_sources(sources,{'agent_tools/mcp_server.py'}).modules)
     def test_shared_retention_selects_only_actual_consumers(self):
         sources={'agent_tools/check_output_retention.py':'value=1','agent_tools/other.py':'value=2','agent_tools/tests/test_retention.py':'from agent_tools import check_output_retention','agent_tools/tests/test_other.py':'from agent_tools import other'}
         self.assertEqual(('agent_tools.tests.test_retention',),selector.select_from_sources(sources,{'agent_tools/check_output_retention.py'}).modules)
-    def test_stdlib_literal_does_not_qualify_unknown_alternative(self):
-        sources={'agent_tools/leaf.py':'value=1','agent_tools/tests/test_leaf.py':'from agent_tools import leaf','agent_tools/tests/test_hidden_loader.py':"import importlib\ndef load(name):\n return importlib.import_module('json' if name=='public' else name)"}
-        with self.assertRaises(selector.SelectionError):selector.select_from_sources(sources,{'agent_tools/leaf.py'})
-    def test_known_local_literal_does_not_qualify_unknown_alternative(self):
-        sources={'agent_tools/leaf.py':'value=1','agent_tools/other.py':'value=1','agent_tools/tests/test_leaf.py':'from agent_tools import leaf','agent_tools/tests/test_hidden_loader.py':"import importlib\ndef load(name):\n return importlib.import_module('agent_tools.other' if name=='public' else name)"}
-        with self.assertRaises(selector.SelectionError):selector.select_from_sources(sources,{'agent_tools/leaf.py'})
-    def test_known_source_path_does_not_qualify_unknown_alternative(self):
-        sources={'agent_tools/leaf.py':'value=1','agent_tools/tests/test_leaf.py':'from agent_tools import leaf','agent_tools/tests/test_hidden_loader.py':"import importlib.util\ndef load(name):\n return importlib.util.spec_from_file_location('loaded','agent_tools/leaf.py' if name=='public' else name)"}
-        with self.assertRaises(selector.SelectionError):selector.select_from_sources(sources,{'agent_tools/leaf.py'})
     def test_windows_pr_filter_admits_dependency_registry_change(self):
         workflow=Path(os.environ.get('WINDOWS_AGENT_FILTER_SOURCE',Path(__file__).resolve().parents[2]/'.github/workflows/windows-desktop.yml'))
         body=workflow.read_text().split('  pull_request:',1)[1].split('jobs:',1)[0]
@@ -697,28 +756,21 @@ class IndependentReviewPolicyControls(unittest.TestCase):
 class DirectoryInputPolicyTests(unittest.TestCase):
     def plan(self,body):
         return selector.select_from_sources({'agent_tools/tests/fixtures/value.json':None,'agent_tools/tests/test_reader.py':body,'agent_tools/tests/test_other.py':'pass','agent_tools/tests/test_actual.py':"from pathlib import Path\nPath('agent_tools/tests/fixtures/value.json').read_text()"},{'agent_tools/tests/fixtures/value.json'})
-    def test_directory_writer_does_not_consume_unrelated_children(self):
-        self.assertEqual(('agent_tools.tests.test_actual',),self.plan("from pathlib import Path\nPath('agent_tools/tests/fixtures').mkdir()\nPath('agent_tools/tests/fixtures').write_text('inert')").modules)
-    def test_command_directory_data_is_not_a_module_dependency(self):
-        self.assertEqual(('agent_tools.tests.test_actual',),self.plan("COMMAND=['python','-m','unittest','discover','-s','agent_tools/tests/fixtures']").modules)
-    def test_literal_filename_loop_reads_only_finite_named_inputs(self):
-        sources={'agent_tools/tests/fixtures/value.json':None,'agent_tools/tests/fixtures/other.json':None,'agent_tools/tests/test_named.py':"from pathlib import Path\nfor name in ('value.json',):\n (Path('agent_tools/tests/fixtures')/name).read_text()",'agent_tools/tests/test_other.py':"from pathlib import Path\nPath('agent_tools/tests/fixtures/other.json').read_text()"}
-        self.assertEqual(('agent_tools.tests.test_other',),selector.select_from_sources(sources,{'agent_tools/tests/fixtures/other.json'}).modules)
-        self.assertEqual(('agent_tools.tests.test_named',),selector.select_from_sources(sources,{'agent_tools/tests/fixtures/value.json'}).modules)
-    def test_readonly_directory_glob_and_iterator_consume_children(self):
+    def test_literal_data_directory_consumes_children(self):
         for expression in ("Path('agent_tools/tests/fixtures').glob('*.json')","Path('agent_tools/tests/fixtures').rglob('*.json')","Path('agent_tools/tests/fixtures').iterdir()","os.listdir('agent_tools/tests/fixtures')","os.walk('agent_tools/tests/fixtures')"):
             with self.subTest(expression=expression):self.assertEqual(('agent_tools.tests.test_actual','agent_tools.tests.test_reader'),self.plan('from pathlib import Path\nimport os\n'+expression).modules)
-    def test_copytree_source_is_consumed_and_destination_is_not(self):
+    def test_copytree_source_is_consumed(self):
         self.assertEqual(('agent_tools.tests.test_actual','agent_tools.tests.test_reader'),self.plan("import shutil\nshutil.copytree('agent_tools/tests/fixtures','inert-temporary-destination')").modules)
-        self.assertEqual(('agent_tools.tests.test_actual',),self.plan("import shutil\nshutil.copytree('inert-temporary-source','agent_tools/tests/fixtures')").modules)
     def test_bounded_directory_source_loader_preserves_children(self):
         self.assertEqual(('agent_tools.tests.test_actual','agent_tools.tests.test_reader'),self.plan("import importlib.util\nimportlib.util.spec_from_file_location('fixture','agent_tools/tests/fixtures')").modules)
-    def test_unknown_read_alternative_cannot_hide_behind_known_directory(self):
-        with self.assertRaises(selector.SelectionError):self.plan("from pathlib import Path\ndef read(name):\n return Path('agent_tools/tests/fixtures' if name=='public' else name).glob('*.json')")
+    def test_package_directory_literal_is_not_a_resource(self):
+        sources={'agent_tools/__init__.py':'','agent_tools/tests/__init__.py':'','agent_tools/leaf.py':'value=1','agent_tools/tests/test_leaf.py':'from agent_tools import leaf',
+                 'agent_tools/tests/test_root.py':"from pathlib import Path\nTESTS=Path('agent_tools/tests')"}
+        self.assertEqual(('agent_tools.tests.test_leaf',),selector.select_from_sources(sources,{'agent_tools/leaf.py'}).modules)
     def test_ast_walk_command_text_is_not_filesystem_source_read(self):
         sources={'agent_tools/leaf.py':'value=1','agent_tools/tests/test_leaf.py':'from agent_tools import leaf','agent_tools/tests/test_ast.py':"import ast\nTEMPLATE=\"from pathlib import Path;ROOT=Path('agent_tools')\"\nfor node in ast.walk(ast.parse(TEMPLATE)):pass"}
         self.assertEqual(('agent_tools.tests.test_leaf',),selector.select_from_sources(sources,{'agent_tools/leaf.py'}).modules)
-    def test_artifact_app_directory_is_not_repository_source(self):
+    def test_generic_word_is_not_a_fixture_directory(self):
         sources={'agent_tools/tests/fixtures/app/output.jar':None,'agent_tools/tests/test_fixture.py':"from pathlib import Path\nPath('agent_tools/tests/fixtures/app/output.jar').read_bytes()",'agent_tools/tests/test_runtime.py':"def jars(image):\n return (image/'app').glob('*.jar')"}
         self.assertEqual(('agent_tools.tests.test_fixture',),selector.select_from_sources(sources,{'agent_tools/tests/fixtures/app/output.jar'}).modules)
     def test_imported_source_filename_read_does_not_consume_other_modules(self):
@@ -728,28 +780,13 @@ class DirectoryInputPolicyTests(unittest.TestCase):
     def test_pathlib_qualified_source_loader_is_statically_bounded(self):
         source="import pathlib,importlib.util\nROOT=pathlib.Path(__file__).parent\nimportlib.util.spec_from_file_location('fixture',ROOT/'fixtures/value.json')"
         self.assertEqual(('agent_tools.tests.test_actual','agent_tools.tests.test_reader'),self.plan(source).modules)
-    def test_known_directory_cannot_authenticate_arbitrary_source_suffix(self):
-        sources={'agent_tools/tests/fixtures/value.json':None,'agent_tools/tests/test_reader.py':"import importlib.util\nfrom pathlib import Path\ndef load(name):\n return importlib.util.spec_from_file_location('loaded',Path('agent_tools/tests/fixtures')/name)"}
-        with self.assertRaises(selector.SelectionError):selector.select_from_sources(sources,{'agent_tools/tests/fixtures/value.json'})
-    def test_computed_call_suffix_requires_reviewed_source_scope(self):
-        source="from pathlib import Path\ndef read(name):\n return (Path('agent_tools/tests/fixtures')/str(name)).read_bytes()"
-        with self.assertRaises(selector.SelectionError):self.plan(source)
-        declaration={'sourceSha256':[hashlib.sha256(source.encode()).hexdigest()],'scopes':['agent_tools/tests/fixtures/value.json']}
-        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/tests/test_reader.py':declaration}):
-            self.assertEqual(('agent_tools.tests.test_actual','agent_tools.tests.test_reader'),self.plan(source).modules)
-    def test_unbounded_read_suffix_cannot_escape_declared_parent_silently(self):
-        sources={'agent_tools/leaf.py':'value=1','agent_tools/tests/fixtures/known/data.txt':None,'agent_tools/tests/test_leaf.py':'from agent_tools import leaf','agent_tools/tests/test_hidden.py':"from pathlib import Path\nROOT=Path('agent_tools/tests/fixtures/known')\ndef read(name):\n return (ROOT/name).read_text()"}
-        namespace={};exec(sources['agent_tools/tests/test_hidden.py'],namespace)
-        with tempfile.TemporaryDirectory() as temporary:
-            owned=Path(temporary).resolve()/'owned-leaf.txt';owned.write_text('owned outside-prefix reader proof')
-            self.assertEqual('owned outside-prefix reader proof',namespace['read'](str(owned)))
-        with self.assertRaises(selector.SelectionError):selector.select_from_sources(sources,{'agent_tools/leaf.py'})
-        for prefix in ('/tmp','app'):
-            with self.subTest(prefix=prefix):
-                sources['agent_tools/tests/test_hidden.py']=sources['agent_tools/tests/test_hidden.py'].replace('agent_tools/tests/fixtures/known',prefix)
-                with self.assertRaises(selector.SelectionError):selector.select_from_sources(sources,{'agent_tools/leaf.py'})
-    def test_open_write_mode_does_not_consume_directory_children(self):
-        self.assertEqual(('agent_tools.tests.test_actual',),self.plan("from pathlib import Path\nPath('agent_tools/tests/fixtures').open('w')").modules)
+    def test_production_source_registry_is_not_a_test_dependency(self):
+        # A production module that names other sources (a shipped closure) does not
+        # make every importer's suite a consumer of them; footprints record reads.
+        sources={'agent_tools/leaf.py':'value=1','agent_tools/shipper.py':"SHIPPED=('leaf.py','agent_tools/leaf.py')",
+                 'agent_tools/tests/test_leaf.py':'from agent_tools import leaf','agent_tools/tests/test_shipper.py':'from agent_tools import shipper'}
+        self.assertEqual(('agent_tools.tests.test_leaf',),selector.select_from_sources(sources,{'agent_tools/leaf.py'}).modules)
+
 
 class StartupSourceIntegrityTests(unittest.TestCase):
     def isolated_root(self):

@@ -228,15 +228,16 @@ def run(name):
             self.assertNotEqual(0, result.returncode, (index, extra, result.stdout, result.stderr))
             self.assertFalse((root / '.rag_index').exists())
 
-    def test_unknown_loader_in_other_bucket_refuses_before_either_actor(self):
+    def test_opaque_loader_in_other_bucket_never_refuses_selection(self):
+        # Precise selection (TEST-004): an unseen dynamic import is left to the
+        # recorded footprints and the complete CI suite, never a refusal.
         root, base = self.tiny()
         path = root / 'agent_tools/tests/test_ci_02.py'
         path.write_text(path.read_text() + '\nimport importlib\ndef opaque(name):return importlib.import_module(name)\n')
         for index in range(selector.CI_SHARD_COUNT):
             result = self.invoke(root, base, index, extra=('--ci-evidence-dir', '.rag_index/public-%d' % index))
-            self.assertEqual(2, result.returncode, result.stderr)
-            self.assertIn('Unresolved', result.stderr)
-        self.assertFalse((root / '.rag_index').exists())
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertNotIn('Unresolved', result.stderr)
 
     @unittest.skipUnless(os.name == 'posix' and hasattr(os, 'O_NOFOLLOW'),
                          'POSIX pooled worker evidence')

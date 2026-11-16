@@ -59,8 +59,12 @@ Do not use broad cleanup commands such as `git reset --hard` or `git checkout --
 ## Selective checks and native execution optimization
 
 Use `python3 agent_tools/affected_agent_tests.py --run` for agent-tool validation.
-Product and prose-only changes select zero agent tests. Tool changes select actual
-transitive consumers; unknown dependencies fail with an explanation. Use an
+Product and prose-only changes select zero agent tests. Tool changes select the
+consumers that static imports, literal test/fixture paths, declared scopes and the
+CI-recorded footprints connect (`agent_tools/agent_test_footprints.py fetch`
+refreshes the local table); unconsumed changed files are listed in
+`unconsumedPaths`. CI runs the complete agent suite on any agent-input change, so
+local selection trades completeness for precision. Use an
 explicit `--audit --baseline HEAD --run` for a complete agent-suite audit. The
 managed prepush retains its other gates and binds the selection and result to the
 same contents. Per-test timing identifies expensive cases; only reviewed isolated

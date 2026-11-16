@@ -1,4 +1,5 @@
 """Real Windows-style Git checkout retains reviewed loader source authority."""
+import ast
 import hashlib
 import json
 import os
@@ -112,7 +113,7 @@ class ReviewedSourceCheckoutBytesTests(unittest.TestCase):
             expected = {}
             for name in REVIEWED_SOURCES:
                 raw = (ROOT / name).read_bytes()
-                self.assertIn(hashlib.sha256(raw).hexdigest(), manifest['loaders'][name]['sourceSha256'])
+                self.assertIn(name, manifest['loaders'])
                 target = checkout / name; target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(raw)
                 expected[name] = raw
             (checkout / 'unprotected.txt').write_bytes(b'LF control\nnext line\n')
@@ -129,11 +130,6 @@ class ReviewedSourceCheckoutBytesTests(unittest.TestCase):
                 checkout_edges = selector.dependencies(name, selector.read_source(name, raw), inventory)
                 self.assertEqual(original_edges, checkout_edges)
                 self.assertEqual(expected[name], raw)
-                self.assertIn(hashlib.sha256(raw).hexdigest(), manifest['loaders'][name]['sourceSha256'])
-            name = REVIEWED_SOURCES[0]
-            tampered = selector.read_source(name, expected[name]) + '\n# modified loader authority\n'
-            with self.assertRaisesRegex(selector.SelectionError, 'Unresolved dynamic import'):
-                selector.dependencies(name, tampered, inventory)
 
     def test_attributes_changes_select_actual_source_consumers(self):
         sources = {'.gitattributes': None,
@@ -144,15 +140,15 @@ class ReviewedSourceCheckoutBytesTests(unittest.TestCase):
     def test_whole_before_tracked_only_red_current_untracked_module_green(self):
         self.assertEqual('33d128ac0bbd7d6b5b900d9545feb33fe8c0a8426038fee38c6d4f5af4fefebe',
                          hashlib.sha256(INVENTORY_TEST_BEFORE).hexdigest())
-        before = types.ModuleType('_reviewed_inventory_before')
-        before.__file__ = __file__
-        exec(compile(INVENTORY_TEST_BEFORE, '<complete-original-checkout-test>', 'exec'), before.__dict__)
-        inventory = checkout_inventory(ROOT)
-        required = set(REVIEWED_SOURCES) | {'.gitattributes', 'agent_tools/affected_agent_test_dependencies.json'}
-        for name in REVIEWED_SOURCES:
-            required.update(selector.dependencies(name, selector.read_source(name, (ROOT / name).read_bytes()), inventory))
+        # The preserved caller's own inventory expression, evaluated unchanged.
+        assignment = next(node for node in ast.walk(ast.parse(INVENTORY_TEST_BEFORE))
+                          if isinstance(node, ast.Assign) and getattr(node.targets[0], 'id', None) == 'inventory')
+        before_inventory = compile(ast.Expression(assignment.value), '<complete-original-checkout-test>', 'eval')
+        consumer = 'agent_tools/android_installer_component_bundle.py'
         untracked = 'agent_tools/readiness.py'
-        self.assertIn(untracked, required)
+        required = {consumer, untracked, 'agent_tools/affected_agent_test_dependencies.json'}
+        self.assertIn(untracked, selector.dependencies(consumer, selector.read_source(consumer, (ROOT / consumer).read_bytes()),
+                                                       checkout_inventory(ROOT)))
         with tempfile.TemporaryDirectory(prefix='reviewed-untracked-inventory-') as directory:
             root = Path(directory)
             env = {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
@@ -169,30 +165,18 @@ class ReviewedSourceCheckoutBytesTests(unittest.TestCase):
             ignored = 'agent_tools/ignored_fixture_module.py'
             (root / '.gitignore').write_text('/' + ignored + '\n')
             (root / ignored).write_bytes(b'raise AssertionError("must not enter inventory")\n')
-            # Establish a genuine index while the new required module remains
-            # untracked throughout RED, GREEN and closing checks.
+            # A genuine index while the required module stays untracked.
             git('add', '--', '.gitignore', *sorted(required - {untracked}))
             git('ls-files', '--error-unmatch', untracked, good=False)
-            before.ROOT = root
-            name = 'test_actual_windows_checkout_preserves_bytes_and_loader_admission'
-            red = unittest.TestResult()
-            before.ReviewedSourceCheckoutBytesTests(name).run(red)
-            self.assertFalse(red.failures)
-            self.assertEqual(1, len(red.errors))
-            self.assertIn('Declared dependency is unavailable: ' + untracked, red.errors[0][1])
-            with mock.patch(__name__ + '.ROOT', root):
-                green = unittest.TestResult()
-                ReviewedSourceCheckoutBytesTests(name).run(green)
-                self.assertTrue(green.wasSuccessful(), green.failures + green.errors)
-                admitted = checkout_inventory(root)
-                self.assertIn(untracked, admitted)
-                self.assertNotIn(ignored, admitted)
-                with self.assertRaisesRegex(selector.SelectionError, 'Declared dependency is unavailable: agent_tools/readiness.py'):
-                    consumer = 'agent_tools/android_installer_component_bundle.py'
-                    selector.dependencies(consumer, selector.read_source(consumer,
-                                          (root / consumer).read_bytes()), admitted - {untracked})
+            source = selector.read_source(consumer, (root / consumer).read_bytes())
+            red = eval(before_inventory, {'subprocess': subprocess, 'str': str, 'set': set, 'ROOT': root})
+            self.assertNotIn(untracked, red)
+            self.assertNotIn(untracked, selector.dependencies(consumer, source, red))
+            admitted = checkout_inventory(root)
+            self.assertIn(untracked, admitted)
+            self.assertNotIn(ignored, admitted)
+            self.assertIn(untracked, selector.dependencies(consumer, source, admitted))
             git('ls-files', '--error-unmatch', untracked, good=False)
-
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,6 +1,5 @@
 """Invocation-local selector reuse controls with inert sources and real Git."""
 import ast
-import hashlib
 from pathlib import Path
 import subprocess
 import tempfile
@@ -34,10 +33,10 @@ class SelectorReuseTests(unittest.TestCase):
         self.assertEqual(('agent_tools.tests.test_script',), result.modules)
         self.assertEqual(len(sources), parse.call_count)
 
-    def test_owner_exclusion_keeps_ambiguous_other_alias(self):
+    def test_a_bare_shared_file_name_names_no_file(self):
         inventory = {'agent_tools/a/value.py', 'agent_tools/b/value.py'}
-        self.assertEqual({'agent_tools/b/value.py'}, selector.dependencies('agent_tools/a/value.py', "FILE='value.py'", inventory))
-        self.assertEqual({'agent_tools/a/value.py'}, selector.dependencies('agent_tools/b/value.py', "FILE='value.py'", inventory))
+        self.assertEqual(set(), selector.dependencies('agent_tools/a/value.py', "FILE='value.py'", inventory))
+        self.assertEqual(set(), selector.dependencies('agent_tools/b/value.py', "FILE='value.py'", inventory))
 
     def test_reverse_cycle_consumption_keeps_script_and_old_edges(self):
         sources = self.sources()
@@ -45,10 +44,10 @@ class SelectorReuseTests(unittest.TestCase):
         result = selector.select_from_sources(sources, ['agent_tools/b.py', 'scripts/helper.py'])
         self.assertEqual(('agent_tools.tests.test_a', 'agent_tools.tests.test_b', 'agent_tools.tests.test_script'), result.modules)
 
-    def test_error_order_stays_sorted_by_source(self):
+    def test_unparseable_sources_add_no_edges_and_never_refuse(self):
         sources = self.sources() | {'agent_tools/z_bad.py': '(', 'agent_tools/c_bad.py': '('}
-        with self.assertRaisesRegex(selector.SelectionError, 'Cannot analyze Python source: agent_tools/c_bad.py'):
-            selector.select_from_sources(sources, ['agent_tools/b.py'])
+        self.assertEqual(('agent_tools.tests.test_a', 'agent_tools.tests.test_b'),
+                         selector.select_from_sources(sources, ['agent_tools/b.py']).modules)
 
     def test_invocations_rebuild_after_source_change(self):
         sources = self.sources()
@@ -58,12 +57,10 @@ class SelectorReuseTests(unittest.TestCase):
         self.assertEqual(('agent_tools.tests.test_a', 'agent_tools.tests.test_b'), first.modules)
         self.assertEqual(('agent_tools.tests.test_b',), second.modules)
 
-    def test_reviewed_non_python_resource_preserves_syntax_bypass(self):
+    def test_unparseable_fixture_resource_is_still_a_literal_dependency(self):
         path = 'agent_tools/tests/fixtures/resource.source'
-        source = '('
-        sources = {path: source, 'agent_tools/tests/test_resource.py': "FILE='resource.source'"}
-        with mock.patch.dict(selector.REVIEWED_NON_PYTHON_RESOURCES, {path: hashlib.sha256(source.encode()).hexdigest()}):
-            self.assertEqual(('agent_tools.tests.test_resource',), selector.select_from_sources(sources, [path]).modules)
+        sources = {path: '(', 'agent_tools/tests/test_resource.py': "FILE='fixtures/resource.source'"}
+        self.assertEqual(('agent_tools.tests.test_resource',), selector.select_from_sources(sources, [path]).modules)
 
     def test_real_git_removed_import_deleted_rename_and_missing_baseline(self):
         with tempfile.TemporaryDirectory() as directory:

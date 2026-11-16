@@ -86,6 +86,11 @@ class RunnerStdinIsolationTests(unittest.TestCase):
                                      (provenance[frozen]['path'], hashlib.sha256(raw).hexdigest()))
                 (root / 'tools' / current).write_bytes(raw)
         for helper in helpers:
+            if before and helper == 'affected_agent_test_dependencies.json':
+                # The frozen selector reads its own schema-1 manifest; the generated
+                # tree has no declared loader, so an empty one is the same input.
+                (root / 'tools' / helper).write_text(json.dumps({'schemaVersion': 1, 'loaders': {}, 'nonPythonResources': {}}))
+                continue
             shutil.copyfile(TOOLS / helper, root / 'tools' / helper)
         return root
 

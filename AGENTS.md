@@ -220,10 +220,12 @@ Use `agent_docs/test-matrix.md` for path-based test selection and validation tie
 Documentation-only changes should run `git diff --check` and `./scripts/check_docs_hygiene.sh`.
 
 Agent tool or MCP changes should run `python3 agent_tools/affected_agent_tests.py --run`.
-Select only changed tools and their transitive test consumers, including runtime
-fixtures and owned workflow/script dependencies. Product or prose-only changes do
-not run the agent-tool suite. Unknown dependency mappings must refuse selection;
-they must not silently omit coverage. Use
+Local selection is precise: it joins static imports, literal test and fixture
+paths and declared scopes with the per-test footprints CI records (fetch them with
+`python3 agent_tools/agent_test_footprints.py fetch`). Product or prose-only
+changes do not run the agent-tool suite. A changed agent file with no selected
+consumer is reported, not refused; completeness comes from CI, which runs the
+complete agent suite on every agent-input change. Use
 `python3 agent_tools/affected_agent_tests.py --audit --baseline HEAD --run` only
 for an intentional full-suite audit. Broad changes still use the complete managed
 pre-push tier in `agent_docs/test-matrix.md`; its agent-test stage uses the same

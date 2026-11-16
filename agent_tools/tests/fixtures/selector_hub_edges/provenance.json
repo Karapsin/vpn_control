@@ -1,0 +1,6 @@
+{
+  "commit": "a34e07cb0e9ad925935bcc84665fd07f5e540906",
+  "path": "agent_tools/affected_agent_tests.py",
+  "sha256": "f974d6cd856ca0c24d7b766fa0d997a1dacde68f3a634de3b7b14b9a27345bd2",
+  "reason": "Selector before precise selection: whole-tree loader scopes, the server adapter registry and token/basename aliasing linked every tool edit to ~835 test modules."
+}

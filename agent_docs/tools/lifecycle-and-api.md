@@ -1008,22 +1008,26 @@ Run affected agent-tool tests with:
 python3 agent_tools/affected_agent_tests.py --run
 ```
 
-The selector compares Git changes with the applicable baseline and includes actual
-transitive consumers from both previous and current source. Product or prose-only
-changes run no agent tests. A changed tool, runtime fixture or dependency selects
-its affected consumers; unknown dependencies refuse selection with an explanation.
-Shared dependencies can legitimately select a broad set. CI uses the push's
-previous SHA or PR merge base; a missing comparison baseline is a failure.
-Use `--baseline <commit>` for an explicit comparison and `--audit --baseline HEAD
+The selector compares Git changes with the applicable baseline and includes the
+consumers of both previous and current source. Product or prose-only changes run
+no agent tests. Its graph joins precise static edges (imports, literal module
+loads, literal repository paths in tests and fixtures, and declared scopes) with
+the per-test footprints CI records: each managed CI worker run with
+`AGENT_TEST_FOOTPRINT_DIR` writes which repository files every test module and
+every imported module opened, compiled, listed or launched.
+`python3 agent_tools/agent_test_footprints.py fetch` merges the newest successful
+dev run's footprints into `.rag_index/agent-test-footprints.json`; a listed
+directory selects its lister only when a child is added or removed. Local
+selection is precise, not complete: changed agent files no selected test reaches
+are reported as `unconsumedPaths`, and CI runs the complete agent suite on every
+agent-input change. A missing comparison baseline is a failure. Use
+`--baseline <commit>` for an explicit comparison and `--audit --baseline HEAD
 --run` only for an intentional complete agent-suite audit.
 
-When selection refuses a dynamic source reader or loader, inspect that exact
-consumer and preserve its source beforeimage. Add a finite reviewed dependency
-scope in `affected_agent_test_dependencies.json` bound to the actual consumer's
-source hash, or teach the static resolver the demonstrated bounded expression
-with causal coverage. A changed opaque consumer invalidates its declaration.
-Do not use a whole-suite fallback, imported test execution or a caller-supplied
-consumer list to make an unknown mapping appear qualified.
+`affected_agent_test_dependencies.json` declares extra edges by path, without
+source digests. Whole-tree scopes (`agent_tools/`, `scripts/`) and the server's
+adapter and keeper registries are refused as hubs (`HUB_SCOPES`); what a test
+actually loads through them comes from its footprint.
 
 The runner retains each test's duration and outcome privately, with aggregate
 counts in its result. Only reviewed source-bound independent groups run concurrently,

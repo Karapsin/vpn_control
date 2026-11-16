@@ -96,8 +96,9 @@ class ClaudeCodeConfigTest(unittest.TestCase):
                 self.assertEqual(selector.select_from_sources(sources, {changed}).modules,
                                  ("agent_tools.tests.test_claude_code_config",))
         self.assertEqual(selector.select_from_sources(sources, {"CLAUDE.md"}).modules, ())
-        with self.assertRaisesRegex(selector.SelectionError, "no known consumers: .mcp.json"):
-            selector.select_from_sources({".mcp.json": None, "agent_tools/tests/test_other.py": "pass\n"}, {".mcp.json"})
+        # Unconsumed client configuration is reported (TEST-004); CI runs the full suite.
+        selection = selector.select_from_sources({".mcp.json": None, "agent_tools/tests/test_other.py": "pass\n"}, {".mcp.json"})
+        self.assertEqual(((), (".mcp.json",)), (selection.modules, selection.unconsumed))
 
     def test_claude_configuration_routes_to_agent_tools(self):
         for path in (".mcp.json", ".claude/settings.json"):

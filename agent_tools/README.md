@@ -307,8 +307,14 @@ agent-tool tests or require a version note. Tool or fixture changes use:
 python3 agent_tools/affected_agent_tests.py --run
 ```
 
-Unknown comparison baselines and dependency mappings refuse. Do not substitute
-HEAD, omit consumers, or use an unrequested full-suite fallback. Full selector,
+A missing comparison baseline refuses; do not substitute HEAD. Selection is
+precise rather than complete: static imports, literal test and fixture paths,
+declared scopes (`affected_agent_test_dependencies.json`, keyed by path, no
+digests) and the per-test footprints CI records. `python3
+agent_tools/agent_test_footprints.py fetch` downloads the newest dev footprint
+table into `.rag_index/agent-test-footprints.json`; without it only the static
+graph is used. Changed agent files that no selected test reaches are listed as
+`unconsumedPaths`. CI runs the complete agent suite on every agent-input change. Full selector,
 parallelism, output-custody and receipt rules remain in
 [the test procedure](../agent_docs/tools/lifecycle-and-api.md#tests).
 

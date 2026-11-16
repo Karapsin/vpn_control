@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Select agent unittest modules from Git and their transitive local dependencies.
 
-No test module is imported during planning. Literal file/module references cover
-source readers, hash-pinned helpers and fixtures as well as normal imports.
-Unbounded local dynamic dispatch is conservatively connected to its package;
-unresolved dynamic imports and changed agent files without consumers refuse.
+No test module is imported during planning. The graph joins precise static edges
+(imports, literal module loads, literal repository paths and declared scopes)
+with the per-test footprints CI records. Local selection is precise, not
+complete: CI runs the complete agent suite on every agent-input change.
 """
 from __future__ import annotations
 import argparse
@@ -24,17 +24,22 @@ import io
 from types import MappingProxyType
 
 
-# Reviewed opaque loaders: changes to their exact source require renewed mapping.
-# Package scopes cover custom import hooks; finite loaders use explicit files.
+# Declared extra edges for sources whose loads no static rule can see. A
+# declaration is keyed by path only: CI runs the complete agent suite on any
+# agent-input change, so local selection may be precise rather than complete.
 LOADED_SELECTOR_SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 DEPENDENCY_MANIFEST = Path(__file__).with_name("affected_agent_test_dependencies.json")
 _DEPENDENCY_MANIFEST_BYTES = DEPENDENCY_MANIFEST.read_bytes()
 LOADED_DEPENDENCY_MANIFEST_SHA256 = hashlib.sha256(_DEPENDENCY_MANIFEST_BYTES).hexdigest()
 _DECLARATIONS = json.loads(_DEPENDENCY_MANIFEST_BYTES)
-if _DECLARATIONS.get("schemaVersion") != 1:
+if _DECLARATIONS.get("schemaVersion") != 2 or set(_DECLARATIONS) != {"schemaVersion", "loaders"}:
     raise RuntimeError("Unsupported agent dependency manifest")
 REVIEWED_DYNAMIC_DEPENDENCIES = _DECLARATIONS["loaders"]
-REVIEWED_NON_PYTHON_RESOURCES = _DECLARATIONS["nonPythonResources"]
+# Whole-tree scopes and server adapter registries connect one file to hundreds
+# of others. Footprints record what each test actually loads instead.
+HUB_SCOPES = frozenset({"agent_tools/", "scripts/", "@modules:_VM_NATIVE_ADAPTERS", "@files:_KEEPER_ROLES"})
+# Recorded per-test footprints (agent_test_footprints.py), fetched from CI.
+FOOTPRINT_CACHE = Path(".rag_index") / "agent-test-footprints.json"
 
 
 class SelectionError(RuntimeError):
@@ -47,11 +52,14 @@ class Selection:
     changed: tuple[str, ...]
     modules: tuple[str, ...]
     total_modules: int
+    footprint_commit: str | None = None
+    unconsumed: tuple[str, ...] = ()
 
     def as_dict(self):
         return {"baseline": self.baseline, "changedPaths": list(self.changed),
                 "modules": list(self.modules), "selectedModuleCount": len(self.modules),
-                "totalModuleCount": self.total_modules}
+                "totalModuleCount": self.total_modules, "footprintCommit": self.footprint_commit,
+                "unconsumedPaths": list(self.unconsumed)}
 
     def commands(self, python: str, *, max_modules_per_command: int | None = None):
         if max_modules_per_command is not None and (type(max_modules_per_command) is not int
@@ -164,437 +172,240 @@ def read_source(path, raw):
         raise SelectionError("Python dependency source is not UTF-8: " + path) from error
 
 
-class _OwnerIndex:
-    """Read-only owner exclusion over one selection's immutable inventory."""
-    def __init__(self, entries, owner):
-        self.entries, self.owner = entries, owner
-
-    def get(self, key, default=()):
-        values = self.entries.get(key)
-        return values - {self.owner} if values is not None else default
-
-    def items(self):
-        for key, values in self.entries.items():
-            yield key, values - {self.owner}
+_LITERAL_FANOUT = 64
 
 
 def _inventory_indexes(inventory):
+    """Exact path indexes; a bare file name never names a file by itself."""
     module_paths = {p[:-3].replace("/", "."): p for p in inventory if p.endswith(".py")}
-    aliases, module_aliases, directories = {}, {}, {}
+    paths, directories, fixtures = {}, {}, {}
     for candidate in inventory:
         if is_document(candidate):
             continue
-        item = PurePosixPath(candidate)
-        for alias in (candidate, item.name):
-            aliases.setdefault(alias, set()).add(candidate)
-        if item.suffix == ".py":
-            for alias in (item.stem, candidate[:-3].replace("/", ".")):
-                module_aliases.setdefault(alias, set()).add(candidate)
-        for start in range(1, len(item.parts)):
-            aliases.setdefault("/".join(item.parts[start:]), set()).add(candidate)
-        for directory in item.parents:
-            if str(directory) != ".":
-                directories.setdefault(str(directory), set()).add(candidate)
+        parts = PurePosixPath(candidate).parts
+        # A literal names a file by its full path or by a tail of two or more
+        # parts, and a directory the same way; a bare file name names nothing.
+        for start in range(0, len(parts) - 1):
+            paths.setdefault("/".join(parts[start:]), set()).add(candidate)
+        for end in range(1, len(parts)):
+            for start in range(0, end):
+                if start == 0 or end - start >= 2:
+                    directories.setdefault("/".join(parts[start:end]), set()).add(candidate)
+        if candidate.startswith("agent_tools/tests/fixtures/") and len(parts) > 4:
+            fixtures.setdefault(parts[3], set()).add(candidate)
+    top_level = {}
+    for candidate in inventory:
+        if candidate.endswith(".py") and candidate.count("/") == 1 and candidate.startswith(("agent_tools/", "scripts/")):
+            top_level.setdefault(PurePosixPath(candidate).name, set()).add(candidate)
     freeze = lambda entries: MappingProxyType({key: frozenset(values) for key, values in entries.items()})
-    return MappingProxyType(module_paths), freeze(aliases), freeze(module_aliases), freeze(directories)
+    return (MappingProxyType(module_paths), freeze(paths), freeze(directories), freeze(fixtures),
+            MappingProxyType({name: next(iter(values)) for name, values in top_level.items() if len(values) == 1}))
 
 
 def _analysis(path, source):
     try:
         tree = ast.parse(source, filename=path)
-    except (SyntaxError, ValueError) as error:
-        raise SelectionError("Cannot analyze Python source: " + path) from error
+    except (SyntaxError, ValueError):
+        return None
     return tree, tuple(ast.walk(tree))
 
 
 def dependencies(path, source, inventory):
-    """Conservative local dependency edges, with unresolved loading refusal."""
+    """Precise static edges: imports, literal module loads and literal repository paths."""
     return _dependencies(path, source, inventory, _inventory_indexes(inventory))
 
 
-def _dependencies(path, source, inventory, indexes, analysis=None):
-    if REVIEWED_NON_PYTHON_RESOURCES.get(path) == hashlib.sha256(source.encode()).hexdigest():
-        return set()
-    tree, nodes = analysis if analysis is not None else _analysis(path, source)
+def _declared(path, tree, inventory):
+    declaration = REVIEWED_DYNAMIC_DEPENDENCIES.get(path)
     edges = set()
-    def unknown(message):
-        declaration = REVIEWED_DYNAMIC_DEPENDENCIES.get(path)
-        if declaration and hashlib.sha256(source.encode()).hexdigest() in declaration["sourceSha256"]:
-            scopes = []
-            for scope in declaration["scopes"]:
-                if scope.startswith("@"):
-                    kind, constant = scope[1:].split(":", 1)
-                    definitions = [n.value for n in tree.body if isinstance(n, (ast.Assign, ast.AnnAssign)) and any(isinstance(t, ast.Name) and t.id == constant for t in (n.targets if isinstance(n, ast.Assign) else [n.target]))]
-                    if kind not in {"files", "modules"} or len(definitions) != 1:
-                        raise SelectionError("Declared source registry is unavailable: " + path)
-                    try:
-                        values = ast.literal_eval(definitions[0])
-                    except (ValueError, TypeError) as error:
-                        raise SelectionError("Declared source registry is not literal: " + path) from error
-                    if not isinstance(values, (tuple, list)) or not all(isinstance(v, str) for v in values):
-                        raise SelectionError("Declared source registry has invalid entries: " + path)
-                    for value in values:
-                        if kind == "modules":
-                            scopes.append("agent_tools/" + value + ".py")
-                        else:
-                            scopes.append(value if "/" in value else "agent_tools/" + value)
-                else:
-                    scopes.append(scope)
-            for scope in scopes:
-                if scope.endswith("/*.py"):
-                    parent = scope[:-5]
-                    edges.update(p for p in inventory if str(PurePosixPath(p).parent) == parent and p.endswith(".py"))
-                elif scope.endswith("/"):
-                    edges.update(p for p in inventory if p.startswith(scope))
-                elif scope in inventory:
-                    edges.add(scope)
-                else:
-                    raise SelectionError("Declared dependency is unavailable: " + scope)
-            return
-        error = SelectionError(message + path)
-        error.dependencies = set(edges)
-        raise error
-    # A reviewed finite map is a source dependency declaration in its own right.
-    # Provenance-selected compile/read paths need these edges even when their
-    # syntax does not otherwise trigger an opaque-loader diagnostic.
-    reviewed = REVIEWED_DYNAMIC_DEPENDENCIES.get(path)
-    reviewed_source = reviewed and hashlib.sha256(source.encode()).hexdigest() in reviewed["sourceSha256"]
-    if reviewed_source:
-        unknown("Reviewed source dependency declaration changed: ")
+    if not declaration:
+        return edges
+    for scope in declaration["scopes"]:
+        if scope in HUB_SCOPES:
+            continue
+        if scope.startswith("@"):
+            kind, constant = scope[1:].split(":", 1)
+            definitions = [] if tree is None else [
+                n.value for n in tree.body if isinstance(n, (ast.Assign, ast.AnnAssign))
+                and any(isinstance(t, ast.Name) and t.id == constant for t in (n.targets if isinstance(n, ast.Assign) else [n.target]))]
+            try:
+                values = ast.literal_eval(definitions[0]) if len(definitions) == 1 else ()
+            except (ValueError, TypeError):
+                values = ()
+            for value in values if isinstance(values, (tuple, list)) else ():
+                if isinstance(value, str):
+                    candidate = "agent_tools/" + value + ".py" if kind == "modules" else value if "/" in value else "agent_tools/" + value
+                    if candidate in inventory:
+                        edges.add(candidate)
+        elif scope.endswith("/*.py"):
+            parent = scope[:-5]
+            edges.update(p for p in inventory if str(PurePosixPath(p).parent) == parent and p.endswith(".py"))
+        elif scope.endswith("/"):
+            edges.update(p for p in inventory if p.startswith(scope))
+        elif scope in inventory:
+            edges.add(scope)
+    return edges
+
+
+def _package_literal(literal, files, inventory):
+    """Whether a directory literal names a Python package rather than data."""
+    for path in files:
+        index = ("/" + path).find("/" + literal + "/")
+        if index >= 0 and path[:index + len(literal)] + "/__init__.py" in inventory:
+            return True
+    return False
+
+
+def _dependencies(path, source, inventory, indexes, analysis=None):
+    module_paths, paths, directories, fixtures, top_level = indexes
+    analysis = analysis if analysis is not None else _analysis(path, source)
+    tree, nodes = analysis if analysis is not None else (None, ())
+    edges = _declared(path, tree, inventory)
     for parent in PurePosixPath(path).parents:
         init = str(parent / "__init__.py")
         if init in inventory and init != path:
             edges.add(init)
-    module_paths, all_aliases, all_module_aliases, all_directories = indexes
-    aliases = _OwnerIndex(all_aliases, path)
-    module_aliases = _OwnerIndex(all_module_aliases, path)
-    directories = _OwnerIndex(all_directories, path)
-    tokens = set(re.findall(r"[A-Za-z0-9_./-]+", source))
-    for token in tokens:
-        edges.update(aliases.get(token.removeprefix("./"), ()))
+    directory = PurePosixPath(path).parent
+    is_test = path.startswith(("agent_tools/tests/", "scripts/test_", "scripts/testdata/"))
 
-    assignments = {}
-    import_bindings = {}
-    for node in tree.body:
-        if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            for target in targets:
-                if isinstance(target, ast.Name):
-                    assignments.setdefault(target.id, []).append(node.value)
-    for node in nodes:
-        if isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                import_bindings[alias.asname or alias.name] = alias.name
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                import_bindings[alias.asname or alias.name] = alias.name
-    def expression_literals(node, seen=None):
-        seen = set() if seen is None else seen
-        values = []
-        if node is None:
-            return values
-        for part in ast.walk(node):
-            if isinstance(part, ast.Constant) and isinstance(part.value, str):
-                values.append(part.value)
-            elif isinstance(part, ast.Name) and part.id in import_bindings:
-                values.append(import_bindings[part.id])
-            elif isinstance(part, ast.Name) and part.id not in seen:
-                for value in assignments.get(part.id, ()):
-                    values.extend(expression_literals(value, seen | {part.id}))
-        return values
-    def import_bounds(node, seen=frozenset()):
-        # Every alternative must resolve; a known branch cannot authenticate an
-        # unrelated parameter. __package__ is the fixed local loader context.
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return {node.value}, set()
-        if isinstance(node, ast.Name):
-            if node.id == "__package__":
-                return {"agent_tools", str(PurePosixPath(path).parent).replace("/", ".")}, set()
-            if node.id in seen or node.id not in assignments:
-                return None
-            results = [import_bounds(value, seen | {node.id}) for value in assignments[node.id]]
-            if any(result is None for result in results):
-                return None
-            return set().union(*(r[0] for r in results)), set().union(*(r[1] for r in results))
-        if isinstance(node, ast.IfExp):
-            results = [import_bounds(node.body, seen), import_bounds(node.orelse, seen)]
-            if any(result is None for result in results):
-                return None
-            return results[0][0] | results[1][0], results[0][1] | results[1][1]
-        if isinstance(node, ast.BoolOp):
-            results = [import_bounds(value, seen) for value in node.values]
-            if any(result is None for result in results):
-                return None
-            return set().union(*(r[0] for r in results)), set().union(*(r[1] for r in results))
-        if isinstance(node, ast.JoinedStr):
-            values = [part.value if isinstance(part, ast.FormattedValue) else part for part in node.values]
-        elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-            values = [node.left, node.right]
-        else:
-            return None
-        prefixes, packages = {""}, set()
-        for value in values:
-            result = import_bounds(value, seen)
-            if result is None:
-                if prefixes and all(prefix.startswith("agent_tools.") for prefix in prefixes):
-                    return set(), {"agent_tools"}
-                return None
-            if result[1]:
-                packages.update(result[1]); continue
-            prefixes = {prefix + suffix for prefix in prefixes for suffix in result[0]}
-        return prefixes, packages
+    def module(name):
+        if name == "mcp" or name.startswith("mcp."):
+            edges.add("agent_tools/requirements-mcp.txt")
+        for candidate in (name, name + ".__init__"):
+            if candidate in module_paths:
+                edges.add(module_paths[candidate])
+        if name and "." not in name:
+            # Bare imports resolve the way the repository's sys.path entries do.
+            for candidate in (str(directory / (name + ".py")), "agent_tools/" + name + ".py", "scripts/" + name + ".py"):
+                if candidate in inventory:
+                    edges.add(candidate)
+                    break
 
-    # Directory names alone (including command data and write destinations)
-    # are not source reads. Only actual readonly directory operations and the
-    # source argument of copying/loading add a directory's finite children.
-    def repository_path_context(expression, seen=frozenset()):
-        for part in ast.walk(expression):
-            if isinstance(part, ast.Name) and part.id not in seen:
-                if part.id == "__file__":
-                    return True
-                if any(repository_path_context(value, seen | {part.id}) for value in assignments.get(part.id, ())):
-                    return True
-            if isinstance(part, ast.Call) and bounded_source_path(part, {}):
-                constructor = isinstance(part.func, ast.Name) and part.func.id in path_constructors or isinstance(part.func, ast.Attribute) and part.func.attr == "Path" and isinstance(part.func.value, ast.Name) and part.func.value.id in pathlib_namespaces
-                if constructor:
-                    return True
-        return False
-    def directory_inputs(expression):
-        found = set()
-        for literal in expression_literals(expression):
-            directory = literal.strip("/")
-            if len(directory) < 3:
-                continue
-            for full, resources in directories.items():
-                if "/" not in directory and directory not in {"agent_tools", "scripts", "fixtures"} and not repository_path_context(expression):
-                    continue
-                if full == directory or full.endswith("/" + directory):
-                    found.update(resources)
-        return found
-    def literal_value(node, seen=frozenset()):
-        if isinstance(node, ast.Name) and node.id not in seen and len(assignments.get(node.id, ())) == 1:
-            return literal_value(assignments[node.id][0], seen | {node.id})
-        if isinstance(node, ast.Constant):
-            return node.value
-        if isinstance(node, (ast.Tuple, ast.List)):
-            return tuple(literal_value(value, seen) for value in node.elts)
-        if isinstance(node, ast.Dict):
-            return {literal_value(key, seen): literal_value(value, seen) for key, value in zip(node.keys, node.values)}
-        raise ValueError("not a literal registry")
-    source_loops = [node for node in nodes if isinstance(node, ast.For)]
-    def reader_loop_bindings(reader):
-        bindings = {}
-        def bind(target, value):
-            if isinstance(target, ast.Name) and isinstance(value, str):
-                bindings.setdefault(target.id, set()).add(value)
-            elif isinstance(target, (ast.Tuple, ast.List)) and isinstance(value, (tuple, list)) and len(target.elts) == len(value):
-                for item, component in zip(target.elts, value):
-                    bind(item, component)
-        for loop in source_loops:
-            if not loop.lineno <= reader.lineno <= loop.end_lineno:
-                continue
-            try:
-                if isinstance(loop.iter, ast.Call) and isinstance(loop.iter.func, ast.Attribute) and loop.iter.func.attr == "items" and not loop.iter.args and not loop.iter.keywords:
-                    registry = literal_value(loop.iter.func.value)
-                    values = registry.items() if isinstance(registry, dict) else ()
-                else:
-                    values = literal_value(loop.iter)
-                if isinstance(values, (str, bytes, dict)):
-                    continue
-                for value in values:
-                    bind(loop.target, value)
-            except (ValueError, TypeError):
-                continue
-        return bindings
-    path_constructors = {alias.asname or alias.name for node in nodes if isinstance(node, ast.ImportFrom) and node.module == "pathlib" for alias in node.names if alias.name == "Path"}
-    pathlib_namespaces = {alias.asname or alias.name for node in nodes if isinstance(node, ast.Import) for alias in node.names if alias.name == "pathlib"}
-    def bounded_source_path(node, bindings, seen=frozenset()):
-        if isinstance(node, ast.Constant):
-            return isinstance(node.value, (str, int))
-        if isinstance(node, ast.Name):
-            if node.id == "__file__" or node.id in bindings:
-                return True
-            if node.id in seen or node.id not in assignments:
-                return False
-            return all(bounded_source_path(value, bindings, seen | {node.id}) for value in assignments[node.id])
-        if isinstance(node, ast.Attribute):
-            if node.attr == "__file__" and isinstance(node.value, ast.Name) and node.value.id in import_bindings:
-                return bool(module_aliases.get(import_bindings[node.value.id]))
-            return node.attr in {"parent", "parents", "name", "stem", "suffix"} and bounded_source_path(node.value, bindings, seen)
-        if isinstance(node, ast.Subscript):
-            return bounded_source_path(node.value, bindings, seen) and isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, int)
-        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Div, ast.Add)):
-            return bounded_source_path(node.left, bindings, seen) and bounded_source_path(node.right, bindings, seen)
-        if isinstance(node, ast.IfExp):
-            return bounded_source_path(node.body, bindings, seen) and bounded_source_path(node.orelse, bindings, seen)
-        if isinstance(node, ast.Call):
-            constructor = isinstance(node.func, ast.Name) and node.func.id in path_constructors or isinstance(node.func, ast.Attribute) and node.func.attr == "Path" and isinstance(node.func.value, ast.Name) and node.func.value.id in pathlib_namespaces
-            if constructor:
-                return all(bounded_source_path(value, bindings, seen) for value in node.args) and not node.keywords
-            if isinstance(node.func, ast.Attribute) and node.func.attr in {"resolve", "absolute", "with_name", "with_suffix", "joinpath"}:
-                return bounded_source_path(node.func.value, bindings, seen) and all(bounded_source_path(value, bindings, seen) for value in node.args) and not node.keywords
-        return False
-    for reader in nodes:
-        if not isinstance(reader, ast.Call):
-            continue
-        call = reader.func.attr if isinstance(reader.func, ast.Attribute) else getattr(reader.func, "id", "")
-        call = import_bindings.get(call, call).split(".")[-1]
-        if call in {"walk", "listdir"}:
-            owner = reader.func.value if isinstance(reader.func, ast.Attribute) else None
-            qualified_os = isinstance(owner, ast.Name) and import_bindings.get(owner.id) == "os"
-            imported_os = isinstance(reader.func, ast.Name) and any(isinstance(node, ast.ImportFrom) and node.module == "os" and any((alias.asname or alias.name) == reader.func.id and alias.name == call for alias in node.names) for node in nodes)
-            if not qualified_os and not imported_os:
-                continue
-        expression = None
-        directory_read = call in {"glob", "rglob", "iterdir", "listdir", "walk", "copytree"}
-        if isinstance(reader.func, ast.Attribute) and call in {"read_text", "read_bytes", "glob", "rglob", "iterdir", "open"}:
-            expression = reader.func.value
-        elif call in {"copytree", "listdir", "walk", "open"} and reader.args:
-            expression = reader.args[0]
-        if expression is None:
-            continue
-        if call == "open":
-            mode = next((keyword.value for keyword in reader.keywords if keyword.arg == "mode"), reader.args[0] if isinstance(reader.func, ast.Attribute) and reader.args else reader.args[1] if len(reader.args) > 1 else None)
-            if isinstance(mode, ast.Constant) and isinstance(mode.value, str) and any(character in mode.value for character in "wax"):
-                continue
-        resources = directory_inputs(expression)
-        loop_bindings = reader_loop_bindings(reader)
-        for values in loop_bindings.values():
-            for value in values:
-                edges.update(aliases.get(value, ()))
-        def unbounded_suffix(node):
-            if bounded_source_path(node, loop_bindings):
-                return False
-            names = [part for part in ast.walk(node) if isinstance(part, ast.Name)]
-            return any(part.id not in loop_bindings and import_bounds(part) is None for part in names)
-        dynamic = any(isinstance(n, ast.FormattedValue) and unbounded_suffix(n.value) or isinstance(n, ast.BinOp) and isinstance(n.op, (ast.Div, ast.Add)) and not isinstance(n.right, ast.Constant) and unbounded_suffix(n.right) for n in ast.walk(expression))
-        raw_name_suffix = isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.Div) and isinstance(expression.right, ast.Name) and not bounded_source_path(expression.right, loop_bindings)
-        if raw_name_suffix and repository_path_context(expression):
-            unknown("Unbounded absolute source-read suffix: ")
-        known_input = resources or any(aliases.get(value) for value in expression_literals(expression))
-        if known_input and any(isinstance(part, (ast.IfExp, ast.BoolOp)) and import_bounds(part) is None for part in ast.walk(expression)):
-            unknown("Unbounded source-read alternative: ")
-        elif resources and (directory_read or dynamic):
-            if not bounded_source_path(expression, loop_bindings) or path in REVIEWED_DYNAMIC_DEPENDENCIES:
-                unknown("Unbounded or reviewed source directory reader: ")
-            else:
-                edges.update(resources)
+    # A production module's import inside a function runs only when that code
+    # runs; CI footprints record the lazy imports tests actually exercise.
+    lazy = set()
+    if not is_test:
+        for outer in nodes:
+            if isinstance(outer, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                lazy.update(id(inner) for inner in ast.walk(outer) if isinstance(inner, (ast.Import, ast.ImportFrom, ast.Call)))
     for node in nodes:
-        names = []
+        if id(node) in lazy:
+            continue
         if isinstance(node, ast.Import):
-            names = [a.name for a in node.names]
+            for alias in node.names:
+                module(alias.name)
         elif isinstance(node, ast.ImportFrom):
-            parent = PurePosixPath(path).parent
             if node.level:
+                parent = directory
                 for _ in range(node.level - 1):
                     parent = parent.parent
-                base = str(parent).replace("/", ".") + ("." + node.module if node.module else "")
+                base = ".".join(part for part in (str(parent).replace("/", "."), node.module or "") if part)
             else:
                 base = node.module or ""
-            names = [base] + [base + "." + a.name for a in node.names]
-        for name in names:
-            if name == "mcp" or name.startswith("mcp."):
-                edges.add("agent_tools/requirements-mcp.txt")
-            if name in module_paths:
-                edges.add(module_paths[name])
-            if name + ".__init__" in module_paths:
-                edges.add(module_paths[name + ".__init__"])
-            if "." not in name:
-                local = str(PurePosixPath(path).parent / (name + ".py"))
-                edges.update({local} if local in inventory else module_aliases.get(name, ()))
-        if not isinstance(node, ast.Call):
-            continue
-        call = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
-        if call not in {"import_module", "__import__", "spec_from_file_location"}:
-            continue
-        argument = node.args[1] if call == "spec_from_file_location" and len(node.args) > 1 else (node.args[0] if node.args else None)
-        literals = expression_literals(argument)
-        for literal in literals:
-            edges.update(module_aliases.get(literal.strip("."), ()))
-            if literal.startswith("."):
-                edges.update(module_aliases.get(literal[1:], ()))
-        if call == "spec_from_file_location":
-            # Generic source loaders bind all literal source/fixture candidates
-            # in the same file. No such candidates means mapping is unknown.
-            bindings = reader_loop_bindings(node)
-            for values in bindings.values():
-                for value in values:
-                    edges.update(aliases.get(value, ()))
-            if isinstance(argument, ast.Constant):
-                edges.update(directories.get(argument.value, ()))
-            alternatives = [part for part in ast.walk(argument) if isinstance(part, (ast.IfExp, ast.BoolOp))] if argument is not None else []
-            bounded_alternatives = all((bound := import_bounds(part)) is not None and not bound[1] and all(aliases.get(value) or module_aliases.get(value.strip(".")) or directories.get(value.strip("/")) for value in bound[0]) for part in alternatives)
-            if not bounded_source_path(argument, bindings) or not bounded_alternatives or not any(aliases.get(s) or module_aliases.get(s.strip(".")) or directories.get(s.strip("/")) for s in literals):
-                unknown("Unresolved source loader: ")
-        else:
-            bounded = import_bounds(argument)
-            if bounded is None:
-                unknown("Unresolved dynamic import at line " + str(node.lineno) + ": ")
+            module(base)
+            for alias in node.names:
+                module(base + "." + alias.name if base else alias.name)
+        elif isinstance(node, ast.Call):
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+            literals = [a.value for a in node.args if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+            if name in {"import_module", "__import__"}:
+                for literal in literals[:1]:
+                    module(literal.strip("."))
+        elif is_test and isinstance(node, ast.Constant) and isinstance(node.value, str) and len(node.value) <= 512:
+            # Tests and their fixtures name the files they read. A production
+            # source registry (shipped closures, reviewed roles) is not a test
+            # dependency of every importer; recorded footprints cover its reads.
+            literal = node.value.strip().removeprefix("./").strip("/")
+            if not literal or "\n" in literal:
                 continue
-            modules, packages = bounded
-            if packages:
-                if path in REVIEWED_DYNAMIC_DEPENDENCIES:
-                    unknown("Reviewed local dispatcher changed: ")
-                else:
-                    edges.update(p for p in inventory if p.startswith("agent_tools/") and p.endswith(".py"))
-            for module in modules:
-                if module_paths.get(module) == path:
-                    continue
-                if module.split(".")[0] in sys.stdlib_module_names:
-                    continue
-                if module == "mcp" or module.startswith("mcp."):
-                    edges.add("agent_tools/requirements-mcp.txt"); continue
-                resolved = module_aliases.get(module.strip("."), set())
-                if resolved:
-                    edges.update(resolved)
-                else:
-                    unknown("Unresolved dynamic import at line " + str(node.lineno) + ": ")
-    # Existing opaque-loader diagnostics retain their specific reason above.
-    # Stale declarations on otherwise analyzable readers must also refuse.
-    if reviewed and not reviewed_source:
-        unknown("Reviewed source dependency declaration changed: ")
+            if "/" in literal:
+                # A package or fixtures root is not a resource; recorded
+                # footprints name the files a test actually reads under it.
+                folder = directories.get(literal, ())
+                if folder and _package_literal(literal, folder, inventory):
+                    # Packages are linked by their imports, not by their names.
+                    folder = ()
+                for found in (paths.get(literal, ()), folder):
+                    if len(found) <= _LITERAL_FANOUT:
+                        edges.update(found)
+            elif literal in inventory:
+                edges.add(literal)
+            elif literal.endswith(".py") and literal in top_level:
+                edges.add(top_level[literal])
+            elif literal in fixtures and ("_" in literal or "-" in literal):
+                edges.update(fixtures[literal])
+    edges.discard(path)
     return edges
 
 
-def select_from_sources(sources, changed, baseline="inert", existing_tests=None):
+def load_footprints(root):
+    """Recorded edges from the newest fetched CI footprint table, or None."""
+    try:
+        value = json.loads((Path(root) / FOOTPRINT_CACHE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if (not isinstance(value, dict) or value.get("schemaVersion") != 1 or not isinstance(value.get("edges"), dict)
+            or not isinstance(value.get("directories", {}), dict)):
+        return None
+    return value
+
+
+@dataclass(frozen=True)
+class Graph:
+    """Forward edges of one inventory; build once, query for any change set."""
+    inventory: frozenset
+    edges: MappingProxyType
+    owned_scripts: frozenset
+    footprint_commit: str | None
+    listings: MappingProxyType = MappingProxyType({})
+
+    def reverse(self):
+        reverse = {}
+        for owner, dependencies_ in self.edges.items():
+            for dependency in dependencies_:
+                reverse.setdefault(dependency, set()).add(owner)
+        return reverse
+
+
+def build_graph(sources, footprints=None):
     inventory = set(sources)
-    tests = sorted(p for p in inventory if p.startswith("agent_tools/tests/test_") and p.endswith(".py") and sources[p] is not None and (existing_tests is None or p in existing_tests))
-    changed = set(changed)
-    relevant = {p for p in changed if not is_document(p) and potentially_agent_input(p)}
-    if not relevant:
-        return Selection(baseline, tuple(sorted(changed)), (), len(tests))
-    graph, errors, script_inputs = {}, {}, {}
+    graph, script_inputs = {}, {}
     indexes = _inventory_indexes(inventory)
     for path, text in sources.items():
         if is_python_source(path) and text is not None:
             graph[path] = set()
             for version in (text if isinstance(text, tuple) else (text,)):
-                try:
-                    exempt = REVIEWED_NON_PYTHON_RESOURCES.get(path) == hashlib.sha256(version.encode()).hexdigest()
-                    try:
-                        analysis = _analysis(path, version)
-                    except SelectionError:
-                        if not exempt:
-                            raise
-                        analysis = None
-                    if analysis is not None and path.startswith("agent_tools/tests/"):
-                        imported = script_inputs.setdefault(path, set())
-                        for node in analysis[1]:
-                            base = node.module if isinstance(node, ast.ImportFrom) else None
-                            if base and base.startswith("scripts"):
-                                names = [base] + [base + "." + alias.name for alias in node.names]
-                            elif isinstance(node, ast.Import):
-                                names = [alias.name for alias in node.names if alias.name.startswith("scripts.")]
-                            else:
-                                names = []
-                            for name in names:
-                                candidate = name.replace(".", "/") + ".py"
-                                if candidate in inventory:
-                                    imported.add(candidate)
-                    graph[path].update(_dependencies(path, version, inventory, indexes, analysis))
-                except SelectionError as error:
-                    errors[path] = error
-                    graph[path].update(getattr(error, "dependencies", set()))
+                analysis = _analysis(path, version)
+                if analysis is not None and path.startswith("agent_tools/tests/"):
+                    imported = script_inputs.setdefault(path, set())
+                    for node in analysis[1]:
+                        base = node.module if isinstance(node, ast.ImportFrom) else None
+                        if base and base.startswith("scripts"):
+                            names = [base] + [base + "." + alias.name for alias in node.names]
+                        elif isinstance(node, ast.Import):
+                            names = [alias.name for alias in node.names if alias.name.startswith("scripts.")]
+                        else:
+                            names = []
+                        for name in names:
+                            candidate = name.replace(".", "/") + ".py"
+                            if candidate in inventory:
+                                imported.add(candidate)
+                graph[path].update(_dependencies(path, version, inventory, indexes, analysis))
+        elif path in REVIEWED_DYNAMIC_DEPENDENCIES:
+            graph.setdefault(path, set()).update(_declared(path, None, inventory))
+    # Recorded footprints add what each test and module actually opened, listed
+    # or compiled; a listed directory covers its current children.
+    for owner, files in (footprints or {}).get("edges", {}).items():
+        if owner in inventory and isinstance(files, list):
+            graph.setdefault(owner, set()).update(p for p in files if p in inventory and p != owner)
+    # A listed directory depends on its names, not on its files' bytes: only an
+    # added or removed child selects the lister.
+    listings = {}
+    for owner, folders in (footprints or {}).get("directories", {}).items():
+        if owner in inventory and isinstance(folders, list):
+            for folder in folders:
+                if isinstance(folder, str) and folder:
+                    listings.setdefault(folder.rstrip("/"), set()).add(owner)
     # Script inputs are the finite source dependencies of production tools or
     # real imported test helpers. Product files cannot enroll agent suites merely
     # because a test reads their text.
@@ -609,16 +420,21 @@ def select_from_sources(sources, changed, baseline="inert", existing_tests=None)
                 owned.add(dependency); pending.extend(graph.get(dependency, ()))
         elif owner.startswith("agent_tools/tests/"):
             owned.update(script_inputs.get(owner, ()))
-    relevant = {p for p in relevant if not p.startswith("scripts/") or p in owned}
+    return Graph(frozenset(inventory), MappingProxyType({k: frozenset(v) for k, v in graph.items()}), frozenset(owned),
+                 footprints.get("sourceCommit") if footprints else None,
+                 MappingProxyType({k: frozenset(v) for k, v in listings.items()}))
+
+
+def select_from_graph(graph, tests, changed, baseline="inert", reverse=None, structural=frozenset()):
+    """structural: the changed paths that were added or removed."""
+    changed = set(changed)
+    relevant = {p for p in changed if not is_document(p) and potentially_agent_input(p)}
+    relevant = {p for p in relevant if not p.startswith("scripts/") or p in graph.owned_scripts}
     if not relevant:
-        return Selection(baseline, tuple(sorted(changed)), (), len(tests))
-    if errors and any(p.startswith("agent_tools/") or is_python_source(p) for p in relevant):
-        raise errors[sorted(errors)[0]]
-    reverse = {}
-    for owner, dependencies_ in graph.items():
-        for dependency in dependencies_:
-            reverse.setdefault(dependency, set()).add(owner)
-    affected, pending = set(), list(relevant)
+        return Selection(baseline, tuple(sorted(changed)), (), len(tests), footprint_commit=graph.footprint_commit)
+    reverse = graph.reverse() if reverse is None else reverse
+    listers = {owner for p in relevant & set(structural) for owner in graph.listings.get(str(PurePosixPath(p).parent), ())}
+    affected, pending = set(), list(relevant | listers)
     while pending:
         path = pending.pop()
         if path in affected:
@@ -626,31 +442,32 @@ def select_from_sources(sources, changed, baseline="inert", existing_tests=None)
         affected.add(path)
         pending.extend(reverse.get(path, ()))
     selected = [test for test in tests if test in affected]
-    # Preserve the original selected-test then error-path ordering. Errors are
-    # uncommon; ordinary selection shares one forward closure across all tests.
-    if errors:
-        for test in selected:
-            reachable, pending = set(), [test]
-            while pending:
-                path = pending.pop()
-                if path in reachable:
-                    continue
-                reachable.add(path)
-                pending.extend(graph.get(path, ()))
-            for path in sorted(reachable & set(errors)):
-                raise errors[path]
     reachable, pending = set(), list(selected)
     while pending:
         path = pending.pop()
         if path in reachable:
             continue
         reachable.add(path)
-        pending.extend(graph.get(path, ()))
-    consumed = reachable & relevant
-    unmapped = {p for p in relevant if (p.startswith("agent_tools/") or p in ROOT_AGENT_CONFIG) and p not in consumed and not p.startswith("agent_tools/tests/test_")}
-    if unmapped:
-        raise SelectionError("Changed agent dependency has no known consumers: " + ", ".join(sorted(unmapped)))
-    return Selection(baseline, tuple(sorted(changed)), tuple(p[:-3].replace("/", ".") for p in selected), len(tests))
+        pending.extend(graph.edges.get(path, ()))
+    # A changed agent file no selected test reaches is reported, not refused:
+    # CI runs the complete suite on every agent-input change (TEST-004).
+    unconsumed = tuple(sorted(p for p in relevant - reachable
+                              if (p.startswith("agent_tools/") or p in ROOT_AGENT_CONFIG) and not p.startswith("agent_tools/tests/test_")))
+    return Selection(baseline, tuple(sorted(changed)), tuple(p[:-3].replace("/", ".") for p in selected), len(tests),
+                     footprint_commit=graph.footprint_commit, unconsumed=unconsumed)
+
+
+def test_paths(sources, existing_tests=None):
+    return sorted(p for p in sources if p.startswith("agent_tools/tests/test_") and p.endswith(".py") and sources[p] is not None
+                  and (existing_tests is None or p in existing_tests))
+
+
+def select_from_sources(sources, changed, baseline="inert", existing_tests=None, footprints=None, structural=frozenset()):
+    tests = test_paths(sources, existing_tests)
+    if not any(not is_document(p) and potentially_agent_input(p) for p in changed):
+        return Selection(baseline, tuple(sorted(set(changed))), (), len(tests),
+                         footprint_commit=footprints.get("sourceCommit") if footprints else None)
+    return select_from_graph(build_graph(sources, footprints), tests, changed, baseline, structural=structural)
 
 
 def select(root, baseline=None, audit=False):
@@ -675,7 +492,9 @@ def select(root, baseline=None, audit=False):
                 sources[path] = old
             else:
                 sources[path] = (sources[path], old)
-    return select_from_sources(sources, changed, baseline, {p for p in current if (root / p).is_file()})
+    existing = {p for p in current if (root / p).is_file()}
+    return select_from_sources(sources, changed, baseline, existing, footprints=load_footprints(root),
+                               structural=frozenset(changed - (existing & previous)))
 
 
 def snapshot(root):
