@@ -8687,7 +8687,8 @@
         "5c632f56f416b54673ab6a4f4208e4c6d95d17ec1edebc8a78b40bb91b46c487",
         "ddf0f7b8224cd52ebec0f0ff0b1f7eecc6bbc035cfb4d7c4fbe8a79722f43117",
         "c2ea34ab71939558eb0056d668e597027ed331067d785c58b9b62bae177680e1",
-        "c4fed8c5582308021e4ed0a081a851499f7c1fc698266ce3d64819c1af9fb4da"
+        "c4fed8c5582308021e4ed0a081a851499f7c1fc698266ce3d64819c1af9fb4da",
+        "69452ace6ad63f4b174c0671ebeac82a6a6303658a99cfcde07606aa9ff2c07c"
       ]
     },
     "agent_tools/tests/test_native_scenario_ssh.py": {
@@ -13477,7 +13478,8 @@
         "cfd209457a04eb78185598c249bd096d66f604db76d2863da2cd64e9999ac45b",
         "93046ff2c1936544b408e2405352b341b48dfb92ec63c25dd97e653652d8795f",
         "4390fb0971ef6976ebcbcf882332f274c20cb1a21a306c916a22546a6cd69640",
-        "1e441b21f07661bda80774b0efb94e965e7b72a2a95e9e37a40634e971638df1"
+        "1e441b21f07661bda80774b0efb94e965e7b72a2a95e9e37a40634e971638df1",
+        "1aaa67b8e444cbc554fb57869bd4285b62ce83b1983a81d429cea25dbe9aacfb"
       ]
     },
     "agent_tools/windows_public_updater/update_cases.py": {
@@ -13582,7 +13584,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "f13c4f1f6ebd2320f56029a2360eff572abb1e61f2d9795288e0f36e0da20ab0",
+    "agent_tools/readiness_vm_dispatch.json": "385b9c077fa3d9f3fa4a7352524ce4846daf536fd7b21c60d118d8ec7026cc4b",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",

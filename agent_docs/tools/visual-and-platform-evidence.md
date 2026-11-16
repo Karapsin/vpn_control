@@ -1093,7 +1093,9 @@ detach and the lease read remain proved only offline. A guest too slow to answer
 lease read inside its 9 s ends `no-tray-close-release-unproven`, never a pass.
 
 `windows-scoped-tun.<variant>` has one row per variant `windows_tun_stages.py`
-accepts: `restart-deny`, `restart-grant`, `find-best-deny` and `find-best-grant`.
+accepts: `restart-deny`, `restart-grant`, `find-best-deny`, `find-best-grant`, the
+configuration grants `generated-grant`, `custom-grant` and `large-grant`, and the
+fault variants `vpn-prepare-failure` and `vpn-commit-failure`.
 Each is a `windows-proxy-lifecycle` row with the same inputs (bundle manifest,
 `targetPackage`, a `scenarioInput` naming its `priorInstall`) plus the TUN stages; a
 grant row also carries `windows_tun_direct_sampler.py` and its input. The stages'
@@ -1204,9 +1206,48 @@ unmeasured time the decision's 30 s gate may not cover, the decision table has n
 find-best row, and which location a Find Best in VPN mode leaves selected after a
 denial is unread. The grant's collector route is the restart grant's own. Admission
 treats any `-deny` name as a deny row, so without a decision row and its join it
-stays refused even if that refusal is lifted. The TUN fault half of
-`prepare-commit-recovery` and the TUN config halves of `generated-custom-config`
-and `large-config` still have no row.
+stays refused even if that refusal is lifted.
+
+Admitted: the configuration grants and the fault variants, the TUN halves of
+`generated-custom-config`, `large-config` and `prepare-commit-recovery`; each scenario
+names both its proxy rows and its TUN rows. Each of these rows first adds its own
+location from the proxy rows' own documents (`windows_runtime_branch_cases.py`, which
+the row carries for its documents only): `Owned generated` (a SOCKS location on the
+loopback fixture), `Owned CUSTOM`, `Owned large CUSTOM` (beyond the 60,000-byte inline
+limit), `Owned prepare failure` (an unsupported inbound) and `Owned commit failure` (a
+listener on the fixture's own SOCKS port), reads a configuration location back, then
+selects it in VPN mode and asks for the restart.
+
+- `generated-grant`, `custom-grant` and `large-grant` are grants: the reviewed
+  `vpn-broker` approval, the TUN collector's hold and both records, the product's own
+  off and the closing census, as for `restart-grant`. Inside the ready window the
+  stages read the operation's `runtime-config.json` as the ordinary user and require
+  its size and SHA-256 to be the ready record's `observations.configuration` (what
+  SYSTEM read). A generated config must carry the generated TUN (`172.19.250.1/30`) and
+  the location's SOCKS server; a CUSTOM config must be the document with only the
+  product's management and direct-probe changes (`custom_semantics`), and it has no
+  TUN, since the product adds none to a CUSTOM document. Only `generated-grant` runs the
+  direct sampler: through a CUSTOM config's elevated runtime its address would leave
+  the guest, so their traffic half is the proxy rows'.
+- `vpn-prepare-failure` raises no prompt: the product checks the config before it asks
+  for the broker. It has no decision row, no profile gate and no collector; the owner
+  publishes `scoped-tun-request-accepted` instead of the pending event. It passes only
+  with the operation's `RUNTIME_FAILED`, A's runtime, location, mode and config bytes
+  unchanged, B pending in VPN mode, the owner and runtime unelevated, and a census as
+  before the request.
+- `vpn-commit-failure` is approved (profile gate and approval join as a grant) but has
+  no hold and never asks a collector, since no TUN comes up. It passes only with
+  `RUNTIME_FAILED`, A back as a new runtime of the same location in proxy mode with its
+  config bytes as before, the original A runtime gone, the recovered owner and runtime
+  unelevated, the runtime log naming the `owned-conflict` bind on the fixture's port,
+  and no broker, TUN route, new stage or other runtime left. The row's own off and
+  census then take the recovered A. An `OK` (the TUN came up) parks; an expired prompt
+  is the known `cancelled` end.
+
+The fault variants' expected end is their pass, so a later oracle failure closes as a
+known failure. Nothing here has run natively: the broker's log after a failed commit,
+its stage cleanup, and a large document through the broker channel are first seen on
+the fixture.
 
 The direct sampler is the TUN traffic tool: plain HTTP to `198.18.0.1:80` with no
 SOCKS step, under the ordinary token, answered by the row's own loopback upstream
@@ -1808,7 +1849,9 @@ run passes only with it observed denied, and one whose probe proved no denial fa
 that scenario alone (`failed-principal`, below). RSP also names `cli-disconnect-long-work` and its part of
 `operation-progress-cancellation`, `windows-scoped-tun.restart-deny` names
 `denial-preserves-active-a`, `windows-scoped-tun.restart-grant` names
-`scoped-uac-tun-traffic` and, beside its other half, `scoped-elevation`,
+`scoped-uac-tun-traffic` and, beside its other half, `scoped-elevation`, the
+configuration grants and fault variants name `generated-custom-config`,
+`large-config` and `prepare-commit-recovery` beside the proxy rows of the same names,
 `windows-proxy-lifecycle.scheduled-refresh` names
 `scheduled-without-gui` alone, and `windows-proxy-lifecycle.no-tray-close` names
 `close-detach-traffic` alone and `gui-attach-detach` with `gui-pending`: that row

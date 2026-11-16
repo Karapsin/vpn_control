@@ -811,10 +811,13 @@ class PacketTests(unittest.TestCase):
                 self.assertIn(row["sidField"], source)
                 if source is cases:
                     self.assertIn(row["value"], cases)
-        self.assertEqual({"restart-deny", "restart-grant", "find-best-deny", "find-best-grant"}, set(dedicated_driver.TUN_VARIANTS))
-        self.assertEqual({"windows-scoped-tun." + variant for variant in dedicated_driver.TUN_VARIANTS},
+        self.assertEqual({"restart-deny", "restart-grant", "find-best-deny", "find-best-grant", "generated-grant", "custom-grant", "large-grant",
+                         "vpn-prepare-failure", "vpn-commit-failure"},
+                         set(dedicated_driver.TUN_VARIANTS))
+        # vpn-prepare-failure is refused by the product before any prompt (windows_tun_stages.PROMPTLESS): nothing to answer.
+        self.assertEqual({"windows-scoped-tun." + variant for variant in dedicated_driver.TUN_VARIANTS - tun_stages.PROMPTLESS},
                          {name for name in decision.ROWS if name.startswith("windows-scoped-tun.")},
-                         "the driver runs exactly the TUN variants the table answers: the denial and, behind its collector, the grant")
+                         "the driver runs exactly the TUN variants the table answers, and the one that raises no prompt")
         # A returned CANCELLED is a known failure only for the synchronous grants: the async waits and protected storage park.
         self.assertEqual(update_cases.GRANT_VARIANTS - {"transport-loss"},
                          {name.split(".", 1)[1] for name, row in decision.ROWS.items() if name.startswith("windows-public-update.") and row["decision"] == "approve"}

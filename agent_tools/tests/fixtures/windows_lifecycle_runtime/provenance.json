@@ -204,12 +204,12 @@
       "sha256": "e8510e0d2fe42a73e7c8a1c5550a18c6292293681fb10472abf2a668f3721135"
     },
     "agent_tools/windows_tun_stages.py": {
-      "bytes": 27051,
+      "bytes": 38413,
       "currentRoleAdjustment": "Finish waits 300 s, past the prompt's lifetime, and a known CANCELLED on a grant is a known failure. On the scenario route every input is the job's own: the frame handoff is gone, uacDecisionId is windows-uac-decision's one decision for this operation, and a closing census and a direct sampler are added. A final refusal of the request, a final code the variant does not expect or a cancelled grant is a known end that settles the lease for its closing census, and a denial must keep pending B selected. A grant asks the driver's handoff for its collector's ready record only after the product's own OK, and its machine records join the row's source, which the driver keeps on the lease. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v3/tun_stages.py",
       "originalSourceBytes": 15407,
       "originalSourceSha256": "aca0ca635e813b57b3c1047ad32dc619bf059c5909b50145078d379b32c93a9a",
-      "sha256": "28c2c7ee5d97c382c2bcf43e03d5f1b9f5813c12ac9c76ccf826f4e0c4bf2849"
+      "sha256": "77e34257823047ccd3bfe6fdd0b3106484d355e6fd716ce9a32ce0e8e675211b"
     }
   },
   "schemaVersion": 1,

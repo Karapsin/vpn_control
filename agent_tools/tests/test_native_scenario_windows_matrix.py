@@ -1005,8 +1005,7 @@ class TableTests(unittest.TestCase):
                          - set(MATRIX_REAL["document-persistence-transfer"]))
         unmapped = sorted(name + ":" + scenario for name, table in MATRIX_REAL.items() for scenario, rows in table.items() if not rows)
         self.assertEqual(sorted(["windows-visual:" + item for item in ("scene-capture", "geometry-contrast", "agent-verdict")]
-                                + ["windows-scoped-vpn:" + item for item in ("prepare-commit-recovery", "exact-child-stop", "generated-custom-config",
-                                                                             "large-config", "dns-ws-ssh-cache-resources", "pipe-storage-races")]
+                                + ["windows-scoped-vpn:" + item for item in ("exact-child-stop", "dns-ws-ssh-cache-resources", "pipe-storage-races")]
                                 + ["document-persistence-transfer:" + item for item in ("gui-cli-transfer", "cache-digest-bytes")]),
                          unmapped)
         # The SSH row declares a relayed transfer and a stdin key import still to do, which the relay row does: they prove
@@ -1070,10 +1069,16 @@ class TableTests(unittest.TestCase):
         # it cannot show its elevated off spares one: exact-child-stop stays missing (ExactChildStopTests). The find-best
         # rows count for Find Best in VPN mode beside the proxy rows: a denial keeps A and pending B, a grant commits its
         # winner with traffic through its TUN. They were refused at admission and named no scenario before.
+        # The configuration and fault variants are the TUN halves of the proxy rows' config and failure scenarios (T8).
         self.assertEqual({"windows-scoped-tun.restart-deny": ["windows-scoped-vpn:denial-preserves-active-a"],
                           "windows-scoped-tun.restart-grant": ["windows-native-cli:scoped-elevation", "windows-scoped-vpn:scoped-uac-tun-traffic"],
                           "windows-scoped-tun.find-best-deny": ["windows-native-cli:find-best"],
-                          "windows-scoped-tun.find-best-grant": ["windows-native-cli:find-best"]},
+                          "windows-scoped-tun.find-best-grant": ["windows-native-cli:find-best"],
+                          "windows-scoped-tun.generated-grant": ["windows-scoped-vpn:generated-custom-config"],
+                          "windows-scoped-tun.custom-grant": ["windows-scoped-vpn:generated-custom-config"],
+                          "windows-scoped-tun.large-grant": ["windows-scoped-vpn:large-config"],
+                          "windows-scoped-tun.vpn-prepare-failure": ["windows-scoped-vpn:prepare-commit-recovery"],
+                          "windows-scoped-tun.vpn-commit-failure": ["windows-scoped-vpn:prepare-commit-recovery"]},
                          {row: scenarios for row, scenarios in named.items() if row.startswith("windows-scoped-tun.") and scenarios})
         self.assertEqual((), MATRIX_REAL["windows-scoped-vpn"]["exact-child-stop"])
         self.assertEqual(("windows-scoped-tun.restart-grant", "windows-public-update.success-off"), MATRIX_REAL["windows-native-cli"]["scoped-elevation"])

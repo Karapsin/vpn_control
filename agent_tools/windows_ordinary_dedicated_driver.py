@@ -48,9 +48,18 @@ FAILURE_VARIANTS = frozenset({"prepare-failure", "commit-readiness-failure"})
 BRANCH_VARIANTS = CONFIG_VARIANTS | FAILURE_VARIANTS | {"sibling-off"}
 # A grant runs under the caller's close hold of its TUN SYSTEM collector, whose ready and off records this driver hands
 # to the stages. Find Best raises the same one vpn-broker prompt as a restart, after it validated its candidates.
-TUN_VARIANTS = frozenset({"restart-deny", "restart-grant", "find-best-deny", "find-best-grant"})
-TUN_GRANT_VARIANTS = frozenset({"restart-grant", "find-best-grant"})
-TUN_SHA = "28c2c7ee5d97c382c2bcf43e03d5f1b9f5813c12ac9c76ccf826f4e0c4bf2849"
+# The configuration grants (generated, CUSTOM and large documents under an approved broker) take the same hold and
+# collector; only generated-grant's runtime config has a TUN, so only it, restart-grant and find-best-grant run the
+# direct sampler. The fault variants are the TUN halves of the proxy rows' preparation and commit-readiness failures: no
+# TUN comes up, so they have no hold and never ask a collector. These five add their location from the proxy rows'
+# branch cases.
+TUN_VARIANTS = frozenset({"restart-deny", "restart-grant", "find-best-deny", "find-best-grant", "generated-grant", "custom-grant",
+                          "large-grant", "vpn-prepare-failure", "vpn-commit-failure"})
+TUN_GRANT_VARIANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant", "custom-grant", "large-grant"})
+TUN_SAMPLED_VARIANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant"})
+TUN_CONFIG_VARIANTS = frozenset({"generated-grant", "custom-grant", "large-grant"})
+TUN_BRANCH_VARIANTS = TUN_CONFIG_VARIANTS | {"vpn-prepare-failure", "vpn-commit-failure"}
+TUN_SHA = "77e34257823047ccd3bfe6fdd0b3106484d355e6fd716ce9a32ce0e8e675211b"
 SAMPLER_SHA = "e2915de32a47f46251e1af807f181950ceb120d2e3d998c8b3c679645553a697"  # A grant's direct TUN sampler
 TUN_COLLECTOR_SHA = "e8510e0d2fe42a73e7c8a1c5550a18c6292293681fb10472abf2a668f3721135"  # windows_tun_native_observer: COLLECTORS["tun"]
 NATIVE_NEED = "update-native-observation-needed"  # The one native-need kind the SYSTEM run reports (windows_scenario_system_run).
@@ -244,6 +253,8 @@ def lifecycle_inputs(owner, value):
         roles["branches"] = BRANCH_SHA
     if tun:
         roles["tun"] = TUN_SHA
+    if value["variant"] in TUN_BRANCH_VARIANTS:
+        roles["branches"] = BRANCH_SHA  # The location documents of the proxy rows' branch cases, nothing else of them.
     if scheduled:
         roles["scheduled"] = SCHEDULED_SHA
     if no_tray:
@@ -261,7 +272,7 @@ def lifecycle_inputs(owner, value):
                 and type(runtime_inputs.get("workspace")) is str
                 and value["tun"].get("runtimeConfigPath") == str(PureWindowsPath(runtime_inputs["workspace"]) / "runtime-config.json"),
                 "dedicated-tun-same-admission-references")
-        if value["variant"].endswith("grant"):
+        if value["variant"] in TUN_SAMPLED_VARIANTS:
             # A grant's sampler runs under the pinned interpreter: the reviewed bytes, the bundle's own beside this driver.
             sampler = value["tun"].get("samplerPath")
             require(type(sampler) is str and PureWindowsPath(sampler) == PureWindowsPath(__file__).parent / "windows_tun_direct_sampler.py",
@@ -515,7 +526,7 @@ def run_lifecycle(owner, cases, harness):
     runtime = owner.module(inputs["modules"]["runtime"], "_owned_dedicated_runtime_stages")
     observer = owner.module(inputs["modules"]["observer"], "_owned_dedicated_proxy_observer")
     branches = None
-    if inputs["variant"] in BRANCH_VARIANTS:
+    if inputs["variant"] in BRANCH_VARIANTS | TUN_BRANCH_VARIANTS:
         branches = owner.module(inputs["modules"]["branches"], "_owned_dedicated_runtime_branches")
     runtime.validate_inputs(owner, inputs["runtime"])
     installed_version(owner)
@@ -540,7 +551,8 @@ def run_lifecycle(owner, cases, harness):
                 # Armed before the request. Until the TUN came up and its collector was asked, nothing waits on it.
                 caller = owner.module(grant["callerPath"], "_owned_dedicated_caller_hold")
                 hold = caller.CallerCollectionHold(owner, grant["inputs"])
-            lease = tun.begin(owner, state, inputs["tun"], runtime, cases, observer)
+            lease = tun.begin(owner, state, inputs["tun"], runtime, cases, observer,
+                              **({"branches": branches} if inputs["variant"] in TUN_BRANCH_VARIANTS else {}))
             if grant is None:
                 outcome = tun.finish(owner, lease, runtime, cases, observer)
             else:
@@ -551,9 +563,12 @@ def run_lifecycle(owner, cases, harness):
                                      handoff=lambda current, stage: tun_record(owner, current, receipts, stage))
             actors = state["actors"]
             if grant is not None and lease.get("nativeReady") is not None:
-                # The grant's TUN is up: traffic through it, then the product's own off of exactly that broker and runtime,
-                # which the same collector's off record proves signaled.
-                tun.traffic(owner, lease)
+                # The grant's TUN is up: its config against the ready record, traffic through a generated TUN, then the
+                # product's own off of exactly that broker and runtime, which the same collector's off record proves signaled.
+                if inputs["variant"] in TUN_CONFIG_VARIANTS:
+                    tun.configuration(owner, lease, branches)
+                if inputs["variant"] in TUN_SAMPLED_VARIANTS:
+                    tun.traffic(owner, lease)
                 tun.begin_off(owner, lease, runtime)
                 tun.finish_off(owner, lease, tun_record(owner, lease, receipts, "off"), receipts)
         elif inputs["variant"] == "gui-pending":
@@ -601,6 +616,8 @@ def run_lifecycle(owner, cases, harness):
                 actors["owner"], actors["runtime"])
         if tun is not None:
             tun_census(owner, tun, lease, observer)  # No broker, scoped runtime, private stage or TUN route is left.
+        if inputs["variant"] in TUN_BRANCH_VARIANTS:
+            branches.close_fixture_files_after_off(owner, state, runtime)  # The location document, kept on disk.
         runtime.stop_fixture(owner, state)
         cases.read(owner, workspace, identity, "quit")
     except AssertionError as error:

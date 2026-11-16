@@ -50,7 +50,8 @@ DOCUMENT_ROWS = ("windows-document-acceptance", *("windows-document-cold." + var
 # The responsive row runs the same document action with its responsiveWork; cache-bytes with its own cache source.
 RESPONSIVE_ROW = "windows-document-responsive"
 ADMITTED_DOCUMENT_ROWS = (*DOCUMENT_ROWS, RESPONSIVE_ROW)
-TUN_ROWS = tuple("windows-scoped-tun." + variant for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant"))
+TUN_ROWS = tuple("windows-scoped-tun." + variant for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant",
+                                                          "generated-grant", "custom-grant", "large-grant", "vpn-prepare-failure", "vpn-commit-failure"))
 HOME = "/home/fixture-owner"
 TARGET = {"kind": "ssh", "uid": 1000, "principal": "fixture-owner", "home": HOME, "bootId": "22222222-3333-4444-8555-666666666666"}
 OWNER = {"pid": 4242, "birth": "linux:987654"}
@@ -1407,7 +1408,7 @@ class ScopedTunTableTests(unittest.TestCase):
             with self.subTest(variant=variant):
                 self.assertEqual(("product", "python-worker", "windows-proxy-lifecycle", True, None),
                                  (row["evidenceClass"], row["bootstrapMode"], row["workerAction"], row["priorInstall"], row["package"]))
-                grant = variant.endswith("-grant")
+                grant, sampled = variant in proxy.TUN_GRANT_VARIANTS, variant in proxy.TUN_SAMPLED_VARIANTS
                 # A grant's one SYSTEM collector stage, tun, is also its final one: the driver's hold waits on it.
                 self.assertEqual(({"variant": variant}, {"variant": variant, **({"collectorStages": ("tun",), "finalStage": "tun"} if grant else {})}),
                                  (row["proxy"], row["tun"]))
@@ -1416,7 +1417,8 @@ class ScopedTunTableTests(unittest.TestCase):
                 proxy_files = {relative: role for relative, role, _ in windows._PROXY_FILES}
                 collector = {relative: role for relative, role, _ in (*windows._TUN_COLLECTOR, *windows._COLLECTOR_FILES)}
                 self.assertEqual({**proxy_files, "agent_tools/windows_tun_stages.py": "tun",
-                                  **({"agent_tools/windows_tun_direct_sampler.py": "sampler", **collector} if grant else {}),
+                                  **({"agent_tools/windows_tun_direct_sampler.py": "sampler"} if sampled else {}), **(collector if grant else {}),
+                                  **({"agent_tools/windows_runtime_branch_cases.py": "branches"} if variant in proxy.TUN_PENDING else {}),
                                   "agent_tools/windows_ordinary_task_owner.ps1": "owner", "agent_tools/windows_ordinary_process_owner.py": "worker"}, files)
                 self.assertNotIn("traffic", files.values(), "a TUN row samples only through its TUN, never through the SOCKS worker")
                 leaves = [relative.rsplit("/", 1)[1] for relative in files] + [leaf for _, leaf in row["generated"] + row["extracted"]]
@@ -1428,8 +1430,11 @@ class ScopedTunTableTests(unittest.TestCase):
         # refused windows_scenario_tun_find_best_unproven.
         from agent_tools import windows_uac_decision as uac
         refusals = {variant: windows.RECIPES["windows-scoped-tun." + variant]["refusal"] for variant in windows.TUN_VARIANTS}
-        self.assertEqual(dict.fromkeys(("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")), refusals)
-        self.assertEqual({"windows-scoped-tun." + variant for variant in windows.TUN_VARIANTS}, {name for name in uac.ROWS if name.startswith("windows-scoped-tun.")})
+        self.assertEqual({variant: None for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant", "generated-grant",
+                                                         "custom-grant", "large-grant", "vpn-prepare-failure", "vpn-commit-failure")}, refusals)
+        # vpn-prepare-failure is refused by the product before any prompt: it has no decision row.
+        self.assertEqual({"windows-scoped-tun." + variant for variant in windows.TUN_VARIANTS if variant != "vpn-prepare-failure"},
+                         {name for name in uac.ROWS if name.startswith("windows-scoped-tun.")})
 
     def test_the_grant_collector_modules_are_the_contract_roles(self):
         from agent_tools.windows_system_collector import collector_contract as contract
@@ -1457,10 +1462,14 @@ class ScopedTunTableTests(unittest.TestCase):
                     self.assertEqual(("vpn-broker", table["decision"], table["event"]), (row["uac"]["prompt"], row["uac"]["decision"], row["uac"]["event"]))
                     self.assertEqual("deny" if variant.endswith("-deny") else "approve", row["uac"]["decision"])
                     self.assertEqual(variant.endswith("-deny"), row["denyJoin"])
-                    self.assertEqual(variant.endswith("-grant"), row.get("approveJoin") is True, "a grant joins its approval too")
+                    self.assertEqual(not variant.endswith("-deny"), row.get("approveJoin") is True, "a grant and the commit fault join their approval too")
+                else:
+                    # Only a row with no prompt at all, or one refused at admission, has no decision.
+                    self.assertTrue(variant == "vpn-prepare-failure" or row["refusal"] is not None, variant)
                 # Only the admitted rows reach the dedicated driver, which takes the grant whose collector stage exists.
                 self.assertEqual(row["refusal"] is None, variant in dedicated.TUN_VARIANTS)
                 self.assertEqual(row["refusal"] is None and variant.endswith("-grant"), variant in dedicated.TUN_GRANT_VARIANTS)
+                self.assertEqual(row["refusal"] is None and "samplerInput" in dict(row["generated"]), variant in dedicated.TUN_SAMPLED_VARIANTS)
 
     def test_the_tun_files_and_the_collector_pin_are_in_the_bundle(self):
         from agent_tools.windows_system_collector import collector_contract as contract

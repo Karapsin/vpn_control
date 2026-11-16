@@ -2837,6 +2837,33 @@ find-best-tun REPORT.txt. Still native: how long Find Best validates before its 
 fixture; whether three gates cover it; which candidate wins; and every TUN-route item that
 T7 left native.
 
+### Windows scoped-TUN configuration and fault variants, offline build (2026-11-16)
+
+Built offline in the scratch clone `builders/build-tun-variants` on `786cfda9` (the settled
+TUN grant); nothing here has run natively. RED ran in an archive of `786cfda9`
+(`.runtime/tun-variants-red`, removed after use) holding only the new and changed test
+modules, one unittest process per failure type, on Python 3.14 and 3.12 with identical
+counts (subtests included). The fault and configuration regressions build the lease that
+`begin` leaves rather than calling it, so each fails on its own cause on the unfixed
+source and not only on `begin`'s missing document argument. The logs are the build
+clone's `.runtime/tun-variants-logs/{red,green}-{314,312}-<type>.log`, copied to
+`.runtime/windows-parity-20261107/evidence/tun-variants/test-logs/` of the recovery
+checkout.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The TUN halves of `prepare-commit-recovery`, `generated-custom-config` and `large-config` had no row, so the three scenarios stayed unmapped | `test_windows_tun_variants.PlannerVariantTests`; `test_native_scenario_windows.ScopedTunTableTests` (`test_the_rows_are_the_stages_variants_on_the_proxy_action`, `test_the_restart_rows_are_admitted_and_each_find_best_row_names_what_it_lacks`, `test_each_prompt_is_the_decision_tables_and_a_denial_joins_its_terminal`); `test_native_scenario_windows_matrix.TableTests`; `test_windows_uac_decision.PacketTests.test_table_values_are_what_the_case_modules_publish`; `test_windows_tun_stages.GeneratedInputTests`; `test_native_scenario_windows.TableTests` (`test_the_closed_names_agree_everywhere`, `test_setup_rows_are_never_evidence_and_product_rows_name_their_package`, `test_the_worker_doors_are_constants_of_their_rows`); `test_native_scenario_execution.NativeScenarioExecutionTest.test_windows_names_are_closed` | RED failures=14, errors=18: no such variant in `TUN_VARIANTS`, the scenarios mapped to `()`, no decision row, `proxy_variant` for every new harness, no sampled set (every grant sampled), and the closed name tables of `native_scenario_execution.WINDOWS_SCENARIOS` and `native_scenario_ssh`'s artifact roles without the new rows. The planner keyed a grant, its sampler and its approval on a `-grant` suffix; it now names the grants, the sampled grants, the document variants and the one variant with no prompt. `vpn-prepare-failure` has no decision row, profile gate or join; `vpn-commit-failure` is approved and joins its approval but has no collector. |
+| A TUN row could select only `Owned B`, so no TUN row could carry a configuration or fault document | `test_windows_tun_variants.VariantBeginTests` | RED errors=12: `begin()` took no document cases. The stages now publish the proxy rows' own documents through `windows_runtime_branch_cases` (generated SOCKS, CUSTOM, large CUSTOM beyond the inline limit, unsupported inbound, owned-conflict listener), add and read back the location, then select it in VPN mode. The variant with no prompt publishes `scoped-tun-request-accepted`, never the pending event a decision would wait on. |
+| A preparation failure in VPN mode was a known failure, never the row's pass | `test_windows_tun_variants.PreparationFailureTests` | RED failures=1, errors=1: `RUNTIME_FAILED` went to the unexpected-terminal path (`knownFailure`), and an `OK` was taken for a grant. It now passes only with A, pending B, config bytes and census as before the request, and settles the lease. |
+| A commit-readiness failure after an approval had no recovery oracle | `test_windows_tun_variants.CommitFailureTests` | RED failures=8: `kept()` refused the recovered A (`uac-denial-lost-active-a-or-pending-b`). It now requires A's location and mode with a new runtime ID, its config bytes, the original runtime gone, the recovered owner and runtime unelevated, the `owned-conflict` bind in the runtime log, and no broker, route, stage or other runtime; the row's own off and census take the recovered A. An `OK` parks. |
+| A grant never compared its runtime config with its ready record, and the sampler ran for any grant | `test_windows_tun_variants.ConfigurationTests` | RED errors=8: no `configuration` stage, and `traffic` ran the sampler for `custom-grant` (`KeyError: samplerInputPath`), whose CUSTOM config has no TUN, so its address would have left the guest. `configuration` requires the bytes the ordinary user reads to be the ready record's `observations.configuration`, the generated TUN and SOCKS server, or the CUSTOM document with only the product's management and probe changes. Only `restart-grant`, `find-best-grant` and `generated-grant` sample. |
+| The dedicated driver refused the variants and had no configuration step or document closing for them | `test_windows_tun_variants.DriverVariantTests`; `test_windows_tun_grant.DriverGrantTests.test_only_the_restart_grant_reaches_the_collector_route` | RED failures=3, errors=5: `dedicated-finite-proxy-variants-only`. A configuration grant now runs begin with the branch cases, finish, configuration, the sampler only for `generated-grant`, its own off and both records, the census and the documents' close under its collector's hold; a fault variant has no hold, asks no collector and closes with the recovered A. |
+
+Still native, all of it: whether the broker's log reaches `runtime-sing-box.log` after a
+failed commit, whether the broker removes its private stage then, whether a large CUSTOM
+document crosses the broker channel, the configuration digest the collector reads, and
+whether a CUSTOM config in VPN mode keeps the product's direct-probe rules as in proxy mode.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

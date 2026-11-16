@@ -445,9 +445,12 @@ class DriverGrantTests(unittest.TestCase):
             dedicated_driver.run(self.owner, "windows-proxy-lifecycle")
         self.assertNotIn("start-runtime", self.owner.calls)
 
-    def test_only_the_two_grants_reach_the_collector_route(self):
-        self.assertEqual(frozenset({"restart-grant", "find-best-grant"}), dedicated_driver.TUN_GRANT_VARIANTS)
-        self.assertEqual(frozenset({"restart-deny", "restart-grant", "find-best-deny", "find-best-grant"}), dedicated_driver.TUN_VARIANTS)
+    def test_only_the_grants_reach_the_collector_route(self):
+        # The configuration grants (T8, test_windows_tun_variants) take the same route as the restart and Find Best grants.
+        self.assertEqual(frozenset({"restart-grant", "find-best-grant", "generated-grant", "custom-grant", "large-grant"}),
+                         dedicated_driver.TUN_GRANT_VARIANTS)
+        self.assertEqual(frozenset({"restart-deny", "restart-grant", "find-best-deny", "find-best-grant", "generated-grant", "custom-grant", "large-grant",
+                         "vpn-prepare-failure", "vpn-commit-failure"}), dedicated_driver.TUN_VARIANTS)
         self.assertEqual(contract.COLLECTORS["tun"], getattr(dedicated_driver, "TUN_COLLECTOR_SHA", None))
         self.assertEqual(sha((ROOT / "agent_tools/windows_tun_native_observer.py").read_bytes()), contract.COLLECTORS["tun"])
         self.owner = DedicatedDispatchPeer(self.root)

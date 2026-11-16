@@ -26,9 +26,15 @@ SCHEDULED_VARIANTS = ("scheduled-refresh",)
 NO_TRAY_VARIANTS = ("no-tray-close",)
 VARIANTS = PROXY_VARIANTS + BRANCH_VARIANTS + SCHEDULED_VARIANTS + NO_TRAY_VARIANTS
 TRAFFIC_VARIANTS = frozenset({"gui-pending", *BRANCH_VARIANTS, *SCHEDULED_VARIANTS, *NO_TRAY_VARIANTS})
-# windows-scoped-tun.<variant>: the same action and runtime, plus windows_tun_stages; a grant adds the direct sampler.
-TUN_VARIANTS = ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")
-TUN_GRANT_VARIANTS = frozenset({"restart-grant", "find-best-grant"})
+# windows-scoped-tun.<variant>: the same action and runtime, plus windows_tun_stages; a grant adds its collector's hold and,
+# where its runtime config has the generated TUN, the direct sampler. The configuration and fault variants add their own
+# location from the proxy rows' branch cases (windows_tun_stages.PENDING names it).
+TUN_VARIANTS = ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant", "generated-grant", "custom-grant", "large-grant",
+                "vpn-prepare-failure", "vpn-commit-failure")
+TUN_GRANT_VARIANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant", "custom-grant", "large-grant"})
+TUN_SAMPLED_VARIANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant"})
+TUN_PENDING = {"generated-grant": "Owned generated", "custom-grant": "Owned CUSTOM", "large-grant": "Owned large CUSTOM",
+               "vpn-prepare-failure": "Owned prepare failure", "vpn-commit-failure": "Owned commit failure"}
 PROGRAM_DATA = "C:\\ProgramData"
 # Role -> workspace leaf of every file this module writes; the trafficInput role only where a sampler runs.
 GENERATED = {"harness": "proxy-harness.py", "certificate": "proxy-localhost.pem", "privateKey": "proxy-localhost.key",
@@ -48,7 +54,7 @@ _SMALL_PRIMES = tuple(p for p in range(3, 2000, 2) if all(p % q for q in range(3
 
 def generated_roles(variant):
     if variant in TUN_VARIANTS:
-        return ("harness", "certificate", "privateKey", "trustStore", *(("samplerInput",) if variant in TUN_GRANT_VARIANTS else ()))
+        return ("harness", "certificate", "privateKey", "trustStore", *(("samplerInput",) if variant in TUN_SAMPLED_VARIANTS else ()))
     if variant not in VARIANTS:
         raise ValueError("proxy_variant")
     return tuple(role for role in GENERATED if role not in ("trafficInput", "samplerInput") or role == "trafficInput" and variant in TRAFFIC_VARIANTS)
@@ -203,12 +209,12 @@ def tun_inputs(variant, *, paths, admissions, tun):
     operation and the pinned TUN collector source, beside the paths and admissions of this same row."""
     if type(tun) is not dict or set(tun) != {"administratorSid", "decisionId", "collectorSourceSha256"}:
         raise ValueError("tun_inputs")
-    value = {"schemaVersion": 1, "variant": variant, "pendingLocation": "Owned B",
+    value = {"schemaVersion": 1, "variant": variant, "pendingLocation": TUN_PENDING.get(variant, "Owned B"),
              "runtimeConfigPath": paths["productWorkspace"] + "\\runtime-config.json", "guiPath": paths["installed"] + "\\vpn-control.exe",
              "installedAdmissionArtifactId": admissions["installed"], "ordinaryContextArtifactId": admissions["context"],
              "expectedApprovingAdminSid": tun["administratorSid"], "uacDecisionId": tun["decisionId"], "programData": PROGRAM_DATA,
              "collectorSourceSha256": tun["collectorSourceSha256"]}
-    if variant in TUN_GRANT_VARIANTS:
+    if variant in TUN_SAMPLED_VARIANTS:
         value.update(samplerPath=paths["file:sampler"], samplerInputPath=paths["file:samplerInput"])
     return value
 
@@ -259,6 +265,8 @@ def harness(variant, *, operation, paths, runtime_sha256, source_sha, admissions
                            "ordinaryContextArtifactId": admissions["context"]}
     if variant in TUN_VARIANTS:
         value["modules"]["tun"] = paths["file:tun"]
+        if variant in TUN_PENDING:
+            value["modules"]["branches"] = paths["file:branches"]
         value["tun"] = tun_inputs(variant, paths=paths, admissions=admissions, tun=tun)
     family = "windows-scoped-tun." if variant in TUN_VARIANTS else "windows-proxy-lifecycle."
     text = ('"""Literal inputs of ' + family + variant + ' for one operation; no other statement runs."""\n'
@@ -273,7 +281,7 @@ def files(variant, *, operation, paths, runtime_sha256, source_sha, admissions, 
              "certificate": tls["certificate"], "privateKey": tls["privateKey"], "trustStore": tls["trustStore"]}
     if variant in TRAFFIC_VARIANTS:
         found["trafficInput"] = traffic_input(variant, operation)
-    if variant in TUN_GRANT_VARIANTS:
+    if variant in TUN_SAMPLED_VARIANTS:
         found["samplerInput"] = sampler_input(operation)
     if tuple(found) != generated_roles(variant):
         raise ValueError("proxy_generated_roles")

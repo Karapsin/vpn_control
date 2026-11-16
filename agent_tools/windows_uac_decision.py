@@ -142,6 +142,11 @@ ROWS = {
     "windows-scoped-tun.find-best-grant": {"prompt": "vpn-broker", "decision": "approve", "event": "scoped-tun-awaiting-current-input",
                                            "field": "variant", "value": "find-best-grant", "variant": None,
                                            "sidEvent": "scoped-tun-awaiting-current-input", "sidField": "expectedApprovingAdminSid"},
+    # The configuration grants and the commit-readiness fault raise the same restart prompt; vpn-prepare-failure raises none.
+    **{"windows-scoped-tun." + variant: {"prompt": "vpn-broker", "decision": "approve", "event": "scoped-tun-awaiting-current-input",
+                                         "field": "variant", "value": variant, "variant": None,
+                                         "sidEvent": "scoped-tun-awaiting-current-input", "sidField": "expectedApprovingAdminSid"}
+       for variant in ("generated-grant", "custom-grant", "large-grant", "vpn-commit-failure")},
 }
 # Reached only through execute(direct=True), never through MCP: the first rung of a direct proof, one name per answer.
 DIRECT_ROWS = {

@@ -368,7 +368,8 @@ class NativeScenarioExecutionTest(unittest.TestCase):
                                         "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated",
                                         "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh",
                                         "no-tray-close")),
-                                    *("windows-scoped-tun." + variant for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")),
+                                    *("windows-scoped-tun." + variant for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant",
+                                                                                      "generated-grant", "custom-grant", "large-grant", "vpn-prepare-failure", "vpn-commit-failure")),
                                     *updates,
                                     "windows-document-acceptance", *("windows-document-cold." + variant for variant in (
                                         "cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")),

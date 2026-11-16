@@ -10,6 +10,13 @@ sampler runs only between them. The closing census shows the row left no broker,
 runtime, private stage or TUN route behind. From the request until the operation settles
 (a denial, a known end or a grant's exact off) a failure parks the owner; a final refusal
 of the request itself, with nothing changed, is a known end.
+
+The configuration and fault variants first add their own location from the documents the proxy rows' branch cases
+make (windows_runtime_branch_cases), so each is the TUN half of a proxy row. A configuration grant compares the runtime
+config the ordinary user reads in its ready window with the bytes SYSTEM read for its ready record. A preparation
+failure in VPN mode raises no prompt and must leave A, pending B and the census as they were; a commit-readiness
+failure after an approval must bring A back as a new unelevated runtime with nothing scoped left. Neither asks a
+collector: no TUN comes up.
 """
 from __future__ import annotations
 import hashlib
@@ -19,7 +26,26 @@ from pathlib import Path
 import socket
 import uuid
 
-VARIANTS = frozenset({'restart-grant','restart-deny','find-best-grant','find-best-deny'})
+VARIANTS = frozenset({'restart-grant','restart-deny','find-best-grant','find-best-deny',
+    'generated-grant','custom-grant','large-grant','vpn-prepare-failure','vpn-commit-failure'})
+# Approved variants whose TUN SYSTEM collector proves the broker and its runtime from the ready record to the off record.
+GRANTS = frozenset({'restart-grant','find-best-grant','generated-grant','custom-grant','large-grant'})
+# Grants whose runtime config is the product's generated VPN config, with its TUN inbound: only through that TUN may the
+# direct sampler run. A CUSTOM document in VPN mode keeps its own inbounds and these define no TUN, so the sampler's
+# benchmark address would leave the guest: custom-grant and large-grant never sample.
+SAMPLED = frozenset({'restart-grant','find-best-grant','generated-grant'})
+# Each configuration or fault variant's own location, added from a document before it is selected.
+CONFIGS = {'generated-grant':'Owned generated','custom-grant':'Owned CUSTOM','large-grant':'Owned large CUSTOM'}
+FAULTS = {'vpn-prepare-failure':'Owned prepare failure','vpn-commit-failure':'Owned commit failure'}
+PENDING = {**dict.fromkeys(('restart-grant','restart-deny','find-best-grant','find-best-deny'),'Owned B'),**CONFIGS,**FAULTS}
+# windows_runtime_branch_cases.custom_config's kind for each CUSTOM document.
+DOCUMENT_KIND = {'custom-grant':'custom','large-grant':'large','vpn-prepare-failure':'prepare-failure',
+    'vpn-commit-failure':'commit-readiness-failure'}
+# The product checks a config before it asks for the broker (DesktopProxyRuntimeManager.buildLaunch, sing-box check):
+# a preparation failure raises no prompt, so nothing is answered and no decision awaits it.
+PROMPTLESS = frozenset({'vpn-prepare-failure'})
+CONFIG_BYTES = 8*1024*1024  # windows_runtime_branch_cases.MAX_CONFIG
+INLINE_LIMIT = 60000  # The large document must exceed the inline limit, as the proxy row's does.
 FIELDS = frozenset({'schemaVersion','variant','pendingLocation','runtimeConfigPath','guiPath',
     'installedAdmissionArtifactId','ordinaryContextArtifactId','expectedApprovingAdminSid',
     'uacDecisionId','programData','collectorSourceSha256'})
@@ -47,7 +73,7 @@ def settled(lease):
     """The row's own operation is final and nothing of it can still run elevated: a denial, a known end, or a grant
     after its exact off. Until then any failure parks the owner; once settled, a failure closes as a known one."""
     return lease['finished'] is True and (lease['inputs']['variant'].endswith('deny') or 'knownEnd' in lease
-                                          or lease.get('offFinished') is True)
+                                          or 'faultRecovered' in lease or lease.get('offFinished') is True)
 
 
 def guest_filetime():
@@ -139,14 +165,30 @@ def refused(owner, state, inputs, runtime, cases, observer, operation, children,
     raise AssertionError('scoped-tun-request-refused')
 
 
-def begin(owner, state, inputs, runtime, cases, observer):
-    grant=type(inputs) is dict and str(inputs.get('variant')).endswith('grant')
-    require(type(inputs) is dict and set(inputs)==FIELDS|(SAMPLER_FIELDS if grant else set()) and inputs['schemaVersion']==1
+def document(owner, state, variant, branches):
+    """A configuration or fault variant's own location document, published as the proxy rows' branch cases publish
+    theirs: the same generated SOCKS document or CUSTOM config, held open read-only until the row's off."""
+    port=state['ready']['advertisedSocksPort'];name=PENDING[variant];original=None
+    if variant=='generated-grant':
+        value={'type':'socks','remarks':name,'server':'127.0.0.1','server_port':port}
+    else:
+        original=branches.custom_config(port,DOCUMENT_KIND[variant]);value=branches.profile_document(original,name)
+    raw=branches.encoded(value)
+    require(variant!='large-grant' or len(raw)>INLINE_LIMIT,'large-fixture-must-exceed-inline-limit')
+    path,_=branches.publish_fixture(owner,'owned-tun-profile-'+variant+'.json',raw)
+    return {'name':name,'path':str(path),'original':original,'sizeBytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+
+
+def begin(owner, state, inputs, runtime, cases, observer, branches=None):
+    variant=inputs.get('variant') if type(inputs) is dict else None
+    sampled=variant in SAMPLED
+    require(type(inputs) is dict and set(inputs)==FIELDS|(SAMPLER_FIELDS if sampled else set()) and inputs['schemaVersion']==1
             and inputs['variant'] in VARIANTS and all(inputs[key] is not None for key in inputs),
             'scoped-tun-native-inputs-pending')
-    require(not grant or all(str(Path(inputs[key])).casefold() in owner.by_path for key in SAMPLER_FIELDS),
+    require((branches is not None)==(variant in CONFIGS or variant in FAULTS),'scoped-tun-variant-document-cases')
+    require(not sampled or all(str(Path(inputs[key])).casefold() in owner.by_path for key in SAMPLER_FIELDS),
             'scoped-tun-held-sampler')
-    require(inputs['pendingLocation']=='Owned B' and str(Path(inputs['guiPath'])).casefold() in owner.by_path
+    require(inputs['pendingLocation']==PENDING[variant] and str(Path(inputs['guiPath'])).casefold() in owner.by_path
             and inputs['expectedApprovingAdminSid']!=owner.request['context']['ordinarySid'],
             'scoped-tun-fixed-pending-location-admin-role')
     require(inputs['uacDecisionId']==decision_id(owner.request['operationId']),'scoped-tun-route-decision')
@@ -160,7 +202,11 @@ def begin(owner, state, inputs, runtime, cases, observer):
             and before['restartRequired'] is False, 'scoped-tun-active-proxy-a')
     config=cases.LiveConfig(owner,state['workspace'],inputs['runtimeConfigPath'])
     actual={k:before['data'][k] for k in ('activeLocationId','activeMode','runtimeId','runtimeStartedAt')}
-    for tail in (('locations','select','Owned B'),('settings','set','mode','vpn')):
+    added=None if branches is None else document(owner,state,variant,branches)
+    tails=(('locations','select',PENDING[variant]),('settings','set','mode','vpn'))
+    if added is not None:
+        tails=(('locations','add','--input',added['path']),)+tails
+    for tail in tails:
         status=runtime.result(owner,state['workspace'],state['identity'],'status')
         runtime.result(owner,state['workspace'],state['identity'],'--if-revision',str(status['configurationRevision']),*tail)
         pending=runtime.result(owner,state['workspace'],state['identity'],'status')
@@ -169,6 +215,12 @@ def begin(owner, state, inputs, runtime, cases, observer):
     require(pending['restartRequired'] is True and pending['data']['configuredMode']=='vpn'
             and pending['data']['selectedLocationId']!=before['data']['activeLocationId'],
             'scoped-tun-pending-b-not-established')
+    if variant in CONFIGS:
+        # The location reads back as the document that made it, before anything is asked of the broker.
+        shown=json.loads(runtime.result(owner,state['workspace'],state['identity'],'locations','show',PENDING[variant])['data']['configuration'])
+        require(shown==added['original'] if added['original'] is not None else
+                shown.get('server')=='127.0.0.1' and shown.get('server_port')==state['ready']['advertisedSocksPort'],
+                'scoped-tun-configuration-public-readback')
     # Intentional product restart may replace its config. Preserve the actual
     # beforeimage and release this stable-window observer BEFORE mutation.
     raw=Path(inputs['runtimeConfigPath']).read_bytes()
@@ -191,9 +243,14 @@ def begin(owner, state, inputs, runtime, cases, observer):
     require(type(accepted['operationId']) is str and str(uuid.UUID(accepted['operationId']))==accepted['operationId']
             and str(uuid.UUID(accepted['requestId']))==accepted['requestId'], 'scoped-tun-original-accepted-job')
     lease={'state':state,'inputs':inputs,'before':before,'pending':pending,'accepted':accepted,
-           'activeConfig':config,'baseline':baseline,'finished':False}
+           'activeConfig':config,'baseline':baseline,'finished':False,**({} if added is None else {'document':added})}
     if not hasattr(owner,'tun_operation_leases'):owner.tun_operation_leases=[]
     owner.tun_operation_leases.append(lease)
+    if variant in PROMPTLESS:
+        # No prompt follows: windows-uac-decision has no row for it and nothing waits on one.
+        owner.event('scoped-tun-request-accepted',{'accepted':accepted,'variant':variant,'document':added,
+            'promptExpected':False,'replayAllowed':False})
+        return lease
     # windows-uac-decision's census reads this event's variant and expectedApprovingAdminSid; it is published once.
     owner.event('scoped-tun-awaiting-current-input', {'accepted':accepted,'variant':inputs['variant'],
         'ordinarySid':owner.request['context']['ordinarySid'],
@@ -201,7 +258,7 @@ def begin(owner, state, inputs, runtime, cases, observer):
         'expectedApprovingAdminSid':inputs['expectedApprovingAdminSid'],
         'uacDecisionId':inputs['uacDecisionId'],
         'ownerActor':state['actors']['owner'],'originalServeChild':state['serve'].ordinal,
-        'inputNotPerformedByThisAdapter':True,'replayAllowed':False})
+        'inputNotPerformedByThisAdapter':True,'replayAllowed':False,**({} if added is None else {'document':added})})
     return lease
 
 
@@ -275,15 +332,23 @@ def finish(owner, lease, runtime, cases, observer, handoff=None, receipts=None):
     """The public terminal of the row's own request. A grant whose TUN came up asks handoff(lease, 'ready') for its
     SYSTEM collector's ready record only now: the collector finds the broker and its runtime only once they run."""
     require(lease in owner.tun_operation_leases and not lease['finished'],'scoped-tun-finish-once')
-    state=lease['state'];denied=lease['inputs']['variant'].endswith('deny');native_record=None
+    state=lease['state'];variant=lease['inputs']['variant'];denied=variant.endswith('deny');native_record=None
     # The default wait parks at 120 s, about as long as a prompt lives, so it must outlast the prompt.
     # Every final code the stages know is read; one this variant does not expect is known only as checked below.
     terminal=runtime.finish_operation(owner,state,lease['accepted'],
         {'OK','RUNTIME_FAILED','CANCELLED','PERMISSION_DENIED'},seconds=300)
     status=runtime.result(owner,state['workspace'],state['identity'],'status')
+    # A fault variant's own end: RUNTIME_FAILED with A kept (preparation) or A back as a new runtime (commit).
+    if variant in FAULTS and terminal['code']=='RUNTIME_FAILED':
+        found=(prepared_failure if variant in PROMPTLESS else commit_failure)(owner,lease,status,runtime,cases,observer)
+        lease.update(finished=True,faultRecovered=terminal['code'])
+        owner.event('scoped-tun-fault-recovered',{'variant':variant,'terminal':terminal,'status':status,'census':found,
+            'actors':state['actors'],'promptExpected':variant not in PROMPTLESS,'replayAllowed':False})
+        return {'terminal':terminal,'status':status,'nativeRecord':None,'faultRecovered':True}
     # An expired prompt reaches a grant as the product's own CANCELLED: the same unchanged A, a known failure.
-    cancelled=not denied and terminal['code']=='CANCELLED'
-    unexpected=terminal['code'] not in (denials(lease['inputs']['variant']) if denied else {'OK','CANCELLED'})
+    cancelled=not denied and variant not in PROMPTLESS and terminal['code']=='CANCELLED'
+    unexpected=terminal['code'] not in (denials(variant) if denied else set() if variant in PROMPTLESS
+                                        else {'CANCELLED'} if variant in FAULTS else {'OK','CANCELLED'})
     if denied or cancelled or unexpected:
         kept(state,lease['inputs'],lease['before'],lease['pending'],lease['activeConfig'].initial,status,cases,observer)
         if unexpected:
@@ -294,7 +359,7 @@ def finish(owner, lease, runtime, cases, observer, handoff=None, receipts=None):
                 'status':status,'census':found,'knownFailure':True,'replayAllowed':False})
             return {'terminal':terminal,'status':status,'nativeRecord':None,'knownFailure':terminal['code']}
     else:
-        require(handoff is not None and receipts is not None,'actual-tun-native-file-required')
+        require(variant in GRANTS and handoff is not None and receipts is not None,'actual-tun-native-file-required')
         native_record=read_native_record(owner,lease,handoff(lease,'ready'),receipts,'ready')
         require(native_record['stage']=='ready'
                 and native_record['productOperationId']==lease['accepted']['operationId'],
@@ -320,9 +385,86 @@ def finish(owner, lease, runtime, cases, observer, handoff=None, receipts=None):
     return {'terminal':terminal,'status':status,'nativeRecord':native_record}
 
 
+def prepared_failure(owner, lease, status, runtime, cases, observer):
+    """A preparation failure in VPN mode: the product refused the document before any prompt, so active A, pending B,
+    their config bytes and the census are exactly as before the request."""
+    kept(lease['state'],lease['inputs'],lease['before'],lease['pending'],lease['activeConfig'].initial,status,cases,observer)
+    return unscoped(lease['inputs'],observer,lease['state'],lease['baseline'])
+
+
+def commit_failure(owner, lease, status, runtime, cases, observer):
+    """A commit-readiness failure after the approval: the product stopped A, the approved runtime could not bind its
+    owned-conflict listener, and the product brought A back from its own descriptor (DesktopRuntimeTransition.recover).
+
+    A is the same location and mode with a new runtime, its config bytes as before, pending B still selected in VPN mode;
+    the original A runtime is gone and the new one runs unelevated; the runtime log names the conflict the elevated
+    runtime hit; and no broker, TUN route, private stage or runtime beyond the baseline and the new A is left.
+    """
+    state,inputs,before,pending=lease['state'],lease['inputs'],lease['before'],lease['pending']
+    initial=lease['activeConfig'].initial
+    require(status['data']['runtimeRunning'] is True and status['data']['activeMode']=='proxy-only'
+            and status['data']['activeLocationId']==before['data']['activeLocationId']
+            and status['data']['runtimeId']!=before['data']['runtimeId']
+            and status['restartRequired'] is True and status['data']['configuredMode']=='vpn'
+            and status['data']['selectedLocationId']==pending['data']['selectedLocationId']
+            and cases.config_bytes(inputs['runtimeConfigPath'])=={key:initial[key] for key in ('sizeBytes','sha256')},
+            'scoped-tun-commit-failure-did-not-recover-active-a')
+    native=observer.WindowsNative()
+    old=state['actors']['runtime']
+    gone=observer.observe_exit([old],native)
+    require(len(gone)==1 and gone[0].get('originalAbsent') is True,'scoped-tun-commit-failure-original-a-not-retired')
+    actors=runtime.capture_proxy_actors(owner,state['serve'],native,state['inputs']['runtimeImagePath'],state['inputs']['runtimeSha256'])
+    require((actors['runtime']['pid'],actors['runtime']['creationFileTime'])!=(old['pid'],old['creationFileTime']),
+            'scoped-tun-commit-failure-original-a-not-retired')
+    cases.exact_actor(native,actors['owner'],elevated=False)
+    cases.exact_actor(native,actors['runtime'],elevated=False)
+    log=Path(state['workspace'])/'runtime'/'runtime-sing-box.log'
+    with log.open('rb') as stream:raw=stream.read(CONFIG_BYTES+1)
+    require(len(raw)<=CONFIG_BYTES and b'owned-conflict' in raw.lower() and b'bind' in raw.lower()
+            and str(state['ready']['advertisedSocksPort']).encode() in raw,
+            'scoped-tun-commit-failure-conflict-log-required')
+    state['actors']=actors  # The row's own off and its census take the recovered A.
+    return unscoped(inputs,observer,state,lease['baseline'])
+
+
+def configuration(owner, lease, branches):
+    """A configuration grant's runtime config inside its ready window: the bytes the ordinary user reads are the
+    ones SYSTEM read for the ready record, and they are the product's VPN config of this variant's own document."""
+    variant=lease['inputs']['variant']
+    require(lease in owner.tun_operation_leases and lease['finished'] and lease.get('nativeReady') is not None
+            and not lease.get('offRequested') and variant in CONFIGS and 'document' in lease
+            and not lease.get('configurationObserved'),'scoped-tun-configuration-window')
+    observed=lease['nativeReady']['observations']['configuration']
+    with Path(lease['inputs']['runtimeConfigPath']).open('rb') as stream:raw=stream.read(CONFIG_BYTES+1)
+    require(0<len(raw)<=CONFIG_BYTES and len(raw)==observed['sizeBytes'] and hashlib.sha256(raw).hexdigest()==observed['sha256'],
+            'scoped-tun-configuration-not-the-ready-record')
+    actual=json.loads(raw);state=lease['state'];port=state['ready']['advertisedSocksPort']
+    tun=[row for row in actual['inbounds'] if row.get('type')=='tun']
+    if variant=='generated-grant':
+        # DesktopProxyConfigFactory.buildVpnConfig: one TUN on the generated address, the location's SOCKS server out.
+        require(len(tun)==1 and tun[0].get('address')==['172.19.250.1/30']
+                and any(row.get('type')=='socks' and row.get('server')=='127.0.0.1' and row.get('server_port')==port
+                        for row in actual['outbounds']),'scoped-tun-generated-configuration')
+    else:
+        original=lease['document']['original']
+        branches.custom_semantics(original,actual)  # Only the product's management and direct-probe transformations.
+        probe=[{'process_name':['vpn-control-probe-sing-box','vpn-control-probe-sing-box.exe'],'action':'route',
+                'outbound':'vpn-control-direct-probe'},
+               {'process_path':[str(Path(state['workspace'])/'validation'/'vpn-control-probe-sing-box.exe')],
+                'action':'route','outbound':'vpn-control-direct-probe'}]
+        require(tun==[] and actual['route']['rules'][2:-len(original['route']['rules'])]==probe,
+                'scoped-tun-custom-configuration')
+        require(variant!='large-grant' or lease['document']['sizeBytes']>INLINE_LIMIT,'large-fixture-must-exceed-inline-limit')
+    lease['configurationObserved']=True
+    owner.event('scoped-tun-configuration-observed',{'variant':variant,'document':lease['document'],
+        'runtimeConfig':{'sizeBytes':len(raw),'sha256':observed['sha256']},'tunInbound':bool(tun),
+        'directSamplerAllowed':variant in SAMPLED,'replayAllowed':False})
+    return actual
+
+
 def begin_off(owner,lease,runtime):
     require(lease in owner.tun_operation_leases and lease['finished'] and lease.get('nativeReady') is not None
-            and lease['inputs']['variant'].endswith('grant') and not lease.get('offRequested'),
+            and lease['inputs']['variant'] in GRANTS and not lease.get('offRequested'),
             'scoped-tun-explicit-off-once')
     state=lease['state']
     # The product's own view right before its off: the TUN runtime it started still runs. A runtime that ended by itself
@@ -370,7 +512,7 @@ def traffic(owner, lease):
     Outside that window the benchmark address would leave the guest, so nothing else starts it.
     """
     require(lease in owner.tun_operation_leases and lease['finished'] and lease.get('nativeReady') is not None
-            and not lease.get('offRequested') and not lease['inputs']['variant'].endswith('deny'),
+            and not lease.get('offRequested') and lease['inputs']['variant'] in SAMPLED,
             'scoped-tun-direct-traffic-window')
     inputs=lease['inputs']
     raw=owner.by_path[str(Path(inputs['samplerInputPath'])).casefold()].digest(True,4096)
@@ -392,7 +534,8 @@ def traffic(owner, lease):
 def closing(owner, lease, observer):
     """Read after the public off: no broker, no runtime this row started, no new private stage, no TUN route.
 
-    Once per settled lease: a denial, a known end such as a cancelled grant, or a grant after its exact off.
+    Once per settled lease: a denial, a known end such as a cancelled grant, a fault variant's own recovery, or a
+    grant after its exact off.
     """
     require(lease in owner.tun_operation_leases and settled(lease) and not lease.get('closed'),'scoped-tun-closing-once')
     found=census(lease['inputs'],observer)

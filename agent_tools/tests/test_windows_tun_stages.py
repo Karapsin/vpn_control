@@ -900,7 +900,8 @@ class GeneratedInputTests(unittest.TestCase):
              "file:runtime": "C:\\w\\windows_lifecycle_runtime_stages.py", "file:observer": "C:\\w\\windows_broker_fixture_observer.py",
              "file:fixture": "C:\\w\\fixture.py", "file:socks": "C:\\w\\socks.py", "file:https": "C:\\w\\https.py",
              "file:certificate": "C:\\w\\c.pem", "file:privateKey": "C:\\w\\c.key", "file:trustStore": "C:\\w\\t.jks",
-             "file:tun": "C:\\w\\windows_tun_stages.py", "file:sampler": SAMPLER, "file:samplerInput": SAMPLER_INPUT}
+             "file:tun": "C:\\w\\windows_tun_stages.py", "file:sampler": SAMPLER, "file:samplerInput": SAMPLER_INPUT,
+             "file:branches": "C:\\w\\windows_runtime_branch_cases.py"}
     ADMISSIONS = {"installed": "sha256-" + "a" * 64, "material": "m", "context": "windows-context-" + "b" * 64, "fixture": "f", "source": "s"}
     TUN = {"administratorSid": ADMIN, "decisionId": str(uuid.uuid4()), "collectorSourceSha256": "c" * 64}
     # The close hold the host job builds for a grant's one TUN collector (hold_protocol.validate_inputs' fields).
@@ -936,17 +937,22 @@ class GeneratedInputTests(unittest.TestCase):
         for variant in proxy.TUN_VARIANTS:
             with self.subTest(variant=variant):
                 value = self.harness(variant, dict(self.TUN))["LIFECYCLE_INPUTS"]
-                grant = variant in proxy.TUN_GRANT_VARIANTS
-                self.assertEqual(set(stages.FIELDS) | (set(stages.SAMPLER_FIELDS) if grant else set()), set(value["tun"]))
+                # Only a grant whose runtime config has the generated TUN carries the direct sampler (windows_tun_stages.SAMPLED).
+                sampled = variant in proxy.TUN_SAMPLED_VARIANTS
+                self.assertEqual(variant in stages.SAMPLED, sampled)
+                self.assertEqual(set(stages.FIELDS) | (set(stages.SAMPLER_FIELDS) if sampled else set()), set(value["tun"]))
+                self.assertEqual(stages.PENDING[variant], value["tun"]["pendingLocation"])
                 self.assertEqual((variant, ADMIN, self.TUN["decisionId"], "c" * 64, self.ADMISSIONS["installed"], self.ADMISSIONS["context"]),
                                  tuple(value["tun"][key] for key in ("variant", "expectedApprovingAdminSid", "uacDecisionId", "collectorSourceSha256",
                                                                      "installedAdmissionArtifactId", "ordinaryContextArtifactId")))
                 self.assertEqual(WORKSPACE + "\\runtime-config.json", value["tun"]["runtimeConfigPath"])
                 self.assertEqual(self.PATHS["file:tun"], value["modules"]["tun"])
+                # A configuration or fault variant adds its location from the proxy rows' branch documents, nothing else of them.
+                self.assertEqual({"runtime", "observer", "tun", *(("branches",) if variant in proxy.TUN_PENDING else ())}, set(value["modules"]))
                 self.assertNotIn("branch", value)
                 self.assertIsNone(value["gui"])
                 roles = proxy.generated_roles(variant)
-                self.assertEqual(grant, "samplerInput" in roles)
+                self.assertEqual(sampled, "samplerInput" in roles)
                 self.assertNotIn("trafficInput", roles)
 
     def test_tun_inputs_are_closed_and_belong_only_to_tun_variants(self):

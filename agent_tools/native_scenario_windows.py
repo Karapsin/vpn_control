@@ -159,8 +159,17 @@ def _proxy_row(variant: str) -> dict[str, Any]:
 
 # windows-scoped-tun.<variant>: windows_tun_stages through the same action and runtime as the proxy rows. Active proxy A,
 # pending VPN B, then an async restart or find-best raises the vpn-broker prompt, which only windows-uac-decision answers.
-TUN_VARIANTS = ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")
+TUN_VARIANTS = ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant", "generated-grant", "custom-grant", "large-grant",
+                "vpn-prepare-failure", "vpn-commit-failure")
 _TUN_FILES = (("agent_tools/windows_tun_stages.py", "tun", "data"),)
+# A grant has the TUN SYSTEM collector; only a grant whose runtime config has the generated TUN runs the direct sampler.
+_TUN_GRANTS = frozenset({"restart-grant", "find-best-grant", "generated-grant", "custom-grant", "large-grant"})
+_TUN_SAMPLED = frozenset({"restart-grant", "find-best-grant", "generated-grant"})
+# The configuration and fault variants add their location from the proxy rows' branch cases (its documents only).
+_TUN_BRANCH = frozenset({"generated-grant", "custom-grant", "large-grant", "vpn-prepare-failure", "vpn-commit-failure"})
+_TUN_BRANCH_FILES = (("agent_tools/windows_runtime_branch_cases.py", "branches", "data"),)
+# The product refuses a preparation failure before it asks for the broker: no prompt, so no decision row and no join.
+_TUN_PROMPTLESS = frozenset({"vpn-prepare-failure"})
 _TUN_SAMPLER = (("agent_tools/windows_tun_direct_sampler.py", "sampler", "data"),)
 # A grant's TUN SYSTEM collector: the read-only observer the pinned contract names for scope tun and the receipts module
 # it and the driver's record handoff read machine records with, beside the collector chain and the caller's close hold.
@@ -176,21 +185,23 @@ def _tun_row(variant: str) -> dict[str, Any]:
     """A proxy-lifecycle row plus the TUN stages, the decision of its prompt and, for a grant, the direct sampler and the
     TUN SYSTEM collector: the host job serves its one stage, tun, when the owner asks for the ready record, and the
     driver holds the owner until that collector's release."""
-    grant = variant.endswith("-grant")
+    grant, sampled = variant in _TUN_GRANTS, variant in _TUN_SAMPLED
     row = _worker_row("product", "windows-proxy-lifecycle", ("targetPackage",),
-                      _PROXY_FILES + _TUN_FILES + ((*_TUN_SAMPLER, *_TUN_COLLECTOR, *_COLLECTOR_FILES) if grant else ()),
-                      prior=True, deadline=3600)
+                      _PROXY_FILES + _TUN_FILES + (_TUN_SAMPLER if sampled else ()) + ((*_TUN_COLLECTOR, *_COLLECTOR_FILES) if grant else ())
+                      + (_TUN_BRANCH_FILES if variant in _TUN_BRANCH else ()), prior=True, deadline=3600)
     row.update(proxy={"variant": variant},
                tun={"variant": variant, **({"collectorStages": ("tun",), "finalStage": "tun"} if grant else {})},
                generated=(("harness", "proxy-harness.py"), ("certificate", "proxy-localhost.pem"), ("privateKey", "proxy-localhost.key"),
-                          ("trustStore", "proxy-trust.jks"), *((("samplerInput", "tun-direct-traffic.json"),) if grant else ())),
+                          ("trustStore", "proxy-trust.jks"), *((("samplerInput", "tun-direct-traffic.json"),) if sampled else ())),
                extracted=(("runtimeTool", "sing-box.exe"),), refusal=_TUN_REFUSED.get(variant))
-    # windows_uac_decision.ROWS answers the row's one vpn-broker prompt. Collect joins the row's own decision terminal: a
-    # deny's, since an expired prompt is the same CANCELLED as Esc, and a grant's, so a pass names the reviewed approval.
-    row["uac"] = {"prompt": "vpn-broker", "decision": "approve" if grant else "deny", "event": "scoped-tun-awaiting-current-input"}
-    row["denyJoin"] = not grant
-    if grant:
-        row["approveJoin"] = True
+    if variant not in _TUN_PROMPTLESS:
+        # windows_uac_decision.ROWS answers the row's one vpn-broker prompt. Collect joins the row's own decision terminal: a deny's,
+        # since an expired prompt is the same CANCELLED as Esc, and a grant's, so a pass names the reviewed approval.
+        deny = variant.endswith("-deny")
+        row["uac"] = {"prompt": "vpn-broker", "decision": "deny" if deny else "approve", "event": "scoped-tun-awaiting-current-input"}
+        row["denyJoin"] = deny
+        if not deny:
+            row["approveJoin"] = True  # A grant and the commit-readiness fault, whose broker also ran on that approval.
     return row
 
 
@@ -1382,14 +1393,21 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
         # through the TUN only between its ready and off records, and both originals ended after the product's own off.
         "scoped-uac-tun-traffic": (_T + "restart-grant",),
         "denial-preserves-active-a": (_T + "restart-deny",),
-        "prepare-commit-recovery": (),  # PRX(prepare-failure, commit-readiness-failure) and TUN(fault), which has no row.
+        # PRX(prepare-failure, commit-readiness-failure) and TUN(fault): in VPN mode the product refuses the unsupported
+        # document before any prompt with A untouched, and after an approval the elevated runtime's bind conflict brings A
+        # back as a new unelevated runtime with no broker, route or stage left.
+        "prepare-commit-recovery": (_P + "prepare-failure", _P + "commit-readiness-failure", _T + "vpn-prepare-failure",
+                                    _T + "vpn-commit-failure"),
         # PRX(sibling-off) and TUN(approve). The restart grant's off record shows exactly the approved broker and runtime
         # ended after the product's own off was asked for, but no unrelated runtime runs beside it, so it cannot show the
         # elevated stop spares one, which is what sibling-off shows for the proxy off. The TUN half needs a grant variant
         # with an owned sibling runtime that outlives the product's off (T8); until then the scenario stays missing.
         "exact-child-stop": (),
-        "generated-custom-config": (),  # PRX(generated, custom) and TUN(config).
-        "large-config": (),  # PRX(large) and TUN(config).
+        # PRX(generated, custom) and TUN(config): the approved broker's runtime config, as SYSTEM read it for the ready record
+        # and the ordinary user reads it in that window, is the product's VPN config of the same documents; the generated
+        # one's TUN carries the direct sampler, a CUSTOM document defines no TUN and its traffic half is the proxy row's.
+        "generated-custom-config": (_P + "generated", _P + "custom", _T + "generated-grant", _T + "custom-grant"),
+        "large-config": (_P + "large", _T + "large-grant"),  # PRX(large) and TUN(config), the document beyond the inline limit.
         "dns-ws-ssh-cache-resources": (),  # Reserved: no case module.
         "pipe-storage-races": (),  # Reserved: no case module.
         "ordinary-autostart-migration": ("windows-autostart-migration.pre", "windows-autostart-migration.post"),
