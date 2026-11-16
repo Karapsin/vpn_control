@@ -298,7 +298,8 @@ def ingest_report(target_sha: str, platform: str, report_path: Path, actual_dir:
                 "review_notes": "",
             },
         )
-        entry.pop("reviewed_at_epoch", None)
+        for key in ("reviewed_at_epoch", "reviewed_actual_sha256", "reviewed_contact_sha256"):
+            entry.pop(key, None)
     session.setdefault("reports", {})[platform] = {
         "path": str(report_path.resolve()),
         "sha256": _file_hash(report_path.resolve()),
@@ -331,6 +332,10 @@ def record_reviews(target_sha: str, reviews: list[dict[str, str]]) -> dict[str, 
         entry["review"] = verdict
         entry["review_notes"] = notes
         entry["reviewed_at_epoch"] = int(time.time())
+        # The verdict is on exactly these bytes: the screenshot and contact sheet the agent opened. A baseline
+        # re-record and the windows-visual matrix producer refuse a verdict bound to any other image.
+        entry["reviewed_actual_sha256"] = str(entry.get("actual_sha256", ""))
+        entry["reviewed_contact_sha256"] = str(entry.get("contact_sha256", ""))
     session["updated_at_epoch"] = int(time.time())
     _write_json(session_path(target_sha), session)
     return review_status(target_sha)

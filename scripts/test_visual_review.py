@@ -211,6 +211,23 @@ class VisualReviewTest(unittest.TestCase):
         with self.assertRaisesRegex(visual_review.VisualReviewError, "not been reviewed"):
             visual_review.complete_review(sha)
 
+    def test_a_verdict_binds_the_bytes_the_agent_opened_until_reingest(self) -> None:
+        sha = self._start()
+        self._ingest(sha, "android", "app")
+        visual_review.record_reviews(
+            sha,
+            [{"platform": "android", "scene_id": "app", "verdict": "pass", "notes": ""}],
+        )
+        entry = json.loads(visual_review.session_path(sha).read_text(encoding="utf-8"))["scenes"]["android/app"]
+        self.assertEqual(visual_review._file_hash(self.root / "actual-android" / "app.png"), entry["reviewed_actual_sha256"])
+        self.assertEqual(visual_review._file_hash(self.root / "report-android" / "app.contact.png"), entry["reviewed_contact_sha256"])
+        receipt = json.loads(Path(visual_review.complete_review(sha)["receipt"]).read_text(encoding="utf-8"))
+        self.assertEqual(entry["actual_sha256"], receipt["scenes"]["android/app"]["reviewed_actual_sha256"])
+        self._ingest(sha, "android", "app")
+        entry = json.loads(visual_review.session_path(sha).read_text(encoding="utf-8"))["scenes"]["android/app"]
+        self.assertNotIn("reviewed_actual_sha256", entry)
+        self.assertNotIn("reviewed_contact_sha256", entry)
+
     def test_non_pass_review_requires_reason_and_blocks(self) -> None:
         sha = self._start()
         self._ingest(sha, "android", "app")

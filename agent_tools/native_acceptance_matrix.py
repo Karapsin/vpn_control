@@ -71,6 +71,7 @@ def matrix_record(root: Path | str, observation: Mapping[str, Any], *, requireme
     requirements = load_requirements(requirements_path)
     directory = _prepare_directory(root)
     item = _observation(root, observation, requirements)
+    _visual_rule(root, item)
     encoded = _encode(item)
     receipt_id = "native-acceptance-" + hashlib.sha256(encoded).hexdigest()[:32]
     path = directory / (receipt_id + ".json")
@@ -86,6 +87,32 @@ def matrix_record(root: Path | str, observation: Mapping[str, Any], *, requireme
     return {"receiptId": receipt_id, "receiptPath": str(path),
             "requirementId": item["requirementId"], "originalSourceSHA": item["originalSourceSHA"],
             "result": item["result"]}
+
+
+def _visual_rule(root: Path | str, observation: Mapping[str, Any]) -> None:
+    """A passed windows-visual record comes only from its producer's evidence document, re-derived now from the exact-SHA
+    receipt, comparison, captures and baselines (windows_visual_matrix.verify_document), and says what it says."""
+    if observation["requirementId"] != "windows-visual" or observation["result"] != "passed":
+        return
+    try:
+        from . import windows_visual_matrix as visual
+    except ImportError:  # pragma: no cover - script-style fallback
+        import windows_visual_matrix as visual  # type: ignore[no-redef]
+    try:
+        path = Path(root).resolve(strict=True).joinpath(*PurePosixPath(observation["evidencePath"]).parts)
+        document = json.loads(path.read_bytes())
+    except (OSError, ValueError):
+        document = None
+    if not isinstance(document, dict) or document.get("schema") != visual.SCHEMA:
+        raise NativeAcceptanceMatrixError("native acceptance windows-visual record needs its producer's evidence document")
+    try:
+        derived = visual.verify_document(root, document)
+    except visual.WindowsVisualMatrixError as error:
+        raise NativeAcceptanceMatrixError("native acceptance windows-visual evidence: " + str(error)) from None
+    if (derived["targetSha"] != observation["originalSourceSHA"] or derived["immutableArtifactIDs"] != sorted(observation["immutableArtifactIDs"])
+            or observation["scenarioResults"] != derived["scenarios"] or observation["missingEvidence"]
+            or observation["evidenceScope"] != "full-native"):
+        raise NativeAcceptanceMatrixError("native acceptance windows-visual record differs from its evidence document")
 
 
 def matrix_retract(root: Path | str, correction: Mapping[str, Any], *, requirements_path: Path | str = REQUIREMENTS_PATH) -> dict[str, Any]:

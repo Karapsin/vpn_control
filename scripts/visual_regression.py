@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import importlib.util
 import json
 import math
 import shutil
@@ -152,6 +154,14 @@ def write_png(path: Path, image: PngImage) -> None:
     payload = encode_png(image)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(payload)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _reject_ignore_regions(regions: object) -> None:
@@ -363,6 +373,10 @@ def verify(args: argparse.Namespace) -> int:
                 raise ValueError(f"missing Git LFS baseline: {baseline_path}")
             if not actual_path.is_file():
                 raise ValueError(f"missing actual screenshot: {actual_path}")
+            # The exact bytes compared: a windows-visual matrix record refuses a comparison against any baseline other
+            # than the one committed at its SHA (agent_tools/windows_visual_matrix.py).
+            result["baseline_sha256"] = _file_sha256(baseline_path)
+            result["actual_sha256"] = _file_sha256(actual_path)
             baseline = read_png(baseline_path)
             actual = read_png(actual_path)
             diff_path = report_root / f"{scene_id}.diff.png"
@@ -457,6 +471,98 @@ def record(args: argparse.Namespace) -> int:
     return 0
 
 
+class BaselineRecordRefused(ValueError):
+    pass
+
+
+REVIEW_MODULE_PATH = Path(__file__).with_name("visual_review.py")
+
+
+def _visual_review_module():
+    spec = importlib.util.spec_from_file_location("visual_review", REVIEW_MODULE_PATH)
+    if spec is None or spec.loader is None:
+        raise BaselineRecordRefused("visual review module is unavailable")
+    module = sys.modules.get("visual_review")
+    if module is not None and Path(str(getattr(module, "__file__", ""))).resolve() == REVIEW_MODULE_PATH.resolve():
+        return module
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def reviewed_baselines(args: argparse.Namespace, review: object | None = None) -> list[str]:
+    """The scenes a baseline re-record may write: VISUAL-007's intentional changes, from a reviewed capture only.
+
+    The capture in --actual-dir must be the one the visual review of --target-sha ingested, that SHA must be the
+    checked-out HEAD, every capture provenance in the folder must name it, and every scene of the platform must carry
+    the agent's verdict on exactly the bytes in the folder: none pending, no product defect, no infrastructure failure,
+    and no pass over a failed comparison. Only the scenes reviewed as expected_change are returned, in manifest order.
+    """
+    review = review or _visual_review_module()
+    target_sha = str(getattr(args, "target_sha", "") or "")
+    try:
+        review.validate_sha(target_sha)
+        head = review._git("rev-parse", "HEAD")
+        session = review._load_session(target_sha)
+    except review.VisualReviewError as exc:
+        raise BaselineRecordRefused(str(exc)) from None
+    if head != target_sha:
+        raise BaselineRecordRefused("baselines are recorded only from a review of the checked-out HEAD")
+    manifest = _load_manifest(args.manifest)
+    if session.get("manifest_sha256") != review._json_hash(args.manifest):
+        raise BaselineRecordRefused("the scene manifest changed after the review started")
+    if args.platform not in session.get("platforms", []):
+        raise BaselineRecordRefused(f"the review of {target_sha} does not include {args.platform}")
+    captures = sorted(args.actual_dir.glob("capture-*.json"))
+    ingested = {str(Path(str(item.get("path", ""))).resolve()): item.get("sha256")
+                for item in session.get("captures", {}).get(args.platform, []) if isinstance(item, dict)}
+    if not captures or {str(path.resolve()) for path in captures} != set(ingested):
+        raise BaselineRecordRefused("the capture folder is not the one the review ingested")
+    for path in captures:
+        capture = json.loads(path.read_text(encoding="utf-8"))
+        if capture.get("target_sha") != target_sha or capture.get("platform") != args.platform:
+            raise BaselineRecordRefused(f"capture provenance names another SHA or platform: {path.name}")
+        if review._file_hash(path) != ingested[str(path.resolve())]:
+            raise BaselineRecordRefused(f"capture provenance changed after the review ingested it: {path.name}")
+    changed: list[str] = []
+    for scene in _scenes_for_platform(manifest, args.platform):
+        scene_id = str(scene["id"])
+        entry = session.get("scenes", {}).get(f"{args.platform}/{scene_id}")
+        actual = args.actual_dir / f"{scene_id}.png"
+        if not isinstance(entry, dict):
+            raise BaselineRecordRefused(f"scene is missing from the review: {scene_id}")
+        verdict = entry.get("review")
+        if verdict == "pending":
+            raise BaselineRecordRefused(f"scene is unreviewed: {scene_id}")
+        if verdict not in ("pass", "expected_change"):
+            raise BaselineRecordRefused(f"scene has a blocking {verdict} verdict: {scene_id}")
+        if (not actual.is_file() or Path(str(entry.get("actual", ""))).resolve() != actual.resolve()
+                or not entry.get("actual_sha256") or entry.get("reviewed_actual_sha256") != entry["actual_sha256"]
+                or _file_sha256(actual) != entry["actual_sha256"]):
+            raise BaselineRecordRefused(f"the reviewed image is not the one in the capture folder: {scene_id}")
+        if verdict == "pass" and entry.get("automation") != "pass":
+            raise BaselineRecordRefused(f"a passed review over a failed comparison must be expected_change: {scene_id}")
+        if verdict == "expected_change":
+            read_png(actual)
+            changed.append(scene_id)
+    return changed
+
+
+def record_reviewed(args: argparse.Namespace, review: object | None = None) -> int:
+    """VISUAL-007 baseline re-record: copy the expected_change scenes of a reviewed capture, and nothing else."""
+    try:
+        changed = reviewed_baselines(args, review)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"Baseline re-record refused: {exc}", file=sys.stderr)
+        return 1
+    target = args.baseline_dir / args.platform
+    target.mkdir(parents=True, exist_ok=True)
+    for scene_id in changed:
+        shutil.copyfile(args.actual_dir / f"{scene_id}.png", target / f"{scene_id}.png")
+    print(json.dumps({"platform": args.platform, "targetSha": args.target_sha, "recorded": changed}, sort_keys=True))
+    return 0
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("verify", "record"))
@@ -465,12 +571,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--baseline-dir", type=Path, default=ROOT / "visual-tests" / "baselines")
     parser.add_argument("--actual-dir", type=Path, required=True)
     parser.add_argument("--report-dir", type=Path, default=ROOT / "build" / "visual-reports")
-    return parser.parse_args(argv)
+    # record: the SHA whose review ingested --actual-dir; it must be the checked-out HEAD (VISUAL-007).
+    parser.add_argument("--target-sha")
+    args = parser.parse_args(argv)
+    if args.action == "record" and not args.target_sha:
+        parser.error("record requires --target-sha: baselines come only from a reviewed capture of that SHA")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
-    return verify(args) if args.action == "verify" else record(args)
+    return verify(args) if args.action == "verify" else record_reviewed(args)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -10,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("visual_regression.py")
@@ -327,6 +329,146 @@ class VisualRegressionTest(unittest.TestCase):
     def test_record_rejects_incomplete_scene_set(self) -> None:
         (self.actual / "main.png").unlink()
         self.assertEqual(1, self.record())
+
+    def test_report_binds_the_exact_baseline_and_actual_bytes_it_compared(self) -> None:
+        # A windows-visual matrix record refuses a comparison against any baseline other than its SHA's own.
+        self.assertEqual(0, self.verify())
+        scene = json.loads((self.reports / "linux/report.json").read_text(encoding="utf-8"))["scenes"][0]
+        self.assertEqual(hashlib.sha256((self.baselines / "linux/main.png").read_bytes()).hexdigest(), scene["baseline_sha256"])
+        self.assertEqual(hashlib.sha256((self.actual / "main.png").read_bytes()).hexdigest(), scene["actual_sha256"])
+
+    def test_the_record_command_needs_the_reviewed_sha(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            visual_regression.parse_args(["record", "--platform", "linux", "--actual-dir", str(self.actual)])
+        args = visual_regression.parse_args(["record", "--platform", "linux", "--actual-dir", str(self.actual),
+                                             "--target-sha", "a" * 40])
+        self.assertEqual("a" * 40, args.target_sha)
+
+
+REVIEW_PATH = Path(__file__).with_name("visual_review.py")
+
+
+def _load_visual_review():
+    spec = importlib.util.spec_from_file_location("visual_review_for_baselines", REVIEW_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class ReviewedBaselineRecordTest(unittest.TestCase):
+    """VISUAL-007: baselines are re-recorded only from a reviewed capture of the checked-out SHA, and only its
+    expected_change scenes. The procedure is the operator's; this drives it on fixture files only."""
+
+    SHA = "c" * 40
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name).resolve()
+        self.manifest = self.root / "scenes.json"
+        self.manifest.write_text(json.dumps({
+            "schema_version": 1, "capture_contract": {"secure_scene_ids": [], "review_batch_size": 6},
+            "scenes": [{"id": scene, "platforms": ["windows"], "geometry_required": False} for scene in ("first", "second")],
+        }), encoding="utf-8")
+        (self.root / "environments.json").write_text(json.dumps({"status_context": "vpn-control/agent-visual"}), encoding="utf-8")
+        self.baselines = self.root / "baselines"
+        self.actual = self.root / "actual"
+        self.reports = self.root / "reports"
+        self.old = visual_regression.PngImage(10, 10, bytes((8, 17, 31, 255)) * 100)
+        self.new = visual_regression.PngImage(10, 10, bytes((200, 17, 31, 255)) * 100)
+        for scene in ("first", "second"):
+            visual_regression.write_png(self.baselines / "windows" / f"{scene}.png", self.old)
+        visual_regression.write_png(self.actual / "first.png", self.new)  # The intentional change.
+        visual_regression.write_png(self.actual / "second.png", self.old)
+        self.review = _load_visual_review()
+        self.head = self.SHA
+        self.patches = [
+            mock.patch.object(self.review, "ROOT", self.root),
+            mock.patch.object(self.review, "MANIFEST_PATH", self.manifest),
+            mock.patch.object(self.review, "ENVIRONMENTS_PATH", self.root / "environments.json"),
+            mock.patch.object(self.review, "SESSION_ROOT", self.root / "sessions"),
+            mock.patch.object(self.review, "RECEIPT_ROOT", self.root / "receipts"),
+            mock.patch.object(self.review, "_git", side_effect=lambda *arguments: self.head if arguments == ("rev-parse", "HEAD") else ""),
+        ]
+        for patch in self.patches:
+            patch.start()
+        self.stamp(self.SHA)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(1, visual_regression.verify(self.namespace()), "the changed scene fails its comparison")
+        self.review.start_review(self.SHA, ["windows"], release=False)
+        self.review.ingest_report(self.SHA, "windows", self.reports / "windows/report.json", self.actual)
+
+    def tearDown(self) -> None:
+        for patch in reversed(self.patches):
+            patch.stop()
+        self.temporary.cleanup()
+
+    def namespace(self) -> argparse.Namespace:
+        return argparse.Namespace(platform="windows", manifest=self.manifest, baseline_dir=self.baselines, actual_dir=self.actual,
+                                  report_dir=self.reports, target_sha=self.SHA)
+
+    def stamp(self, sha: str, name: str = "capture-local.json") -> None:
+        environment = {"fixture": True}
+        (self.actual / name).write_text(json.dumps({
+            "schema_version": 1, "platform": "windows", "provider": "local", "target_sha": sha,
+            "manifest_sha256": self.review._json_hash(self.manifest), "environment": environment,
+            "environment_sha256": self.review._canonical_hash(environment),
+            "scenes": {scene: {"actual": f"{scene}.png", "actual_sha256": self.review._file_hash(self.actual / f"{scene}.png")}
+                       for scene in ("first", "second")},
+        }), encoding="utf-8")
+
+    def judge(self, first: str = "expected_change", second: str = "pass") -> None:
+        self.review.record_reviews(self.SHA, [
+            {"platform": "windows", "scene_id": scene, "verdict": verdict, "notes": "" if verdict == "pass" else "seen"}
+            for scene, verdict in (("first", first), ("second", second)) if verdict != "pending"])
+
+    def record(self) -> tuple[int, str]:
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(stderr):
+            code = visual_regression.record_reviewed(self.namespace(), self.review)
+        return code, stderr.getvalue()
+
+    def baseline(self, scene: str) -> visual_regression.PngImage:
+        return visual_regression.read_png(self.baselines / "windows" / f"{scene}.png")
+
+    def assert_refused(self, reason: str) -> None:
+        code, message = self.record()
+        self.assertEqual(1, code)
+        self.assertIn(reason, message)
+        self.assertEqual((self.old, self.old), (self.baseline("first"), self.baseline("second")), "no baseline changed")
+
+    def test_only_the_expected_change_scenes_of_a_reviewed_capture_are_recorded(self) -> None:
+        self.judge()
+        self.assertEqual((0, ""), self.record())
+        self.assertEqual((self.new, self.old), (self.baseline("first"), self.baseline("second")))
+
+    def test_an_unreviewed_scene_refuses(self) -> None:
+        self.judge(second="pending")
+        self.assert_refused("scene is unreviewed: second")
+
+    def test_a_product_defect_or_infrastructure_failure_refuses(self) -> None:
+        for verdict in ("product_defect", "infrastructure_failure"):
+            with self.subTest(verdict=verdict):
+                self.judge(second=verdict)
+                self.assert_refused(f"blocking {verdict} verdict: second")
+
+    def test_a_pass_over_a_failed_comparison_refuses(self) -> None:
+        self.judge(first="pass")
+        self.assert_refused("must be expected_change: first")
+
+    def test_another_sha_refuses(self) -> None:
+        self.judge()
+        self.head = "d" * 40
+        self.assert_refused("checked-out HEAD")
+        self.head = self.SHA
+        self.stamp("d" * 40, "capture-hosted.json")
+        self.assert_refused("not the one the review ingested")
+
+    def test_an_image_changed_after_its_review_refuses(self) -> None:
+        self.judge()
+        visual_regression.write_png(self.actual / "first.png", visual_regression.PngImage(10, 10, bytes((90, 17, 31, 255)) * 100))
+        self.assert_refused("not the one in the capture folder: first")
 
 
 if __name__ == "__main__":

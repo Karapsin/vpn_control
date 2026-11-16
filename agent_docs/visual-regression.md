@@ -323,12 +323,37 @@ Read `build/visual-reports/<platform>/report.json` first. Each compared scene in
 
 ## Baselines
 
-Install Git LFS before recording. Baselines may be changed only during development after a complete agent-reviewed platform capture:
+Install Git LFS before recording. Baselines may be changed only during development, from a reviewed capture of the checked-out SHA (`VISUAL-007`). It is an operator step, never run by a check or a test against the repository:
+
+1. With HEAD at the SHA `S` to record from and a clean worktree, start the review for `S`, capture every scene of the platform into one folder, and `verify` it (above), which ingests the comparison.
+2. Open every image and contact sheet and record a verdict for every scene: `expected_change` with the intended change for each scene whose baseline must change (every scene whose comparison failed), `pass` for the rest. A scene still pending, a `product_defect` or an `infrastructure_failure` refuses the re-record: fix or recapture, re-ingest and review again.
+3. Record:
 
 ```bash
 python3 scripts/visual_regression.py record \
   --platform <platform> \
+  --target-sha <S> \
   --actual-dir build/visual-actual/<platform>
 ```
 
-Commit all intended LFS pointers, run the full pre-push tier, push `dev`, and restart visual review for the new exact SHA. Release mode has no record or waiver operation.
+`record` refuses unless HEAD is `S`, the folder holds exactly the capture provenance files the review of `S` ingested, unchanged and all naming `S`, and every scene's verdict is on the exact bytes in the folder (`reviewed_actual_sha256`); a `pass` over a failed comparison must be `expected_change`. It writes only the `expected_change` scenes and prints them; every other baseline is left untouched.
+
+4. Commit the changed LFS pointers alone, run the full pre-push tier and push `dev`. The commit is a new SHA: capture, compare and review it again from step 1, where every scene must now pass. Release mode has no record or waiver operation.
+
+## Windows matrix record
+
+The native acceptance requirement `windows-visual` (`scene-capture`, `geometry-contrast`, `agent-verdict`) is recorded from the visual evidence of one exact SHA by `agent_tools/windows_visual_matrix.py`, not from scenario rows (`VISUAL-009`):
+
+- `scene-capture`: every Windows scene of the SHA's own `scenes.json` in exactly one capture provenance of that SHA, the `windows-uac` scene (secure desktop) from a `local` capture of an owned clone and the others from any provider, each provenance file registered as a Windows artifact of that SHA;
+- `geometry-contrast`: the comparison report the review ingested passed every scene, and each scene's `baseline_sha256` is the Git LFS object committed at that SHA;
+- `agent-verdict`: the complete review receipt of that SHA (a targeted Windows review or a release review), every Windows scene `pass`, each verdict bound to the screenshot and contact sheet bytes it was given on (`reviewed_actual_sha256`, `reviewed_contact_sha256`).
+
+It refuses, by name, a missing or extra scene (`windows_visual_scene_missing:<id>`), an unreviewed image or a verdict on other bytes (`windows_visual_unreviewed:<id>`), a product defect (`windows_visual_product_defect:<id>`) or any other non-pass verdict, another SHA in the receipt, manifest, a capture or an artifact (`windows_visual_mixed_sha:<what>`), a comparison without its baseline identity (`windows_visual_comparison_unbound:<id>`), a baseline other than the SHA's (`windows_visual_baseline_stale:<id>`), evidence changed since (`windows_visual_evidence_changed:<what>`) and unregistered captures (`windows_visual_capture_unregistered:<file>`). From a clone whose HEAD reaches the SHA, after `visual_review.py complete --target-sha <S>`:
+
+```bash
+python3 -m agent_tools.windows_visual_matrix register-captures --target-sha <S>
+python3 -m agent_tools.windows_visual_matrix observation --target-sha <S> \
+  --reviewer-attestation "<what the coordinator reviewed>"
+```
+
+`observation` writes its create-only evidence document under `.rag_index/native-acceptance-evidence/windows-visual-<sha12>.json` and prints the `matrix-record` input; `review` prints the document without writing it. `matrix-record` refuses a passed `windows-visual` record whose evidence is not that document, re-derives the document from the current receipt, report, captures, baselines and registry, and refuses any difference.
