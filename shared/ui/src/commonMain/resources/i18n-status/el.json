@@ -180,8 +180,8 @@
     "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Η ενέργεια απέτυχε: {0}",
     "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
     "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
-    "REFRESH_SETTINGS_SAVE_FAILED": "Η ενέργεια απέτυχε",
-    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Η ενέργεια απέτυχε: {0}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "Αποτυχία αποθήκευσης των ρυθμίσεων ανανέωσης",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Αποτυχία αποθήκευσης των ρυθμίσεων ανανέωσης: {0}",
     "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
     "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
     "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
@@ -522,7 +522,7 @@
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "Η ενέργεια απέτυχε"
+      "target": "Αποτυχία αποθήκευσης των ρυθμίσεων ανανέωσης"
     },
     {
       "source": "Failed to update startup setting",
@@ -896,7 +896,7 @@
     },
     {
       "source": "Language set to system default",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η γλώσσα ορίστηκε στην προεπιλογή του συστήματος"
     },
     {
       "source": "Custom DNS saved",
@@ -1326,7 +1326,7 @@
     },
     {
       "source": "Language set to system default",
-      "target": "Η συνδρομή ενημερώθηκε"
+      "target": "Η γλώσσα ορίστηκε στην προεπιλογή του συστήματος"
     },
     {
       "source": "Custom DNS saved",

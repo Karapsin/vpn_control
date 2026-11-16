@@ -180,8 +180,8 @@
     "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "Не ўдалося абнаўить наладку автозапуска: {0}",
     "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
     "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
-    "REFRESH_SETTINGS_SAVE_FAILED": "Не ўдалося захаванить наладки абнаўления",
-    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Не ўдалося захаванить наладки абнаўления: {0}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "Не ўдалося захаваць налады абнаўлення",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "Не ўдалося захаваць налады абнаўлення: {0}",
     "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
     "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
     "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
@@ -530,7 +530,7 @@
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "Не ўдалося захаванить наладки абнаўления"
+      "target": "Не ўдалося захаваць налады абнаўлення"
     },
     {
       "source": "Failed to update startup setting",

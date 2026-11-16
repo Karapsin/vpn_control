@@ -180,8 +180,8 @@
     "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "操作に失敗しました: {0}",
     "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
     "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
-    "REFRESH_SETTINGS_SAVE_FAILED": "操作に失敗しました",
-    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "操作に失敗しました: {0}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "自動更新の設定を保存できませんでした",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "自動更新の設定を保存できませんでした: {0}",
     "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
     "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
     "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
@@ -522,7 +522,7 @@
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "操作に失敗しました"
+      "target": "自動更新の設定を保存できませんでした"
     },
     {
       "source": "Failed to update startup setting",

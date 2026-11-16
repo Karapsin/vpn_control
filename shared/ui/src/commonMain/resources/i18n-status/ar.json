@@ -180,8 +180,8 @@
     "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "فشلت العملية: {0}",
     "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
     "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
-    "REFRESH_SETTINGS_SAVE_FAILED": "فشلت العملية",
-    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "فشلت العملية: {0}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "فشل حفظ إعدادات التحديث",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "فشل حفظ إعدادات التحديث: {0}",
     "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
     "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
     "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
@@ -522,7 +522,7 @@
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "فشلت العملية"
+      "target": "فشل حفظ إعدادات التحديث"
     },
     {
       "source": "Failed to update startup setting",

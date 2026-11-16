@@ -180,8 +180,8 @@
     "STARTUP_SETTING_UPDATE_FAILED.DETAIL": "कार्रवाई विफल हुई: {0}",
     "SUBSCRIPTION_HWID_CLEARED": "x-hwid: {ui:SETTINGS_DISABLED}",
     "SUBSCRIPTION_HWID_SAVED": "x-hwid: {ui:SETTINGS_ENABLED}",
-    "REFRESH_SETTINGS_SAVE_FAILED": "कार्रवाई विफल हुई",
-    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "कार्रवाई विफल हुई: {0}",
+    "REFRESH_SETTINGS_SAVE_FAILED": "रीफ़्रेश सेटिंग्स सहेजने में विफल",
+    "REFRESH_SETTINGS_SAVE_FAILED.DETAIL": "रीफ़्रेश सेटिंग्स सहेजने में विफल: {0}",
     "APP_MODE_CHANGED.VPN": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
     "APP_MODE_CHANGED.PROXY_ONLY": "{ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:0}",
     "CONNECTION_STOPPED_FOR_APP_MODE.VPN.VPN": "{connectionLabel:0} {ui:STOPPED}. {ui:SETTINGS_VPN_PROXY_MODE}: {modeLabel:1}",
@@ -522,7 +522,7 @@
     },
     {
       "source": "Failed to save refresh settings",
-      "target": "कार्रवाई विफल हुई"
+      "target": "रीफ़्रेश सेटिंग्स सहेजने में विफल"
     },
     {
       "source": "Failed to update startup setting",
@@ -896,7 +896,7 @@
     },
     {
       "source": "Language set to system default",
-      "target": "सदस्यता अपडेट हुई"
+      "target": "भाषा सिस्टम डिफ़ॉल्ट पर सेट की गई"
     },
     {
       "source": "Custom DNS saved",
@@ -1326,7 +1326,7 @@
     },
     {
       "source": "Language set to system default",
-      "target": "सदस्यता अपडेट हुई"
+      "target": "भाषा सिस्टम डिफ़ॉल्ट पर सेट की गई"
     },
     {
       "source": "Custom DNS saved",
