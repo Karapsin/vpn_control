@@ -65,6 +65,15 @@ def preserved_named_module(name, filename, manifest_key):
     return module
 
 
+def committed_repository(root):
+    env={k:v for k,v in os.environ.items() if not k.startswith('GIT_')}
+    env.update(GIT_CONFIG_GLOBAL=os.devnull,GIT_CONFIG_NOSYSTEM='1',GIT_AUTHOR_NAME='fixture',GIT_AUTHOR_EMAIL='fixture@invalid',
+               GIT_COMMITTER_NAME='fixture',GIT_COMMITTER_EMAIL='fixture@invalid')
+    for args in (('init','-q'),('add','agent_tools'),('commit','-q','--no-gpg-sign','-m','fixture'),
+                 ('update-ref','refs/remotes/origin/dev','HEAD')):
+        subprocess.run(['git','-C',str(root),*args],check=True,capture_output=True,env=env)
+
+
 @contextmanager
 def preserved_stage_implementation(*, residual=False):
     import agent_tools
@@ -239,8 +248,12 @@ class AutomaticProgramTests(unittest.TestCase):
             "ssh_transfer.py", "ssh_transport.py", "ssh_automatic_program.py", "private_config_custody.py",
             "readiness.py", "private_inventory_lock.py", "tool_action_policy.py", "tool_action_policy.json",
         }
-        needed.update({'readiness_vm_dispatch.py','readiness_vm_dispatch.json',
+        needed.update({'readiness_vm_dispatch.py','readiness_vm_dispatch.json','committed_source.py',
                        'android_observation.py','readiness_transport.py','readiness_ssh_master.py'})
+        # Dispatch admits only a committed, published closure, so the copy holds
+        # every closure member of the route as a complete source file.
+        routes=json.loads((TOOLS/'readiness_vm_dispatch.json').read_bytes())['actions']
+        needed.update(m+'.py' for m in routes['android-proxy-recovery-status']['closure'])
         # The real mandatory VM admission imports its finite transitive Python
         # closure. Include complete source files, not replacement dispatch code.
         pending=list(needed);scripts=set()
@@ -286,6 +299,9 @@ class AutomaticProgramTests(unittest.TestCase):
         body=json.loads(manifest.read_bytes())
         body['sourcePins']['android_proxy_recovery']=hashlib.sha256(adapter.read_bytes()).hexdigest()
         manifest.write_text(json.dumps(body,sort_keys=True)+'\n')
+        # The copy is a temporary repository whose origin/dev holds exactly
+        # these bytes, so the real committed-source rule admits the route.
+        committed_repository(self.root)
         readiness_binary=self.root/'readiness-fixture-ssh'
         readiness_binary.write_text('#!'+sys.executable+'\n'+(Path(__file__).parent/'fixtures/readiness_transport/ssh_peer.source').read_text())
         readiness_binary.chmod(0o700)

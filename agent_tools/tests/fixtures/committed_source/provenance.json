@@ -1,0 +1,6 @@
+{
+  "commit": "a34e07cb0e9ad925935bcc84665fd07f5e540906",
+  "path": "agent_tools/readiness_vm_dispatch.py",
+  "sha256": "c6e152ac68b9004d2227a3e0c2bfc3453606260511eb9044458261b3e7ab3a64",
+  "reason": "Dispatch admission before the committed-source rule: a closure file was accepted when its bytes equalled the manifest pin, and meta/repin.py re-derives pins by string replacement, so a local, unpushed edit with re-derived pins ran natively."
+}

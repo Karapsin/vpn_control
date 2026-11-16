@@ -26,6 +26,12 @@ class VmDispatchTests(unittest.TestCase):
 
     def setUp(self):
         transport_fixture.ReadinessTransportTests.setUp(self)
+        # This checkout need not be published; test_committed_source covers the
+        # rule and the tests below cover where resolve() applies it.
+        self.committed = []
+        hook = mock.patch.object(subject, '_require_committed',
+                                 side_effect=lambda repository, paths: self.committed.append((repository, tuple(paths))))
+        hook.start(); self.addCleanup(hook.stop)
         self.provider = Provider(self.root/'provider.sock')
         self.thread = threading.Thread(target=self.provider.serve_forever, kwargs={'poll_interval': .01}, daemon=True)
         self.thread.start(); self.addCleanup(self.close_provider)
@@ -178,6 +184,33 @@ class VmDispatchTests(unittest.TestCase):
             subject.resolve(self.root,'windows-credential-probe-status',self.inputs())
         self.assertEqual('vm_readiness_target_source_unreviewed',caught.exception.reason)
         self.assertEqual([],self.children)
+
+    def test_every_closure_file_must_be_committed_after_target_selection(self):
+        action = 'windows-credential-probe-status'
+        expected = (subject._SOURCE.parent.parent, tuple('agent_tools/' + m + '.py' for m in subject.ROUTES[action]['closure']))
+        plan = subject.resolve(self.root, action, self.inputs())
+        self.assertEqual(('explicit-peer', [expected]), (plan.host, self.committed))
+        # A target refusal comes first and costs no git call.
+        self.committed.clear()
+        with self.assertRaises(subject.DispatchBlocked) as caught:
+            subject.resolve(self.root, action, {**self.inputs(), 'host': 'unconfigured-peer'})
+        self.assertEqual(('vm_readiness_host_unconfigured', []), (caught.exception.reason, self.committed))
+        # Boundaries that run no closure are not checked.
+        subject.resolve(self.root, 'readiness-ensure', {})
+        self.assertEqual([], self.committed)
+        for reason, blocked in ((subject.committed_source.UNPUBLISHED, 'vm_readiness_target_source_unpublished'),
+                                (subject.committed_source.DIRTY, 'vm_readiness_target_source_uncommitted'),
+                                (subject.committed_source.HIDDEN, 'vm_readiness_target_source_uncommitted'),
+                                (subject.committed_source.UNTRACKED, 'vm_readiness_target_source_uncommitted'),
+                                (subject.committed_source.GIT_UNAVAILABLE, 'vm_readiness_target_source_uncommitted')):
+            refusal = subject.committed_source.SourceNotCommitted(reason, ['agent_tools/ssh_transport.py'])
+            with self.subTest(reason=reason), mock.patch.object(subject, '_require_committed', side_effect=refusal), \
+                 self.assertRaises(subject.DispatchBlocked) as caught:
+                with subject.admitted_dispatch(self.root, action, self.inputs()):
+                    self.fail('dispatch admitted unpublished source')
+            self.assertEqual(blocked, caught.exception.reason)
+        self.assertEqual([], self.children)
+        self.assertEqual(0, self.provider.observe_calls)
 
     def test_interactive_lease_guards_every_ssh_packet_and_cancels_original(self):
         self.peer.hosts['archlinux'] = dict(self.peer.hosts['explicit-peer'])

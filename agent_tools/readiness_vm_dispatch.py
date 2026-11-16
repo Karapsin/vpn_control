@@ -18,6 +18,7 @@ import sys
 from types import MappingProxyType
 from uuid import UUID, uuid4
 
+from . import committed_source
 from . import private_inventory_lock as private
 from . import readiness
 from . import readiness_fixture_registry as fixtures
@@ -42,6 +43,9 @@ _ALIAS = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _KINDS = frozenset({"fixed_host", "selected_host", "windows_deployment", "registered_tart",
                     "hosted_boundary", "provider_boundary", "facade"})
 _ACTIVE = ContextVar("vm_dispatch_admission", default=())
+# Replaceable only by tests, whose checkouts need not be published. The
+# committed-source rule itself is covered by test_committed_source.
+_require_committed = committed_source.require_committed
 
 
 class DispatchBlocked(readiness.ReadinessBlocked):
@@ -314,21 +318,35 @@ def resolve(root, action, inputs):
               operation, "vm_readiness_target_source_unreviewed")
     if kind == "registered_tart":
         fixture_id, fixture = _tart_fixture(root, inputs, operation, action=action)
-        return DispatchPlan(root, action, operation, None, fixture_id, fixture)
-    if kind == "windows_deployment":
-        host = _deployment_host(root, inputs, operation)
-    elif kind == "fixed_host":
-        host = _host(row["host"], operation)
-        if "host" in inputs:
-            _need(_host(inputs["host"], operation) == host, operation, "vm_readiness_target_mismatch")
+        plan = DispatchPlan(root, action, operation, None, fixture_id, fixture)
     else:
-        host = _selected_host(root, inputs, row, operation)
-    config = ssh_transport.load_config(root)
-    _need(host in config.hosts, operation, "vm_readiness_host_unconfigured")
-    if policy.requirements - {"transport"}:
-        fixture_id, fixture = _guest_fixture(root, action, host, inputs, operation)
-        return DispatchPlan(root, action, operation, host, fixture_id, fixture)
-    return DispatchPlan(root, action, operation, host)
+        if kind == "windows_deployment":
+            host = _deployment_host(root, inputs, operation)
+        elif kind == "fixed_host":
+            host = _host(row["host"], operation)
+            if "host" in inputs:
+                _need(_host(inputs["host"], operation) == host, operation, "vm_readiness_target_mismatch")
+        else:
+            host = _selected_host(root, inputs, row, operation)
+        config = ssh_transport.load_config(root)
+        _need(host in config.hosts, operation, "vm_readiness_host_unconfigured")
+        if policy.requirements - {"transport"}:
+            fixture_id, fixture = _guest_fixture(root, action, host, inputs, operation)
+            plan = DispatchPlan(root, action, operation, host, fixture_id, fixture)
+        else:
+            plan = DispatchPlan(root, action, operation, host)
+    _committed(row, operation)
+    return plan
+
+
+def _committed(row, operation):
+    """Every closure file is clean and published (committed_source)."""
+    try:
+        _require_committed(_SOURCE.parent.parent, ["agent_tools/" + module + ".py" for module in row["closure"]])
+    except committed_source.SourceNotCommitted as error:
+        reason = ("vm_readiness_target_source_unpublished" if error.reason == committed_source.UNPUBLISHED
+                  else "vm_readiness_target_source_uncommitted")
+        raise DispatchBlocked(reason, operation) from None
 
 
 def revalidate_current(root, *, family, expected_binding):
