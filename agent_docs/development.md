@@ -187,7 +187,11 @@ checks remain unchanged; reduced coverage is not an efficiency measure.
   host Gradle invocation. Repeat passed checks when content, inputs, environment,
   failures or unresolved concerns justify it. Run the complete managed prepush tier
   after each coherent checkpoint's final content/version edit, then push and verify
-  every required workflow for that exact SHA. Retain checkpoint pushes.
+  every required workflow for that exact SHA. Retain checkpoint pushes. Never idle
+  on CI while work remains: continue the remaining work while that verification runs
+  in the background, fix CI failures in parallel, and rebase work in progress onto
+  the fix before its own push. Only reporting completion waits for the final SHA's
+  CI (`AGENTS.md`, Post-Push CI Verification).
 - Reuse native harnesses and validate the assigned environment, artifact, endpoint
   and trust before product scenarios. Freeze and hash artifacts; reuse evidence only
   for its proven source and scope. Keep every distinct TEST-001 quick regression and

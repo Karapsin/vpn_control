@@ -83,7 +83,7 @@ After every push to `origin/dev`:
 
 1. Capture the exact pushed commit with `git rev-parse HEAD`.
 2. Query GitHub Actions runs for that exact `headSha`; do not rely on branch-latest status alone.
-3. Wait until these expected workflows for that SHA complete:
+3. Track these expected workflows for that SHA until they complete (in the background while other work remains; see below):
    - Fast Checks
    - Android Release APK
    - Linux Desktop Package
@@ -91,6 +91,8 @@ After every push to `origin/dev`:
    - macOS Desktop Package
 4. If any expected workflow fails, inspect the failure logs of every failed step, fix every cause, rerun the failed checks locally first and then the complete pre-push tier, commit the fix, push again, and repeat this verification loop for the new `headSha`.
 5. Do not report the push as complete while any expected workflow for the pushed SHA is pending, missing, or failed.
+
+Never idle on CI while work remains. After a push, continue the remaining tasks while the exact-SHA verification runs in the background. Fix CI failures in parallel with that work as their own commits, and rebase work in progress onto the fix before its own push. Keep pushes separate so each CI failure stays attributable to one push. Only reporting completion waits for CI: the final pushed SHA must pass every expected workflow.
 
 The canonical expected-workflow list is `.github/required-workflows.json`; keep that manifest aligned with the names of the push workflows above.
 
