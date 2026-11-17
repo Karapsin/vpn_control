@@ -13,7 +13,7 @@ import types
 
 CONTRACT_SHA='f1ab484c873773e0e75f5f669e9d32b637527526bc281f98a5718ac13f9bbf36'
 WORKER_SHA='508a8ba5325a14429fc4981fc86fa735827e8beced700d24042a535badd56ba7'
-TEMPLATE_SHA='6fb8331ed2f975cb89bf107eb586b065ad54795d0a545809dccf897bd9ab8aee'
+TEMPLATE_SHA='779a1bb40bf9836ec4a395206d0ed6089cb3b6ab0b8e9451c56d1cfa2a0739e3'
 EMITTER_SHA='2938a7c6c25d23adc9683ced126fe2d3c0a88614dab59a7b134a624d6f8b0ee8'
 QGA_SHA='bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022'
 LABEL='system-collector'
@@ -183,8 +183,11 @@ class RetainedSystemCollector:
             and p['requestSha256']==self.request_pin['sha256'] and p['requestNativeIdentity']==self.request_pin['nativeIdentity']
             and p['sourceClosing'] is True and p['productMutation'] is False,'collector-closed-child-origin')
         w=p['worker']
-        require(type(w) is dict and set(w)=={'pid','birthFileTimeUtc','image','sessionId','exitCode','bothEof','originalHandleRetained'}
-            and type(w['pid']) is int and w['pid']>0 and type(w['birthFileTimeUtc']) is str
+        require(type(w) is dict and set(w)=={'pid','birthFileTimeUtc','image','sessionId','exitCode','bothEof','originalHandleRetained'},
+            'collector-original-child-native-generation')
+        # Read from the retained handle's token while the child runs; an unread session is never taken as 0.
+        require(type(w['sessionId']) is int,'collector-original-child-session-unread')
+        require(type(w['pid']) is int and w['pid']>0 and type(w['birthFileTimeUtc']) is str
             and re.fullmatch('[1-9][0-9]{16,19}',w['birthFileTimeUtc']) and w['image']==r['pythonRuntime']['interpreterPath']
             and type(w['sessionId']) is int and w['sessionId']==0 and type(w['exitCode']) is int and w['exitCode']==0
             and w['bothEof'] is True and w['originalHandleRetained'] is True,'collector-original-child-native-generation')

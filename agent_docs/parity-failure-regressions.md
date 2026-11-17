@@ -3638,6 +3638,33 @@ The PowerShell tests skip without `pwsh` or `powershell`, or run with `VPN_CONTR
 PowerShell 7.4.20; hosted Linux CI has `pwsh`. Native only: the next `.pre` of each reboot row on a fresh clone must
 show child 17 reporting `task.state` `absent`, and the migration row's highest fixture must register its task.
 
+### The SYSTEM collector's worker session, read after the worker exited (native NE2, S_Q, 2026-11-17)
+
+Update grant row `72c2fa02` (success-off review, clone NE2, fixture set S_Q, tools with the collector-root fix) ended
+UNKNOWN, exit 3, `collector_stage_failed:before-install:collector-original-child-native-generation`. The
+before-install worker published its record, exited 0 with empty stderr, and its own token said `S-1-5-18` in session
+0. The bootstrap's `collector-closed` proof still carried `worker.sessionId: null`. Every update grant row stops here.
+The product is not implicated. Evidence, the decoded proof, the unfixed sources and the RED/GREEN logs are in
+`.runtime/windows-parity-20261107/evidence/fix-collector-session/`. RED ran on an archive of `fd17037c` plus the final
+test modules and fixture. GREEN ran on the fix. Both ran on Python 3.14 and 3.12.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The bootstrap read its worker's session after the worker had exited, so the proof carried null (TOOL) | `test_windows_update_grant_collectors.CollectorChildSessionTests` (4 tests, the native proof `fixtures/windows_system_collector/native-72c2fa02-before-install.proof.json` as decoded from the run's `qga.wire`); `test_windows_scenario_host_job.UpdateFamilyTests.test_a_collector_proof_without_its_workers_session_ends_on_its_own_code` | `system_bootstrap_template.ps1` wrote `sessionId=$script:C.process.SessionId` into the closed record after `Wait-Child`. Windows PowerShell 5's .NET Framework does not answer `Process.SessionId` through the retained handle. It looks the id up in a process snapshot, and an exited process is not in that snapshot, so the member read gave `$null`. Every other read after exit is handle-bound (`ExitCode`) or cached (`Id`). The bootstrap now reads `TokenSessionId` (`[ScFacts]::ProcessToken`, class 12) from the retained handle's token between `Start` and `Wait-Child`. If it cannot read the session, it parks with `SC_CHILD_SESSION_UNREAD`. Both readers (`_validate_collector_child` and `collector_wrapper.validate_child`) still require exactly session 0. A session that is not an integer now fails as `collector-original-child-session-unread`. A child in another session still fails as `collector-original-child-native-generation`. The native proof with `sessionId` 0 passes both readers, which shows its session was the only defect. RED: both readers give `collector-original-child-native-generation` for the native proof (`FAILED (failures=15)`), the bootstrap reads `SessionId` after exit, and the family run ends with exactly the native receipt. GREEN: OK. |
+
+A mismatch in the before-install proof still ends UNKNOWN, not as a known failure. Several facts rule out a known end.
+The worker publishes `before-install.json` before the bootstrap returns its proof. The proof arrives only after the
+worker exits and every pin is rehashed (200 s in `72c2fa02`). The owner's `native_evidence` polls for that file every
+0.2 s and goes on to the install and its prompt as soon as the file is valid. The job has no way to stop the owner. So
+when the job reads the proof, nothing establishes that nothing was installed or approved. `KnownFailure` means nothing
+is left running, so ending known here would claim an outcome the job has not seen. A known end at this point would need
+the owner to wait for the job's acceptance of the proof before it acts, which is a change to the owner's update cases
+and the hold protocol. Only a native run confirms two things. The first is that the token of the running worker's
+retained handle gives session 0 in the service session, so the next grant run gets past before-install. The second is
+that the snapshot read gives `$null` rather than an exception. That second point is inferred from the native proof
+and was not reproduced off Windows. `failing_msi_bootstrap_template.ps1` has the same line. No tool module renders it
+and the scenario bundle does not ship it, so it is left unchanged.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

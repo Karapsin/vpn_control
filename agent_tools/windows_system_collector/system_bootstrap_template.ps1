@@ -121,6 +121,7 @@ $script:C.pumps+=,[ScRawPump]::new($script:C.process.StandardOutput.BaseStream,$
 $script:C.pumps+=,[ScRawPump]::new($script:C.process.StandardError.BaseStream,$script:C.outputs[1],[long]$r.rawStreamLimitBytes)
 foreach($pump in $script:C.pumps){$pump.Start()}
 $script:C.childBirth=([ScFacts]::Birth($script:C.process.Handle)).ToString([Globalization.CultureInfo]::InvariantCulture)
+try{$childToken=[ScFacts]::ProcessToken($script:C.process.Handle);$script:C.childSession=[int]::Parse($childToken[1],[Globalization.NumberStyles]::None,[Globalization.CultureInfo]::InvariantCulture)}catch{Park-Original 'SC_CHILD_SESSION_UNREAD' $_}
 Write-OwnedEvent 'submitted' @{pid=$script:C.process.Id;birthFileTimeUtc=$script:C.childBirth;originalHandleRetained=$true}
 Wait-Child
 Assert-Context
@@ -135,7 +136,7 @@ $h=[Security.Cryptography.SHA256]::Create();try{$digest=([BitConverter]::ToStrin
 $captures+=,@{name=@('stdout','stderr')[$i];sizeBytes=$bytes.Length;sha256=$digest;base64=[Convert]::ToBase64String($bytes);eof=$script:C.pumps[$i].Eof;nativeIdentity=[ScFacts]::Identity($output.SafeFileHandle,$false)}
 }
 if($script:C.process.ExitCode -ne 0 -or $captures[1].sizeBytes -ne 0){Park-Original 'SC_CHILD_FAILURE' @{exitCode=$script:C.process.ExitCode;captures=$captures}}
-$r=[ordered]@{schemaVersion=1;state='collector-closed';operationId=$r.operationId;ordinaryTaskOperationId=$r.ordinaryTaskOperationId;scope=$r.scope;collectorSourceSha256=$r.modules.collector.sha256;requestSha256=$requestRecord.sha256;requestNativeIdentity=$requestRecord.nativeIdentity;worker=@{pid=$script:C.process.Id;birthFileTimeUtc=$script:C.childBirth;image=$exe;sessionId=$script:C.process.SessionId;exitCode=$script:C.process.ExitCode;bothEof=$true;originalHandleRetained=$true};captures=$captures;sourceClosing=$true;productMutation=$false}
+$r=[ordered]@{schemaVersion=1;state='collector-closed';operationId=$r.operationId;ordinaryTaskOperationId=$r.ordinaryTaskOperationId;scope=$r.scope;collectorSourceSha256=$r.modules.collector.sha256;requestSha256=$requestRecord.sha256;requestNativeIdentity=$requestRecord.nativeIdentity;worker=@{pid=$script:C.process.Id;birthFileTimeUtc=$script:C.childBirth;image=$exe;sessionId=$script:C.childSession;exitCode=$script:C.process.ExitCode;bothEof=$true;originalHandleRetained=$true};captures=$captures;sourceClosing=$true;productMutation=$false}
 Write-OwnedEvent 'terminal' $r
 Assert-Context
 [Console]::WriteLine(($r|ConvertTo-Json -Depth 8 -Compress))

@@ -3691,8 +3691,12 @@ class Job:
              and p["requestSha256"] == request_pin["sha256"] and p["requestNativeIdentity"] == request_pin["nativeIdentity"]
              and p["sourceClosing"] is True and p["productMutation"] is False, "collector-closed-child-origin")
         w = p["worker"]
-        need(type(w) is dict and set(w) == {"pid", "birthFileTimeUtc", "image", "sessionId", "exitCode", "bothEof", "originalHandleRetained"}
-             and type(w["pid"]) is int and w["pid"] > 0 and type(w["birthFileTimeUtc"]) is str
+        need(type(w) is dict and set(w) == {"pid", "birthFileTimeUtc", "image", "sessionId", "exitCode", "bothEof", "originalHandleRetained"},
+             "collector-original-child-native-generation")
+        # The bootstrap reads its child's session from the retained handle's token while the child runs. A session it
+        # could not read is never taken as 0: it fails on its own code, apart from a child in another session.
+        need(type(w["sessionId"]) is int, "collector-original-child-session-unread")
+        need(type(w["pid"]) is int and w["pid"] > 0 and type(w["birthFileTimeUtc"]) is str
              and re.fullmatch("[1-9][0-9]{16,19}", w["birthFileTimeUtc"]) and w["image"] == r["pythonRuntime"]["interpreterPath"]
              and type(w["sessionId"]) is int and w["sessionId"] == 0 and type(w["exitCode"]) is int and w["exitCode"] == 0
              and w["bothEof"] is True and w["originalHandleRetained"] is True, "collector-original-child-native-generation")

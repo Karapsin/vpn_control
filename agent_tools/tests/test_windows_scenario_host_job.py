@@ -3190,6 +3190,7 @@ class UpdateQga(FakeQga):
         self.watch_polls = 0  # Status polls of the SYSTEM run's copy while the watch collector runs.
         self.status_reads = []  # Which program, if any, was open while the status copy was read.
         self.root_form = "P"  # The DACL control a collector root reads back: natively P.
+        self.child_session = 0  # The worker session a collector's proof carries: null where the bootstrap read none (72c2fa02).
 
     def install(self, worker):
         """An update task's own effect is the product's installer, not msiexec's: whatever update_effect leaves, once the
@@ -3405,7 +3406,7 @@ class UpdateQga(FakeQga):
                  "ordinaryTaskOperationId": request["ordinaryTaskOperationId"], "scope": "update",
                  "collectorSourceSha256": request["modules"]["collector"]["sha256"], "requestSha256": pin["sha256"],
                  "requestNativeIdentity": pin["nativeIdentity"],
-                 "worker": {"pid": worker["pid"], "birthFileTimeUtc": worker["birthFileTimeUtc"], "image": worker["image"], "sessionId": 0,
+                 "worker": {"pid": worker["pid"], "birthFileTimeUtc": worker["birthFileTimeUtc"], "image": worker["image"], "sessionId": self.child_session,
                             "exitCode": 0, "bothEof": True, "originalHandleRetained": True},
                  "captures": [capture("stdout", stdout), capture("stderr", b"")], "sourceClosing": True, "productMutation": False,
                  "bootstrapOpening": self._actor(pid), "bootstrapClosing": self._actor(pid), "guestBootClosing": True, "bootstrapActorClosing": True}
@@ -3908,6 +3909,23 @@ class UpdateFamilyTests(UpdateFamilyBase):
                 plan, code, receipt = self.run_update("success-off", base, target)
                 try:
                     self.assertEqual((3, "collector_stage_failed:authorization:" + reason), (code, receipt["failure"]))
+                    self.assertEqual(["before-install"], [request["collectorRequest"]["stage"] for request in self.qga.collectors])
+                    self.assertFalse(self.fence(plan, ".terminal.json").exists())
+                finally:
+                    self.forget(plan)
+
+    def test_a_collector_proof_without_its_workers_session_ends_on_its_own_code(self):
+        """Grant row 72c2fa02 natively: before-install's worker published and exited 0, and the SYSTEM proof carried
+        sessionId null. That is never session 0, and the receipt names it apart from a child in another session. The
+        owner may already have read the published evidence and gone on, so the outcome stays open: UNKNOWN, no later stage served."""
+        base, target = self.prepared()
+        for session, reason in ((None, "collector-original-child-session-unread"), (1, "collector-original-child-native-generation")):
+            with self.subTest(session=session):
+                self.grant_guest(target)
+                self.qga.child_session = session
+                plan, code, receipt = self.run_update("success-off", base, target)
+                try:
+                    self.assertEqual((3, "collector_stage_failed:before-install:" + reason), (code, receipt["failure"]))
                     self.assertEqual(["before-install"], [request["collectorRequest"]["stage"] for request in self.qga.collectors])
                     self.assertFalse(self.fence(plan, ".terminal.json").exists())
                 finally:

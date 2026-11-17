@@ -9,6 +9,7 @@ SYSTEM may read, as the runner's own administrator token.
 """
 from __future__ import annotations
 
+import base64
 import contextlib
 import ctypes
 import functools
@@ -26,6 +27,7 @@ from unittest import mock
 from agent_tools import windows_scenario_host_job as job
 from agent_tools.windows_public_updater import native_collector, update_receipts
 from agent_tools.windows_system_collector import collector_contract as contract
+from agent_tools.windows_system_collector import collector_wrapper as wrapper
 from scripts import windows_broker_fixture_observer as broker_observer
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -155,6 +157,101 @@ class RootFormTests(unittest.TestCase):
         self.assertIn("$forms -cnotcontains $root[0].record.security.sddl){throw 'SC_MACHINE_WRITER_ROOT_POLICY'}", guard)
         self.assertIn("$rootForms -cnotcontains $roots[0].record.security.sddl){throw 'ACK_ROOT_MACHINE_POLICY'}", release)
         self.assertNotIn("O:SYD:PAI(A;OICI", guard + release, "no reader keeps a single root form of its own")
+
+
+# The collector-closed proof the SYSTEM bootstrap returned for before-install of update grant row 72c2fa02 (clone NE2,
+# S_Q), exactly as the operator decoded it from that run's qga.wire: the worker published, exited 0 and reported its
+# own token in session 0, but the proof's worker.sessionId was null. The job ended UNKNOWN (exit 3)
+# collector_stage_failed:before-install:collector-original-child-native-generation.
+NATIVE_PROOF = ROOT / "agent_tools/tests/fixtures/windows_system_collector/native-72c2fa02-before-install.proof.json"
+
+
+def native_proof_request(proof):
+    """The request and its pin as far as the child check reads them, each fact taken from the native run itself."""
+    result = json.loads(base64.b64decode(proof["captures"][0]["base64"]))
+    request = {"operationId": proof["operationId"], "ordinaryTaskOperationId": proof["ordinaryTaskOperationId"], "scope": "update",
+               "modules": {"collector": {"sha256": proof["collectorSourceSha256"]}},
+               "pythonRuntime": {"interpreterPath": proof["worker"]["image"]}, "rawStreamLimitBytes": job.COLLECTOR_RAW_LIMIT,
+               "context": {"bootIdentifier": result["workerActor"]["bootIdentifier"]},
+               "filePins": [None] * (result["closing"]["files"] - 1), "closeHold": None}
+    return request, {"sha256": proof["requestSha256"], "nativeIdentity": dict(proof["requestNativeIdentity"])}
+
+
+class CollectorChildSessionTests(unittest.TestCase):
+    """The SYSTEM bootstrap's proof of its worker's session, and both readers of it.
+
+    At fd17037c the bootstrap wrote worker.sessionId from Process.SessionId after the worker had exited. Windows
+    PowerShell's .NET Framework answers that property from a process snapshot looked up by id, not from the retained
+    handle, and an exited process is no longer in it: the native proof carried null, and both readers refused it
+    under the generation code. The bootstrap now reads TokenSessionId from the retained handle's token while the
+    worker runs, parks under its own reason if it cannot, and a session that is not an integer fails on its own code.
+    """
+
+    def validators(self):
+        def by_job(request, pin, proof):
+            return job.Job._validate_collector_child(types.SimpleNamespace(_keep=lambda *_: None), "before-install", request, pin, proof)
+
+        def by_wrapper(request, pin, proof):
+            holder = types.SimpleNamespace(proof=proof, request=request, request_pin=pin, child_raw={}, protocol=None,
+                                           n={"prefix": "native", "save": lambda *_: None})
+            wrapper.RetainedSystemCollector.validate_child(holder)
+            return holder.worker_result
+        return {"job": by_job, "wrapper": by_wrapper}
+
+    def native(self, **worker):
+        proof = json.loads(NATIVE_PROOF.read_bytes())
+        proof["worker"].update(worker)
+        return (*native_proof_request(proof), proof)
+
+    def test_the_native_proof_with_no_session_fails_on_its_own_code(self):
+        """The native proof as it came back: an unread session, never taken as session 0."""
+        request, pin, proof = self.native()
+        self.assertIsNone(proof["worker"]["sessionId"])
+        for name, validate in self.validators().items():
+            with self.subTest(name), self.assertRaisesRegex(ValueError, "^collector-original-child-session-unread$"):
+                validate(request, pin, proof)
+
+    def test_the_same_native_proof_with_its_worker_in_session_0_is_accepted(self):
+        """Nothing else in the native proof fails: its session was the one defect."""
+        request, pin, proof = self.native(sessionId=0)
+        for name, validate in self.validators().items():
+            with self.subTest(name):
+                result = validate(request, pin, proof)
+                self.assertEqual(0, result["workerActor"]["token"]["sessionId"])
+                self.assertEqual("before-install", result["publications"][0]["stage"])
+
+    def test_a_session_that_is_not_an_integer_is_unread_and_another_session_is_another_generation(self):
+        cases = {"session-unread": ("0", 0.0, True, False, [0], {}), "native-generation": (1, 2, -1)}
+        for code, values in cases.items():
+            for value in values:
+                request, pin, proof = self.native(sessionId=value)
+                for name, validate in self.validators().items():
+                    with self.subTest(name, value=value), self.assertRaisesRegex(ValueError, "^collector-original-child-" + code + "$"):
+                        validate(request, pin, proof)
+
+    def test_the_bootstrap_reads_the_session_from_the_retained_handle_while_its_worker_runs(self):
+        """Closest fast check of the native defect, which only Windows reproduces: once the worker has exited, the
+        bootstrap reads its original Process only through members its retained handle or its own fields answer (Id,
+        ExitCode, Handle), and the session in the closed record is the one read between Start and Wait-Child from the
+        token of that handle, under its own park reason when it cannot be read."""
+        lines = (COLLECTOR / "system_bootstrap_template.ps1").read_text(encoding="utf-8").splitlines()
+        start = lines.index("if(-not $script:C.process.Start()){throw 'SYSTEM_ORIGINAL_START_FALSE'}")
+        wait = lines.index("Wait-Child")
+        exited = set(re.findall(r"\$script:C\.process\.([A-Za-z]+)", "\n".join(lines[wait:])))
+        self.assertLessEqual(exited, {"Id", "ExitCode", "Handle"}, "a snapshot member of an exited process reads as null")
+        read = [number for number, line in enumerate(lines) if "$script:C.childSession=" in line]
+        self.assertEqual(1, len(read))
+        self.assertLess(start, read[0])
+        self.assertLess(read[0], wait)
+        self.assertEqual("try{$childToken=[ScFacts]::ProcessToken($script:C.process.Handle);$script:C.childSession=[int]::Parse("
+                         "$childToken[1],[Globalization.NumberStyles]::None,[Globalization.CultureInfo]::InvariantCulture)}"
+                         "catch{Park-Original 'SC_CHILD_SESSION_UNREAD' $_}", lines[read[0]])
+        closed = [line for line in lines if "state='collector-closed'" in line]
+        self.assertEqual(1, len(closed))
+        self.assertIn(";sessionId=$script:C.childSession;exitCode=$script:C.process.ExitCode;", closed[0])
+        # ProcessToken's second value is TokenInformationClass 12, TokenSessionId.
+        native = (COLLECTOR / "system_collector_native.cs").read_text(encoding="utf-8")
+        self.assertIn("return new string[]{id.User.Value,Scalar(t,12).ToString(),", native)
 
 
 class Export:
