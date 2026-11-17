@@ -2168,6 +2168,12 @@ unless it comes from this evidence. The observation reads each journal without c
   so fix the tool and rerun the row, then name only the rerun. It does not hold a later
   pass of the package (`windows_matrix_unrecorded_outcome` skips it). Any other reason,
   a missing or changed copy, or a second closing stays `failed`.
+- `suspect`: a pass that the next row's clean start found state left behind by
+  (`native_row_queue.mark_suspect`; an unreadable mark is suspect too). It never
+  counts, is never measured for the MCP route, and does not hold a later pass;
+  rerun the row after a reset. Beside a `failed-harness` run of the same requirement
+  each keeps its own rule
+  (`test_native_scenario_windows_matrix.HarnessBesideSuspectTests`).
 - `failed-principal`: a DOC run whose owner passed (owner and terminal exit code 0)
   and whose LOCAL SERVICE probe then proved no denial of the owner-private endpoint
   (`document_principal_not_denied`): the product's verdict, recorded at once. It fails

@@ -1428,6 +1428,39 @@ class SuspectRowTests(MatrixBase):
         self.assertEqual(["suspect", "passed"], [windows._matrix_row(self.root, row)["classification"] for row in (leaker, again)])
 
 
+@unittest.skipUnless(os.name == "posix", "private scenario journals are POSIX")
+class HarnessBesideSuspectTests(MatrixBase):
+    """TEST-008 beside review finding 10 and TEST-002 in one requirement: a failed-harness run and a suspect pass each
+    keep their own rule. Neither counts, neither is measured for the MCP route, the harness run blocks its scenarios
+    while named, and neither holds a later pass of the package."""
+
+    harness_row = HarnessFailureTests.harness_row
+
+    def test_a_failed_harness_run_and_a_suspect_pass_in_one_requirement(self):
+        from agent_tools import native_row_queue
+        harness, leaker = self.harness_row(), self.row(SSH, "direct")
+        native_row_queue.mark_suspect(self.root, leaker, detected_by=str(uuid.uuid4()), failure="clean_start_drift:task")
+        twins = [self.row(SMK, "mcp"), self.row(SSH, "mcp")]
+        rows = [harness, leaker, *twins]
+        review = windows.matrix_review(self.root, "windows-native-cli", rows)
+        self.assertEqual({harness: "failed-harness", leaker: "suspect"},
+                         {row["correlationId"]: row["classification"] for row in review["rows"] if row["correlationId"] in (harness, leaker)})
+        self.assertEqual({**{name: "failed-harness" for name in NATIVE[:10]}, **{name: "missing" for name in NATIVE[10:]}}, review["scenarios"])
+        # Only passed direct runs are measured: neither run is the longest or the largest-evidence representative.
+        self.assertEqual((None, None, {}), (review["mcpRoute"]["longest"], review["mcpRoute"]["largestEvidence"], review["mcpRoute"]["admission"]))
+        self.assert_refused(rows, "windows_matrix_harness_failure:" + min(NATIVE[:10]))
+        # Fixed tool, reset start: the reruns pass. The harness run still blocks while it is named; the suspect pass never
+        # counts, but beside a rerun it takes nothing away.
+        reruns = [self.row(SMK, "direct"), self.row(SSH, "direct")]
+        self.assert_refused([harness, *reruns, *twins], "windows_matrix_harness_failure:" + min(NATIVE[:10]))
+        observation = self.observe([leaker, *reruns, *twins])
+        self.assertEqual(("passed", {name: "passed" for name in NATIVE}), (observation["result"], observation["scenarioResults"]))
+        # Neither the harness run nor the suspect pass is a settled product failure that must stand beside the pass.
+        matrix.matrix_record(self.root, observation)
+        status = next(row for row in matrix.matrix_status(self.root, self.source)["requirements"] if row["requirementId"] == "windows-native-cli")
+        self.assertEqual("passed", status["status"])
+
+
 class SweepEligibilityTests(MatrixBase):
     """QW5: before a sweep, whether a pass of each planned row on a frozen set would count at HEAD."""
 
