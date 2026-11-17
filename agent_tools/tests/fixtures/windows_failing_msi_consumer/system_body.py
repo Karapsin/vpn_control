@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path,PureWindowsPath
+import re
 import sys
 import types
 import unittest
@@ -103,14 +104,16 @@ def inputs(scope='update',with_hold=False):
     for value in (owner_source,worker_source,bootstrap_pin,worker_pin):
         for task_parent in PureWindowsPath(value['path']).parents:
             if str(task_parent) not in present:request['directoryPins'].append(pin(str(task_parent),directory=True));present.add(str(task_parent))
-    security={'ownerSid':'S-1-5-18','sddl':'O:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;'+SID+')'}
+    # The collector root as the publisher's CreateDirectory leaves it natively (723417ea): protected, no AI flag.
+    security={'ownerSid':'S-1-5-18','sddl':'O:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;'+SID+')'}
     next(x for x in request['directoryPins'] if x['path']==root)['security']=security
     TASK_DOCUMENTS[bootstrap_pin['sha256']]=bootstrap_raw;TASK_DOCUMENTS[worker_pin['sha256']]=worker_raw
     guest={'deploymentId':ORD,'boot':{'lastBootUpTimeFileTimeUtc':context['bootFileTimeUtc'],
         'machineGuid':context['machineGuid'],'hardwareUuid':context['hardwareUuid']},'ordinarySid':SID,
         'powerShellPath':E.POWERSHELL_PATH,'sourceWorkspace':parent}
     rec=pin(request['requestPath'],C.request_digest(request),size=len(C.encoded(request)))
-    rec['security']={'ownerSid':'S-1-5-18','sddl':'O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+SID+')'}
+    # The request as the publisher's SetAccessControl leaves it natively (72c2fa02): protected and auto-inherited.
+    rec['security']={'ownerSid':'S-1-5-18','sddl':'O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+SID+')'}
     return request,rec,guest
 
 
@@ -290,7 +293,7 @@ class RenderTests(unittest.TestCase):
         present={x['path'] for x in r['directoryPins']}
         for parent in PureWindowsPath(new).parents:
             if str(parent) not in present:r['directoryPins'].append(pin(str(parent),directory=True));present.add(str(parent))
-        dacl='O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+SID+')'
+        dacl='O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+SID+')'
         for item in r['filePins']:
             if item['path']==new:item['security']['sddl']=dacl
         p=pin(r['requestPath'],C.request_digest(r),size=len(C.encoded(r)));p['security']['sddl']=dacl
@@ -603,7 +606,7 @@ class FailingMsiRoleAdmissionTests(unittest.TestCase):
             for ancestor in PureWindowsPath(f['path']).parents:
                 if str(ancestor) not in have:r['directoryPins'].append(pin(str(ancestor),directory=True));have.add(str(ancestor))
         p=pin(r['requestPath'],C.request_digest(r),size=len(C.encoded(r)));p['security']={'ownerSid':'S-1-5-18',
-            'sddl':'O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+SID+')'}
+            'sddl':'O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+SID+')'}
         return r,p,g
 
     def test_exact_conditional_source_and_all_artifact_roles_fit_real_saved_builder(self):
@@ -621,6 +624,175 @@ class FailingMsiRoleAdmissionTests(unittest.TestCase):
             elif change=='missing':r['filePins']=[x for x in r['filePins'] if x['path']!=r['collectorRequest']['faultBinding']['derivationBinding']['faultMsiPath']]
             else:r['collectorRequest']['faultBinding']['derivationBinding']['faultMsiPath']=r['modules']['faultConsumer']['path']
             with self.subTest(change=change),self.assertRaises(ValueError):C.validate(r,{'contract':W.CONTRACT_SHA,'worker':W.WORKER_SHA},g)
+
+
+# The native read-back shapes of the collector chain's files, each copied from a native run's own records
+# (.runtime/windows-parity-20261107/evidence/fix-failing-msi-form/native-shapes.json):
+# - every system-collector-* root of update row 723417ea (NE2, 2026-11-17), as the publisher's CreateDirectory with a
+#   protected descriptor left it: no AI flag;
+# - the collector-request.json pin of update grant row 72c2fa02 (NE2, S_Q), as the publisher's SetAccessControl left it;
+# - the SYSTEM bootstrap's proof of 72c2fa02's before-install worker, whose session was read after the worker exited.
+NATIVE_SID='S-1-5-21-2273039459-1703881155-186347341-1005'
+NATIVE_ROOT={'ownerSid':'S-1-5-18','sddl':'O:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;'+NATIVE_SID+')'}
+NATIVE_REQUEST={'ownerSid':'S-1-5-18','sddl':'O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+NATIVE_SID+')'}
+NATIVE_WORKER={'exitCode':0,'pid':3912,'originalHandleRetained':True,'sessionId':None,
+    'image':'C:\\Users\\fixtureuser\\AppData\\Local\\Programs\\Python\\Python313\\python.exe','bothEof':True,
+    'birthFileTimeUtc':'134393683796790051'}
+FILE_ACES='(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'
+ROOT_ACES='(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;'
+NATIVE_FORMS_BEFORE=False
+_BEFORE_CHAIN={}
+
+
+def native_chain():
+    """The failing-MSI chain under test: the current sources, or the f5bb47ec beforeimages for the causal RED half."""
+    if not NATIVE_FORMS_BEFORE:return C,W,CONTRACT,TEMPLATE
+    if not _BEFORE_CHAIN:
+        before=_fixture_root/'before/native-forms'
+        _BEFORE_CHAIN['chain']=(module('_before_failing_msi_contract',before/'failing_msi_contract.py.source'),
+            module('_before_failing_msi_wrapper',before/'failing_msi_wrapper.py.source'),
+            (before/'failing_msi_contract.py.source').read_bytes(),(before/'failing_msi_bootstrap_template.ps1.source').read_bytes())
+    return _BEFORE_CHAIN['chain']
+
+
+def native_inputs(with_hold=False):
+    """inputs() with the operation root and the request pin in their native read-back forms."""
+    c,w,_,_=native_chain()
+    r,p,g=inputs(with_hold=with_hold)
+    for role,digest in (('contract',w.CONTRACT_SHA),('worker',w.WORKER_SHA)):
+        record=r['modules'][role];held=next(x for x in r['filePins'] if x['path']==record['path'])
+        record['sha256']=held['sha256']=digest
+    next(x for x in r['directoryPins'] if x['path']==r['operationRoot'])['security']={
+        'ownerSid':NATIVE_ROOT['ownerSid'],'sddl':NATIVE_ROOT['sddl'].replace(NATIVE_SID,SID)}
+    p=pin(r['requestPath'],c.request_digest(r),size=len(c.encoded(r)))
+    p['security']={'ownerSid':NATIVE_REQUEST['ownerSid'],'sddl':NATIVE_REQUEST['sddl'].replace(NATIVE_SID,SID)}
+    return r,p,g
+
+
+def template_literal(text, variable, tail):
+    """The single-quoted literal a PowerShell line assigns before `+<tail>+')'`, exactly once."""
+    found=[line[len(variable)+2:-len("'+"+tail+"+')'")] for line in text.splitlines()
+        if line.startswith(variable+"='") and line.endswith("'+"+tail+"+')'")]
+    if len(found)!=1:raise AssertionError((variable,found))
+    return found[0]
+
+
+class NativeFormTests(unittest.TestCase):
+    """The failing-MSI chain on the forms its files read back natively, and its worker's session as the bootstrap reads it.
+
+    At f5bb47ec the chain's contract demanded a PAI root, which the publisher's CreateDirectory never writes, so every
+    request was refused before launch; its contract and bootstrap demanded a P request, which the publisher's
+    SetAccessControl never writes and the shared release program refuses; and its bootstrap read the worker's session
+    after the worker exited, which Windows PowerShell 5 answers as null. The same three defects were fixed in the TUN and
+    update collector chain by fix-collector-root, fix-release-deadline and fix-collector-session."""
+
+    def test_the_contract_takes_the_native_collector_root_and_the_same_dacl_auto_inherited(self):
+        c=native_chain()[0]
+        for sddl in (NATIVE_ROOT['sddl'],NATIVE_ROOT['sddl'].replace('D:P(','D:PAI(')):
+            with self.subTest(sddl=sddl[:9]):
+                self.assertIsNone(c.root_policy({'ownerSid':'S-1-5-18','sddl':sddl},NATIVE_SID))
+
+    def test_any_other_root_form_is_refused(self):
+        c=native_chain()[0];root=NATIVE_ROOT['sddl']
+        forms={'unprotected':'O:SYD:'+ROOT_ACES+NATIVE_SID+')','auto-inherited-unprotected':'O:SYD:AI'+ROOT_ACES+NATIVE_SID+')',
+            'inherited-ace':root.replace('(A;OICI;FA;;;SY)','(A;OICIID;FA;;;SY)'),'extra-ace':root+'(A;OICI;FA;;;WD)',
+            'ordinary-writes':root.replace('0x1200a9','FA'),'another-ordinary':root.replace(NATIVE_SID,'S-1-5-21-1-2-3-1002'),
+            'not-inheritable':root.replace('OICI;',';'),'administrators-own':root.replace('O:SY','O:BA'),
+            'file-form':NATIVE_REQUEST['sddl']}
+        for name,sddl in forms.items():
+            with self.subTest(name),self.assertRaisesRegex(ValueError,'collector-machine-writer-operation-root-policy'):
+                c.root_policy({'ownerSid':'S-1-5-18','sddl':sddl},NATIVE_SID)
+        for security in ({'ownerSid':'S-1-5-32-544','sddl':root},{'ownerSid':'S-1-5-18','sddl':root,'extra':1},{'sddl':root},None):
+            with self.subTest(security=security),self.assertRaises((ValueError,TypeError,KeyError)):
+                c.root_policy(security,NATIVE_SID)
+
+    def test_the_request_takes_the_publishers_native_form_and_no_other(self):
+        c=native_chain()[0]
+        self.assertIsNone(c.file_policy(dict(NATIVE_REQUEST),NATIVE_SID))
+        request=NATIVE_REQUEST['sddl']
+        for name,sddl in {'created-protected':request.replace('D:PAI(','D:P('),'unprotected':request.replace('D:PAI(','D:('),
+                'inherited-ace':request.replace('(A;;FA;;;SY)','(A;ID;FA;;;SY)'),'extra-ace':request+'(A;;FA;;;WD)',
+                'ordinary-writes':request.replace('0x1200a9','FA'),'root-form':NATIVE_ROOT['sddl']}.items():
+            with self.subTest(name),self.assertRaisesRegex(ValueError,'collector-machine-writer-file-policy'):
+                c.file_policy({'ownerSid':'S-1-5-18','sddl':sddl},NATIVE_SID)
+        with self.assertRaisesRegex(ValueError,'collector-machine-writer-file-policy'):
+            c.file_policy({'ownerSid':'S-1-5-32-544','sddl':request},NATIVE_SID)
+
+    def test_the_contract_the_bootstrap_and_the_shared_release_take_the_same_request_forms(self):
+        """A request the release program refuses must be refused before the collector runs, not after: the release is
+        the caller's only way out of its hold. Each reader is asked about both protected file forms."""
+        c,_,_,template=native_chain()
+        release=(B/'release_template.ps1').read_text(encoding='utf-8')
+        released=template_literal(release,'$required','$request.context.ordinarySid')
+        booted=template_literal(template.decode('utf-8'),'$requiredFilePolicy','$r.context.ordinarySid')
+        for form in ('P','PAI'):
+            sddl='O:SYD:'+form+FILE_ACES+NATIVE_SID+')'
+            try:c.file_policy({'ownerSid':'S-1-5-18','sddl':sddl},NATIVE_SID);contract=True
+            except ValueError:contract=False
+            with self.subTest(form=form):
+                self.assertEqual(released+NATIVE_SID+')'==sddl,contract,'contract and release program disagree')
+                self.assertEqual(released+NATIVE_SID+')'==sddl,booted+NATIVE_SID+')'==sddl,'bootstrap and release program disagree')
+        self.assertEqual(NATIVE_REQUEST['sddl'],released+NATIVE_SID+')','the release program takes the native request')
+        # The release the program publishes itself is created protected (P) by PublishMachineFile; it takes that form.
+        self.assertIn("$publishedForms=@(('O:SYD:P'+$fileAces),('O:SYD:PAI'+$fileAces))",release)
+
+    def test_the_chain_renders_and_releases_on_the_native_forms(self):
+        c,w,contract,template=native_chain()
+        r,p,g=native_inputs()
+        self.assertIs(c.validate(r,{'contract':w.CONTRACT_SHA,'worker':w.WORKER_SHA},g),r)
+        plan=E.build_guest_exec(w.render_source(r,p,contract,template,E,g),guest_context=g,phase_id=OP)
+        self.assertEqual('saved-source',plan['transport'])
+        r,p,g=native_inputs(with_hold=True);peer=ParentPeer(r,g)
+        obj=w.RetainedSystemCollector(peer.n,r,p,contract,template,(B/'release_template.ps1').read_bytes(),
+            (B/'failing_msi_hold_protocol.py').read_bytes())
+        peer.answers=[{'pid':909}];self.assertEqual({'pid':909},obj.start())
+        peer.answers=[terminal_reply(obj,child_proof(r,p))];obj.observe()
+        self.assertEqual('terminal',obj.state)
+        peer.answers=[{'pid':910}];self.assertEqual({'pid':910},obj.start_release())
+        self.assertIn(base64.b64encode(c.encoded(p)).decode(),obj.release_source.decode('utf-8-sig'))
+
+    def worker_check(self, **worker):
+        _,w,contract,template=native_chain()
+        r,p,g=native_inputs();peer=ParentPeer(r,g)
+        obj=w.RetainedSystemCollector(peer.n,r,p,contract,template)
+        obj.proof=child_proof(r,p)
+        native={k:v for k,v in NATIVE_WORKER.items() if k not in {'pid','image','birthFileTimeUtc'}}
+        obj.proof['worker'].update(native,**worker)
+        return obj
+
+    def test_the_native_worker_with_no_session_fails_on_its_own_code(self):
+        """The worker record as 72c2fa02's bootstrap returned it (pid, image and birth join this fixture's child)."""
+        obj=self.worker_check()
+        self.assertIsNone(obj.proof['worker']['sessionId'])
+        with self.assertRaisesRegex(ValueError,'^collector-original-child-session-unread$'):obj.validate_child()
+
+    def test_a_session_that_is_not_an_integer_is_unread_and_another_session_is_another_generation(self):
+        for code,values in {'session-unread':('0',0.0,True,False,[0],{}),'native-generation':(1,2,-1)}.items():
+            for value in values:
+                obj=self.worker_check(sessionId=value)
+                with self.subTest(value=value),self.assertRaisesRegex(ValueError,'^collector-original-child-'+code+'$'):
+                    obj.validate_child()
+        obj=self.worker_check(sessionId=0);obj.validate_child()
+        self.assertEqual(0,obj.worker_result['workerActor']['token']['sessionId'])
+
+    def test_the_bootstrap_reads_the_session_from_the_retained_handle_while_its_worker_runs(self):
+        """Closest fast check of the native defect, which only Windows reproduces: after Wait-Child the bootstrap reads its
+        original Process only through members its retained handle or its own fields answer, and the closed record's
+        session is the TokenSessionId read between Start and Wait-Child, under its own park reason when unreadable."""
+        lines=native_chain()[3].decode('utf-8').splitlines()
+        start=lines.index("if(-not $script:C.process.Start()){throw 'SYSTEM_ORIGINAL_START_FALSE'}")
+        wait=lines.index('Wait-Child')
+        exited=set(re.findall(r'\$script:C\.process\.([A-Za-z]+)','\n'.join(lines[wait:])))
+        self.assertLessEqual(exited,{'Id','ExitCode','Handle'},'a snapshot member of an exited process reads as null')
+        read=[number for number,line in enumerate(lines) if '$script:C.childSession=' in line]
+        self.assertEqual(1,len(read));self.assertLess(start,read[0]);self.assertLess(read[0],wait)
+        self.assertEqual("try{$childToken=[ScFacts]::ProcessToken($script:C.process.Handle);$script:C.childSession=[int]::Parse("
+            "$childToken[1],[Globalization.NumberStyles]::None,[Globalization.CultureInfo]::InvariantCulture)}"
+            "catch{Park-Original 'SC_CHILD_SESSION_UNREAD' $_}",lines[read[0]])
+        closed=[line for line in lines if "state='collector-closed'" in line]
+        self.assertEqual(1,len(closed));self.assertIn(';sessionId=$script:C.childSession;exitCode=$script:C.process.ExitCode;',closed[0])
+        # ProcessToken's second value is TokenInformationClass 12, TokenSessionId.
+        self.assertIn('return new string[]{id.User.Value,Scalar(t,12).ToString(),',(B/'system_collector_native.cs').read_text(encoding='utf-8'))
 
 
 if __name__=='__main__':unittest.main()

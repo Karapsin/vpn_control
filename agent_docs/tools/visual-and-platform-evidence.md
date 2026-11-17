@@ -1650,6 +1650,10 @@ are SYSTEM-owned, protected from every inherited ACE and hold exactly these thre
 explicit ACEs. Any other owner, control, inherited ACE or extra ACE ends the row at
 publish with `collector_root_policy:<owner>:<dacl-flags>:<aces>`, before any task.
 The job keeps the refused records in its private `collector-root-security.json`.
+The failing-MSI copy of the chain (`failing_msi_contract.py`, its wrapper, worker and
+bootstrap template, with the shared release program) takes the same forms: a root in
+`P` or `PAI`, a request in `PAI` alone, and its worker's session read from the retained
+handle's token while the worker runs, never after it exits.
 
 The product writes `.install-not-started-<hash>.json` for its owner alone
 (`O:<user>G:<user>D:P(A;;FA;;;<user>)`). That ACL is the product's design, and no

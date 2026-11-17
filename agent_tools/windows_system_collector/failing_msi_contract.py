@@ -210,14 +210,33 @@ def request_digest(request):
     return hashlib.sha256(encoded(request)).hexdigest()
 
 
+# A collector root is created by the publisher's CreateDirectory with a protected security descriptor, which reads back
+# O:SYD:P natively (every system-collector-* root of 723417ea, 2026-11-17); a DACL set later through SetSecurityInfo
+# reads back PAI. AI only records that form of write: both are SYSTEM-owned, protected from every inherited ACE and
+# carry exactly these three explicit ACEs, so they grant the same. Any other control, owner or ACE stays refused.
+# collector_contract.root_policy, ordinary_task_guard.ps1 and release_template.ps1 take the same two forms.
+ROOT_FORMS=('P','PAI')
+
+
+def root_sddls(ordinary_sid):
+    return tuple('O:SYD:'+form+'(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;'+ordinary_sid+')' for form in ROOT_FORMS)
+
+
 def root_policy(security, ordinary_sid):
-    expected='O:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;'+ordinary_sid+')'
-    require(security=={'ownerSid':'S-1-5-18','sddl':expected},'collector-machine-writer-operation-root-policy')
+    require(type(security) is dict and set(security)=={'ownerSid','sddl'} and security['ownerSid']=='S-1-5-18'
+            and security['sddl'] in root_sddls(ordinary_sid),'collector-machine-writer-operation-root-policy')
+
+
+def file_sddl(ordinary_sid):
+    # The form a request file reads back natively: the publisher protects it with SetAccessControl, which marks the
+    # DACL auto-inherited (O:SYD:PAI on the collector-request.json pins of 72c2fa02). SYSTEM owner, protected DACL,
+    # these three explicit ACEs and no inherited one. The shared release_template.ps1 refuses any other request form,
+    # so this chain's bootstrap and contract take this one form too and refuse the rest before any launch.
+    return 'O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+ordinary_sid+')'
 
 
 def file_policy(security, ordinary_sid):
-    expected='O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+ordinary_sid+')'
-    require(security=={'ownerSid':'S-1-5-18','sddl':expected},'collector-machine-writer-file-policy')
+    require(security=={'ownerSid':'S-1-5-18','sddl':file_sddl(ordinary_sid)},'collector-machine-writer-file-policy')
 
 
 def task_argv(task):

@@ -11,9 +11,9 @@ import re
 import sys
 import types
 
-CONTRACT_SHA='e6de6408c8d26fda984770d3b84f2c4a99d00e760005a038bd71f4f3875d5f4a'
-WORKER_SHA='e1b5ec0b233ae834755df09214556aa05504c3360cfe8b9c45662c287dd99637'
-TEMPLATE_SHA='74cc27de77a48d76edbb321f34e9c4bd1d9e23423c4dc6ce8c41b6782d7dfe16'
+CONTRACT_SHA='5be41c67eed96e793e2d5ff808131b9dff7ac1ccb723c438a3c8618405cb6dae'
+WORKER_SHA='dd93743a12f6b158d943f4afb7667ebdeef5bdbe1e6648dba0120769b01b5f60'
+TEMPLATE_SHA='dd813209f2260fb7ffa7f5ba1169555c0f0b745115c907e26b9d3b873d67df0d'
 EMITTER_SHA='2938a7c6c25d23adc9683ced126fe2d3c0a88614dab59a7b134a624d6f8b0ee8'
 QGA_SHA='bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022'
 LABEL='system-collector'
@@ -183,8 +183,11 @@ class RetainedSystemCollector:
             and p['requestSha256']==self.request_pin['sha256'] and p['requestNativeIdentity']==self.request_pin['nativeIdentity']
             and p['sourceClosing'] is True and p['productMutation'] is False,'collector-closed-child-origin')
         w=p['worker']
-        require(type(w) is dict and set(w)=={'pid','birthFileTimeUtc','image','sessionId','exitCode','bothEof','originalHandleRetained'}
-            and type(w['pid']) is int and w['pid']>0 and type(w['birthFileTimeUtc']) is str
+        require(type(w) is dict and set(w)=={'pid','birthFileTimeUtc','image','sessionId','exitCode','bothEof','originalHandleRetained'},
+            'collector-original-child-native-generation')
+        # Read from the retained handle's token while the child runs; an unread session is never taken as 0.
+        require(type(w['sessionId']) is int,'collector-original-child-session-unread')
+        require(type(w['pid']) is int and w['pid']>0 and type(w['birthFileTimeUtc']) is str
             and re.fullmatch('[1-9][0-9]{16,19}',w['birthFileTimeUtc']) and w['image']==r['pythonRuntime']['interpreterPath']
             and type(w['sessionId']) is int and w['sessionId']==0 and type(w['exitCode']) is int and w['exitCode']==0
             and w['bothEof'] is True and w['originalHandleRetained'] is True,'collector-original-child-native-generation')

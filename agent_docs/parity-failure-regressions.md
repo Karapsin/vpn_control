@@ -3756,8 +3756,8 @@ the owner to wait for the job's acceptance of the proof before it acts, which is
 and the hold protocol. Only a native run confirms two things. The first is that the token of the running worker's
 retained handle gives session 0 in the service session, so the next grant run gets past before-install. The second is
 that the snapshot read gives `$null` rather than an exception. That second point is inferred from the native proof
-and was not reproduced off Windows. `failing_msi_bootstrap_template.ps1` has the same line. No tool module renders it
-and the scenario bundle does not ship it, so it is left unchanged.
+and was not reproduced off Windows. `failing_msi_bootstrap_template.ps1` had the same line. No tool module renders it
+and the scenario bundle does not ship it; it is fixed in the failing-MSI chain section below.
 
 ### Host submit race and lost guest pushes (operator B, NE2 74e99864, 2026-11-17)
 
@@ -3851,6 +3851,33 @@ cannot be read from the host without the VM host's records. The fix covers both.
 Only a native grant run confirms the release form and its time: on S_D5 the release should return within seconds of
 the owner's finish, and `timing.json` should show `collector-release-tun` well inside its budget. The before-images are
 in that evidence folder.
+
+### The failing-MSI collector chain kept the forms the TUN and update chain had just dropped (review, 2026-11-17)
+
+Three builders (fix-collector-root, fix-release-deadline, fix-collector-session) left the same three defects open in
+the failing-MSI copy of the SYSTEM collector chain (`failing_msi_contract.py`, `failing_msi_wrapper.py`,
+`failing_msi_worker.py`, `failing_msi_bootstrap_template.ps1` and its use of the shared `release_template.ps1`). No
+native run reached it: no tool module renders it and the scenario bundle does not ship it. A run would have stopped
+at the first of them, exactly as the TUN and update rows did. The native read-back shapes the regressions take are in
+`.runtime/windows-parity-20261107/evidence/fix-failing-msi-form/native-shapes.json`, with the unfixed sources. They are:
+every `system-collector-*` root of `723417ea`, as `O:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;<user>)`;
+the `collector-request.json` pin of `72c2fa02`, as `O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;<user>)`; and that
+run's before-install worker proof with `sessionId: null`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The contract's root check took `PAI` alone, which the publisher's `CreateDirectory` never writes, so every request was refused before launch (TOOL) | `test_windows_failing_msi_consumer`: `NativeFormTests.test_the_contract_takes_the_native_collector_root_and_the_same_dacl_auto_inherited`, `test_any_other_root_form_is_refused`, `test_the_chain_renders_and_releases_on_the_native_forms` | `root_policy` takes `ROOT_FORMS` `P` and `PAI` with the same SYSTEM owner and the same three explicit inheritable ACEs, as `collector_contract.root_policy`, the task guard and the release program do. Any other owner, control, inherited or extra ACE, the file form or an extra key is refused. |
+| The contract and the bootstrap took the request in `P` alone, which the publisher's `SetAccessControl` never writes and the shared release program refuses after the collector has run (TOOL) | `NativeFormTests.test_the_request_takes_the_publishers_native_form_and_no_other`, `test_the_contract_the_bootstrap_and_the_shared_release_take_the_same_request_forms` | `file_policy` and the bootstrap's `$requiredFilePolicy` take `PAI` alone, the request form `release_template.ps1` takes. The shared release program is unchanged. A request form the release would refuse is now refused before launch, not after the caller's hold. |
+| The bootstrap read its worker's session after the worker had exited, so a closed record could carry null (TOOL, predicted from `72c2fa02`) | `NativeFormTests.test_the_native_worker_with_no_session_fails_on_its_own_code`, `test_a_session_that_is_not_an_integer_is_unread_and_another_session_is_another_generation`, `test_the_bootstrap_reads_the_session_from_the_retained_handle_while_its_worker_runs` | As in `system_bootstrap_template.ps1`: `TokenSessionId` read from the retained handle between `Start` and `Wait-Child`, parking `SC_CHILD_SESSION_UNREAD` when unreadable. After `Wait-Child` only `Id`, `ExitCode` and `Handle` are read. `failing_msi_wrapper.validate_child` refuses a session that is not an integer as `collector-original-child-session-unread` and any session but 0 as `collector-original-child-native-generation`. |
+
+RED: `NativeFormCausalPair` runs `NativeFormTests` on the preserved f5bb47ec contract, wrapper and template
+(`fixtures/windows_failing_msi_consumer/before/native-forms/`). Seven of eight fail, each for its own reason; the
+refusal control passes. The current chain passes all eight. The same final test module and fixtures over the unfixed
+f5bb47ec sources gave `FAILED (failures=14, errors=19)` on Python 3.14 and 3.12, because the shared inputs now use the
+native forms. GREEN: OK on both. The chain's in-code digests (`CONTRACT_SHA`, `WORKER_SHA`, `TEMPLATE_SHA`) and the
+module's `ROWS` were re-derived to a fixpoint. Only a native `windows-public-update.native-install-failed` run through
+this chain can confirm the forms and session 0. Today the host job runs that row through the generic
+`collector_wrapper.py` and `system_bootstrap_template.ps1`, which already carry these fixes.
 
 ## Historical coverage rule
 
