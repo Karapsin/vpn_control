@@ -1,8 +1,9 @@
 
 function Assert-OperationRootPolicy {
  $root=@($script:C.pins|Where-Object {$_.directory -and $_.record.path -ceq $script:C.request.operationRoot})
- $sddl='O:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;'+$script:C.request.context.ordinarySid+')'
- if($root.Count -ne 1 -or $root[0].record.security.ownerSid -cne 'S-1-5-18' -or $root[0].record.security.sddl -cne $sddl){throw 'SC_MACHINE_WRITER_ROOT_POLICY'}
+ $aces='(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;'+$script:C.request.context.ordinarySid+')'
+ $forms=@(('O:SYD:P'+$aces),('O:SYD:PAI'+$aces))
+ if($root.Count -ne 1 -or $root[0].record.security.ownerSid -cne 'S-1-5-18' -or $forms -cnotcontains $root[0].record.security.sddl){throw 'SC_MACHINE_WRITER_ROOT_POLICY'}
  Assert-Pin $root[0]
 }
 function Read-PinnedJson([object]$Record) {

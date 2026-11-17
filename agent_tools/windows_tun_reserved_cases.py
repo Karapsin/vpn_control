@@ -26,6 +26,9 @@ stage-squat (custom ``Owned resources``, no collector): from the journal the ord
   ``ProgramData\\vpn-control-vpn-<job>`` before the decision; the approved broker refuses with CONFLICT and leaves
   the squat folder and its canary as they were (not deleted, followed or written), with A and pending B intact. The
   case then removes its own folder before the closing census.
+Both mutable rows read their own operation while the journal is awaited: a definite refusal before any journal ends
+  the row as a known failure with the product's terminal (the stages check A, pending B and the census first); an end
+  that leaves the outcome open, or an operation still pending at JOURNAL_SECONDS, parks with what was read.
 
 A connect-first pipe racer before admission is not deterministic; the peer-PID checks stay with the product's tests.
 No key material is ever an event, argument or assertion message: the key file lives in the fixture folder, which
@@ -61,6 +64,8 @@ URL_PATHS = (("dns.servers.*", "https", "/owned-doh-query"), ("dns.servers.*", "
 SAMPLER_TARGET, DECOY = "198.18.0.1/32", "198.18.0.2/32"  # windows_tun_direct_sampler's benchmark address.
 RELOAD_SECONDS = 3  # Longer than sing-box's local rule-set reload after a write to the file it reads.
 JOURNAL_SECONDS = 120
+# Between reads of the row's own operation while its journal is awaited: one public CLI read took about 3 s natively.
+STATUS_SECONDS = 5
 TERMINAL_SECONDS = 300
 PUBLISH_SECONDS = 30
 ERROR_ACCESS_DENIED, ERROR_PIPE_BUSY = 5, 231
@@ -68,6 +73,11 @@ RELAY_USER = "fixture"
 SSH_TAG = "vpn-control-home-ssh"  # HomeSshRouteConfigBuilder.SSH_OUTBOUND_TAG
 # ControlCode's final codes this module reads and the public CLI's exit for each.
 EXITS = {"OK": 0, "CANCELLED": 130, "CONFLICT": 1, "UNSUPPORTED": 1, "RUNTIME_FAILED": 1, "PERMISSION_DENIED": 1}
+# ControlCode's definite refusals and their exits (windows_tun_stages.REFUSED_EXITS): a final one of these ended the
+# operation. Its exit-2 codes (TIMEOUT, OUTCOME_UNKNOWN, UNAVAILABLE, INCOMPATIBLE_PROTOCOL) leave the outcome open.
+REFUSALS = {**dict.fromkeys(("INVALID_ARGUMENT", "NOT_FOUND", "AMBIGUOUS_LOCATION", "READ_ONLY_SOURCE", "BUSY", "CONFLICT",
+                             "UNSUPPORTED", "INTERACTION_REQUIRED", "PERMISSION_DENIED", "PERSISTENCE_FAILED", "RUNTIME_FAILED"), 1),
+            "CANCELLED": 130}
 _UUID = re.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
@@ -159,29 +169,50 @@ def journals(workspace):
     return found
 
 
+def operation_status(owner, state, accepted):
+    """One read of the row's own operation through operations status: its pending ACCEPTED or its final terminal.
+
+    A read, never a resend. Anything not joined to this controller and operation fails."""
+    require(type(accepted.get("operationId")) is str and accepted.get("controllerId") == state["identity"]
+            and accepted.get("code") == "ACCEPTED" and accepted.get("final") is False, "reserved-original-accepted-operation")
+    value = owner.invoke(state["workspace"], "--json", "--controller-id", state["identity"], "operations", "status",
+                         accepted["operationId"])
+    body = json.loads(value.stdout)
+    require(value.stderr == "" and type(body) is dict and body.get("schemaVersion") == 1
+            and body.get("controllerId") == state["identity"] and body.get("operationId") == accepted["operationId"],
+            "reserved-operation-status-join")
+    if body.get("final") is not True:
+        require(body.get("code") == "ACCEPTED" and value.returncode == 0, "reserved-operation-pending-result")
+    return body, value.returncode
+
+
 def terminal(owner, state, accepted, codes, seconds=TERMINAL_SECONDS):
     """The final public terminal of the row's own operation, one of ``codes``, read through operations status.
 
     Never resent: a pending operation is read again until the bound, then the owner parks."""
-    require(type(accepted.get("operationId")) is str and accepted.get("controllerId") == state["identity"]
-            and accepted.get("code") == "ACCEPTED" and accepted.get("final") is False, "reserved-original-accepted-operation")
     until = time.monotonic() + seconds
     while True:
-        value = owner.invoke(state["workspace"], "--json", "--controller-id", state["identity"], "operations", "status",
-                             accepted["operationId"])
-        body = json.loads(value.stdout)
-        require(value.stderr == "" and type(body) is dict and body.get("schemaVersion") == 1
-                and body.get("controllerId") == state["identity"] and body.get("operationId") == accepted["operationId"],
-                "reserved-operation-status-join")
+        body, returncode = operation_status(owner, state, accepted)
         if body.get("final") is True:
-            require(body.get("code") in codes and value.returncode == EXITS.get(body["code"])
-                    and body.get("ok") is (value.returncode == 0), "reserved-operation-unexpected-terminal")
+            require(body.get("code") in codes and returncode == EXITS.get(body["code"])
+                    and body.get("ok") is (returncode == 0), "reserved-operation-unexpected-terminal")
             owner.event("scoped-tun-reserved-terminal", {"accepted": accepted, "terminal": body, "replayAllowed": False})
             return body
-        require(body.get("code") == "ACCEPTED" and value.returncode == 0, "reserved-operation-pending-result")
         if time.monotonic() >= until:
             owner.park("scoped-tun-reserved-terminal-pending-no-replay")
         time.sleep(0.2)
+
+
+class EndedBeforeJournal(Exception):
+    """The row's own operation is final and refused, and no correlation journal was ever written.
+
+    The product retains that journal before UAC and before every native input of a mutable job
+    (DesktopWindowsVpnBroker.prepareCaptured), so a request that ended without one never reached a prompt or a broker.
+    The stages close the row as a known failure only once A, pending B and the census show nothing open."""
+
+    def __init__(self, terminal):
+        super().__init__("scoped-tun-reserved-ended-before-journal")
+        self.terminal = terminal
 
 
 def _kernel32():
@@ -227,6 +258,7 @@ def pipe_races(owner, pipe):
 class Case:
     """One reserved row's case: built by the driver before the stages begin, used by them and by its grant steps."""
     REFUSED = REFUSED
+    EndedBeforeJournal = EndedBeforeJournal
 
     def __init__(self, owner, variant, relay=None):
         require(variant in VARIANTS and (relay is not None) == (variant == "ssh-grant"), "reserved-variant-binding")
@@ -303,17 +335,42 @@ class Case:
                     "keyFingerprint": relay.fingerprint(relay.ed25519_blob(self.key)), "replayAllowed": False})
 
     # ---- between the request and the decision ------------------------------------------------------------------
-    def before_prompt(self, state):
+    def before_prompt(self, state, accepted):
         """A mutable job's correlation journal is in the workspace before its prompt is answered; a squat row then
-        creates that job's stage folder first. The decision answers only after this returns."""
+        creates that job's stage folder first. The decision answers only after this returns.
+
+        While no journal is there, the row's own operation is read every STATUS_SECONDS. Once it is final and refused
+        with still no journal, the product ended the request before anything it does ahead of UAC: EndedBeforeJournal,
+        which the stages close as a known failure after their own checks. A final OK without a journal, a bad terminal,
+        or an operation still pending at JOURNAL_SECONDS may hold a prompt or a broker: the owner parks, never resends.
+        On 2.2.19 (b50d0425) the squat's restart was ACCEPTED, no journal came in 120 s, and the wait, which never read
+        the operation, parked with the product's own outcome unread."""
         if self.variant not in MUTABLE_VARIANTS:
             return None
-        until = time.monotonic() + JOURNAL_SECONDS
+        start = time.monotonic()
+        until, read_at, last, reads = start + JOURNAL_SECONDS, start + STATUS_SECONDS, None, 0
         while True:
             found = journals(state["workspace"])
             if found:
                 break
+            if time.monotonic() >= read_at:
+                last, returncode = operation_status(self.owner, state, accepted)
+                reads += 1
+                read_at = time.monotonic() + STATUS_SECONDS
+                if last.get("final") is True:
+                    found = journals(state["workspace"])
+                    if found:  # Retained, then ended: the stages' own terminal reads that outcome.
+                        break
+                    self.owner.event("scoped-tun-reserved-journal-wait", {"accepted": accepted, "lastStatus": last,
+                                     "statusReads": reads, "journals": 0, "replayAllowed": False})
+                    if not (last.get("code") in REFUSALS and returncode == REFUSALS[last["code"]] and last.get("ok") is False):
+                        # OK with no journal, or a code that leaves the outcome open: nothing proves the request closed.
+                        self.owner.park("scoped-tun-reserved-ended-outcome-open-no-replay")
+                    raise EndedBeforeJournal(last)
             if time.monotonic() >= until:
+                # Still pending: a prompt or broker may be up. What was read stays in the evidence beside the park.
+                self.owner.event("scoped-tun-reserved-journal-wait", {"accepted": accepted, "lastStatus": last,
+                                 "statusReads": reads, "journals": 0, "replayAllowed": False})
                 self.owner.park("scoped-tun-reserved-journal-absent-no-replay")
             time.sleep(0.1)
         require(len(found) == 1, "reserved-one-correlation-journal")

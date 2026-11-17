@@ -9,7 +9,8 @@ over (finish asks for ready only once the product's own operation ended OK); the
 sampler runs only between them. The closing census shows the row left no broker, scoped
 runtime, private stage or TUN route behind. From the request until the operation settles
 (a denial, a known end or a grant's exact off) a failure parks the owner; a final refusal
-of the request itself, with nothing changed, is a known end.
+of the request itself, with nothing changed, is a known end, and so is a reserved row's
+request refused before the product wrote its correlation journal, with nothing changed.
 
 The configuration and fault variants first add their own location from the documents the proxy rows' branch cases
 make (windows_runtime_branch_cases), so each is the TUN half of a proxy row. A configuration grant compares the runtime
@@ -169,6 +170,23 @@ def refused(owner, state, inputs, runtime, cases, observer, operation, children,
     raise AssertionError('scoped-tun-request-refused')
 
 
+def ended_before_journal(owner, state, inputs, runtime, cases, observer, reserved, terminal, known):
+    """A reserved row's own request ended in a definite refusal before the product wrote its correlation journal.
+
+    The product writes that journal before UAC and every native input of a mutable job, so no prompt, broker or stage
+    of this row exists. With A, pending B and the census as before and still no journal, nothing is open: the row closes
+    like any known failure, with the product's own terminal in the evidence. Any other finding keeps the owner parking.
+    """
+    status=runtime.result(owner,state['workspace'],state['identity'],'status')
+    kept(state,inputs,known['before'],known['pending'],known['initial'],status,cases,observer)
+    found=unscoped(inputs,observer,state,known['baseline'])
+    require(reserved.journals(state['workspace'])=={},'scoped-tun-reserved-journal-after-terminal')
+    owner.event('scoped-tun-reserved-ended-before-journal',{'variant':inputs['variant'],'terminal':terminal,'status':status,
+        'census':found,'journals':0,'knownFailure':True,'replayAllowed':False})
+    owner.tun_operation_requested=False  # No operation is open: the driver closes the row as a known failure.
+    raise AssertionError('scoped-tun-reserved-ended-before-journal')
+
+
 def document(owner, state, variant, branches):
     """A configuration or fault variant's own location document, published as the proxy rows' branch cases publish
     theirs: the same generated SOCKS document or CUSTOM config, held open read-only until the row's off."""
@@ -293,7 +311,15 @@ def begin(owner, state, inputs, runtime, cases, observer, branches=None, reserve
     if reserved is not None:
         # Before the decision may answer: a mutable job's correlation journal, and a squat row's folder at its stage.
         lease['reserved']=reserved
-        lease['beforeDecision']=reserved.before_prompt(state)
+        try:
+            lease['beforeDecision']=reserved.before_prompt(state,accepted)
+        except reserved.EndedBeforeJournal as ended:
+            try:
+                ended_before_journal(owner,state,inputs,runtime,cases,observer,reserved,ended.terminal,
+                                     {'before':before,'pending':pending,'initial':config.initial,'baseline':baseline})
+            finally:
+                if owner.tun_operation_requested is False:
+                    lease.update(finished=True,knownEnd='ended-before-journal')
     # windows-uac-decision's census reads this event's variant and expectedApprovingAdminSid; it is published once.
     owner.event('scoped-tun-awaiting-current-input', {'accepted':accepted,'variant':inputs['variant'],
         'ordinarySid':owner.request['context']['ordinarySid'],

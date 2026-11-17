@@ -1346,10 +1346,31 @@ driver loads that pinned module only for them and hands its one `Case` to the st
   and their identities unchanged (not deleted, followed or written); the case then removes its own
   folder before the census. An expired prompt is the grant's own known `CANCELLED`.
 
+The product writes the journal into its state folder before UAC and before every native input
+of a mutable job (`DesktopWindowsVpnBroker.prepareCaptured`). While resources-grant and
+stage-squat wait for it (at most 120 s), they read their own operation every 5 s with
+`operations status`; that read is never a resend. The wait can end three ways:
+
+- A definite refusal (an exit-1 code or `CANCELLED`, the stages' `REFUSED_EXITS`) with still no
+  journal means the request ended before any prompt. The stages then check that A and pending B
+  are as before, the census shows no broker, stage, route or new runtime, and there is still no
+  journal. With all of that true the row closes as a known failure
+  (`scoped-tun-reserved-ended-before-journal`, with the product's terminal in the event).
+  Otherwise the owner parks.
+- `OK` with no journal, or a code the product classes as leaving the outcome open (`TIMEOUT`,
+  `OUTCOME_UNKNOWN`, `UNAVAILABLE`, `INCOMPATIBLE_PROTOCOL`), parks with
+  `scoped-tun-reserved-ended-outcome-open-no-replay`.
+- An operation still pending at the bound parks with `scoped-tun-reserved-journal-absent-no-replay`.
+
+Every one of these ends first writes a `scoped-tun-reserved-journal-wait` event with the last
+status it read.
+
 `dns-ws-ssh-cache-resources` maps to resources-grant and ssh-grant, `pipe-storage-races` to
 stage-squat and resources-grant. A connect-first racer before admission is not deterministic, so
 the peer-PID checks stay with the product's own tests; a squat that is a reparse point (a
-followed link) is not built. None of the three rows has run natively.
+followed link) is not built. The two grants have not yet run natively. On S_D4 (2.2.19) they
+stopped at publish on the collector root's form. stage-squat ran once (b50d0425): its restart
+was `ACCEPTED`, no journal came in 120 s, and the wait parked without reading the operation.
 
 `windows-public-update.<variant>` runs one `update_cases` variant through the
 dedicated driver as the ordinary user. The update server, its CONNECT proxy and
@@ -1543,9 +1564,17 @@ The publisher writes each collector request and then protects it with
 program take exactly that form, and the release program checks the release it
 publishes against it. The job reads the owner's pin, published the same way, before
 any task: any other form ends at publish with `collector_file_policy`. A collector
-root must read back `O:SYD:PAI(A;OICI;...)` or the job ends at publish with
-`collector_root_policy`, so a guest whose explicitly described files lose the
-auto-inherited flag stops there too, before any task.
+root is created by the publisher's `CreateDirectory` with a protected descriptor, so
+it reads back
+`O:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;<user>)`. Every
+collector root of the first native collector rows (S_D4, 2.2.19) did, and the
+`PAI`-only check of that time ended all of them at publish. The contract, the task
+guard, the release program and the job take that form, and also the same DACL with
+the auto-inherited flag (`PAI`), which a later `SetSecurityInfo` writes. Both forms
+are SYSTEM-owned, protected from every inherited ACE and hold exactly these three
+explicit ACEs. Any other owner, control, inherited ACE or extra ACE ends the row at
+publish with `collector_root_policy:<owner>:<dacl-flags>:<aces>`, before any task.
+The job keeps the refused records in its private `collector-root-security.json`.
 
 The product writes `.install-not-started-<hash>.json` for its owner alone
 (`O:<user>G:<user>D:P(A;;FA;;;<user>)`). That ACL is the product's design, and no

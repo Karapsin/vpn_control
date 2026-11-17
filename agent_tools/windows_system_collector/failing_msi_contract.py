@@ -12,7 +12,7 @@ import uuid
 
 FIXED = {
     'holdProtocol': 'd755cba69a6b31ac4e8829c12c6fbc02d445d9c412a5dc4b095bf11c4c4b315e',
-    'taskGuard': '8105ad57f5140e6caef6fd21848f34d1684a00ca7c9e54ce64908211260844c1',
+    'taskGuard': '6c8c4570194b1c2517d443cee890cb3f17d4bebdaa69de8bdd1115aaaee715f7',
     'nativeBridge': '88ad6bbbf8b309bb641017d035bdf6688d37ac5d6e506bcffd4122203850a955',
     'native': 'ee28050bd0e33166956cc4f4ac68ca10cc89c30c01ae93468379895fee268a18',
     'receipts': '5e2e406b82d4a446ab971f27918b3b0f110e67e3eb8cae971b0bfe4256aa71ec',

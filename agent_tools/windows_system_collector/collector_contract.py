@@ -12,7 +12,7 @@ import uuid
 
 FIXED = {
     'holdProtocol': '8c3a0b5958bf5360fa0f926e4cc0797bc262a9a43a5caf6d869985b6949e620f',
-    'taskGuard': '8105ad57f5140e6caef6fd21848f34d1684a00ca7c9e54ce64908211260844c1',
+    'taskGuard': '6c8c4570194b1c2517d443cee890cb3f17d4bebdaa69de8bdd1115aaaee715f7',
     'nativeBridge': '88ad6bbbf8b309bb641017d035bdf6688d37ac5d6e506bcffd4122203850a955',
     'native': 'ee28050bd0e33166956cc4f4ac68ca10cc89c30c01ae93468379895fee268a18',
     'receipts': '5e2e406b82d4a446ab971f27918b3b0f110e67e3eb8cae971b0bfe4256aa71ec',
@@ -191,15 +191,26 @@ def request_digest(request):
     return hashlib.sha256(encoded(request)).hexdigest()
 
 
+# A collector root is created by the publisher's CreateDirectory with a protected security descriptor, which reads back
+# O:SYD:P natively (every system-collector-* root of 723417ea, 2026-11-17); a DACL set later through SetSecurityInfo
+# reads back PAI. AI only records that form of write: both are SYSTEM-owned, protected from every inherited ACE and
+# carry exactly these three explicit ACEs, so they grant the same. Any other control, owner or ACE stays refused.
+ROOT_FORMS=('P','PAI')
+
+
+def root_sddls(ordinary_sid):
+    return tuple('O:SYD:'+form+'(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;'+ordinary_sid+')' for form in ROOT_FORMS)
+
+
 def root_policy(security, ordinary_sid):
-    expected='O:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;'+ordinary_sid+')'
-    require(security=={'ownerSid':'S-1-5-18','sddl':expected},'collector-machine-writer-operation-root-policy')
+    require(type(security) is dict and security.get('ownerSid')=='S-1-5-18' and set(security)=={'ownerSid','sddl'}
+            and security['sddl'] in root_sddls(ordinary_sid),'collector-machine-writer-operation-root-policy')
 
 
 def file_policy(security, ordinary_sid):
     # The form a request file reads back natively: the publisher protects it with SetAccessControl, which marks the
     # DACL auto-inherited (O:SYD:PAI on every native worker-request.json pin). SYSTEM owner, protected DACL, these three
-    # explicit ACEs and no inherited one. Every file created in a collector root in root_policy's form reads back so too.
+    # explicit ACEs and no inherited one.
     expected='O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+ordinary_sid+')'
     require(security=={'ownerSid':'S-1-5-18','sddl':expected},'collector-machine-writer-file-policy')
 

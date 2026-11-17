@@ -3189,6 +3189,7 @@ class UpdateQga(FakeQga):
         self.watch = None  # What a cancel watch saw: the observations its before-install collector publishes after its own.
         self.watch_polls = 0  # Status polls of the SYSTEM run's copy while the watch collector runs.
         self.status_reads = []  # Which program, if any, was open while the status copy was read.
+        self.root_form = "P"  # The DACL control a collector root reads back: natively P.
 
     def install(self, worker):
         """An update task's own effect is the product's installer, not msiexec's: whatever update_effect leaves, once the
@@ -3272,8 +3273,10 @@ class UpdateQga(FakeQga):
                 return self._pin(path, directory=True, security={"ownerSid": "S-1-5-18", "sddl": "O:SYD:" + form + "(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;" + rights + ";;;" + SID + ")"})
             pins = [self._pin(path, directory=True) for path in m["existingDirectories"]]
             pins.append(directory(m["workspace"], "0x1200a9"))
-            # A protected DACL set at CreateDirectory reads back auto-inherited: the form the collector contract names.
-            pins.extend(directory(m["workspace"] + "\\" + name, "0x1200a9", "PAI" if name.startswith("system-collector-") else "P") for name in m["subfolders"])
+            # A protected DACL set at CreateDirectory reads back without the auto-inherited flag, as every native
+            # collector root did (723417ea, 2026-11-17); root_form changes that for one test.
+            pins.extend(directory(m["workspace"] + "\\" + name, "0x1200a9", self.root_form if name.startswith("system-collector-") else "P")
+                        for name in m["subfolders"])
             pins.extend(directory(m["workspace"] + "\\" + name, "FA") for name in m.get("privateSubfolders", []))
             pins.append(directory(m["operationRoot"], "0x1301bf"))
             pins.extend(directory(m["operationRoot"] + "\\" + name, "0x1301bf") for name in m.get("rootSubfolders", []))
@@ -3647,22 +3650,50 @@ class UpdateFamilyTests(UpdateFamilyBase):
         self.assertNotIn("evidence-zip", self.qga.kinds()[self.qga.kinds().index("system-run"):], "no copy while a program is open")
         self.assertFalse(self.fence(plan, ".terminal.json").exists())
 
-    def test_a_collector_root_in_another_form_refuses_before_any_task(self):
-        base, target = self.prepared()
-        original = self.qga._publisher
+    def test_a_collector_root_as_the_publisher_creates_it_natively_runs_the_row(self):
+        """Every native collector root read back O:SYD:P (723417ea, and the seven TUN grant rows on S_D4, 2.2.19): the
+        job demanded PAI alone and ended each at publish with collector_root_policy, before any task. Both forms are the
+        same SYSTEM-owned protected DACL with the same three explicit ACEs, so either runs the row."""
+        for form in ("P", "PAI"):
+            with self.subTest(form=form):
+                self.setUp()
+                base, target = self.prepared()
+                self.qga.root_form = form
+                plan, code, receipt = self.run_update("uac-denied", base, target)
+                self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
+                self.assertIn("system-run", self.qga.kinds())
 
-        def plain(m, pid):
-            terminal = original(m, pid)
-            if m["action"] == "initialize":
-                reply = json.loads(gzip.decompress(base64.b64decode(base64.b64decode(terminal["out-data"]))))
-                for pin in reply["directoryPins"]:
-                    pin["security"]["sddl"] = pin["security"]["sddl"].replace("O:SYD:PAI(", "O:SYD:P(")
-                terminal = {"exited": True, "exitcode": 0, "out-data": out_data(reply)}
-            return terminal
-        self.qga._publisher = plain
-        plan, code, receipt = self.run_update("uac-denied", base, target)
-        self.assertEqual((1, "collector_root_policy"), (code, receipt["failure"]))
-        self.assertNotIn("system-run", self.qga.kinds())
+    def test_a_collector_root_in_any_other_form_refuses_before_any_task_and_keeps_what_it_read(self):
+        aces = "(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;" + SID + ")"
+        system = "S-1-5-18"
+        forms = {"unprotected": (system, "O:SYD:" + aces, "owner-system:dacl-none:aces-exact"),
+                 "auto-inherited-only": (system, "O:SYD:AI" + aces, "owner-system:dacl-AI:aces-exact"),
+                 "inherited-ace": (system, "O:SYD:P" + aces.replace("(A;OICI;FA;;;SY)", "(A;OICIID;FA;;;SY)"), "owner-system:dacl-P:aces-other"),
+                 "extra-ace": (system, "O:SYD:P" + aces + "(A;OICI;FA;;;WD)", "owner-system:dacl-P:aces-other"),
+                 "ordinary-writes": (system, "O:SYD:P" + aces.replace("0x1200a9", "FA"), "owner-system:dacl-P:aces-other"),
+                 "administrators-own": ("S-1-5-32-544", "O:BAD:P" + aces, "owner-other:dacl-P:aces-exact")}
+        for name, (owner, sddl, shape) in forms.items():
+            with self.subTest(name):
+                self.setUp()
+                base, target = self.prepared()
+                original = self.qga._publisher
+
+                def other(m, pid, security={"ownerSid": owner, "sddl": sddl}):
+                    terminal = original(m, pid)
+                    if m["action"] == "initialize":
+                        reply = json.loads(gzip.decompress(base64.b64decode(base64.b64decode(terminal["out-data"]))))
+                        for pin in reply["directoryPins"]:
+                            if "\\system-collector-" in pin["path"]:
+                                pin["security"] = dict(security)
+                        terminal = {"exited": True, "exitcode": 0, "out-data": out_data(reply)}
+                    return terminal
+                self.qga._publisher = other
+                plan, code, receipt = self.run_update("uac-denied", base, target)
+                self.assertEqual((1, "collector_root_policy:" + shape, "publish"), (code, receipt["failure"], receipt["stage"]))
+                self.assertNotIn("system-run", self.qga.kinds())
+                kept = json.loads((Path(plan["dataDirectory"]) / "collector-root-security.json").read_text())
+                self.assertEqual({stage: {"ownerSid": owner, "sddl": sddl} for stage in kept}, kept, "what the guest read back is kept")
+                self.assertTrue(kept)
 
     def test_the_collector_takes_its_request_in_the_form_the_publisher_writes(self):
         """Natively a file the publisher creates and then protects with SetAccessControl reads back O:SYD:PAI (every

@@ -57,8 +57,9 @@ if($requestRecord.security.ownerSid -cne 'S-1-5-18' -or $requestRecord.security.
 foreach($record in $request.directoryPins){$p=@{record=$record;directory=$true;handle=[ScFacts]::OpenDirectory($record.path)};$script:C.pins.Add($p);Assert-Pin $p}
 foreach($record in $request.filePins){[void](Add-FilePin $record)}
 $roots=@($script:C.pins|Where-Object {$_.directory -and $_.record.path -ceq $request.operationRoot})
-$rootPolicy='O:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;'+$request.context.ordinarySid+')'
-if($roots.Count -ne 1 -or $roots[0].record.security.ownerSid -cne 'S-1-5-18' -or $roots[0].record.security.sddl -cne $rootPolicy){throw 'ACK_ROOT_MACHINE_POLICY'}
+$rootAces='(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;'+$request.context.ordinarySid+')'
+$rootForms=@(('O:SYD:P'+$rootAces),('O:SYD:PAI'+$rootAces))
+if($roots.Count -ne 1 -or $roots[0].record.security.ownerSid -cne 'S-1-5-18' -or $rootForms -cnotcontains $roots[0].record.security.sddl){throw 'ACK_ROOT_MACHINE_POLICY'}
 $readyRecord=([Text.UTF8Encoding]::new($false,$true)).GetString([Convert]::FromBase64String('@@READY_PIN_BASE64@@'))|ConvertFrom-Json
 if($readyRecord.path -cne $request.closeHold.holdReadyPath -or $readyRecord.sha256 -cne $release.holdReadySha256){throw 'ACK_READY_FIXED_PATH_SHA'}
 $ready=Add-FilePin $readyRecord

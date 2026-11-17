@@ -106,6 +106,57 @@ class RequestFormTests(unittest.TestCase):
         self.assertEqual(NATIVE_FORM, job.COLLECTOR_FILE_SDDL.format(sid=SID))
 
 
+# A collector root as the publisher's CreateDirectory with a protected descriptor leaves it: natively every collector root
+# of 723417ea read back so, and the seven TUN grant rows on S_D4 (2.2.19) ended at publish against a PAI-only check.
+ROOT_ACES = "(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;" + SID + ")"
+NATIVE_ROOT = "O:SYD:P" + ROOT_ACES
+
+
+class RootFormTests(unittest.TestCase):
+    """The collector root's DACL: SYSTEM-owned, protected from every inherited ACE, exactly three explicit ACEs.
+
+    The chain demanded the auto-inherited flag as well, which CreateDirectory never writes, so no collector row could
+    reach its task. The flag records only how a DACL was written; with or without it the root grants the same."""
+
+    def test_the_contract_takes_the_root_as_created_natively_and_the_same_dacl_auto_inherited(self):
+        for sddl in (NATIVE_ROOT, "O:SYD:PAI" + ROOT_ACES):
+            with self.subTest(sddl=sddl[:9]):
+                self.assertIsNone(contract.root_policy({"ownerSid": SYSTEM, "sddl": sddl}, SID))
+
+    def test_any_other_root_form_is_refused(self):
+        forms = {"unprotected": "O:SYD:" + ROOT_ACES, "auto-inherited-unprotected": "O:SYD:AI" + ROOT_ACES,
+                 "inherited-ace": NATIVE_ROOT.replace("(A;OICI;FA;;;SY)", "(A;OICIID;FA;;;SY)"),
+                 "extra-ace": NATIVE_ROOT + "(A;OICI;FA;;;WD)", "ordinary-writes": NATIVE_ROOT.replace("0x1200a9", "FA"),
+                 "another-ordinary": NATIVE_ROOT.replace(SID, ADMIN_SID), "not-inheritable": NATIVE_ROOT.replace("OICI;", ";"),
+                 "administrators-own": NATIVE_ROOT.replace("O:SY", "O:BA"), "file-form": NATIVE_FORM}
+        for name, sddl in forms.items():
+            with self.subTest(name), self.assertRaisesRegex(ValueError, "collector-machine-writer-operation-root-policy"):
+                contract.root_policy({"ownerSid": SYSTEM, "sddl": sddl}, SID)
+        for security in ({"ownerSid": "S-1-5-32-544", "sddl": NATIVE_ROOT}, {"ownerSid": SYSTEM, "sddl": NATIVE_ROOT, "extra": 1},
+                         {"sddl": NATIVE_ROOT}, None):
+            with self.subTest(security=security), self.assertRaisesRegex(ValueError, "collector-machine-writer-operation-root-policy"):
+                contract.root_policy(security, SID)
+
+    def test_the_task_guard_the_release_program_and_the_job_state_those_forms(self):
+        """The guard inside the SYSTEM collector, the release program and the job before any task take the contract's
+        own forms and no other."""
+        self.assertEqual(("P", "PAI"), contract.ROOT_FORMS)
+        self.assertEqual((NATIVE_ROOT, "O:SYD:PAI" + ROOT_ACES), contract.root_sddls(SID))
+        self.assertEqual(list(contract.root_sddls(SID)), [form["sddl"] for form in job.collector_root_forms(SID)])
+        self.assertEqual({SYSTEM}, {form["ownerSid"] for form in job.collector_root_forms(SID)})
+        aces = ROOT_ACES[:-len(SID) - 1]
+        guard = (COLLECTOR / "ordinary_task_guard.ps1").read_text(encoding="utf-8")
+        release = (COLLECTOR / "release_template.ps1").read_text(encoding="utf-8")
+        self.assertEqual([aces], re.findall(r"^ \$aces='([^']*)'\+\$script:C\.request\.context\.ordinarySid\+'\)'$", guard, re.M))
+        self.assertEqual([aces], re.findall(r"^\$rootAces='([^']*)'\+\$request\.context\.ordinarySid\+'\)'$", release, re.M))
+        self.assertEqual([("O:SYD:P", "O:SYD:PAI")], re.findall(r"^ \$forms=@\(\('([^']*)'\+\$aces\),\('([^']*)'\+\$aces\)\)$", guard, re.M))
+        self.assertEqual([("O:SYD:P", "O:SYD:PAI")],
+                         re.findall(r"^\$rootForms=@\(\('([^']*)'\+\$rootAces\),\('([^']*)'\+\$rootAces\)\)$", release, re.M))
+        self.assertIn("$forms -cnotcontains $root[0].record.security.sddl){throw 'SC_MACHINE_WRITER_ROOT_POLICY'}", guard)
+        self.assertIn("$rootForms -cnotcontains $roots[0].record.security.sddl){throw 'ACK_ROOT_MACHINE_POLICY'}", release)
+        self.assertNotIn("O:SYD:PAI(A;OICI", guard + release, "no reader keeps a single root form of its own")
+
+
 class Export:
     """One Win32 export of the model: callable, and it keeps the restype and argtypes its caller declares."""
 

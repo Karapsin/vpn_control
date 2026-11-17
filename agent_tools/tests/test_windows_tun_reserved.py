@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import ctypes
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path, PureWindowsPath
@@ -53,6 +54,28 @@ INVALID = ctypes.c_void_p(-1).value
 
 def sha(raw):
     return hashlib.sha256(raw).hexdigest()
+
+
+CONTROLLER = "controller-1"
+ACCEPTED = {"schemaVersion": 1, "controllerId": CONTROLLER, "requestId": "7a7a7a7a-1111-4222-8333-944455556666", "ok": True,
+            "code": "ACCEPTED", "final": False, "operationId": "23c36015-4482-4324-ac20-c82ac6bdd097"}
+# The public CLI's exit for each ControlCode (ControlModels.kt at 93b7ac64).
+CODE_EXITS = {"OK": 0, "ACCEPTED": 0, "PERMISSION_DENIED": 1, "BUSY": 1, "CONFLICT": 1, "UNSUPPORTED": 1, "CANCELLED": 130,
+              "UNAVAILABLE": 2, "OUTCOME_UNKNOWN": 2, "TIMEOUT": 2}
+
+
+def status(code="ACCEPTED"):
+    """One `operations status` reply for the row's own operation: still pending, or final with ``code``."""
+    final = code != "ACCEPTED"
+    return CODE_EXITS[code], {"schemaVersion": 1, "controllerId": CONTROLLER, "operationId": ACCEPTED["operationId"],
+                              "code": code, "final": final, "ok": CODE_EXITS[code] == 0}
+
+
+def ask(case, state):
+    """The case's step before the decision, with the row's accepted request where the case takes it."""
+    if "accepted" in inspect.signature(case.before_prompt).parameters:
+        return case.before_prompt(state, ACCEPTED)
+    return case.before_prompt(state)
 
 
 class TableTests(unittest.TestCase):
@@ -112,10 +135,12 @@ class TableTests(unittest.TestCase):
 class FakeCase:
     """windows_tun_reserved_cases.Case as the stages call it: each step recorded beside the owner's events."""
     REFUSED = REFUSED
+    EndedBeforeJournal = getattr(reserved, "EndedBeforeJournal", type("EndedBeforeJournal", (Exception,), {}))
 
-    def __init__(self, test, variant, terminals=(), journal_left=False, touched=False, then=None):
+    def __init__(self, test, variant, terminals=(), journal_left=False, touched=False, then=None, ended=None):
         self.test, self.variant, self.pending, self.job = test, variant, PENDING[variant], JOB
         self.terminals, self.journal_left, self.touched, self.then = list(terminals), journal_left, touched, then
+        self.ended = ended  # The product's final refusal, read before any journal: the case's EndedBeforeJournal.
 
     def log(self, step):
         self.test.calls.append((step, len(self.test.owner.events)))
@@ -124,8 +149,14 @@ class FakeCase:
         self.log("prepare")
         return self.pending
 
-    def before_prompt(self, state):
+    def before_prompt(self, state, accepted=None):
         self.log("before-prompt")
+        if self.ended is not None:
+            if self.then is not None:
+                self.then()
+            ended = self.EndedBeforeJournal("scoped-tun-reserved-ended-before-journal")
+            ended.terminal = {"code": self.ended, "final": True, "ok": False}
+            raise ended
         return {"jobId": JOB}
 
     def terminal(self, state, accepted, codes):
@@ -259,6 +290,35 @@ class StagesHookTests(StageWorld):
         lease, outcome = self.finish_squat(FakeCase(self, "stage-squat", terminals=["CANCELLED"]))
         self.assertEqual((True, "CANCELLED"), (outcome["cancelled"], lease["knownEnd"]), "an expired prompt is the grant's own known end")
 
+    def test_a_request_refused_before_its_journal_closes_as_a_known_failure(self):
+        """b50d0425 (2.2.19): the squat's restart was ACCEPTED and no journal came; the owner parked with the product's
+        own outcome unread. A definite refusal before the journal, which the product writes ahead of UAC, left no prompt or
+        broker: with A, pending B and the census as before, nothing is open and the driver closes the row."""
+        with self.assertRaisesRegex(AssertionError, "^scoped-tun-reserved-ended-before-journal$"):
+            self.begin(self.reserved_inputs("stage-squat"), reserved_case=FakeCase(self, "stage-squat", ended="PERMISSION_DENIED"))
+        self.assertFalse(self.owner.tun_operation_requested, "nothing is open: the driver closes the row as a known failure")
+        kinds = [kind for kind, _ in self.owner.events]
+        self.assertEqual(["scoped-tun-reserved-ended-before-journal"], kinds, "no decision event: nothing is asked")
+        self.assertEqual({"code": "PERMISSION_DENIED", "final": True, "ok": False}, self.owner.events[-1][1]["terminal"])
+        self.assertEqual(1, sum(1 for call in self.calls if call[:1] == ("--async",)), "never resent")
+        lease = self.owner.tun_operation_leases[-1]
+        self.assertTrue(stages.settled(lease))
+
+    def test_a_refusal_before_the_journal_that_left_anything_keeps_the_owner_parking(self):
+        cases = (("broker", lambda: self.processes.append({"pid": 142, "parentPid": 71, "name": "vpn-control-vpn-broker.exe"}),
+                  False, "scoped-tun-unexpected-terminal-scoped-state"),
+                 ("moved-a", lambda: self.status.update(runtimeId="r2"), False, "uac-denial-lost-active-a-or-pending-b"),
+                 ("journal", None, True, "scoped-tun-reserved-journal-after-terminal"))
+        for name, then, journal, reason in cases:
+            with self.subTest(case=name):
+                self.setUp()
+                with self.assertRaisesRegex(AssertionError, "^" + reason + "$"):
+                    self.begin(self.reserved_inputs("stage-squat"),
+                               reserved_case=FakeCase(self, "stage-squat", ended="BUSY", then=then, journal_left=journal))
+                self.assertTrue(self.owner.tun_operation_requested, "not shown closed: the owner parks")
+                self.assertFalse(stages.settled(self.owner.tun_operation_leases[-1]))
+                self.assertNotIn("scoped-tun-reserved-ended-before-journal", [kind for kind, _ in self.owner.events])
+
 
 class Owner:
     """The ordinary owner as the case sees it: its root, events, park and public calls."""
@@ -368,7 +428,7 @@ class BeforeDecisionTests(CaseWorld):
         case = reserved.Case(self.owner, "stage-squat")
         case.journal_baseline = {}
         with mock.patch.object(reserved.time, "sleep", self.journal_after(3, reserved.JOURNAL_PREFIX + JOB + ".json")):
-            value = case.before_prompt(self.state)
+            value = ask(case, self.state)
         self.assertEqual(JOB, case.job)
         stage = self.programs / ("vpn-control-vpn-" + JOB)
         self.assertEqual([reserved.CANARY], os.listdir(stage))
@@ -378,9 +438,9 @@ class BeforeDecisionTests(CaseWorld):
     def test_a_resources_row_waits_for_its_journal_and_makes_no_folder(self):
         case = reserved.Case(self.owner, "resources-grant")
         with mock.patch.object(reserved.time, "sleep", self.journal_after(1, reserved.JOURNAL_PREFIX + JOB + ".json")):
-            self.assertEqual(JOB, case.before_prompt(self.state)["jobId"])
+            self.assertEqual(JOB, ask(case, self.state)["jobId"])
         self.assertEqual([], os.listdir(self.programs))
-        self.assertIsNone(reserved.Case(self.owner, "ssh-grant", relay=relay_fixture).before_prompt(self.state))
+        self.assertIsNone(ask(reserved.Case(self.owner, "ssh-grant", relay=relay_fixture), self.state))
 
     def test_two_journals_a_bad_name_or_none_never_reach_the_decision(self):
         other = "6f6f6f6f-1111-4222-8333-944455556666"
@@ -390,18 +450,82 @@ class BeforeDecisionTests(CaseWorld):
                 self.setUp()
                 with mock.patch.object(reserved.time, "sleep", self.journal_after(1, *names)), \
                         self.assertRaisesRegex(AssertionError, "^" + expected + "$"):
-                    reserved.Case(self.owner, "stage-squat").before_prompt(self.state)
+                    ask(reserved.Case(self.owner, "stage-squat"), self.state)
                 self.assertEqual([], os.listdir(self.programs), "no squat without exactly one job")
-        self.setUp()
-        clock = iter([0.0, 0.0, reserved.JOURNAL_SECONDS + 1])
-        with mock.patch.object(reserved.time, "monotonic", lambda: next(clock)), self.assertRaisesRegex(
+
+    def waiting(self, replies, journal_at_read=None):
+        """No journal; the clock moves only by the case's own sleeps; each status read takes the next reply. A journal
+        appears just before read number journal_at_read."""
+        clock = {"now": 0.0}
+
+        def sleep(seconds):
+            clock["now"] += seconds
+        self.owner.replies = list(replies)
+        invoke = self.owner.invoke
+
+        def reading(workspace, *arguments, stdin=None):
+            if journal_at_read is not None and len(self.owner.invoked) + 1 == journal_at_read:
+                (self.workspace / (reserved.JOURNAL_PREFIX + JOB + ".json")).write_bytes(b"{}")
+            return invoke(workspace, *arguments, stdin=stdin)
+        self.owner.invoke = reading
+        return mock.patch.multiple(reserved.time, sleep=sleep, monotonic=lambda: clock["now"])
+
+    def test_a_request_refused_before_its_journal_ends_the_wait_with_the_products_own_terminal(self):
+        """b50d0425 (2.2.19): ACCEPTED, then no journal for 120 s, and the wait parked without reading the operation.
+        Now it reads the row's own operation while it waits: a final refusal with still no journal ends the wait as the
+        case's EndedBeforeJournal (which the stages close as a known failure), with that terminal in the evidence."""
+        case = reserved.Case(self.owner, "stage-squat")
+        with self.waiting([status(), status(), status("PERMISSION_DENIED")]):
+            try:
+                ask(case, self.state)
+            except RuntimeError as parked:
+                self.fail("the product's own refusal was never read: " + str(parked))
+            except Exception as error:
+                self.assertIs(reserved.EndedBeforeJournal, type(error))
+                self.assertEqual("PERMISSION_DENIED", error.terminal["code"])
+            else:
+                self.fail("no journal, yet the case went on to the decision")
+        self.assertEqual(3, len(self.owner.invoked), "one read every STATUS_SECONDS, never a resend")
+        self.assertTrue(all(arguments[-3:] == ("operations", "status", ACCEPTED["operationId"]) for arguments, _ in self.owner.invoked))
+        self.assertEqual(("scoped-tun-reserved-journal-wait", 3, "PERMISSION_DENIED"),
+                         (self.owner.events[-1][0], self.owner.events[-1][1]["statusReads"], self.owner.events[-1][1]["lastStatus"]["code"]))
+        self.assertEqual([], os.listdir(self.programs), "no squat")
+        self.assertIsNone(case.job)
+
+    def test_an_operation_still_pending_at_the_bound_parks_with_what_it_read(self):
+        reads = int(reserved.JOURNAL_SECONDS // getattr(reserved, "STATUS_SECONDS", 5)) + 2
+        with self.waiting([status()] * reads), self.assertRaisesRegex(
                 RuntimeError, "^parked:scoped-tun-reserved-journal-absent-no-replay$"):
-            reserved.Case(self.owner, "stage-squat").before_prompt(self.state)
+            ask(reserved.Case(self.owner, "stage-squat"), self.state)
+        self.assertTrue(self.owner.events, "the park kept nothing of the operation it never read (b50d0425)")
+        kind, value = self.owner.events[-1]
+        self.assertEqual(("scoped-tun-reserved-journal-wait", "ACCEPTED", 0), (kind, value["lastStatus"]["code"], value["journals"]))
+        self.assertGreater(value["statusReads"], 1)
+        self.assertEqual([], os.listdir(self.programs))
+
+    def test_an_end_that_leaves_the_outcome_open_parks(self):
+        """OK with no journal, or a code the product classes as leaving the outcome open, proves nothing closed."""
+        for code in ("OK", "UNAVAILABLE", "OUTCOME_UNKNOWN", "TIMEOUT"):
+            with self.subTest(code=code):
+                self.setUp()
+                with self.waiting([status(code)]), self.assertRaisesRegex(
+                        RuntimeError, "^parked:scoped-tun-reserved-ended-outcome-open-no-replay$"):
+                    ask(reserved.Case(self.owner, "stage-squat"), self.state)
+                self.assertEqual(code, self.owner.events[-1][1]["lastStatus"]["code"])
+
+    def test_a_journal_written_before_the_operation_ended_is_still_the_job(self):
+        case = reserved.Case(self.owner, "stage-squat")
+        with self.waiting([status(), status("CONFLICT")], journal_at_read=2):
+            self.assertEqual(JOB, ask(case, self.state)["jobId"], "the stages' own terminal reads that outcome")
+        self.assertEqual([reserved.CANARY], os.listdir(self.programs / ("vpn-control-vpn-" + JOB)))
+
+    def test_the_refusals_are_the_stages_own(self):
+        self.assertEqual(stages.REFUSED_EXITS, reserved.REFUSALS)
 
     def squatted(self):
         case = reserved.Case(self.owner, "stage-squat")
         (self.workspace / (reserved.JOURNAL_PREFIX + JOB + ".json")).write_bytes(b"{}")
-        case.before_prompt(self.state)
+        ask(case, self.state)
         return case, self.programs / ("vpn-control-vpn-" + JOB)
 
     def test_an_untouched_squat_is_removed_by_the_case(self):

@@ -102,7 +102,10 @@ INSTALLED_FACTS = ("packageSha256", "productCode", "productVersion", "packageCod
 # the reply again: 64 KiB of child output stays far below the 256 KiB event cap and MAX_TERMINAL_BYTES.
 COLLECTOR_RAW_LIMIT = 65536
 COLLECTOR_BUDGET_SECONDS = 1800
-COLLECTOR_ROOT_SDDL = "O:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;{sid})"  # collector_contract.root_policy
+# collector_contract.root_policy: the publisher's CreateDirectory with a protected descriptor reads back O:SYD:P natively
+# (every collector root of 723417ea); a later SetSecurityInfo reads back PAI. Both are the same protected owner-only DACL.
+COLLECTOR_ROOT_FORMS = ("P", "PAI")
+COLLECTOR_ROOT_ACES = "(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;{sid})"
 # collector_contract.file_policy: the form a file the publisher protects with SetAccessControl reads back natively.
 COLLECTOR_FILE_SDDL = "O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;{sid})"
 # The installer helper of the installed base: the elevated coordinator and its original-user worker run this one image.
@@ -262,6 +265,27 @@ class Unknown(Exception):
 def token(value, limit=120):
     """Character-safe text for a receipt. It keeps the words it is given, so callers pass only finite codes."""
     return _TOKEN_CHARACTERS.sub("_", str(value))[:limit] or "unspecified"
+
+
+def collector_root_forms(sid):
+    """Every security record collector_contract.root_policy takes for a collector root of this ordinary user."""
+    return tuple({"ownerSid": "S-1-5-18", "sddl": "O:SYD:" + form + COLLECTOR_ROOT_ACES.format(sid=sid)} for form in COLLECTOR_ROOT_FORMS)
+
+
+_DACL_CONTROL = re.compile(r"D:([A-Z]{0,8})(?=\(|$)")
+
+
+def root_shape(security, sid):
+    """A refused collector root's finite shape for the receipt: owner, DACL control flags and whether its ACEs are ours."""
+    try:
+        sddl = security["sddl"]
+        owner = "owner-system" if security["ownerSid"] == "S-1-5-18" and sddl.startswith("O:SYD:") else "owner-other"
+        control = _DACL_CONTROL.search(sddl)
+        flags = "dacl-unparsed" if control is None else "dacl-" + (control.group(1) or "none")
+        aces = "aces-exact" if control is not None and sddl[control.end():] == COLLECTOR_ROOT_ACES.format(sid=sid) else "aces-other"
+    except (TypeError, KeyError, AttributeError):
+        return "unreadable"
+    return owner + ":" + flags + ":" + aces
 
 
 def guest_code(value):
@@ -2260,18 +2284,24 @@ class Job:
             for pin in pins:
                 planner.validate_pin(pin, True)
             by_path = {pin["path"]: pin for pin in pins}
+            # The SYSTEM collector refuses any other form of its root (collector_contract.root_policy): read before any
+            # task, not when an owner waits on it, and before the folders' general check so the refusal names its shape.
+            sid = self.context["ordinarySid"]
+            collector_paths = {self.paths["collector:" + stage]: stage for stage in self._collector_stages()}
+            refused = {stage: by_path[path]["security"] for path, stage in collector_paths.items()
+                       if by_path[path]["security"] not in collector_root_forms(sid)}
             if (by_path[self.workspace]["security"] not in self._directory_security("0x1200a9")
                     or by_path[self.operation_root]["security"] not in self._directory_security("0x1301bf")
                     or any(by_path[self.operation_root + "\\" + name]["security"] not in self._directory_security("0x1301bf") for name in roots)
-                    or any(by_path[self.workspace + "\\" + name]["security"] not in self._directory_security(rights) for name, rights in folders)):
+                    or any(by_path[self.workspace + "\\" + name]["security"] not in self._directory_security(rights) for name, rights in folders
+                           if self.workspace + "\\" + name not in collector_paths)):
                 raise ValueError("publisher_owned_root_security")
         except (ValueError, TypeError, KeyError, AttributeError):
             raise KnownFailure("publisher_initialize_receipt") from None
-        # The SYSTEM collector refuses any other form of its root; read before any task, not when an owner waits on it.
-        sid = self.context["ordinarySid"]
-        if any(by_path[self.paths["collector:" + stage]]["security"] != {"ownerSid": "S-1-5-18", "sddl": COLLECTOR_ROOT_SDDL.format(sid=sid)}
-               for stage in self._collector_stages()):
-            raise KnownFailure("collector_root_policy")
+        if refused:
+            # What the guest read back stays in the private index; the receipt names only its finite shape.
+            self._keep("collector-root-security.json", (json.dumps(refused, sort_keys=True) + "\n").encode())
+            raise KnownFailure("collector_root_policy:" + root_shape(next(iter(refused.values())), sid))
         self.directory_pins = pins
         self.published = True
 

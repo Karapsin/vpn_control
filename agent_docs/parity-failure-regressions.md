@@ -3489,6 +3489,23 @@ windows-visual record exists until a hosted Visual Capture of the final SHA, the
 `f56f4a4c` (a `ValueError` in the query-owner tool, no known-failure closing) stays `failed`: no reviewed code names
 it, and a bare exception class cannot tell a tool defect from a product reply the tool could not parse.
 
+### Scoped-TUN collector root form and the reserved journal wait (native S_D4, 2.2.19, 2026-11-17)
+
+Two tool defects stopped native scoped-TUN rows before any product verdict. Product code is not implicated. The
+original evidence and excerpts are in `.runtime/windows-parity-20261107/evidence/fix-collector-root/`. RED ran on an
+archive of `d0148a49` plus the final test modules; GREEN ran on the fix, on Python 3.14 and 3.12.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| Every collector root read back `O:SYD:P(...)` and the job demanded `PAI` alone, so all seven TUN grant rows (`ec361ea8`, `e6fbd999`, `270cacbe`, `5d686d9b`, `2d07d937`, `2fa2c4cd`, `383320bf`) and every update row with collector stages (`723417ea`, `9b1f6361`, `506b1a87`) ended at publish with `collector_root_policy`, before any task (TOOL) | `test_windows_scenario_host_job.UpdateFamilyTests.test_a_collector_root_as_the_publisher_creates_it_natively_runs_the_row`, `...test_a_collector_root_in_any_other_form_refuses_before_any_task_and_keeps_what_it_read`; `test_windows_update_grant_collectors.RootFormTests` (3 tests) | RED: the native `P` form gives `(1, 'collector_root_policy', 'failed')`, which is the native receipt. The contract refuses `P`. Neither the guard nor the release program states the forms. The read-back is the operator's decode of `723417ea`'s `qga.wire`. The publisher makes the root with `CreateDirectory` and a protected descriptor (`D:P`), which carries no auto-inherited flag. The job, `collector_contract.root_policy`, `ordinary_task_guard.ps1` and `release_template.ps1` now take `P` and `PAI` with the same SYSTEM owner and the same three explicit ACEs. Any other owner, control, inherited ACE or extra ACE is refused. The refusal names `owner:dacl-flags:aces`, and the job keeps the records in its private `collector-root-security.json`. The update fake had modelled `PAI` for collector roots and now models the native `P`. |
+| The stage-squat wait parked UNKNOWN (`b50d0425`, `scoped-tun-reserved-journal-absent-no-replay`) without reading the row's own operation: the async restart was `ACCEPTED`, no journal appeared in 120 s, and the outcome was never read (TOOL) | `test_windows_tun_reserved.BeforeDecisionTests` (refused before the journal, still pending at the bound, outcome-open ends, journal before the end, refusals equal to the stages'); `StagesHookTests.test_a_request_refused_before_its_journal_closes_as_a_known_failure`, `...test_a_refusal_before_the_journal_that_left_anything_keeps_the_owner_parking` | RED: `the product's own refusal was never read: parked:scoped-tun-reserved-journal-absent-no-replay`. The park keeps no status, and the stages have no known close. The path and name match the 2.2.19 product: the state folder's `.runtime-resource-job-<job>.json`, retained before UAC in `DesktopWindowsVpnBroker.prepareCaptured`. The wait now reads `operations status` every 5 s. A definite refusal with still no journal ends as a known failure, after A, pending B, the census and the absent journal are checked. Anything else parks, and every end first records the last status. |
+
+Routine suite: the modules above, plus the re-pinned collector chain (`test_windows_system_collector*`,
+`test_windows_failing_msi_consumer`, `test_windows_tun_grant`, `test_windows_ordinary_task`). Only a native run
+confirms three things. The first is that the grant rows pass publish and that the SYSTEM guard and release program
+accept a `P` root on Windows. The second is the product's actual terminal for the squat restart: the next run's
+`scoped-tun-reserved-journal-wait` event will show it. The third is whether that terminal is a definite refusal.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

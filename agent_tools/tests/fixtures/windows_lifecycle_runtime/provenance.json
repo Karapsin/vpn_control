@@ -204,12 +204,12 @@
       "sha256": "5b64377c177bad09bbb1becf66a7b907797267111afe95534c1a465ca1a95828"
     },
     "agent_tools/windows_tun_stages.py": {
-      "bytes": 43476,
-      "currentRoleAdjustment": "Finish waits 300 s, past the prompt's lifetime, and a known CANCELLED on a grant is a known failure. On the scenario route every input is the job's own: the frame handoff is gone, uacDecisionId is windows-uac-decision's one decision for this operation, and a closing census and a direct sampler are added. A final refusal of the request, a final code the variant does not expect or a cancelled grant is a known end that settles the lease for its closing census, and a denial must keep pending B selected. A grant asks the driver's handoff for its collector's ready record only after the product's own OK, and its machine records join the row's source, which the driver keeps on the lease. originalPath/originalSourceSha256 retain the source-exact historical copy.",
+      "bytes": 45374,
+      "currentRoleAdjustment": "Finish waits 300 s, past the prompt's lifetime, and a known CANCELLED on a grant is a known failure. On the scenario route every input is the job's own: the frame handoff is gone, uacDecisionId is windows-uac-decision's one decision for this operation, and a closing census and a direct sampler are added. A final refusal of the request, a final code the variant does not expect or a cancelled grant is a known end that settles the lease for its closing census, and a denial must keep pending B selected. A grant asks the driver's handoff for its collector's ready record only after the product's own OK, and its machine records join the row's source, which the driver keeps on the lease. A reserved row's request refused before the product's correlation journal, with A, pending B and the census as before, is a known end too. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v3/tun_stages.py",
       "originalSourceBytes": 15407,
       "originalSourceSha256": "aca0ca635e813b57b3c1047ad32dc619bf059c5909b50145078d379b32c93a9a",
-      "sha256": "b230ae385502c4e793943a5b44d39ef9e8e0fd5782b2c2c63ac45021f9e1b9c3"
+      "sha256": "3b666b54c31504624f1a84856cf44dba083e48e4329b54c107818ab91b90e348"
     }
   },
   "schemaVersion": 1,
