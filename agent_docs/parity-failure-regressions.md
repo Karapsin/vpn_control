@@ -3758,7 +3758,7 @@ Cause (TOOL, known), in two parts:
   after the toggle intent, which holds the clone.
 
 Fix:
-- `windows_autostart_snapshot.ps1` (collector `exact-autostart-read-only-v3`) reads every principal and logon-trigger
+- `windows_autostart_snapshot.ps1` (collector `exact-autostart-read-only-v3`, now v4, see below) reads every principal and logon-trigger
   `UserId` from the task XML with DTDs prohibited. Each distinct one that is not in SID form is looked up on the guest
   with `LookupAccountNameW`, as the ordinary user. `task.accounts` records each `{name, sid}`, where `sid` is null only
   for `ERROR_NONE_MAPPED`. Every other lookup outcome throws. The binary SID is converted in the script itself, with no
@@ -3793,12 +3793,44 @@ Native only:
 - whether Windows keeps the explicit trigger `Enabled` of a task registered as XML. If it does not, the row ends at
   `legacy-fixture-any-user-enabled-logon-trigger`, holding no clone.
 - whether `LookupAccountNameW` maps the stored trigger name for the ordinary token.
-- whether the product's unelevated `schtasks /Change /RL LIMITED` may change the SYSTEM-registered task. Its default
-  DACL read back as `(A;;FR;;;<ordinary SID>)` beside full access for BA and SY, which grants the ordinary user read
-  only. A denied `/Change` fails after the public toggle and so holds the clone. That would be a product finding only
-  if an elevated administrator's own legacy task carries the same DACL. This fixture cannot tell.
-- whether the product, without elevation, may re-register a task whose logon trigger is for any user. This is product
-  behaviour. A real legacy task carries that trigger.
+
+#### The planted task's DACL let the ordinary user only read it (predicted from `7ca6638a`, coordinator decision)
+
+The same snapshot read the SYSTEM-authored task's default descriptor as
+`O:BAG:SYD:(A;ID;0x1f019f;;;BA)(A;ID;0x1f019f;;;SY)(A;ID;FA;;;BA)(A;;FR;;;<ordinary SID>)`, which gives the ordinary user
+FR only. The product's unelevated `schtasks /Change /RL LIMITED` would have been denied after the toggle intent, which
+holds the clone. A real legacy task is creator-owned: the user who ran the old elevated app created it, and a task's
+creator holds full access.
+
+Fix:
+- The planter registers the task with `D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;<ordinary SID>)`, with no owner or group
+  part and no `P`, so the Tasks folder's inherited entries stay. The SDDL takes only the SID that already passed the
+  planter's `S-1-5-21-…` check.
+- The snapshot (collector `exact-autostart-read-only-v4`) records `task.grantedAccess`. It converts the task
+  descriptor it read (`GetSecurityDescriptor(7)`) and makes an identification-level copy of its own ordinary token.
+  `AccessCheck` then asks for `MAXIMUM_ALLOWED` under the file mapping Task Scheduler uses for tasks (FR `0x120089`,
+  FW `0x120116`, FX `0x1200a0`, FA `0x1f01ff`). This has no audit and no handle, and changes nothing. `ownership()`
+  requires `grantedAccess` to be a 32-bit integer.
+- `migration()` requires `grantedAccess` to hold `CHANGE_ACCESS` (FILE_GENERIC_READ|FILE_GENERIC_WRITE, `0x12019f`).
+  It checks this beside the trigger guard, before `settings show` and the toggle. Otherwise the row ends with
+  `legacy-fixture-ordinary-cannot-change-task`, before any public autostart step, so the clone is never held.
+- The `autostart`, `snapshotScript` and `migrationScript` role digests name the new bytes.
+
+| Failure type | Regression | RED / GREEN |
+| --- | --- | --- |
+| The planted task's default DACL let the ordinary user only read it, so the product's migration would fail after the toggle intent (TOOL) | `TriggerAccountTests.test_the_native_default_dacl_let_the_ordinary_user_only_read_and_the_planter_grants_its_creator_full_access`, `test_a_legacy_task_the_ordinary_token_cannot_change_ends_the_row_before_any_public_autostart_step`, `test_the_snapshot_reads_the_ordinary_tokens_access_with_no_side_effect`; `LegacyAutostartPlantTests.test_the_planter_registers_the_legacy_task_for_the_ordinary_user_only_as_system` (now with the creator-owned SDDL) | The native SDDL's only entry for the ordinary SID is `(A;;FR;;;…)`, which lacks `CHANGE_ACCESS`, while FA holds it. FR, nothing, FW only, and read/write without `FILE_WRITE_DATA` each end the row with no `settings show`, no public autostart call and no autostart intent. A missing or out-of-range `grantedAccess` is `enabled-exact-task-security`. The `AccessCheck` source compiles under PowerShell with the snapshot's class. RED with the final tests over an archive of `6ec305e1`: 37 failures and 3 errors on Python 3.14.3 and 3.12.13, mostly the v4 collector. Mutants: without the guard, the 4 access cases run the public migration. With the scheduler's default SDDL, the planter fails 3 tests. GREEN: all 59 tests pass on both Pythons under PowerShell 7.4.6. |
+
+Native only:
+- whether `RegisterTask` keeps the explicit entries and `AccessCheck` reports FA for the ordinary token.
+- whether `CHANGE_ACCESS` is what Task Scheduler checks for the product's `/Change` (`TASK_UPDATE`).
+
+Product findings, to verify natively and not fixed here:
+- `DesktopAutostartManager.createWindowsTask` runs `schtasks /Create /SC ONLOGON /RL LIMITED` unelevated. `/SC ONLOGON`
+  is "whenever any user logs on", and it is unproven that a standard user may register such a trigger. If Windows
+  narrows it to the creating user instead, the result is a task whose trigger names that user. No reboot row runs this
+  path, because each one migrates a planted legacy task.
+- The product's unelevated `schtasks /Change /RL LIMITED` re-registers a task whose logon trigger is for any user. It
+  is unproven that an unelevated token may do that, even with full access to the task.
 
 ### The SYSTEM collector's worker session, read after the worker exited (native NE2, S_Q, 2026-11-17)
 

@@ -41,6 +41,8 @@ CONTEXT = {"deploymentId": "33333333-4444-4555-8666-777777777777", "ordinarySid"
 ANY_USER_TRIGGER = "<LogonTrigger><Enabled>true</Enabled></LogonTrigger>"
 # Native 7ca6638a: Task Scheduler kept the principal's SID but stored the trigger registered with that SID as a name.
 ACCOUNT = "DESKTOP-4MOOMEI\\fixtureuser"
+# Task Scheduler's file mapping: FA, FR, and what the owner requires before the migration (read and write).
+FILE_ALL_ACCESS, FILE_GENERIC_READ = 0x1F01FF, 0x120089
 
 
 def guest_accounts(xml, resolved):
@@ -241,6 +243,8 @@ class World:
         # of an account name. The planter registers schtasks /SC ONLOGON's trigger: any user, explicitly enabled.
         self.principal_user, self.trigger = {"highest": SID, "limited": SID}, {"highest": ANY_USER_TRIGGER, "limited": ANY_USER_TRIGGER}
         self.accounts = {}
+        # The guest's AccessCheck of the ordinary token against the task's descriptor: the planted creator-owned FA.
+        self.granted = FILE_ALL_ACCESS
 
     def envelope(self, data=None, code="OK"):
         self.revision += 0
@@ -321,9 +325,10 @@ class World:
                    '<Actions Context="Author"><Exec><Command>' + GUI + '</Command><Arguments>--autostart --state-dir "' + self.owner.request["workspace"]
                    + '"</Arguments></Exec></Actions></Task>')
             task = {"state": "present", "path": autostart.TASK, "xml": xml, "sddl": "D:P(A;;FA;;;SY)", "enabled": True, "lastRunFileTimeUtc": str(self.last_run or BOOT),
-                    "lastTaskResult": 0, "schedulerState": 3, "runningInstances": [], "accounts": guest_accounts(xml, self.accounts)}
+                    "lastTaskResult": 0, "schedulerState": 3, "runningInstances": [], "accounts": guest_accounts(xml, self.accounts),
+                    "grantedAccess": self.granted}
         context = self.owner.request["context"]
-        return {"schemaVersion": 3, "collector": "exact-autostart-read-only-v3", "sid": SID, "sessionId": 2, "pid": child.pid,
+        return {"schemaVersion": 4, "collector": "exact-autostart-read-only-v4", "sid": SID, "sessionId": 2, "pid": child.pid,
                 "creationFileTime": child.birth, "elevated": 0, "inJob": False, "bootIdentifier": context["bootIdentifier"],
                 "machineGuid": context["machineGuid"], "task": task, "run": {"state": "absent", "keyState": "present"}}
 
@@ -1426,7 +1431,7 @@ public sealed class LegacyFakeFolder {public string Mode="";public List<string> 
   if(Tasks.ContainsKey(name))throw new COMException("fake",-2147024713);
   var t=new LegacyFakeTask{Path="\\"+name,Definition=d};Tasks[name]=t;return t;}
  public LegacyFakeTask RegisterTask(string name,string xml,int flags,string user,object password,int logon,object sddl){
-  Calls.Add("registerXml:"+name+":"+flags+":"+user+":"+(password==null)+":"+logon+":"+(sddl==null));
+  Calls.Add("registerXml:"+name+":"+flags+":"+user+":"+(password==null)+":"+logon+":"+sddl);
   if(Mode=="register-denied")throw new UnauthorizedAccessException("Access is denied. (Exception from HRESULT: 0x80070005 (E_ACCESSDENIED))");
   if(Tasks.ContainsKey(name))throw new COMException("fake",-2147024713);
   var doc=new System.Xml.XmlDocument();doc.LoadXml(xml);
@@ -1540,8 +1545,8 @@ foreach ($case in @('system','system-ampersand','ordinary','existing','system-pr
         out = self.run_powershell(body)
         system = out["system"]
         self.assertEqual(([LEGACY_RESULT], None), (system["answer"], system["threw"]))
-        self.assertEqual(["registerXml:VPN Control:2:" + PRINCIPAL + ":True:3:True"], system["calls"],
-                         "TASK_CREATE, the ordinary user, no password, an interactive token, the scheduler's own SDDL")
+        self.assertEqual(["registerXml:VPN Control:2:" + PRINCIPAL + ":True:3:D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;" + PRINCIPAL + ")"],
+                         system["calls"], "TASK_CREATE, the ordinary user, no password, an interactive token, a creator-owned DACL")
         self.assertEqual((LEGACY_DESCRIPTION, 1), (system["task"]["description"], system["task"]["runLevel"]))
         # The registered XML is schtasks /SC ONLOGON /RL HIGHEST's task: any user's logon, explicitly enabled.
         for case, gui in (("system", r"C:\Program Files\VPN Control\vpn-control.exe"), ("system-ampersand", r"C:\R&D <x>\vpn-control.exe")):
@@ -1665,8 +1670,10 @@ class TriggerAccountTests(WorldCase):
     def native_v3(self, accounts, xml=None):
         """The native snapshot as the fixed collector writes it: the guest's lookup of each account name added."""
         snapshot = json.loads(json.dumps(self.native))
-        snapshot.update(schemaVersion=3, collector="exact-autostart-read-only-v3")
+        snapshot.update(schemaVersion=4, collector="exact-autostart-read-only-v4")
         snapshot["task"]["accounts"] = accounts
+        # The native DACL gave the ordinary user FR only: (A;;FR;;;<ordinary SID>).
+        snapshot["task"]["grantedAccess"] = FILE_GENERIC_READ
         if xml is not None:
             snapshot["task"]["xml"] = xml
         return snapshot
@@ -1786,18 +1793,62 @@ class TriggerAccountTests(WorldCase):
         self.assertNotIn("$trigger.UserId", planter, "the planter names no trigger user")
         template = planter.split("$template = @'\n", 1)[1].split("\n'@\n", 1)[0]
         self.assertEqual(1, planter.count("$xml = [string]::Format($template, $PrincipalSid, [Security.SecurityElement]::Escape($GuiPath),"))
-        self.assertEqual(1, planter.count("$folder.RegisterTask('VPN Control',$xml,2,$PrincipalSid,$null,3,$null)"))
+        self.assertEqual(1, planter.count("$folder.RegisterTask('VPN Control',$xml,2,$PrincipalSid,$null,3,$sddl)"))
         xml = template.format(SID, GUI, r"C:\w")
         fields = autostart.task_fields(xml)
         self.assertEqual(("", "true", "HighestAvailable", SID), (fields["triggerUser"], fields["triggerEnabled"], fields["runLevel"], fields["principalUser"]))
         snapshot = World(types.SimpleNamespace(request={"workspace": r"C:\w", "context": CONTEXT}), "autostart-migration").snapshot(
             types.SimpleNamespace(pid=1, birth="1"))
         snapshot["task"] = {"state": "present", "path": autostart.TASK, "xml": xml, "sddl": "D:P(A;;FA;;;SY)", "enabled": True,
-                            "accounts": guest_accounts(xml, {})}
+                            "accounts": guest_accounts(xml, {}), "grantedAccess": FILE_ALL_ACCESS}
         self.assertEqual("highest", autostart.ownership(snapshot, GUI, r"C:\w", SID))
         # The product's own recognizer (DesktopAutostartManager WindowsTaskXml.inspect) needs the trigger's Enabled text.
         product = (ROOT / "desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopAutostartManager.kt").read_text(encoding="utf-8")
         self.assertIn('if (directText(trigger, "Enabled")?.equals("true", ignoreCase = true) != true)', product)
+
+    def test_the_native_default_dacl_let_the_ordinary_user_only_read_and_the_planter_grants_its_creator_full_access(self):
+        # 7ca6638a: registered by SYSTEM with the scheduler's default, the task gave the ordinary user FR only.
+        sddl = self.native["task"]["sddl"]
+        self.assertEqual(["(A;;FR;;;" + NATIVE_SID + ")"], re.findall(r"\([^)]*;" + re.escape(NATIVE_SID) + r"\)", sddl))
+        self.assertNotEqual(autostart.CHANGE_ACCESS, FILE_GENERIC_READ & autostart.CHANGE_ACCESS, "FR cannot change the task")
+        self.assertEqual(autostart.CHANGE_ACCESS, FILE_ALL_ACCESS & autostart.CHANGE_ACCESS, "FA can")
+        planter = (ROOT / PLANTER).read_text(encoding="ascii")
+        self.assertEqual(1, planter.count(" $sddl = 'D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;' + $PrincipalSid + ')'\n"))
+        self.assertEqual(1, planter.count("$folder.RegisterTask('VPN Control',$xml,2,$PrincipalSid,$null,3,$sddl)"))
+        self.assertLess(planter.index("-cnotmatch '\\AS-1-5-21-"), planter.index(" $sddl = "), "only a checked SID enters the SDDL")
+
+    def test_a_legacy_task_the_ordinary_token_cannot_change_ends_the_row_before_any_public_autostart_step(self):
+        for granted in (FILE_GENERIC_READ, 0, 0x120116, autostart.CHANGE_ACCESS & ~0x2):
+            with self.subTest(granted=hex(granted)):
+                owner = self.owner("autostart-migration")
+                owner.world.granted = granted
+                with self.assertRaisesRegex(AssertionError, "^legacy-fixture-ordinary-cannot-change-task$"):
+                    preboot.run_preboot(owner, owner.config, source_roles, postboot)
+                calls = [" ".join(tail) for label, tail in owner.world.trace if label == "public-cli"]
+                self.assertEqual([], [call for call in calls if "autostart" in call or call.endswith("settings show")],
+                                 "neither the query nor the toggle ran")
+                self.assertEqual([], [kind for kind, _ in owner.events if kind in job.AUTOSTART_INTENTS],
+                                 "no autostart intent: the receipt says untouched and holds no clone")
+                self.assertEqual("highest", owner.world.task)
+        for granted in (None, -1, 0x100000000, "0x1f01ff"):
+            with self.subTest(granted=granted):
+                snapshot = self.native_v3([{"name": ACCOUNT, "sid": NATIVE_SID}])
+                snapshot["task"]["grantedAccess"] = granted
+                with self.assertRaisesRegex(AssertionError, "^enabled-exact-task-security$"):
+                    self.owned(snapshot)
+
+    def test_the_snapshot_reads_the_ordinary_tokens_access_with_no_side_effect(self):
+        native, script = self.snapshot_native_class()
+        access = native.split("public static long TaskAccess(string sddl) {", 1)[1].split("\n }\n", 1)[0]
+        self.assertIn("ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl,1,out sd,out size)", access)
+        self.assertIn("OpenProcessToken(Process.GetCurrentProcess().Handle,0xA,out t)", access, "TOKEN_QUERY|TOKEN_DUPLICATE")
+        self.assertIn("DuplicateToken(t,1,out dup)", access, "an identification-level copy")
+        self.assertIn("Read=0x120089,Write=0x120116,Execute=0x1200a0,All=0x1f01ff", access, "the file mapping")
+        self.assertIn("AccessCheck(sd,dup,0x02000000,ref map,privileges,ref length,out granted,out status)", access, "MAXIMUM_ALLOWED")
+        self.assertNotRegex(access, r"AccessCheckAndAuditAlarm|SetSecurity|RegisterTask|ImpersonateLoggedOnUser")
+        self.assertEqual(1, script.count("  $grantedAccess = [VcAutostartNative]::TaskAccess($sddl)\n"))
+        self.assertLess(script.index("$sddl = [string]$task.GetSecurityDescriptor(7)"), script.index("[VcAutostartNative]::TaskAccess($sddl)"))
+        self.assertIn("   grantedAccess=$grantedAccess;", script)
 
     def snapshot_native_class(self):
         script = (ROOT / "agent_tools/windows_autostart_snapshot.ps1").read_text(encoding="ascii")
@@ -1812,7 +1863,7 @@ class TriggerAccountTests(WorldCase):
         self.assertIn("[Xml.DtdProcessing]::Prohibit", function)
         self.assertEqual(1, script.count("  $accounts = @(Get-TaskAccounts $xml)\n"))
         self.assertIn("runningInstances=$running; accounts=$accounts }", script)
-        self.assertIn("$result = @{schemaVersion=3; collector='exact-autostart-read-only-v3';", script)
+        self.assertIn("$result = @{schemaVersion=4; collector='exact-autostart-read-only-v4';", script)
 
     @unittest.skipUnless(POWERSHELL, "a PowerShell interpreter is required")
     def test_the_snapshot_records_each_name_with_the_sid_the_guest_maps_it_to_under_powershell(self):

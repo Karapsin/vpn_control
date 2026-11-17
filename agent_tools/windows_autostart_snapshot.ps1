@@ -36,6 +36,30 @@ public static class VcAutostartNative {
   if(!LookupAccountNameW(null,name,sid,ref size,domain,ref dsize,out use)) throw new Exception("ACCOUNT_LOOKUP_"+Marshal.GetLastWin32Error());
   return SidString(sid,size);
  }
+ [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool ConvertStringSecurityDescriptorToSecurityDescriptorW(string s,uint rev,out IntPtr sd,out uint size);
+ [DllImport("advapi32.dll", SetLastError=true)] static extern bool DuplicateToken(IntPtr t,int level,out IntPtr dup);
+ [DllImport("advapi32.dll", SetLastError=true)] static extern bool AccessCheck(IntPtr sd,IntPtr token,uint desired,ref TaskMapping map,byte[] privileges,ref uint privilegesLength,out uint granted,out bool status);
+ [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr p);
+ [StructLayout(LayoutKind.Sequential)] public struct TaskMapping {public uint Read,Write,Execute,All;}
+ // The rights this process's own token holds under a task's security descriptor (owner, group and DACL as read),
+ // with the file mapping Task Scheduler uses for tasks. AccessCheck on an identification-level copy of the token
+ // asks for MAXIMUM_ALLOWED: no audit, no handle, nothing changed. 0 when the DACL grants nothing.
+ public static long TaskAccess(string sddl) {
+  IntPtr sd,t,dup; uint size;
+  if(!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl,1,out sd,out size)) throw new Exception("TASK_SD_PARSE_"+Marshal.GetLastWin32Error());
+  try {
+   if(!OpenProcessToken(Process.GetCurrentProcess().Handle,0xA,out t)) throw new Exception("TOKEN_OPEN");
+   try {
+    if(!DuplicateToken(t,1,out dup)) throw new Exception("TOKEN_DUPLICATE_"+Marshal.GetLastWin32Error());
+    try {
+     var map=new TaskMapping{Read=0x120089,Write=0x120116,Execute=0x1200a0,All=0x1f01ff};
+     byte[] privileges=new byte[1024]; uint length=(uint)privileges.Length,granted; bool status;
+     if(!AccessCheck(sd,dup,0x02000000,ref map,privileges,ref length,out granted,out status)) throw new Exception("TASK_ACCESS_CHECK_"+Marshal.GetLastWin32Error());
+     return status?(long)granted:0;
+    } finally {if(!CloseHandle(dup))throw new Exception("TOKEN_CLOSE");}
+   } finally {if(!CloseHandle(t))throw new Exception("TOKEN_CLOSE");}
+  } finally {LocalFree(sd);}
+ }
  // A binary SID in its string form: revision 1, the 48-bit big-endian authority, then little-endian subauthorities.
  public static string SidString(byte[] b,int n) {
   if(n<8||n>b.Length||b[0]!=1||n!=8+4*b[1]) throw new Exception("ACCOUNT_SID_SHAPE");
@@ -111,7 +135,11 @@ try {
   }
   $lastRun = [DateTime]$task.LastRunTime
   $accounts = @(Get-TaskAccounts $xml)
+  # What this ordinary token may do to the task, so the owner can tell before any public step whether the product,
+  # running as this token, could change it.
+  $grantedAccess = [VcAutostartNative]::TaskAccess($sddl)
   $taskData = @{state='present'; path=[string]$task.Path; xml=$xml; sddl=$sddl; enabled=[bool]$task.Enabled;
+   grantedAccess=$grantedAccess;
    lastRunFileTimeUtc=[string]$lastRun.ToUniversalTime().ToFileTimeUtc(); lastTaskResult=[int]$task.LastTaskResult;
    schedulerState=[int]$task.State; runningInstances=$running; accounts=$accounts }
  }
@@ -135,7 +163,7 @@ try {
  if ($null -eq $machine) { throw 'MACHINE_KEY_ABSENT' }
  $machineGuid = [string]$machine.GetValue('MachineGuid')
  $openingBoot = [VcAutostartNative]::Boot()
- $result = @{schemaVersion=3; collector='exact-autostart-read-only-v3'; sid=$identity.User.Value;
+ $result = @{schemaVersion=4; collector='exact-autostart-read-only-v4'; sid=$identity.User.Value;
   sessionId=$process.SessionId; pid=$process.Id; creationFileTime=[string]$process.StartTime.ToUniversalTime().ToFileTimeUtc();
   elevated=[VcAutostartNative]::Elevated(); inJob=[VcAutostartNative]::InJob();
   bootIdentifier=$openingBoot; machineGuid=$machineGuid; task=$taskData; run=$run}

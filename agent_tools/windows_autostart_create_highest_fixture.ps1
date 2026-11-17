@@ -70,9 +70,12 @@ try {
  $service.Connect()
  $folder = $service.GetFolder('\')
  if ($null -ne (Get-StartupTask $folder)) { throw 'EXISTING_STARTUP_TASK_REFUSED' }
- # TASK_CREATE=2. A raced same-name task fails; never replace or update it. No SDDL: the scheduler's own default,
- # as the legacy elevated schtasks /Create left it.
- $registered = $folder.RegisterTask('VPN Control',$xml,2,$PrincipalSid,$null,3,$null)
+ # The legacy task's creator was the ordinary user, from the old elevated app: its creator holds full access, beside
+ # SYSTEM and Administrators. Registered by SYSTEM with the scheduler's default, 7ca6638a gave that user FR only, so
+ # the product's unelevated schtasks /Change could not have migrated it. Inherited entries stay as the folder gives them.
+ $sddl = 'D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;' + $PrincipalSid + ')'
+ # TASK_CREATE=2. A raced same-name task fails; never replace or update it.
+ $registered = $folder.RegisterTask('VPN Control',$xml,2,$PrincipalSid,$null,3,$sddl)
  if ($registered.Path -cne '\VPN Control') { throw 'FIXTURE_REGISTERED_WRONG_PATH' }
  '{"schemaVersion":1,"taskPath":"\\VPN Control","runLevel":"HighestAvailable"}'
 } finally { $identity.Dispose() }

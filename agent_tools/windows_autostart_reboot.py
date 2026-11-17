@@ -73,6 +73,9 @@ def task_fields(xml):
 
 
 # A UserId in SID form, as the snapshot's Get-TaskAccounts tells it from an account name (case-sensitive both).
+# FILE_GENERIC_READ | FILE_GENERIC_WRITE in the file mapping Task Scheduler applies to a task's descriptor: what the
+# product's own schtasks /Query /XML and /Change /RL LIMITED need of the task, as the ordinary token.
+CHANGE_ACCESS = 0x12019F
 SID_FORM = re.compile(r"S-1-[0-9]+(?:-[0-9]+)+\Z")
 USER_FIELDS = ("principalUser", "triggerUser")
 
@@ -101,7 +104,7 @@ def identity_fields(task):
 
 
 def ownership(snapshot, gui, workspace, sid):
-    require(snapshot["schemaVersion"] == 3 and snapshot["collector"] == "exact-autostart-read-only-v3"
+    require(snapshot["schemaVersion"] == 4 and snapshot["collector"] == "exact-autostart-read-only-v4"
             and snapshot["sid"] == sid and snapshot["elevated"] == 0, "ordinary-native-snapshot")
     task, run = snapshot["task"], snapshot["run"]
     require(run["state"] in {"present", "absent"}, "legacy-run-known-state")
@@ -112,7 +115,8 @@ def ownership(snapshot, gui, workspace, sid):
     if task["state"] == "absent":
         return "absent"
     require(task["path"] == TASK and task["enabled"] is True and type(task["sddl"]) is str
-            and 0 < len(task["sddl"]) <= 32768, "enabled-exact-task-security")
+            and 0 < len(task["sddl"]) <= 32768 and type(task["grantedAccess"]) is int
+            and 0 <= task["grantedAccess"] <= 0xFFFFFFFF, "enabled-exact-task-security")
     fields = identity_fields(task)
     require(fields["principalUser"] == sid and fields["logonType"] == "InteractiveToken"
             and ntpath.normcase(fields["command"]) == ntpath.normcase(path_value(gui))
@@ -208,6 +212,10 @@ def migration(owner, state, inputs):
     # after the public toggle, so the row ends here, before any autostart change of the product's.
     legacy = task_fields(before["task"]["xml"])
     require(legacy["triggerUser"] == "" and legacy["triggerEnabled"] == "true", "legacy-fixture-any-user-enabled-logon-trigger")
+    # A creator-owned legacy task grants its creator full access. The guest's AccessCheck for the ordinary token must
+    # show it may read and change the task, or the product's public migration would be denied after the toggle intent,
+    # which holds the clone (7ca6638a's SYSTEM-authored default gave the ordinary user FR only).
+    require(before["task"]["grantedAccess"] & CHANGE_ACCESS == CHANGE_ACCESS, "legacy-fixture-ordinary-cannot-change-task")
     owner.event("autostart-legacy-fixture-observed", {"before": before})
     # A read must leave the actual high task unchanged before explicit mutation.
     public(owner, state, "settings", "show")
