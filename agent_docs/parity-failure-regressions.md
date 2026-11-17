@@ -3505,6 +3505,42 @@ Routine suite: the modules above, plus the re-pinned collector chain (`test_wind
 confirms three things. The first is that the grant rows pass publish and that the SYSTEM guard and release program
 accept a `P` root on Windows. The second is the product's actual terminal for the squat restart: the next run's
 `scoped-tun-reserved-journal-wait` event will show it. The third is whether that terminal is a definite refusal.
+### An approval refused at an unrecognized frame, and its row left uncollected (native, 2026-11-17)
+
+Run `c7b6562a` of `windows-scoped-tun.vpn-commit-failure` on clone `192e5a3d` with the 2.2.19 package (S_D4): the
+operator helper called `windows-uac-decision` (approve, decision `4bd56d3e`) on the token at 03:15:55; the gate found
+one valid `consent.exe` and then refused `instance_uac_frame_unrecognized` after its 30 s of frames (call 47.5 s;
+attempt timing: sent 1.6 s, replied 36.9 s). Nothing was typed or burned. The prompt expired into the grant's
+`cancelled`, the job exited 1, and collect found no input terminal to join, so the row stayed terminal and uncollected
+(`collector_unavailable`), as deny `9be1f7a6` had. The profile `vpn-broker.json` (sha `06f09788`) was reviewed from the
+deny review frame of `9cf1d139` (S_D3), and the same bytes passed the deny gate of `63c2290f` in 11.2 s. The approve and
+the deny packets differ only in the decision, the row, the context and the operation: `UAC_SCREEN`, `UAC_FIELD` and
+`UAC_PROFILE_SHA` are byte-equal, and the gate's code path before the first key is the same for both answers, so the
+decision tool reads an approve's prompt exactly as a deny's. The cause is on the screen, and the two kept frames stay
+in `windows-uac/4bd56d3e-.../` of the VM root, which no closed action reads. Evidence, the unfixed sources and the
+RED/GREEN logs: `.runtime/windows-parity-20261107/evidence/fix-uac-approve/` of the recovery checkout.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The refusal could not say what its frame showed (TOOL) | `test_windows_uac_decision.RefusedFrameFactsTests` (four tests; control `test_no_other_refusal_and_no_answer_carries_frame_facts`), `ExecuteInputTests.test_a_frame_refusal_brings_its_frame_facts_into_the_reply_and_the_journal`, `test_frame_facts_cross_only_closed_and_only_with_a_frame_refusal` | `screen_gate` stops at the first crop it misses. A refusal at the bound now names, for its last frame, `cropsMatched` per reviewed crop and `fieldDarkPixels` (`_uac_frame_facts`), in the attempt terminal, the reply and the local journal. No crop shown is a screen without the prompt; one crop missed is something over that region. The gate is unchanged: every crop must match before a key. |
+| A grant cancelled after a refused approval stayed uncollected (TOOL) | `test_native_scenario_windows.TunGrantDecisionTests.test_a_grant_cancelled_after_its_decision_refused_before_any_input_is_collected_with_that_refusal`; `test_windows_uac_decision.RefusedDecisionHostReadTests` (the real `_READ_DECISION` over the real owner's files); controls `test_a_refused_decision_never_completes_a_pass`, `UpdateCollectionTests.test_a_deny_whose_decision_refused_stays_unsettled`, `RefusedDecisionHostReadTests.test_nothing_that_could_have_typed_reads_as_refused`, `test_a_known_input_still_reads_as_its_terminal` | `_READ_DECISION` reads, when no input terminal exists, a decision whose every attempt ended `input-refused` with nothing attempted, with no input journal and none refused for a prompt another decision burned (`instance_uac_prompt_burned`) or whose input stays unknown. A grant's `cancelled` then joins it and is collected failed with `uacDecision` `approve-refused:<reason>`. A pass, a deny row or anything that could have typed stays unsettled. Nothing is submitted or typed again. |
+| That run would have been the product's `failed` (TOOL) | `test_native_scenario_windows_matrix.UnansweredApprovalTests` (never counts or fails the requirement; does not hold a later pass; controls: a typed approval, another known end, no join, a row that is no grant) | `_matrix_row` classes it `approval-unanswered`, which never counts, like `approval-unproven`. |
+
+RED on `d0148a49` sources with the final tests, Python 3.14 and 3.12 alike: `Ran 18 tests`, `FAILED (failures=5,
+errors=6)`; the seven controls held. GREEN: OK on both. Routine suite: the affected selection of
+`windows_uac_decision.py` and `native_scenario_windows.py`.
+
+Leading hypotheses for the frames, and what each shows: (1) the prompt waiting as a taskbar button, not on the secure
+desktop, because its requester did not hold the foreground (the visual route already refuses this case,
+`instance_uac_visual_prompt_not_shown`); 2.2.19 changed `DesktopTray.kt` and `Main.kt` window state since 2.2.18: an
+undimmed desktop with no dialog, every crop missed. (2) The arrow or a hovered `Yes`/`No` over a crop: the dialog with
+one or two crops missed, most likely the button row `[437,634,844,670]`. (3) Another dialog state or layout (another
+default button, a focus ring, a taller dialog): the dialog shown, its crops missed by position. (4) A lock screen or
+another surface after a wake: no dialog, every crop missed, and a pointer journal in the decision's folder. The next
+refusal's `frame` facts tell (1) and (4) from (2) and (3) without the frames.
+
+Native only: which hypothesis holds; the facts on a real frame; that collect reads a real refused decision on the VM
+host; and the approval's first typed answer through a reviewed profile.
 
 ## Historical coverage rule
 

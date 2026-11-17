@@ -115,6 +115,7 @@ class FakeSsh:
         self.stdin = None
         self.job_files = {}
         self.decision = None
+        self.decision_reply = None  # The read's whole reply, when it is not a read terminal (a refusal before any input).
         self.decision_reads = []
         self.cache_states = {}  # digest -> a state the target read reports instead of what is staged
         self.waits = []
@@ -153,6 +154,8 @@ class FakeSsh:
             return "read-job-file", {"state": "unavailable"} if value is None else {"state": "read", "value": value}
         if program == windows._READ_DECISION:
             self.decision_reads.append(tuple(command[5:7]))
+            if self.decision_reply is not None:
+                return "read-decision", self.decision_reply
             return "read-decision", {"state": "unavailable"} if self.decision is None else {"state": "read", "value": self.decision}
         if program == windows._PULL:
             self.pulls += 1
@@ -1603,6 +1606,35 @@ class TunGrantDecisionTests(FamilyDriverBase):
         self.assertEqual("approve-acknowledged-prompt-closed", result["scenarioEvidence"]["windows"]["uacDecision"])
         self.assertEqual(("/owned/vm", self.decision), self.ssh.decision_reads[-1])
 
+    def test_a_grant_cancelled_after_its_decision_refused_before_any_input_is_collected_with_that_refusal(self):
+        """Native c7b6562a (S_D4): the approval refused instance_uac_frame_unrecognized, nothing was typed, the prompt
+        expired into the grant's CANCELLED and the job exited 1. Collect found no input terminal to join, so the row stayed
+        terminal and uncollected for good. A decision whose every attempt ended refused with no input is a known end of
+        the decision: the run is collected failed, naming that refusal, and the matrix never counts it as the product's."""
+        self.finished(exit_code=1, raw=self.job_receipt(exit_code=1, known_end="cancelled"))
+        refused = {"state": "refused", "attempts": 1, "reason": "instance_uac_frame_unrecognized"}
+        for reply in ({**refused, "attempts": 0}, {**refused, "attempts": True}, {**refused, "reason": "uac_frame"},
+                      {**refused, "reason": "instance_uac_prompt_burned"}, {**refused, "reason": "instance_uac_original_input_unknown"},
+                      {**refused, "extra": 1}, {"state": "refused"}, {"state": "unavailable"}):
+            with self.subTest(reply=reply):
+                self.ssh.decision_reply = reply
+                result = self.executor().status(self.operation)
+                self.assertEqual(("unknown", "terminal_collection_unverified"), (result["state"], result["reason"]))
+                self.assertNotIn("scenarioEvidence", result)
+        self.ssh.decision_reply = refused
+        result = self.executor().status(self.operation)
+        self.assertEqual(("terminal", "complete", "failed"), (result["state"], result["collectionState"], result["scenarioEvidence"]["result"]))
+        self.assertEqual("approve-refused:instance_uac_frame_unrecognized", result["scenarioEvidence"]["windows"]["uacDecision"])
+        self.assertEqual(("/owned/vm", self.decision), self.ssh.decision_reads[-1])
+        self.assertEqual(result, self.executor().status(self.operation), "collected once; a repeat reads the journal")
+
+    def test_a_refused_decision_never_completes_a_pass(self):
+        # Nothing this decision typed approved the broker, so a pass is not the reviewed approval's: it stays unsettled.
+        self.finished(raw=self.job_receipt())
+        self.ssh.decision_reply = {"state": "refused", "attempts": 1, "reason": "instance_uac_frame_unrecognized"}
+        result = self.executor().status(self.operation)
+        self.assertEqual(("unknown", "terminal_collection_unverified"), (result["state"], result["reason"]))
+
 
 class UpdateTableTests(unittest.TestCase):
     def test_the_variants_are_the_ones_the_case_module_accepts(self):
@@ -2030,6 +2062,13 @@ class UpdateCollectionTests(UpdateBase):
         self.assertEqual("deny-acknowledged-prompt-closed", result["scenarioEvidence"]["windows"]["uacDecision"])
         self.assertEqual(("/owned/vm", self.decision), self.ssh.decision_reads[-1], "the VM root the decision was written under")
         self.assertEqual({"evidenceClass": "installed-package-unproven", "productAction": True}, windows.public_evidence(result))
+
+    def test_a_deny_whose_decision_refused_stays_unsettled(self):
+        # An expired prompt is the same denial as Esc: a deny row's pass with no typed Esc proves nothing, refused or not.
+        self.finished(raw=self.job_receipt())
+        self.ssh.decision_reply = {"state": "refused", "attempts": 1, "reason": "instance_uac_frame_unrecognized"}
+        result = self.executor().status(self.operation)
+        self.assertEqual(("unknown", "terminal_collection_unverified"), (result["state"], result["reason"]))
 
     def test_a_failed_deny_row_needs_no_join(self):
         self.finished(exit_code=1, raw=self.job_receipt(exit_code=1))

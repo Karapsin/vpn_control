@@ -2186,7 +2186,14 @@ unless it comes from this evidence. The observation reads each journal without c
 - `approval-unproven`: a grant run whose package is proven but whose receipt does
   not prove its approving account, the coordinator elevated under it and the worker
   as the original user.
-- `installed-package-unproven`, `approval-unproven`, `stopped`, `refused` (exit 2, no receipt), `setup`,
+- `approval-unanswered`: a TUN grant (`approveJoin`) whose prompt expired into the
+  product's `cancelled` known end because its `windows-uac-decision` refused before
+  any input. Collect reads that from the decision's host folder (`_READ_DECISION`:
+  no input journal, every attempt terminal `input-refused` with nothing attempted,
+  none refused for a prompt another decision burned or whose input stays unknown) and
+  names it `approve-refused:<reason>` in `uacDecision`. Nothing approved the broker,
+  so the run says nothing of the product.
+- `installed-package-unproven`, `approval-unproven`, `approval-unanswered`, `stopped`, `refused` (exit 2, no receipt), `setup`,
   `failed-before-task` (a known failure before the owner's task ran) and
   `failed-after-task` never count. `failed-after-task` is a known failure of the
   harness once the task finished: the task journal (`task_events`), the command line
@@ -2341,7 +2348,15 @@ Proof comes before any key: reviewed pixel crops of a QMP frame and a SYSTEM
 census of `consent.exe` (one, System32, signed by Microsoft Windows, parent
 Appinfo, younger than 90 s), the owner's pending event and the UAC policy. The
 90 s rule holds at the burn, counting frames read after the census, and a dark
-field is read again within the gate, since the caret blinks there. Deny is
+field is read again within the gate, since the caret blinks there. A refusal at
+that bound (`instance_uac_frame_unrecognized` or `instance_uac_field_not_empty`)
+also says what its last frame showed, in a `frame` field of the refusal and its
+journaled result: `cropsMatched`, per reviewed crop in the profile's order (the
+`account` crop last), and `fieldDarkPixels`. Every crop false is a screen without
+the reviewed prompt, such as one waiting as a taskbar button; one false crop is
+something over that region, such as the arrow or a hovered button. The facts never
+admit a frame: the gate still needs every crop. The two kept frames stay in the
+decision's folder of the VM root, which no closed action reads. Deny is
 one Esc and opens no credential. Approve reads the approving account's secret through
 `SecretFile` and passes it on SSH stdin to a detached child: `final-administrator.secret`,
 or for the one row of the closed table `APPROVERS`, `different-admin`, the clone's

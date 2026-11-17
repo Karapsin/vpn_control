@@ -67,6 +67,10 @@ _EVIDENCE_NAME = re.compile(r"evidence-[0-9]{1,6}\.zip\Z")
 # windows_uac_decision writes exactly these fields in a known input's terminal.
 _DECISION_FIELDS = frozenset({"state", "operationId", "attempt", "decision", "prompt", "promptClosed", "approvalSucceeded",
                               "productOutcomeProved", "replayAllowed"})
+# _READ_DECISION's reply for a decision every attempt of which ended refused before any input; and what collect names then.
+_REFUSED_REASON = re.compile(r"instance_[a-z_]{1,64}\Z")
+_REFUSED_ELSEWHERE = frozenset({"instance_uac_prompt_burned", "instance_uac_original_input_unknown"})
+_UNANSWERED = re.compile(r"approve-refused:instance_[a-z_]{1,64}\Z")
 _BIRTH = re.compile(r"(?:linux:([1-9][0-9]*)|darwin:([0-9]+):([0-9]+))\Z")
 # The public route that started a job, recorded in its private local state before any connection.
 ROUTES = frozenset({"direct", "mcp"})
@@ -1009,17 +1013,42 @@ os.unlink(temporary);d=os.open(directory,os.O_RDONLY);os.fsync(d);os.close(d)
 print(json.dumps({"state":"staged" if present() else "differs"}))'''
 
 # The decision's own input terminal, read from the VM root it was written under. Two token arguments, no source.
+# Without one, a decision whose every attempt ended refused before any input reads as that refusal (windows_uac_decision
+# _UacOwner.fail): no input journal, each attempt's terminal input-refused with nothing attempted, and none refused for a
+# prompt another decision burned or whose input stays unknown. An attempt with no terminal yet, or anything else, is
+# unavailable, exactly as before.
 _READ_DECISION = r'''import json,os,re,stat,sys
 root,decision=sys.argv[1:]
-try:
- if re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',decision) is None:raise ValueError()
- fd=os.open(os.path.join(root,'windows-uac',decision,'input.terminal.json'),os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+def load(path):
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
  try:
   info=os.fstat(fd)
   if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or not 0<info.st_size<=65536: raise ValueError()
   raw=os.read(fd,65537)
  finally: os.close(fd)
- print(json.dumps({"state":"read","value":json.loads(raw)},separators=(",",":")))
+ return json.loads(raw)
+def refused(directory):
+ info=os.lstat(directory)
+ if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700: raise ValueError()
+ if os.path.lexists(os.path.join(directory,'input.intent.json')): raise ValueError()
+ names=os.listdir(directory)
+ if len(names)>256: raise ValueError()
+ numbers=sorted(found[1] for found in (re.fullmatch(r'attempt-([0-9]{4})\.intent\.json',name) for name in names) if found)
+ if not numbers: raise ValueError()
+ for number in numbers:
+  value=load(os.path.join(directory,'attempt-'+number+'.terminal.json'))
+  if type(value) is not dict: raise ValueError()
+  reason=value.get('reason')
+  if (value.get('state')!='input-refused' or value.get('inputAttempted') is not False or value.get('operationId')!=decision
+      or value.get('attempt')!=int(number) or type(reason) is not str or re.fullmatch('instance_[a-z_]{1,64}',reason) is None
+      or reason in ('instance_uac_prompt_burned','instance_uac_original_input_unknown')): raise ValueError()
+ return {"state":"refused","attempts":len(numbers),"reason":reason}
+try:
+ if re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',decision) is None:raise ValueError()
+ directory=os.path.join(root,'windows-uac',decision)
+ try: value=load(os.path.join(directory,'input.terminal.json'))
+ except FileNotFoundError: print(json.dumps(refused(directory),separators=(",",":")))
+ else: print(json.dumps({"state":"read","value":value},separators=(",",":")))
 except Exception: print(json.dumps({"state":"unavailable"},separators=(",",":")))'''
 
 _PULL = r'''import base64,json,os,stat,sys
@@ -1201,6 +1230,24 @@ def _read_private(path: Path) -> Any:
         _need(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and not stat.S_IMODE(info.st_mode) & 0o077,
               "windows_scenario_private_state_unsafe")
         return json.loads(stream.read())
+
+
+def _refused_before_input(reply: Any) -> bool:
+    """_READ_DECISION's refusal: every attempt ended input-refused with nothing attempted, and none for another's input."""
+    return (isinstance(reply, Mapping) and set(reply) == {"state", "attempts", "reason"} and reply["state"] == "refused"
+            and type(reply["attempts"]) is int and reply["attempts"] >= 1 and isinstance(reply["reason"], str)
+            and _REFUSED_REASON.fullmatch(reply["reason"]) is not None and reply["reason"] not in _REFUSED_ELSEWHERE)
+
+
+def _approval_unanswered(row: Mapping[str, Any], summary: Mapping[str, Any], receipt: Mapping[str, Any]) -> bool:
+    """A grant whose prompt expired into the product's CANCELLED because the reviewed decision refused before any input:
+    collect joined that refusal (_decision_joined). Nothing approved the broker, so the run says nothing of the product."""
+    uac = row.get("uac") or {}
+    windows = summary.get("windows") if isinstance(summary.get("windows"), Mapping) else {}
+    tun = receipt.get("tun") if isinstance(receipt.get("tun"), Mapping) else {}
+    joined = windows.get("uacDecision")
+    return (uac.get("decision") == "approve" and row.get("approveJoin") is True and tun.get("knownEnd") == "cancelled"
+            and isinstance(joined, str) and _UNANSWERED.fullmatch(joined) is not None)
 
 
 def _start_ticks(birth: Any) -> int | None:
@@ -1671,8 +1718,10 @@ class NativeScenarioWindowsDriver:
         A grant's receipt proves the approved broker ran as the approving administrator, but not who typed the
         credential: the join names the reviewed decision as the one approval. A grant's prompt that expired because the
         decision never typed ends in that same CANCELLED, a known end the driver exits 1 with: its failure is the
-        product's only after a typed approval closed the prompt. Without that terminal it stays unsettled, as a deny
-        row's pass does, rather than stand as a failure of the product. Any other failure needs no join.
+        product's only after a typed approval closed the prompt. A decision whose every attempt refused before any input
+        is a known end too: the run is collected failed and names that refusal, which the matrix reads as
+        approval-unanswered and never counts. Without either it stays unsettled, as a deny row's pass does, rather than
+        stand as a failure of the product. Any other failure needs no join.
         """
         row = _row(plan.scenario_id)
         uac = row.get("uac") or {}
@@ -1692,7 +1741,14 @@ class NativeScenarioWindowsDriver:
                   and value["replayAllowed"] is False and type(value["attempt"]) is int)
         if joined:
             summary["windows"]["uacDecision"] = uac["decision"] + "-acknowledged-prompt-closed"
-        return joined
+            return True
+        # Its CANCELLED after a decision that refused before any input (native c7b6562a) is a known end of the decision:
+        # collected failed and naming that refusal, which the matrix never counts (approval-unanswered). A pass and a deny
+        # row never join a refusal: nothing typed proves either.
+        if cancelled and _refused_before_input(reply):
+            summary["windows"]["uacDecision"] = "approve-refused:" + reply["reason"]
+            return True
+        return False
 
     def _summary(self, plan: native_scenario_execution.ScenarioPlan, raw: bytes, job_exit: Any) -> dict[str, Any] | None:
         receipt = json.loads(raw)
@@ -2130,8 +2186,11 @@ def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
         elif receipt.get("result") == "failed":
             # A verdict on the installed product needs its task to have run, and is the owner's own: its exit 1, which a
             # case oracle failure ends with. An earlier stop is the row's setup; a failure after the task (the task journal,
-            # the command line read, the evidence copy, the declaration, another exit) is the harness's.
-            if task.get("state") != "task-finished":
+            # the command line read, the evidence copy, the declaration, another exit) is the harness's. A grant's CANCELLED
+            # whose prompt the reviewed decision never answered is the decision's, never the product's.
+            if _approval_unanswered(row, summary, receipt):
+                kind = "approval-unanswered"
+            elif task.get("state") != "task-finished":
                 kind = "failed-before-task"
             elif receipt.get("failure") == "task_exit_code" and all(type(task.get(key)) is int and task[key] == 1
                                                                    for key in ("ownerExitCode", "terminalExitCode")):
@@ -2606,8 +2665,8 @@ def matrix_observation(root: Path | str, requirement_id: str, correlation_ids: A
     MCP when it represents a route shape of the set (_mcp_route) or else by its MCP admission dry run (mcp_admission),
     all on one package, and every settled failed or unknown run of those rows on that package, named or not,
     already in a recorded observation of the requirement. A failed or unknown row yields a failed or unknown
-    observation at once. Setup, stopped, refused, installed-package-unproven, approval-unproven, failed-before-task and
-    failed-after-task rows never count. A failed-principal run is a failed one of its MATRIX_PRINCIPAL scenario alone,
+    observation at once. Setup, stopped, refused, installed-package-unproven, approval-unproven, approval-unanswered,
+    failed-before-task and failed-after-task rows never count. A failed-principal run is a failed one of its MATRIX_PRINCIPAL scenario alone,
     and of no other. An update run counts only with the package read after its task bound to an install journal of its clone (the
     target after a granted install, otherwise the base it started from), and its entry names both installs. A grant
     run also counts only with its approval proven, and its entry names it (approval-unproven otherwise).

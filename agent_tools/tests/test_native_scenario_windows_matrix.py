@@ -79,6 +79,7 @@ class FakeDriver:
     def __init__(self, case):
         self.case, self.outcomes = case, {}
         self.extra = {}  # Receipt fields a row's job wrote beyond these (an install's record, an update's names and claim).
+        self.joined = {}  # What collect's decision join named in the summary (_decision_joined's uacDecision), by correlation.
 
     @staticmethod
     def identity(plan):
@@ -130,8 +131,11 @@ class FakeDriver:
                                    "principal": PROBE.get(kind, probe_outcome() if kind == "passed" else None) if document["principalProbe"] else None}
         receipt.update(json.loads(json.dumps(self.extra.get(plan.correlation_id, {}))))
         raw = (json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n").encode()
-        return windows.NativeScenarioWindowsDriver(self.case.root, lambda value: self.case.root)._summary(
+        summary = windows.NativeScenarioWindowsDriver(self.case.root, lambda value: self.case.root)._summary(
             plan, raw, {"schemaVersion": 1, "operationId": plan.correlation_id, "exitCode": code})
+        if plan.correlation_id in self.joined:
+            summary["windows"]["uacDecision"] = self.joined[plan.correlation_id]
+        return summary
 
 
 @unittest.skipUnless(os.name == "posix", "private scenario journals are POSIX")
@@ -169,8 +173,9 @@ class MatrixBase(unittest.TestCase):
         return artifact
 
     def row(self, scenario, route="direct", kind="passed", *, target=None, source=None, machine=MACHINE, extra=None, value=None,
-            artifacts=None):
-        """One run journaled by the real executor; extra, value and artifacts add receipt fields, input fields and artifact IDs."""
+            artifacts=None, joined=None):
+        """One run journaled by the real executor; extra, value and artifacts add receipt fields, input fields and artifact IDs,
+        and joined the decision collect joined."""
         correlation = str(uuid.uuid4())
         recipe = windows.RECIPES[scenario]
         named = {"bundleManifest": "sha256-" + self.bundle_hash}
@@ -186,6 +191,8 @@ class MatrixBase(unittest.TestCase):
         self.driver.outcomes[correlation] = kind
         if extra is not None:
             self.driver.extra[correlation] = extra
+        if joined is not None:
+            self.driver.joined[correlation] = joined
         self.executor.start({"scenarioId": scenario, "host": "fixture", "environment": machine, "bundleHash": self.bundle_hash,
                              "artifactIds": artifacts, "correlationId": correlation})
         if kind != "submitted":
@@ -407,6 +414,59 @@ class FailedAndUnknownTests(MatrixBase):
                 with self.subTest(row=row):
                     observation = self.observe([self.row(row, "direct", "failed")])
                     self.assertEqual(("failed", {"ssh-import-routing": "failed"}), (observation["result"], observation["scenarioResults"]))
+
+
+class UnansweredApprovalTests(MatrixBase):
+    """A TUN grant whose prompt expired into the product's CANCELLED because the reviewed decision refused before any input.
+
+    Native c7b6562a (S_D4, vpn-commit-failure): collect now joins that refusal (_decision_joined names
+    approve-refused:<reason>), so the run is collected failed. Nothing approved the broker, so it says nothing of the
+    product: approval-unanswered never counts, never fails the requirement and never holds a later pass."""
+    GRANT = "windows-scoped-tun.restart-grant"
+    REFUSED = "approve-refused:instance_uac_frame_unrecognized"
+
+    def setUp(self):
+        super().setUp()
+        table = dict(TEST_TABLE, **{NATIVE[0]: (self.GRANT,)})
+        patcher = mock.patch.dict(windows.MATRIX_SCENARIOS, {"windows-native-cli": table})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def cancelled(self, route="direct", joined=REFUSED, known_end="cancelled"):
+        return self.row(self.GRANT, route, "failed", extra={"tun": {"variant": "restart-grant", "collectors": {}, "knownEnd": known_end}},
+                        joined=joined)
+
+    def others(self):
+        return [*self.complete(), self.row(self.GRANT, "mcp")]
+
+    def classification(self, rows, correlation):
+        review = windows.matrix_review(self.root, "windows-native-cli", rows)
+        return next(row for row in review["rows"] if row["correlationId"] == correlation)["classification"], review
+
+    def test_it_never_counts_and_never_fails_the_requirement(self):
+        unanswered = self.cancelled()
+        rows = [*self.others(), unanswered]
+        kind, review = self.classification(rows, unanswered)
+        self.assertEqual("approval-unanswered", kind)
+        self.assertEqual("missing", review["scenarios"][NATIVE[0]], "the grant has no passed direct run")
+        self.assert_refused(rows, "windows_matrix_incomplete:1")
+        self.assert_refused([unanswered], "windows_matrix_incomplete:15")
+        self.assertFalse(self.root.joinpath(*windows._MATRIX_EVIDENCE).exists(), "no failed record is made of it")
+
+    def test_it_does_not_hold_a_later_pass_of_its_package(self):
+        self.cancelled()
+        observation = self.observe([*self.others(), self.row(self.GRANT, "direct")])
+        self.assertEqual("passed", observation["result"])
+
+    def test_a_typed_approval_or_another_end_stays_the_products_failure(self):
+        for joined, known_end in (("approve-acknowledged-prompt-closed", "cancelled"), (self.REFUSED, "RUNTIME_FAILED"), (None, "cancelled")):
+            with self.subTest(joined=joined, known_end=known_end):
+                run = self.cancelled(joined=joined, known_end=known_end)
+                self.assertEqual("failed", self.classification([run], run)[0])
+
+    def test_only_a_grant_row_reads_it(self):
+        run = self.row(SMK, "direct", "failed", extra={"tun": {"knownEnd": "cancelled"}}, joined=self.REFUSED)
+        self.assertEqual("failed", self.classification([run], run)[0])
 
 
 # TEST-008. The reason the owner journal of DOC run 83484649 (S_D, 2026-11-09) closed its exit 1 with: the harness's own

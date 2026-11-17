@@ -367,6 +367,117 @@ class ProofBeforeKeyTests(FlowBase):
         self.assertEqual(1, sum(command == "input-send-event" for command, _ in self.monitor_calls))
 
 
+def with_arrow(raw, x, y, size=4):
+    """The frame with a dark block at (x, y), as the arrow the guest draws into the framebuffer would add."""
+    prefix = b"P6\n%d %d\n255\n" % (WIDTH, HEIGHT)
+    pixels = bytearray(raw[len(prefix):])
+    for row in range(y, y + size):
+        for column in range(x, x + size):
+            pixels[(row * WIDTH + column) * 3:(row * WIDTH + column) * 3 + 3] = b"\x10\x10\x10"
+    return prefix + bytes(pixels)
+
+
+class RefusedFrameFactsTests(FlowBase):
+    """A refusal at the frame bound says, per reviewed crop, whether its last frame showed that crop, and how dark the field was.
+
+    Native c7b6562a (S_D4, approve 4bd56d3e): the reviewed vpn-broker profile never matched for 30 s and the decision refused
+    instance_uac_frame_unrecognized. Its two kept frames stay in the VM host's root, which no closed action reads, so the
+    refusal could not tell a prompt waiting in the taskbar (no crop shown) from an arrow or a hovered button over one crop
+    (the others shown). The facts are public: the field is empty or refused, no key was sent and nothing is burned."""
+    SECOND = [0, 20, 100, 30]
+
+    def values(self, *args, **kwargs):
+        values = super().values(*args, **kwargs)
+        crops = values["UAC_SCREEN"]["crops"] + [{"rect": list(self.SECOND), "sha256": crop_hash()}]
+        return {**values, "UAC_SCREEN": {**values["UAC_SCREEN"], "crops": crops}}
+
+    def test_an_unrecognized_frame_names_the_reviewed_crops_it_showed(self):
+        terminal = self.run_owner(frames=[with_arrow(frame(), 5, 24)])
+        self.assert_refused_no_key(terminal, "instance_uac_frame_unrecognized")
+        self.assertEqual({"cropsMatched": [True, False], "fieldDarkPixels": 0}, terminal["frame"])
+
+    def test_a_screen_without_the_prompt_shows_no_crop(self):
+        terminal = self.run_owner(frames=[frame(fill=199)])
+        self.assert_refused_no_key(terminal, "instance_uac_frame_unrecognized")
+        self.assertEqual({"cropsMatched": [False, False], "fieldDarkPixels": 0}, terminal["frame"])
+
+    def test_the_facts_are_those_of_the_last_frame_read(self):
+        terminal = self.run_owner(frames=[frame(fill=199)] * 3 + [with_arrow(frame(), 5, 4)])
+        self.assertEqual({"cropsMatched": [False, True], "fieldDarkPixels": 0}, terminal["frame"])
+
+    def test_a_field_with_characters_names_every_crop_shown_and_its_dark_pixels(self):
+        terminal = self.run_owner(frames=[frame(dots=5)])
+        self.assert_refused_no_key(terminal, "instance_uac_field_not_empty")
+        self.assertEqual({"cropsMatched": [True, True], "fieldDarkPixels": 5}, terminal["frame"])
+
+    def test_no_other_refusal_and_no_answer_carries_frame_facts(self):
+        self.assert_refused_no_key(self.run_owner(censuses=[census(events=[])]), "instance_uac_event_not_pending")
+        self.assertNotIn("frame", self.owner.terminal())
+        shutil.rmtree(self.root / "windows-uac")
+        self.assert_refused_no_key(self.run_owner(frames=[frame(fill=0)]), "instance_uac_display_black")
+        self.assertNotIn("frame", self.owner.terminal())
+        shutil.rmtree(self.root / "windows-uac")
+        terminal = self.run_owner()
+        self.assertEqual("input-ack-only", terminal["state"])
+        self.assertEqual(decision._ACK_FIELDS, set(terminal))
+
+
+@unittest.skipUnless(POSIX, "the VM host is Linux")
+class RefusedDecisionHostReadTests(FlowBase):
+    """Collect's own host read of a decision (native_scenario_windows._READ_DECISION), run for real over the files the real
+    owner leaves: an approval refused before any input is known as that refusal, and anything that could have typed is not."""
+
+    def read(self):
+        result = subprocess.run([sys.executable, "-I", "-c", windows._READ_DECISION, str(self.root), self.decision],
+                                capture_output=True, check=True, timeout=60)
+        return json.loads(result.stdout)
+
+    def test_a_decision_refused_before_any_input_reads_as_refused(self):
+        self.assert_refused_no_key(self.run_owner(frames=[frame(fill=199)]), "instance_uac_frame_unrecognized")
+        self.assertEqual({"state": "refused", "attempts": 1, "reason": "instance_uac_frame_unrecognized"}, self.read())
+
+    def test_every_attempt_must_have_ended_refused_and_the_last_one_names_the_reason(self):
+        self.run_owner(censuses=[census(consents=[])])
+        self.clock[0] = 100.0
+        self.run_owner(attempt=2, frames=[frame(fill=199)])
+        self.assertEqual({"state": "refused", "attempts": 2, "reason": "instance_uac_frame_unrecognized"}, self.read())
+        decision._uac_create(self.root / "windows-uac" / self.decision / "attempt-0003.intent.json",
+                             {"operationId": self.decision, "attempt": 3, "decision": "approve", "replayAllowed": False})
+        self.assertEqual({"state": "unavailable"}, self.read(), "an attempt with no terminal may still be typing")
+
+    def test_a_known_input_still_reads_as_its_terminal(self):
+        self.run_owner()
+        value = self.read()
+        self.assertEqual(("read", "input-ack-only"), (value["state"], value["value"]["state"]))
+
+    def clear(self):
+        for path in self.root.iterdir():
+            shutil.rmtree(path) if path.is_dir() else path.unlink()
+
+    def test_nothing_that_could_have_typed_reads_as_refused(self):
+        self.assertEqual({"state": "unavailable"}, self.read(), "no decision folder")
+        self.key_failure = 3
+        self.run_owner()
+        self.assertEqual("input-owner-unknown", self.owner.terminal()["state"])
+        self.assertEqual({"state": "unavailable"}, self.read(), "a burned prompt whose input stays unknown")
+        self.clear()
+        self.key_failure = None
+        self.run_owner()
+        other = decision.decision_id(str(uuid.uuid4()))
+        self.run_owner(operation=other)
+        self.decision = other
+        self.assertEqual("instance_uac_prompt_burned", self.owner.terminal()["reason"])
+        self.assertEqual({"state": "unavailable"}, self.read(), "another decision answered this prompt")
+        self.clear()
+        self.decision = decision.decision_id(CORRELATION)
+        self.run_owner(frames=[frame(fill=199)])
+        terminal = self.root / "windows-uac" / self.decision / "attempt-0001.terminal.json"
+        value = json.loads(terminal.read_text())
+        terminal.unlink()
+        decision._uac_create(terminal, {**value, "inputAttempted": True})
+        self.assertEqual({"state": "unavailable"}, self.read(), "a terminal that says input was attempted")
+
+
 class AnswerTests(FlowBase):
     def test_deny_is_one_esc_and_its_row_carries_no_secret(self):
         row = "windows-scoped-tun.restart-deny"
@@ -1199,6 +1310,34 @@ class ExecuteInputTests(ExecuteBase):
         self.assertEqual(("refused", "instance_uac_frame_unrecognized"), (learned["state"], learned["reason"]))
         self.assertEqual(learned, self.execute(), "a refusal learned by status ends the submits too")
         self.assertEqual(["uac-decide", "uac-status"], [packet["mode"] for packet in self.packets])
+
+    def test_a_frame_refusal_brings_its_frame_facts_into_the_reply_and_the_journal(self):
+        facts = {"cropsMatched": [True, False, True], "fieldDarkPixels": 0}
+        self.replies = [{**self.refused("instance_uac_frame_unrecognized"), "frame": facts}]
+        first = self.execute()
+        self.assertEqual(("refused", "instance_uac_frame_unrecognized", facts), (first["state"], first["reason"], first.get("frame")))
+        kept = json.loads((self.root / ".runtime/windows-uac-decisions" / self.decision / "attempt-0001.result.json").read_text())
+        self.assertEqual(facts, kept.get("frame"))
+        self.assertEqual(first, self.execute(), "the final refusal is returned again with its facts and no packet")
+        self.assertEqual(["uac-decide"], [packet["mode"] for packet in self.packets])
+
+    def test_frame_facts_cross_only_closed_and_only_with_a_frame_refusal(self):
+        good = {"cropsMatched": [True], "fieldDarkPixels": 3}
+        for reason, facts, crossed in (("instance_uac_field_not_empty", good, True),
+                                       ("instance_uac_event_mismatch", good, False),
+                                       ("instance_uac_frame_unrecognized", {**good, "extra": 1}, False),
+                                       ("instance_uac_frame_unrecognized", {"cropsMatched": [], "fieldDarkPixels": 0}, False),
+                                       ("instance_uac_frame_unrecognized", {"cropsMatched": [True] * 9, "fieldDarkPixels": 0}, False),
+                                       ("instance_uac_frame_unrecognized", {"cropsMatched": [1], "fieldDarkPixels": 0}, False),
+                                       ("instance_uac_frame_unrecognized", {"cropsMatched": [True], "fieldDarkPixels": -1}, False),
+                                       ("instance_uac_frame_unrecognized", {"cropsMatched": [True], "fieldDarkPixels": True}, False),
+                                       ("instance_uac_frame_unrecognized", "facts", False)):
+            with self.subTest(reason=reason, facts=facts):
+                shutil.rmtree(self.root / ".runtime/windows-uac-decisions", ignore_errors=True)
+                self.replies = [{**self.refused(reason), "frame": facts}]
+                result = self.execute()
+                self.assertEqual(("refused", reason), (result["state"], result["reason"]), "a malformed fact never hides the refusal")
+                self.assertEqual(facts if crossed else None, result.get("frame"))
 
     def test_a_late_prompt_is_not_yet_for_a_bounded_number_of_gates(self):
         """Find Best validates its candidates before it prepares the broker, so its prompt may come after a whole gate.

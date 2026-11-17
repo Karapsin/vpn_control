@@ -294,7 +294,7 @@ def _uac_close_fence(root,save,decision,pid,code):
 class _UacOwner:
     """One detached memory-only owner; no SSH descriptor or private stream survives the fork."""
     def __init__(self,root,decision,attempt):
-        self.root=root;self.decision=decision;self.attempt=attempt;self.child=False;self.burned=False
+        self.root=root;self.decision=decision;self.attempt=attempt;self.child=False;self.burned=False;self.frame=None
         self.parent=root/'windows-uac';self.directory=self.parent/decision;self.prefix='attempt-%04d'%attempt
     def _directory(self,path):
         import os,stat
@@ -375,10 +375,13 @@ class _UacOwner:
         path=self.directory/(self.prefix+'.terminal.json')
         if not os.path.lexists(path):_uac_create(path,result)
     def fail(self,reason):
-        """Nothing burned means no key was possible. After the burn the input stays unknown until status reads it."""
+        """Nothing burned means no key was possible. After the burn the input stays unknown until status reads it.
+
+        A refusal at the frame bound also names what its last frame showed (_uac_frame_facts): public, since no key was sent."""
         import os
         if os.path.lexists(self.directory/'input.terminal.json'):return self.finish(_uac_load(self.directory/'input.terminal.json'))
-        self.finish({'state':'input-owner-unknown'if self.burned else'input-refused','operationId':self.decision,'attempt':self.attempt,'reason':reason,'inputAttempted':self.burned,'replayAllowed':False})
+        self.finish({'state':'input-owner-unknown'if self.burned else'input-refused','operationId':self.decision,'attempt':self.attempt,'reason':reason,'inputAttempted':self.burned,'replayAllowed':False,
+                     **({'frame':self.frame}if self.frame is not None and not self.burned else{})})
 
 def _uac_census(value,fresh):
     """One census against the closed row. None means the prompt has not appeared yet."""
@@ -412,13 +415,32 @@ def _uac_census(value,fresh):
     need(0<=row['ageSeconds']<UAC_PROMPT_AGE,'instance_uac_prompt_age')
     return {'pid':row['pid'],'birth':row['birth'],'sessionId':row['sessionId'],'ageSeconds':row['ageSeconds'],'event':events[0]['name']}
 
-def _uac_field_empty(raw):
-    """Dark pixels in the password box: an entered character would add more than the review allowed."""
+def _uac_field_dark(raw):
+    """Dark pixels in the password box, or 0 for a frame the box does not fit."""
     w,h,pixels=ppm(raw);x0,y0,x1,y1=UAC_FIELD['rect'];dark=0
+    if not(x1<=w and y1<=h):return 0
     for y in range(y0,y1):
         row=pixels[(y*w+x0)*3:(y*w+x1)*3]
         dark+=sum(max(row[at:at+3])<UAC_DARK_LEVEL for at in range(0,len(row),3))
-    return dark<=UAC_FIELD['maxDarkPixels']
+    return dark
+
+def _uac_field_empty(raw):
+    """Dark pixels in the password box: an entered character would add more than the review allowed."""
+    return _uac_field_dark(raw)<=UAC_FIELD['maxDarkPixels']
+
+def _uac_frame_facts(raw):
+    """What a refused frame showed, and nothing else: per reviewed crop in UAC_SCREEN's order whether the frame showed it
+    exactly, and the field's dark pixels.
+
+    screen_gate stops at the first crop it does not find, so its refusal cannot tell a prompt that is not on the screen at
+    all (a prompt waiting in the taskbar shows no crop) from an arrow or a hovered button over one region (the rest shown).
+    """
+    w,h,pixels=ppm(raw);shown=[]
+    for row in UAC_SCREEN['crops']:
+        x0,y0,x1,y1=row['rect']
+        shown.append((w,h)==(UAC_SCREEN['width'],UAC_SCREEN['height'])and x1<=w and y1<=h
+                     and hashlib.sha256(b''.join(pixels[(y*w+x0)*3:(y*w+x1)*3]for y in range(y0,y1))).hexdigest()==row['sha256'])
+    return {'cropsMatched':shown,'fieldDarkPixels':_uac_field_dark(raw)}
 
 def _uac_prior_open(root,consent):
     """A new decision never types into a prompt whose earlier input stays unknown."""
@@ -497,7 +519,9 @@ def _uac_gate(owner,root,monitor,guard,script,fresh):
             except ValueError as error:
                 if str(error)!='instance_login_screen_unrecognized':raise
                 failed='instance_uac_frame_unrecognized'
-            need(time.monotonic()<limit,failed)
+            if time.monotonic()>=limit:
+                # The refusal names what its last frame showed; the frames themselves stay in this folder of the VM root.
+                owner.frame=_uac_frame_facts(raw);raise ValueError(failed)
             guard();time.sleep(.25)
     first,_=census();recognized()
     second,read=census();need((second['pid'],second['birth'])==(first['pid'],first['birth']),'instance_uac_consent_changed')
@@ -762,7 +786,8 @@ def _uac_review_status_open(root,review):
 
 
 _DECIDE_SOURCES = (PrivateInputUnknown, private_keys, enter_private, ppm, screen_gate, _uac_load, _uac_create, _uac_birth, _uac_exit_source,
-                   _uac_close_fence, _UacOwner, _uac_census, _uac_field_empty, _uac_prior_open, _uac_gate, _uac_flow)
+                   _uac_close_fence, _UacOwner, _uac_census, _uac_field_dark, _uac_field_empty, _uac_frame_facts, _uac_prior_open, _uac_gate,
+                   _uac_flow)
 _STATUS_SOURCES = (_uac_load, _uac_create, _uac_birth, _uac_exit_source, _uac_close_fence, _uac_receipts, _uac_status_open)
 # The review embeds no input code: no key encoder, no secret, no owner fork and no stdin.
 _REVIEW_SOURCES = (ppm, _uac_load, _uac_create, _uac_directory, _uac_publish, _uac_review_frame, _UacReview, _uac_census, _uac_prior_open,
@@ -1325,6 +1350,19 @@ def _reply(result, private):
 
 
 _ACK_FIELDS = frozenset({"state", "operationId", "attempt", "decision", "prompt", "promptClosed", "approvalSucceeded", "productOutcomeProved", "replayAllowed"})
+# The refusals at the frame bound, whose terminal names what the last frame showed (_uac_frame_facts).
+_FRAME_REASONS = frozenset({"instance_uac_frame_unrecognized", "instance_uac_field_not_empty"})
+
+
+def _frame_facts(value):
+    """A frame refusal's facts as they may cross, or None: a malformed fact is dropped and never hides the refusal."""
+    facts = value.get("frame")
+    if (value.get("reason") not in _FRAME_REASONS or type(facts) is not dict or set(facts) != {"cropsMatched", "fieldDarkPixels"}
+            or type(facts["cropsMatched"]) is not list or not 1 <= len(facts["cropsMatched"]) <= 8
+            or any(type(item) is not bool for item in facts["cropsMatched"])
+            or type(facts["fieldDarkPixels"]) is not int or not 0 <= facts["fieldDarkPixels"] <= 4096 * 2160):
+        return None
+    return {"cropsMatched": list(facts["cropsMatched"]), "fieldDarkPixels": facts["fieldDarkPixels"]}
 
 
 def _project(value, decision, inputs, *, submitted):
@@ -1345,7 +1383,8 @@ def _project(value, decision, inputs, *, submitted):
         if (value.get("inputAttempted") is not False or type(reason) is not str or _PUBLIC_REASON.fullmatch(reason) is None
                 or type(value.get("attempt")) is not int):
             return unknown
-        return {"state": "refused", "reason": reason, "attempt": value["attempt"], **public}
+        facts = _frame_facts(value)
+        return {"state": "refused", "reason": reason, "attempt": value["attempt"], **public, **({"frame": facts} if facts else {})}
     if state == "blocked" and type(reason) is str and _PUBLIC_REASON.fullmatch(reason) is not None:
         # A decide packet prints this only before its fork, so no owner exists. Status proves nothing by it.
         return ({"state": "refused", "reason": reason, **public} if submitted else {"state": "unknown", "reason": reason, **public})
