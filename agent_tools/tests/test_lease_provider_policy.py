@@ -103,6 +103,12 @@ class LeaseProviderPolicyTests(unittest.TestCase):
             owners = [group for group in actual['groups'] if action in group.get('actions', {})]
             self.assertEqual(1, len(owners))
             self.assertEqual('vm_workflow:windows-desktop-test-status', owners[0]['actions'].pop(action))
+        # Later reviewed git_workflow actions of the ci/* pre-merge gate (RELEASE-001): abandon and cleanup.
+        for action, owner in (('abandon', 'git_workflow:checks'), ('cleanup', 'workflow_status:call')):
+            owners = [group for group in actual['groups']
+                      if group.get('surface') == 'git_workflow' and action in group.get('actions', {})]
+            self.assertEqual(1, len(owners))
+            self.assertEqual(owner, owners[0]['actions'].pop(action))
         self.assertEqual(before, actual)
         self.assertEqual(PROVIDERS, set(variants))
 
