@@ -280,7 +280,8 @@ class DesktopProxyRuntimeManager(
 
     private suspend fun prepareLaunch(launch: DesktopRuntimeLaunch,
                                       caller: kotlin.coroutines.CoroutineContext): DesktopPreparedRuntimeProcess = try {
-        prepareLaunchNative(launch, caller)
+        // A prepared start supersedes an earlier broker failure: the export never shows a stale one as current.
+        prepareLaunchNative(launch, caller).also { lastWindowsBrokerFailure = null }
     } catch (failure: DesktopWindowsRuntimeFailure) {
         recordWindowsBrokerFailure(failure, launch.logFile)
         throw failure
@@ -371,7 +372,7 @@ class DesktopProxyRuntimeManager(
 
     @Volatile private var lastWindowsBrokerFailure: String? = null
 
-    /** The last scoped start's broker step, for the diagnostics export. */
+    /** The last failed scoped start's broker step and when it failed, until a later preparation succeeds. */
     fun lastWindowsBrokerFailure(): String? = lastWindowsBrokerFailure
 
     /**
@@ -379,7 +380,7 @@ class DesktopProxyRuntimeManager(
      * launch retires) and for the diagnostics export. The failure and its public code are unchanged.
      */
     private fun recordWindowsBrokerFailure(failure: Throwable, logFile: Path) {
-        DesktopWindowsBrokerExit.record(failure, logFile)?.let { lastWindowsBrokerFailure = it }
+        DesktopWindowsBrokerExit.record(failure, logFile)?.let { lastWindowsBrokerFailure = "$it at ${java.time.Instant.now()}" }
     }
 
     fun lastAttemptedConfigJson(): String? = lastAttemptedConfigJson

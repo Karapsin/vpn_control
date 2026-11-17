@@ -47,7 +47,7 @@ Windows checks:
 - An approved VPN start that ends `RUNTIME_FAILED` before the old runtime stops failed in the scoped broker. The
   broker's exit code names the last step it entered, and the product writes it as a `vpn-control: scoped Windows
   broker ended at step ...` line to `runtime-sing-box.log` and as `windows_vpn_broker_last_failure` in the
-  diagnostics export. The public error code stays `RUNTIME_FAILED`. The table is `VpnBrokerStep` in
+  diagnostics export, with the failure time, until a later start prepares. The public error code stays `RUNTIME_FAILED`. The table is `VpnBrokerStep` in
   `windows-vpn-broker.cs` and `DesktopWindowsBrokerExit` in Kotlin; `DesktopWindowsBrokerOwnerAccessTest` keeps
   them equal.
 
@@ -57,10 +57,11 @@ Windows checks:
   | 1 | `unclassified` | A failure outside every step below. |
   | 10 | `arguments` | The broker's argv. |
   | 11 | `runtime-authority` | The compiled runtime digest. |
-  | 20 | `owner-open` | `OpenProcess` of the owner, or a query on that handle (admission and `Run`). |
+  | 20 | `owner-open` | `OpenProcess` of the owner and its SeDebugPrivilege fallback (admission and `Run`). |
   | 21 | `owner-token` | `OpenProcessToken` of the owner: its token DACL refused the broker's account. |
   | 22 | `owner-identity` | The owner's PID, creation time, token user or liveness differ. |
   | 23 | `package-admission` | The owner and broker images, their ancestry, ProgramData and the install gate. |
+  | 24 | `owner-query` | `GetProcessTimes` or the image query on the opened owner handle. |
   | 30 | `pipe-create` | The pipe's DACL or `CreateNamedPipe`. |
   | 31 | `pipe-connect` | No client within 180 s. |
   | 32 | `peer` | The pipe client is not the owner, or the owner ended. |

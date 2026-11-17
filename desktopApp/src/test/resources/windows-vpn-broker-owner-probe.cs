@@ -25,6 +25,34 @@ public static class OwnerAccessProbe {
  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
  [DllImport("kernel32.dll")] static extern IntPtr GetCurrentThread();
  [DllImport("advapi32.dll",SetLastError=true)] static extern bool OpenThreadToken(IntPtr thread,uint access,bool self,out IntPtr token);
+ [DllImport("advapi32.dll",SetLastError=true)] static extern bool OpenProcessToken(IntPtr process,uint access,out IntPtr token);
+ [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+ [DllImport("advapi32.dll",SetLastError=true)] static extern bool GetTokenInformation(IntPtr token,int kind,IntPtr buffer,int length,out int needed);
+ [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool LookupPrivilegeValue(string system,string name,out long luid);
+ /** "absent", "disabled" or "enabled": SeDebugPrivilege in this token. */
+ static string Debug(IntPtr token) {
+  long luid;Need(LookupPrivilegeValue(null,"SeDebugPrivilege",out luid),"SeDebugPrivilege lookup failed");
+  int needed;GetTokenInformation(token,3,IntPtr.Zero,0,out needed);Need(needed>=4,"TokenPrivileges size unavailable");
+  IntPtr buffer=Marshal.AllocHGlobal(needed);
+  try {
+   Need(GetTokenInformation(token,3,buffer,needed,out needed),"TokenPrivileges unreadable");
+   int count=Marshal.ReadInt32(buffer);
+   for(int index=0;index<count;index++) {
+    int at=4+index*12;
+    long value=(uint)Marshal.ReadInt32(buffer,at)|((long)Marshal.ReadInt32(buffer,at+4)<<32);
+    if(value==luid) return (Marshal.ReadInt32(buffer,at+8)&2)!=0?"enabled":"disabled";
+   }
+   return "absent";
+  } finally { Marshal.FreeHGlobal(buffer); }
+ }
+ static string ProcessDebug() {
+  IntPtr token;Need(OpenProcessToken(GetCurrentProcess(),8,out token),"process token unreadable");
+  try { return Debug(token); } finally { CloseHandle(token); }
+ }
+ static string ThreadDebug() {
+  IntPtr token;if(!OpenThreadToken(GetCurrentThread(),8,true,out token)) return "no-thread-token";
+  try { return Debug(token); } finally { CloseHandle(token); }
+ }
  static void Need(bool value,string message) { if(!value) throw new Exception(message); }
  static string Case(Fake fake,out IntPtr handle,out int error) {
   handle=VpnBrokerOwnerProcess.Open(77,0x101040,fake,out error);return String.Join(",",fake.Log.ToArray());
@@ -55,11 +83,19 @@ public static class OwnerAccessProbe {
   Need(!Impersonating(),"the thread impersonated before any privilege scope");
   var type=typeof(VpnBrokerOwnerProcess).GetNestedType("FixedNative",System.Reflection.BindingFlags.NonPublic);
   var native=(VpnBrokerOwnerProcess.Native)Activator.CreateInstance(type,true);
+  // The privilege is enabled only on the thread token; the process token, which the runtime child inherits,
+  // keeps the state it had before, during and after the scope.
+  string processBefore=ProcessDebug();
   using(var scope=native.DebugPrivilegeOnThisThread()) {
    Need(scope==null?!Impersonating():Impersonating(),"the privilege scope and the thread token disagree");
+   if(scope!=null) {
+    Need(ThreadDebug()=="enabled","the thread token does not carry SeDebugPrivilege enabled: "+ThreadDebug());
+    Need(ProcessDebug()==processBefore,"the privilege scope changed the process token: "+processBefore+" -> "+ProcessDebug());
+   } else Need(processBefore=="absent","a token holding SeDebugPrivilege got no privilege scope");
   }
   Need(!Impersonating(),"the privilege scope left the thread impersonating");
-  return "BROKER_OWNER_ACCESS_OK:6";
+  Need(ProcessDebug()==processBefore,"the process token changed after the privilege scope");
+  return "BROKER_OWNER_ACCESS_OK:7";
  }
 }
 }

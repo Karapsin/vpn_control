@@ -38,7 +38,8 @@ internal class DesktopWindowsRuntimeFailure(
 ) : java.io.IOException(code) {
     fun withBrokerExit(exit: Int?): DesktopWindowsRuntimeFailure =
         if (exit == null || brokerExit != null) this
-        else DesktopWindowsRuntimeFailure(code, unresolvedRuntime, stage, retainedAdmission, exit)
+        // The original failure stays reachable as the cause; only the diagnostic exit is added.
+        else DesktopWindowsRuntimeFailure(code, unresolvedRuntime, stage, retainedAdmission, exit).also { it.initCause(this) }
 }
 
 internal enum class DesktopWindowsRuntimePreparationStage { AUTHORIZATION, HELPER_CONNECTION, PEER_IDENTITY, CAPTURED_INPUTS, CHILD_CREATED, READY }

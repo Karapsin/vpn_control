@@ -75,6 +75,7 @@ public static class VpnPackagedBrokerAdmission {
   try {
    VpnBrokerStep.Enter(VpnBrokerStep.OwnerOpen);
    Handle process=lease.Keep(native.OpenOwner(pid));
+   VpnBrokerStep.Enter(VpnBrokerStep.OwnerQuery);
    Owner owner=native.ObserveOwner(process);
    VpnBrokerStep.Enter(VpnBrokerStep.OwnerIdentity);
    RequireOwner(owner,pid,created,sid);
@@ -123,7 +124,7 @@ public static class VpnPackagedBrokerAdmission {
      Need(bytes[8]==0,"BUSY");
     }
    }
-   VpnBrokerStep.Enter(VpnBrokerStep.OwnerOpen);
+   VpnBrokerStep.Enter(VpnBrokerStep.OwnerQuery);
    Owner rechecked=native.ObserveOwner(process);
    VpnBrokerStep.Enter(VpnBrokerStep.OwnerIdentity);
    RequireOwner(rechecked,pid,created,sid);

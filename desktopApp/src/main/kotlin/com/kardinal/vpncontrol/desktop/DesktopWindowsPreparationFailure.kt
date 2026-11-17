@@ -36,6 +36,7 @@ internal object DesktopWindowsBrokerExit {
         21 to "owner-token",
         22 to "owner-identity",
         23 to "package-admission",
+        24 to "owner-query",
         30 to "pipe-create",
         31 to "pipe-connect",
         32 to "peer",

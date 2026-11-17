@@ -9,6 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
@@ -65,7 +66,7 @@ class DesktopWindowsBrokerOwnerAccessTest {
             val adjust = body.indexOf("AdjustTokenPrivileges(token,")
             if (impersonate < 0 || thread < impersonate || adjust < thread)
                 problems += "SeDebugPrivilege is not enabled on this thread's own impersonation token"
-            if (!body.contains("if(!RevertToSelf()) throw")) problems += "the privilege scope does not revert the thread, or ignores a failed revert"
+            if (!body.contains("if(!RevertToSelf()) Environment.FailFast(")) problems += "the privilege scope does not revert the thread, or survives a failed revert"
             if (!Regex("""if\s*\(\s*error\s*!=\s*AccessDenied\s*\)\s*return\s+IntPtr\.Zero""").containsMatchIn(body))
                 problems += "the privileged retry is not limited to an ACCESS_DENIED plain open"
         }
@@ -88,6 +89,9 @@ class DesktopWindowsBrokerOwnerAccessTest {
             abort = { true }, close = {}, unresolved = unresolved, brokerExit = { 34 })
         assertEquals("PERMISSION_DENIED", reported.code)
         assertEquals("job", DesktopWindowsBrokerExit.step(assertNotNull(reported.brokerExit)))
+        val original = DesktopWindowsRuntimeFailure("PERMISSION_DENIED")
+        assertSame(original, original.withBrokerExit(34).cause, "the diagnostic copy lost the original failure")
+        assertSame(original, original.withBrokerExit(null), "no exit, no copy")
         var read = false
         val unknown = desktopWindowsPreparationFailure(IllegalStateException("UNAVAILABLE"),
             DesktopWindowsRuntimePreparationStage.HELPER_CONNECTION, abort = { false }, close = {},
@@ -136,11 +140,11 @@ class DesktopWindowsBrokerOwnerAccessTest {
             error("unclosed $declaration")
         }
         val broker = code("windows-vpn-broker.cs")
-        assertEquals(listOf("OwnerOpen", "OwnerIdentity", "OwnerToken", "OwnerIdentity", "PipeCreate", "PipeConnect", "Peer",
+        assertEquals(listOf("OwnerOpen", "OwnerQuery", "OwnerIdentity", "OwnerToken", "OwnerIdentity", "PipeCreate", "PipeConnect", "Peer",
             "Protocol", "Job", "ResourcePreparation", "RuntimeImage", "Stage", "OriginalUser", "Stage", "Configuration",
             "ChildCreate", "ReadyAck", "Running"), steps(broker, method(broker, """public\s+static\s+void\s+Run\s*\(""")))
         val admission = code("windows-vpn-helper-admission.cs")
-        assertEquals(listOf("OwnerOpen", "OwnerIdentity", "PackageAdmission", "OwnerOpen", "OwnerIdentity", "Unclassified"),
+        assertEquals(listOf("OwnerOpen", "OwnerQuery", "OwnerIdentity", "PackageAdmission", "OwnerQuery", "OwnerIdentity", "Unclassified"),
             steps(admission, method(admission, """internal\s+static\s+Lease\s+Retain\s*\([^)]*Native\s+native\)""")))
         assertEquals(listOf("OwnerToken", "OwnerIdentity"),
             steps(admission, method(admission, """public\s+Owner\s+ObserveOwner\s*\(""")))
@@ -175,7 +179,7 @@ class DesktopWindowsBrokerOwnerAccessTest {
         }
         val output = Files.newInputStream(report).use { it.readNBytes(8193).decodeToString().take(8192) }
         assertEquals(0, process.exitValue(), output)
-        assertTrue(output.endsWith("BROKER_OWNER_ACCESS_OK:6"), output)
+        assertTrue(output.endsWith("BROKER_OWNER_ACCESS_OK:7"), output)
         Files.delete(report)
         Files.delete(root)
     }

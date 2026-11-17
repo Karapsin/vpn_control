@@ -435,8 +435,10 @@ public static class VpnRuntimeBroker {
   FileStream admissionStream=null;ResourceAdmissionGate admissionGate=null;
   Thread watchdog=null; int watchdogDone=0;
   try {
+   VpnBrokerStep.Enter(VpnBrokerStep.OwnerQuery);
+   long c,e,k,u; Need(GetProcessTimes(owner,out c,out e,out k,out u));
    VpnBrokerStep.Enter(VpnBrokerStep.OwnerIdentity);
-   long c,e,k,u; Need(GetProcessTimes(owner,out c,out e,out k,out u)&&c==ownerStart);
+   Need(c==ownerStart);
    VpnBrokerStep.Enter(VpnBrokerStep.OwnerToken);
    IntPtr token; Need(OpenProcessToken(owner,8,out token));
    VpnBrokerStep.Enter(VpnBrokerStep.OwnerIdentity);
@@ -590,11 +592,12 @@ public static class VpnRuntimeBroker {
 /** The broker's exit code names the last step it entered, so a broker that ended before its pipe answered still
  * says where it stopped. The client reads it from the process handle it holds (GetExitCodeProcess) and writes the
  * named step to the product's runtime log and diagnostics export; DesktopWindowsBrokerExit holds the same table.
- * 0 is success and 1 an unclassified failure before any step. Steps 20 to 22 are the owner checks of both the
- * packaged admission and VpnRuntimeBroker.Run; 23 is the rest of the admission (images, ancestry, install gate). */
+ * 0 is success and 1 an unclassified failure before any step. Steps 20 to 22 and 24 are the owner checks of both
+ * the packaged admission and VpnRuntimeBroker.Run: 20 only the open and its fallback, 24 the queries on the opened
+ * handle. 23 is the rest of the admission (images, ancestry, install gate). */
 public static class VpnBrokerStep {
  public const int Unclassified=1,Arguments=10,RuntimeAuthority=11,
-  OwnerOpen=20,OwnerToken=21,OwnerIdentity=22,PackageAdmission=23,
+  OwnerOpen=20,OwnerToken=21,OwnerIdentity=22,PackageAdmission=23,OwnerQuery=24,
   PipeCreate=30,PipeConnect=31,Peer=32,Protocol=33,Job=34,ResourcePreparation=35,
   RuntimeImage=40,Stage=41,OriginalUser=42,Configuration=43,ChildCreate=44,ReadyAck=45,Running=50;
  static int current=Unclassified;
@@ -619,7 +622,7 @@ public static class VpnBrokerOwnerProcess {
   /** OpenProcess(access, false, pid); the error is GetLastError when the handle is zero. */
   IntPtr Open(uint access,uint pid,out int error);
   /** SeDebugPrivilege enabled on a thread impersonation token; null when the token does not hold it.
-   * Dispose reverts the thread to the process token and throws if it cannot. */
+   * Dispose reverts the thread to the process token and ends the process (FailFast) if it cannot. */
   IDisposable DebugPrivilegeOnThisThread();
  }
  const int AccessDenied=5;
@@ -664,7 +667,8 @@ public static class VpnBrokerOwnerProcess {
    bool reverted;
    public void Dispose() {
     if(reverted) return;
-    if(!RevertToSelf()) throw new IOException("UNAVAILABLE");
+    // Nothing may run on this thread with the privilege enabled, not even a caller's cleanup: end the broker.
+    if(!RevertToSelf()) Environment.FailFast("VPN broker could not revert its thread token");
     reverted=true;
    }
   }

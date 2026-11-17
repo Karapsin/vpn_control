@@ -273,11 +273,18 @@ class DesktopProxyRuntimeManagerTest {
             assertEquals("RUNTIME_FAILED", result.exceptionOrNull()?.message)
             assertTrue(original.isAlive, "A broker failure stopped actual A")
             val line = assertNotNull(fixture.manager.lastWindowsBrokerFailure())
-            assertContains(line, "step owner-token (exit 21, stage HELPER_CONNECTION, code UNAVAILABLE)")
-            assertContains(Files.readString(fixture.manager.defaultLogFile()), "vpn-control: $line")
+            assertContains(line, "step owner-token (exit 21, stage HELPER_CONNECTION, code UNAVAILABLE) at ")
+            assertContains(Files.readString(fixture.manager.defaultLogFile()),
+                "vpn-control: ${line.substringBeforeLast(" at ")}")
             val report = DesktopDiagnosticsExporter.buildReport(com.kardinal.vpncontrol.MainUiState(), AppMode.PROXY_ONLY,
                 null, null, actual.logFile, null, null, null, fixture.manager.lastWindowsBrokerFailure())
             assertContains(report, "windows_vpn_broker_last_failure=$line")
+            // A later prepared start supersedes it, so the export never shows the old failure as current.
+            fixture.native.prepareFailure = null
+            fixture.start("127.0.0.3").getOrThrow()
+            assertEquals(null, fixture.manager.lastWindowsBrokerFailure())
+            assertContains(DesktopDiagnosticsExporter.buildReport(com.kardinal.vpncontrol.MainUiState(), AppMode.PROXY_ONLY,
+                null, null, null, null, null, null, fixture.manager.lastWindowsBrokerFailure()), "windows_vpn_broker_last_failure=none")
         }
     }
 
