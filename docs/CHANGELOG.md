@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows GUI picker types the export path into the Save dialog's real file name box (1148).
 - Windows reboot rows report an absent startup task as absent instead of failing the autostart snapshot.
 - Windows VPN starts approved by another administrator work: the scoped broker opens the standard user's app with a thread-scoped debug privilege only after a plain open is denied, and a failed broker start names its step in the runtime log and diagnostics.
+- Build: trust the Gradle Plugin Portal's generated marker POMs for the Kotlin plugins, which name the same single plugin dependency as Maven Central's.
 
 ## 2.3.0 - 2026-11-17
 
