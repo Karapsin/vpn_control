@@ -6,6 +6,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Windows GUI picker: a failed pointer park now names each failed check with observed values and keeps a diagnostic frame.
+- Windows native rows: the collector root accepts the protected owner-only ACL Windows actually reads back, and the reserved-stage squat reads its own operation status while it waits for the product journal.
 
 ## 2.3.0 - 2026-11-17
 
