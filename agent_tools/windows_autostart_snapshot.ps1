@@ -26,6 +26,19 @@ public static class VcAutostartNative {
  }
 }
 '@
+function Test-TaskAbsent($record) {
+ # Only ERROR_FILE_NOT_FOUND (0x80070002) anywhere in the exception chain proves the task absent. Native Windows
+ # PowerShell raises it from Task Scheduler as a bare FileNotFoundException, other hosts as a COMException or wrapped
+ # in a MethodInvocationException, so no exception type is matched. Access denied and every other error is not absence.
+ $x = $record.Exception
+ while ($null -ne $x) { if ($x.HResult -eq -2147024894) { return $true }; $x = $x.InnerException }
+ return $false
+}
+function Get-StartupTask($folder) {
+ # Only the lookup itself may prove absence; a later read of a present task that fails is never absence.
+ try { return $folder.GetTask('VPN Control') } catch { if (-not (Test-TaskAbsent $_)) { throw } }
+ return $null
+}
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $machine = $null
 $key = $null
@@ -35,8 +48,8 @@ try {
  $service.Connect()
  $folder = $service.GetFolder('\')
  $taskData = @{ state = 'absent' }
- try {
-  $task = $folder.GetTask('VPN Control')
+ $task = Get-StartupTask $folder
+ if ($null -ne $task) {
   $xml = [string]$task.Xml
   $sddl = [string]$task.GetSecurityDescriptor(7)
   if ($xml.Length -gt 65536 -or $sddl.Length -gt 32768) { throw 'TASK_BEFOREIMAGE_BOUND' }
@@ -53,8 +66,6 @@ try {
   $taskData = @{state='present'; path=[string]$task.Path; xml=$xml; sddl=$sddl; enabled=[bool]$task.Enabled;
    lastRunFileTimeUtc=[string]$lastRun.ToUniversalTime().ToFileTimeUtc(); lastTaskResult=[int]$task.LastTaskResult;
    schedulerState=[int]$task.State; runningInstances=$running }
- } catch [System.Runtime.InteropServices.COMException] {
-  if ($_.Exception.HResult -ne -2147024894) { throw }
  }
  $run = @{state='absent'; keyState='absent'}
  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Run',$false)

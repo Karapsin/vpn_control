@@ -3,6 +3,19 @@ param([Parameter(Mandatory=$true)][string]$GuiPath,
       [Parameter(Mandatory=$true)][string]$ExpectedSid)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+function Test-TaskAbsent($record) {
+ # Only ERROR_FILE_NOT_FOUND (0x80070002) anywhere in the exception chain proves the task absent. Native Windows
+ # PowerShell raises it from Task Scheduler as a bare FileNotFoundException, other hosts as a COMException or wrapped
+ # in a MethodInvocationException, so no exception type is matched. Access denied and every other error is not absence.
+ $x = $record.Exception
+ while ($null -ne $x) { if ($x.HResult -eq -2147024894) { return $true }; $x = $x.InnerException }
+ return $false
+}
+function Get-StartupTask($folder) {
+ # Only the lookup itself may prove absence; a later read of a present task that fails is never absence.
+ try { return $folder.GetTask('VPN Control') } catch { if (-not (Test-TaskAbsent $_)) { throw } }
+ return $null
+}
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 try {
  if ($identity.User.Value -cne $ExpectedSid) { throw 'FIXTURE_ORDINARY_SID' }
@@ -12,8 +25,7 @@ try {
  $service = New-Object -ComObject 'Schedule.Service'
  $service.Connect()
  $folder = $service.GetFolder('\')
- try { $existing=$folder.GetTask('VPN Control'); throw 'EXISTING_STARTUP_TASK_REFUSED' }
- catch [System.Runtime.InteropServices.COMException] { if ($_.Exception.HResult -ne -2147024894) { throw } }
+ if ($null -ne (Get-StartupTask $folder)) { throw 'EXISTING_STARTUP_TASK_REFUSED' }
  $task = $service.NewTask(0)
  $task.RegistrationInfo.Description = 'VPN Control owned acceptance legacy run-level fixture'
  $task.Principal.Id = 'Author'

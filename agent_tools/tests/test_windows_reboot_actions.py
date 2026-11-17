@@ -9,6 +9,10 @@ import base64
 from pathlib import Path, PureWindowsPath
 import hashlib
 import json
+import os
+import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import types
@@ -1112,6 +1116,162 @@ class DeclarationTests(unittest.TestCase):
         self.assertEqual(str(int(BOOT) + 1), joined["newBootFileTimeUtc"])
         with self.assertRaisesRegex(AssertionError, "new-native-boot-context-changed-or-pending"):
             autostart.qualify_new_boot(checkpoint, snapshot, {"context": dict(context, bootFileTimeUtc=BOOT), "workspace": r"C:\w"}, status, gui, None)
+
+
+ROOT = Path(__file__).resolve().parents[2]
+ABSENT = Path(__file__).parent / "fixtures/windows_autostart_absent_task"
+AUTOSTART_SCRIPTS = ("agent_tools/windows_autostart_snapshot.ps1", "agent_tools/windows_autostart_create_highest_fixture.ps1",
+                     "agent_tools/windows_autostart_task_start.ps1")
+# The two scripts that must tell an absent task from a failed lookup; the start script needs the task and fails without it.
+ABSENCE_SCRIPTS = AUTOSTART_SCRIPTS[:2]
+POWERSHELL = os.environ.get("VPN_CONTROL_TEST_PWSH") or shutil.which("pwsh") or shutil.which("powershell")
+# Task Scheduler's lookup, faked: each mode throws what a host has been seen, or may be expected, to throw.
+LOOKUP_FAKE = r'''
+using System;using System.IO;using System.Runtime.InteropServices;
+public sealed class AbsentFakeFolder {public string Mode,Message;public int Calls;
+ public object GetTask(string name){Calls++;if(name!="VPN Control")throw new ArgumentException(name);
+  if(Mode=="recorded")throw new FileNotFoundException(Message);
+  if(Mode=="com-not-found")throw new COMException("fake scheduler",-2147024894);
+  if(Mode=="com-denied")throw new COMException("fake scheduler",-2147024891);
+  if(Mode=="unauthorized")throw Marshal.GetExceptionForHR(-2147024891);
+  if(Mode=="other")throw new InvalidOperationException("fake scheduler");
+  return "present-task";}}
+'''
+
+
+def powershell_function(text, name):
+    """One top-level function of a script, from its header to its own closing brace at column 0."""
+    lines = text.split("\n")
+    starts = [index for index, line in enumerate(lines) if re.match("function " + re.escape(name) + r"\(", line)]
+    if len(starts) != 1:
+        raise ValueError("function_not_one:" + name)
+    end = lines.index("}", starts[0])
+    return "\n".join(lines[starts[0]:end + 1]) + "\n"
+
+
+class StartupTaskAbsenceTests(unittest.TestCase):
+    """Every reboot .pre on 2.2.19 failed before its reboot: the snapshot's absent-task catch named COMException, but
+    native Windows PowerShell raised the missing task as FileNotFoundException, so a machine without the task (every
+    fresh install) exited 1 instead of reporting the task absent. Only HRESULT 0x80070002 proves absence."""
+
+    def setUp(self):
+        self.record = json.loads((ABSENT / "native-snapshot-children.json").read_text())
+
+    def native_stderr(self, operation):
+        run = self.record["runs"][operation]
+        raw = base64.b64decode(run["stderrBase64"])
+        self.assertEqual(run["stderrSha256"], hashlib.sha256(raw).hexdigest())
+        return raw.decode("utf-8")
+
+    def test_the_recorded_native_children_are_the_snapshot_lookup_raising_file_not_found(self):
+        before = (ABSENT / self.record["beforeSource"]["path"]).read_bytes()
+        self.assertEqual(self.record["beforeSource"]["sha256"], hashlib.sha256(before).hexdigest())
+        self.assertEqual(3, len(self.record["runs"]))
+        for operation, run in self.record["runs"].items():
+            stderr = self.native_stderr(operation)
+            self.assertEqual(("autostart-read-only", 1), (run["label"], run["exitCode"]))
+            self.assertIn("(Exception from HRESULT: 0x80070002)", stderr)
+            self.assertIn("windows_autostart_snapshot.ps1:39 char:3", stderr)
+            self.assertIn("FullyQualifiedErrorId : System.IO.FileNotFoundException", stderr)
+            self.assertEqual("  $task = $folder.GetTask('VPN Control')", before.decode().split("\n")[38])
+
+    def test_no_autostart_script_catches_a_task_lookup_by_exception_type(self):
+        for relative in AUTOSTART_SCRIPTS:
+            with self.subTest(script=relative):
+                text = (ROOT / relative).read_text()
+                self.assertEqual([], re.findall(r"catch\s*\[[^\]]*\]", text), "a typed catch misses the type the native host raises")
+                lookups = [line.strip() for line in text.split("\n") if ".GetTask(" in line]
+                if relative in ABSENCE_SCRIPTS:
+                    self.assertEqual(["try { return $folder.GetTask('VPN Control') } catch { if (-not (Test-TaskAbsent $_)) { throw } }"],
+                                     lookups, "the one lookup that may prove absence")
+                    self.assertEqual(1, len(re.findall(r"\bcatch\b", text)), "no other catch can turn a failure into absence")
+                else:
+                    self.assertEqual(0, len(re.findall(r"\bcatch\b", text)), "the start script needs the task; its absence fails")
+
+    def test_both_absence_scripts_hold_one_predicate_matching_only_the_not_found_hresult(self):
+        texts = [(ROOT / relative).read_text() for relative in ABSENCE_SCRIPTS]
+        for name in ("Test-TaskAbsent", "Get-StartupTask"):
+            self.assertEqual(*(powershell_function(text, name) for text in texts))
+        predicate = powershell_function(texts[0], "Test-TaskAbsent")
+        self.assertEqual(["-2147024894"], re.findall(r"-?\b\d{6,}\b", predicate))
+        self.assertIn("$x = $x.InnerException", predicate)
+        # The publisher's own Is-TaskAbsent is the same chain walk over the same single HRESULT.
+        publisher = (ROOT / "agent_tools/windows_scenario_publisher.ps1.template").read_text()
+        walk = " while ($null -ne $x) { if ($x.HResult -eq -2147024894) { return $true }; $x = $x.InnerException }"
+        self.assertIn(walk, predicate.split("\n"))
+        self.assertIn(walk.replace(" ", ""), publisher.replace(" ", ""))
+
+    def test_the_owner_role_pins_name_the_current_reboot_sources(self):
+        from agent_tools import native_scenario_windows as scenario
+        from agent_tools import windows_ordinary_task as task
+        for relative, role, _ in scenario._REBOOT_FILES:
+            if role in task.POSTBOOT_ROLE_HASHES:
+                with self.subTest(role=role):
+                    self.assertEqual(task.POSTBOOT_ROLE_HASHES[role], hashlib.sha256((ROOT / relative).read_bytes()).hexdigest(),
+                                     "the native owner refuses a role whose bytes are not its pin")
+
+    def run_powershell(self, functions, body):
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "absent.ps1"
+            fake = "Add-Type -TypeDefinition @'\n" + LOOKUP_FAKE + "\n'@\n"
+            script.write_text("$ErrorActionPreference = 'Stop'\nSet-StrictMode -Version Latest\n" + fake + functions + body,
+                              encoding="utf-8")
+            result = subprocess.run([POWERSHELL, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(script)],
+                                    capture_output=True, text=True, timeout=120,
+                                    env=dict(os.environ, POWERSHELL_TELEMETRY_OPTOUT="1"))
+        self.assertEqual((0, ""), (result.returncode, result.stderr), result.stdout)
+        return json.loads(result.stdout)
+
+    def message(self):
+        stderr = self.native_stderr("7d71a92f-4d7a-4e01-a360-d4bac9771457")
+        return stderr.split("\r\n")[0]
+
+    @unittest.skipUnless(POWERSHELL, "a PowerShell interpreter is required")
+    def test_only_a_not_found_lookup_is_absence_under_powershell(self):
+        modes = ("recorded", "com-not-found", "com-denied", "unauthorized", "other", "present")
+        body = r'''
+$out = [ordered]@{}
+foreach ($mode in @(MODES)) {
+ $folder = [AbsentFakeFolder]::new(); $folder.Mode = $mode; $folder.Message = MESSAGE
+ try { $task = Get-StartupTask $folder; $out[$mode] = $(if ($null -eq $task) { 'absent' } else { [string]$task }) }
+ catch { $out[$mode] = 'threw' }
+ if ($folder.Calls -ne 1) { throw 'ONE_LOOKUP' }
+}
+# The recorded native shape: an ErrorRecord whose own exception is the bare FileNotFoundException.
+$native = [IO.FileNotFoundException]::new(MESSAGE)
+$out['nativeHResult'] = $native.HResult
+$out['nativeRecord'] = Test-TaskAbsent ([Management.Automation.ErrorRecord]::new($native, 'System.IO.FileNotFoundException', 'OperationStopped', $null))
+$out['deniedRecord'] = Test-TaskAbsent ([Management.Automation.ErrorRecord]::new([UnauthorizedAccessException]::new('denied'), 'denied', 'OperationStopped', $null))
+[Console]::Out.Write(($out | ConvertTo-Json -Compress))
+'''.replace("MODES", ",".join("'" + mode + "'" for mode in modes)).replace("MESSAGE", "'" + self.message().replace("'", "''") + "'")
+        for relative in ABSENCE_SCRIPTS:
+            with self.subTest(script=relative):
+                text = (ROOT / relative).read_text()
+                functions = powershell_function(text, "Test-TaskAbsent") + powershell_function(text, "Get-StartupTask")
+                self.assertEqual({"recorded": "absent", "com-not-found": "absent", "com-denied": "threw", "unauthorized": "threw",
+                                  "other": "threw", "present": "present-task", "nativeHResult": -2147024894,
+                                  "nativeRecord": True, "deniedRecord": False}, self.run_powershell(functions, body))
+
+    @unittest.skipUnless(POWERSHELL, "a PowerShell interpreter is required")
+    def test_every_autostart_script_parses_under_powershell(self):
+        paths = ",".join("'" + str(ROOT / relative).replace("'", "''") + "'" for relative in AUTOSTART_SCRIPTS)
+        body = ("$out = [ordered]@{}\nforeach ($path in @(" + paths + ")) {\n $tokens = $null; $errors = $null\n"
+                " $null = [Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)\n"
+                " $out[[IO.Path]::GetFileName($path)] = @($errors | ForEach-Object { [string]$_.Message })\n}\n"
+                "[Console]::Out.Write(($out | ConvertTo-Json -Compress))\n")
+        self.assertEqual({PureWindowsPath(relative).name: [] for relative in AUTOSTART_SCRIPTS}, self.run_powershell("", body))
+
+    @unittest.skipUnless(POWERSHELL, "a PowerShell interpreter is required")
+    def test_the_unfixed_snapshot_lookup_lets_the_recorded_exception_escape(self):
+        # The control: the same recorded exception through the unfixed source's own lookup block escapes it.
+        lines = (ABSENT / self.record["beforeSource"]["path"]).read_text().split("\n")
+        start, end = lines.index(" $taskData = @{ state = 'absent' }"), lines.index("  if ($_.Exception.HResult -ne -2147024894) { throw }")
+        block = "\n".join(lines[start:end + 2]) + "\n"
+        body = ("$out = [ordered]@{}\nforeach ($mode in @('recorded')) {\n"
+                " $folder = [AbsentFakeFolder]::new(); $folder.Mode = $mode; $folder.Message = MESSAGE\n"
+                " try {\n" + block + " $out[$mode] = $taskData.state } catch { $out[$mode] = 'threw' }\n}\n"
+                "[Console]::Out.Write(($out | ConvertTo-Json -Compress))\n").replace("MESSAGE", "'" + self.message().replace("'", "''") + "'")
+        self.assertEqual({"recorded": "threw"}, self.run_powershell("", body))
 
 
 if __name__ == "__main__":

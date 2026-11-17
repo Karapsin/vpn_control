@@ -3603,6 +3603,39 @@ Edit id from the same table, so no test could disagree with it.
 | Failure type | Regression | Notes |
 | --- | --- | --- |
 | The Save dialog's file name Edit is 1148 (cmb13), not 1001, so the picker refused the GUI's own dialog before typing (TOOL) | `test_windows_document_gui_picker.DialogTests.test_the_native_save_dialog_controls_of_3bcb164e_are_typed_into_RED_refused_GREEN`; the `legacy-save-id` and `hidden` cases of `test_a_dialog_without_exactly_one_file_name_edit_is_a_known_failure_with_its_controls` | RED on `653c8584` (both Pythons): `document-gui-picker-dialog-controls:save` on the native control list. Both kinds now take the one visible, enabled Edit 1148. A dialog with only a 1001 Edit, or a hidden 1148, is still a known failure with its control list. Only the next native run confirms the WM_SETTEXT read-back and IDOK in the Save dialog. |
+### Every reboot `.pre` failed on a machine without the startup task (native, `5efc5573` 2026-11-17)
+
+Discovery runs `5efc5573` (`windows-autostart-migration.pre`), `7d71a92f` (`windows-reboot-explicit-off.pre`) and
+`bf5e2f25` (`windows-reboot-reconnect.pre`) on 2.2.19 ended `task_exit_code` at stage run, before any reboot. Each
+preboot runs `auto.migration`, whose first `toggle(False)` calls `collect`. Its child 17 (`autostart-read-only`,
+`windows_autostart_snapshot.ps1`) exited 1 with `The system cannot find the file specified. (Exception from HRESULT:
+0x80070002)` at `windows_autostart_snapshot.ps1:39` (`$folder.GetTask('VPN Control')`), FullyQualifiedErrorId
+`System.IO.FileNotFoundException`. The owner then refused `snapshot-original-terminal-full-eof`
+(`windows_autostart_reboot.py:128`). Evidence excerpts and the original zips are in
+`.runtime/windows-parity-20261107/evidence/fix-autostart-snapshot/`.
+
+Cause (TOOL, known). The absent-task branch was `catch [System.Runtime.InteropServices.COMException]` with an HRESULT
+check. Native Windows PowerShell raises the missing task as a `FileNotFoundException`, which is not a COMException, so a
+machine without the task, which is every fresh install, failed instead of reporting `absent`. When another host wraps
+the error in a `MethodInvocationException`, `$_.Exception.HResult` is the wrapper's HRESULT, so that shape would also
+fail. `windows_autostart_create_highest_fixture.ps1`, the next step of the migration row, had the same catch around
+its own absence check.
+
+Fix. Both scripts now look the task up with one `Get-StartupTask`. It catches every error and proves absence only by
+`Test-TaskAbsent`, which finds HRESULT 0x80070002 anywhere in the exception chain. This is the same chain walk as the
+publisher's `Is-TaskAbsent`. Access denied and every other error are rethrown, so the child still exits 1. Only the
+lookup can prove absence: a present task whose later reads fail still fails. `windows_autostart_task_start.ps1` needs
+the task and keeps no catch. The owner's `snapshotScript` and `migrationScript` role digests in
+`windows_ordinary_task.py` name the new bytes.
+
+| Failure type | Regression | RED on `227ea918` / GREEN |
+| --- | --- | --- |
+| A missing task raised as FileNotFoundException escaped the typed catch (TOOL) | `test_windows_reboot_actions.StartupTaskAbsenceTests`: `test_only_a_not_found_lookup_is_absence_under_powershell`, `test_no_autostart_script_catches_a_task_lookup_by_exception_type`, `test_both_absence_scripts_hold_one_predicate_matching_only_the_not_found_hresult`; controls `test_the_recorded_native_children_are_the_snapshot_lookup_raising_file_not_found` and `test_the_unfixed_snapshot_lookup_lets_the_recorded_exception_escape` | Fixture `fixtures/windows_autostart_absent_task/`: the three native stderr records (hashes as their child-terminal events recorded them) and the unfixed snapshot (sha256 `ece980bb…`, the old role digest). Under PowerShell, a fake lookup throws the recorded exception, a not-found COMException, access denied (COMException and UnauthorizedAccessException), another error, or returns a task. GREEN: absent, absent, throws, throws, throws, present, for both scripts, and also for an ErrorRecord with the native shape (a bare FileNotFoundException). The control runs the unfixed lookup block on the recorded exception, which escapes. RED with the tests over `227ea918`: 2 failures and 3 errors (typed catch in both scripts, no predicate) on Python 3.14.3 and 3.12.13. |
+| A role digest not repinned after a role source changed (TOOL) | `StartupTaskAbsenceTests.test_the_owner_role_pins_name_the_current_reboot_sources` | RED: the fix with the old `snapshotScript` and `migrationScript` digests. The native owner refuses `frozen-postboot-role-*`. GREEN: every reboot role digest is the sha256 of its source. |
+
+The PowerShell tests skip without `pwsh` or `powershell`, or run with `VPN_CONTROL_TEST_PWSH`. The Mac runs used
+PowerShell 7.4.20; hosted Linux CI has `pwsh`. Native only: the next `.pre` of each reboot row on a fresh clone must
+show child 17 reporting `task.state` `absent`, and the migration row's highest fixture must register its task.
 
 ## Historical coverage rule
 
