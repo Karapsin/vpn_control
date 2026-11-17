@@ -1,7 +1,8 @@
+// The test compiles this after the broker sources as one unit, so its using directives open the namespace.
+namespace VpnBrokerFixtures {
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-namespace VpnBrokerFixtures {
 /** The broker's owner open with fake identities: the same user's elevation, another administrator's
  * (over-the-shoulder) elevation, a token without SeDebugPrivilege, and a PID that is not a denial. */
 public static class OwnerAccessProbe {

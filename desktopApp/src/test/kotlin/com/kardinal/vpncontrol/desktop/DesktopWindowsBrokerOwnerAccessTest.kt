@@ -155,6 +155,58 @@ class DesktopWindowsBrokerOwnerAccessTest {
         assertEquals(listOf("0", "VpnBrokerStep.Current", "VpnBrokerStep.Current", "VpnBrokerStep.Current", "VpnBrokerStep.Current"), returns)
     }
 
+    /**
+     * Several Windows tests compile resources joined into one Add-Type unit. A using directive must precede every
+     * other element of its namespace (CS1529), so a probe's file-level usings after the broker sources fail to
+     * compile, and only on Windows. Check every such joined list here, on every OS.
+     */
+    @Test fun everyJoinedCompileUnitKeepsItsUsingDirectivesAheadOfTheOtherElementsOfTheirNamespace() {
+        val root = listOf(java.nio.file.Path.of("src/test/kotlin"), java.nio.file.Path.of("desktopApp/src/test/kotlin"))
+            .first(Files::isDirectory)
+        val joined = Regex("""listOf\(((?:\s*"/?[\w.-]+\.cs"\s*,?)+)\s*\)\s*\.joinToString\(\s*"\\n"\s*\)""")
+        val units = Files.walk(root).use { paths ->
+            paths.filter { it.toString().endsWith(".kt") }.toList().flatMap { file ->
+                joined.findAll(Files.readString(file)).map { match ->
+                    file.fileName.toString() to Regex(""""/?([\w.-]+\.cs)"""").findAll(match.groupValues[1]).map { it.groupValues[1] }.toList()
+                }.toList()
+            }
+        }
+        assertTrue(units.any { "windows-vpn-broker-owner-probe.cs" in it.second }, units.toString())
+        val problems = units.flatMap { (test, names) ->
+            misplacedUsings(names.joinToString("\n") { name -> code(name) }).map { "$test joins ${names.joinToString()}: $it" }
+        }
+        assertTrue(problems.isEmpty(), problems.joinToString("\n"))
+    }
+
+    /** Lines of a masked C# unit whose using directive follows another element of the same namespace. */
+    private fun misplacedUsings(unit: String): List<String> {
+        val directive = Regex("""^\s*using\s+(?:static\s+)?[A-Za-z_][\w.]*(?:\s*=\s*[\w.<>, ]+)?\s*;\s*$""")
+        class Scope(val depth: Int) { var element = false }
+        val scopes = ArrayDeque(listOf(Scope(0)))
+        var depth = 0
+        val problems = mutableListOf<String>()
+        for ((index, line) in unit.lines().withIndex()) {
+            val text = line.trim()
+            if (text.isEmpty() || text.startsWith("extern alias")) Unit
+            else if (directive.matches(line)) {
+                if (scopes.last().element) problems += "line ${index + 1}: $text"
+            } else {
+                scopes.last().element = true
+                if (Regex("""^namespace\s+[\w.]+\s*\{""").containsMatchIn(text)) scopes.addLast(Scope(depth + 1))
+            }
+            depth += line.count { it == '{' } - line.count { it == '}' }
+            while (scopes.size > 1 && depth < scopes.last().depth) scopes.removeLast()
+        }
+        return problems
+    }
+
+    @Test fun theUsingGuardRejectsAFileLevelUsingAfterAnotherUnitsElements() {
+        assertEquals(listOf("line 3: using System;"), misplacedUsings("public static class A { }\n\nusing System;\nclass B { }"))
+        assertEquals(emptyList(), misplacedUsings("public static class A { }\nnamespace N {\n using System;\n class B { }\n}"))
+        assertEquals(listOf("line 4: using System;"),
+            misplacedUsings("namespace N {\n class B { void M() { using(var x=y) { } } }\n}\nusing System;"))
+    }
+
     /** Fake identities through the compiled decision, then this process's own token through the real natives. */
     @Test fun theOwnerOpenRetriesOnlyADeniedOpenUnderARevertedThreadPrivilege() {
         assumeTrue(System.getProperty("os.name").startsWith("Windows", true))

@@ -110,7 +110,10 @@ public static class PackagedBrokerAdmissionProbe {
     error=output.ToString().Trim();
    }
    bool accepted=scenario<2;
-   Need(code==(accepted?0:1),"Wrong entrypoint outcome");
+   // Each refusal exits with its broker step: the changed owner's recheck is owner-identity (22), a busy gate and
+   // a foreign helper image are package-admission (23), and a runner that entered no step is unclassified (1).
+   int[] expected={0,0,22,23,23,1};
+   Need(code==expected[scenario],"Wrong entrypoint outcome: scenario "+scenario+" exited "+code);
    Need(called==((accepted||scenario==5)?1:0),"Rejected admission reached runner");
    Need(error==(accepted?"":"RUNTIME_FAILED"),"Entrypoint exposed an unbounded failure");
    Need(fake.AllClosed,"Entrypoint failed to dispose its retained native scope");
