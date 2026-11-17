@@ -1,0 +1,11 @@
+{
+  "commit": "d0148a49a07f7a875b24c0682c11e77c3cff960f",
+  "files": {
+    "session_park.before.source": {
+      "path": "agent_tools/windows_document_gui_picker.py",
+      "extract": "PARK, DESKTOP_WINDOW_CLASS, Session.park and Session.step, dedented",
+      "sha256": "ba95bbfa3b76bd1a2bbeecae2741f07ad911a64f4faa348f03f53d9b791cd96e"
+    }
+  },
+  "reason": "Native run 91947c84-dbc6-4565-9450-a85e5eed82a4 (windows-document-cold.gui-picker, 2.2.19) ended document-gui-picker-park before the first frame: the park at (4, 796) asked SetCursorPos, GetCursorPos and WindowFromPoint and raised one bare reason without recording which check failed or what it saw, and kept no frame, because parking precedes the capture. It also accepted a pointer under a visible window of the GUI that WindowFromPoint passes over, and refused a point where WindowFromPoint names no window at all."
+}

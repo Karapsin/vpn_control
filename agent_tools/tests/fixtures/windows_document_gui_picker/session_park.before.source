@@ -1,0 +1,47 @@
+PARK = (4, 796)  # Outside the placement: the pointer rests on the bare private desktop, so no control shows hover.
+DESKTOP_WINDOW_CLASS = "#32769"
+
+
+def park(self):
+    moved, where = self.native.point_cursor(*PARK)
+    under = self.native.window_at(*PARK)
+    need(moved and where == PARK and under is not None and under["rootClass"] == DESKTOP_WINDOW_CLASS,
+         "document-gui-picker-park")
+
+
+def step(self, step):
+    """One reviewed click: parked pointer, stable frame, reviewed anchor, the pointer at the point over the GUI."""
+    need(self.child.process.poll() is None and self.lease.switched, "document-gui-picker-step-context:" + step)
+    pids = self.main_unchanged(step)
+    self.park()
+    frame, kept = self.stable(step, _placement_rect(self.profile), "before-click")
+    entry = reviewed(self.profile, step)
+    if entry is None:
+        self.owner.event("document-gui-picker-unreviewed", {"step": step, "frame": kept, "clicked": False,
+                                                            "replayAllowed": False})
+        raise RuntimeError("document-gui-picker-frame-unreviewed:" + step)
+    digest = sha256(frame.crop(tuple(entry["anchor"])))
+    if digest != entry["sha256"]:
+        self.owner.event("document-gui-picker-anchor-mismatch", {"step": step, "frame": kept, "anchor": entry["anchor"],
+            "observed": digest, "reviewed": entry["sha256"], "clicked": False, "replayAllowed": False})
+        raise RuntimeError("document-gui-picker-anchor-mismatch:" + step)
+    x, y = entry["point"]
+    moved, where = self.native.point_cursor(x, y)
+    under = self.native.window_at(x, y)
+    if not (moved and where == (x, y) and under is not None and under["pid"] in pids):
+        self.owner.event("document-gui-picker-point-refused", {"step": step, "point": [x, y], "moved": moved, "cursor": where,
+                                                               "under": under, "clicked": False, "replayAllowed": False})
+        raise RuntimeError("document-gui-picker-point-not-owned:" + step)
+    self.owner.event("document-gui-picker-click-intent", {"step": step, "point": [x, y], "under": under, "frame": kept["name"],
+                                                          "anchorSha256": digest, "oneEffect": True, "replayAllowed": False})
+    inserted, error = self.native.click()
+    if inserted == 0:
+        # SendInput inserted nothing, so nothing reached the GUI (blocked input, or an access refusal it names).
+        self.owner.event("document-gui-picker-click-refused", {"step": step, "winerror": error, "replayAllowed": False})
+        raise RuntimeError("document-gui-picker-click-refused:" + step)
+    if inserted != 2:
+        # The press alone reached the input stream: the GUI's state is unknown and the click is never sent again.
+        self.owner.park("document-gui-picker-click-outcome-unknown")
+    self.steps.append(step)
+    self.owner.event("document-gui-picker-clicked", {"step": step, "inserted": inserted})
+    time.sleep(SETTLE_SECONDS)

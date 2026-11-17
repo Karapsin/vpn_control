@@ -42,6 +42,8 @@ AFTER = {"routing-nav": "routing", "export-menu": "export-menu", "export-file": 
          "import-file": "open"}
 SCREENS = ("home", "routing", "export-menu", "import-menu", "dialog")
 DIALOG_RECT = (300, 160, 940, 620)
+CSRSS = 540
+DESKTOP_WINDOW = {"hwnd": 0x10010, "class": "#32769", "root": 0x10010, "rootClass": "#32769", "pid": CSRSS}
 
 
 def anchor(step):
@@ -93,6 +95,11 @@ class Native:
         self.edits = None  # None: the dialog's own one file name Edit
         self.readback = None
         self.under = None
+        self.no_window = False  # WindowFromPoint names no window at all.
+        self.cursor_refused = None  # SetCursorPos answers FALSE with this error and the pointer stays.
+        self.cursor_drift = None  # The pointer reads back this far from where SetCursorPos put it.
+        self.capture_error = None
+        self.legacy = False  # point_cursor as the d0148a49 primitives answered it: (moved, where).
         self.captures = 0
         self.closed = 0
 
@@ -124,6 +131,8 @@ class Native:
         return tuple(DIALOG_RECT) if hwnd == DIALOG else tuple(self.window_rect)
 
     def capture(self, rect):
+        if self.capture_error is not None:
+            raise RuntimeError(self.capture_error)
         self.captures += 1
         screen = "dialog" if self.dialog is not None and tuple(rect) == DIALOG_RECT else self.screen
         raw = render(screen, rect)
@@ -132,17 +141,24 @@ class Native:
         return raw
 
     def point_cursor(self, x, y):
-        self.cursor = (x, y)
         self.trace.append(("cursor", x, y))
-        return True, self.cursor
+        moved = self.cursor_refused is None
+        if moved:
+            self.cursor = (x, y) if self.cursor_drift is None else (x + self.cursor_drift[0], y + self.cursor_drift[1])
+        if self.legacy:
+            return moved, self.cursor
+        return moved, self.cursor, {"setCursorPos": 0 if moved else self.cursor_refused, "getCursorPos": 0}
 
     def window_at(self, x, y):
+        """WindowFromPoint, which passes over hidden and disabled windows: the GUI's main window, else the desktop's."""
+        if self.no_window:
+            return None
         if self.under is not None:
             return self.under
         left, top, right, bottom = self.window_rect
         if left <= x < right and top <= y < bottom:
-            return {"hwnd": MAIN + 1, "root": MAIN, "rootClass": "SunAwtFrame", "pid": JVM}
-        return {"hwnd": 0x10010, "root": 0x10010, "rootClass": "#32769", "pid": None}
+            return {"hwnd": MAIN + 1, "class": "SunAwtCanvas", "root": MAIN, "rootClass": "SunAwtFrame", "pid": JVM}
+        return dict(DESKTOP_WINDOW)
 
     def click(self):
         self.clicks.append(self.cursor)
@@ -393,17 +409,17 @@ class ReviewedStepTests(SessionBase):
             session.export_file(str(self.root / "gui.json"))
         self.assertEqual([], self.native.clicks)
 
-    def test_a_pointer_that_cannot_rest_on_the_bare_desktop_stops_before_any_frame(self):
+    def test_a_pointer_that_cannot_rest_on_the_bare_desktop_stops_before_the_steps_frame(self):
         session = self.attached()
-        self.native.under = {"hwnd": FOREIGN, "root": FOREIGN, "rootClass": "SunAwtFrame", "pid": JVM}
-        with self.assertRaisesRegex(RuntimeError, r"\Adocument-gui-picker-park\Z"):
+        self.native.under = {"hwnd": FOREIGN, "class": "SunAwtFrame", "root": FOREIGN, "rootClass": "SunAwtFrame", "pid": JVM}
+        with self.assertRaisesRegex(RuntimeError, r"\Adocument-gui-picker-park-window-at-point:routing-nav\Z"):
             session.export_file(str(self.root / "gui.json"))
-        self.assertEqual(([], []), (self.native.clicks, self.frames()))
+        self.assertEqual(([], ["document-gui-picker-frame-00-park-routing-nav.png"]), (self.native.clicks, self.frames()))
 
     def test_a_pointer_that_did_not_reach_the_point_is_never_clicked(self):
         session = self.attached()
         original = self.native.point_cursor
-        self.native.point_cursor = lambda x, y: (True, (x + 1, y)) if (x, y) == POINTS["routing-nav"] else original(x, y)
+        self.native.point_cursor = lambda x, y: (True, (x + 1, y), {}) if (x, y) == POINTS["routing-nav"] else original(x, y)
         with self.assertRaisesRegex(RuntimeError, r"\Adocument-gui-picker-point-not-owned:routing-nav\Z"):
             session.export_file(str(self.root / "gui.json"))
         self.assertEqual([], self.native.clicks)
@@ -534,6 +550,142 @@ class DialogTests(SessionBase):
         session = self.attached()
         self.assertEqual({"dialogCancelled": False, "restored": True}, session.close_known())
         self.assertEqual(([], 1), (self.native.commands, self.native.closed))
+
+
+class ParkTests(SessionBase):
+    """The pointer's park before every step's frame (native failure 91947c84-dbc6-4565-9450-a85e5eed82a4, 2.2.19).
+
+    That run attached the GUI, switched the desktop, placed the window at [140, 16, 1140, 736] and ended
+    document-gui-picker-park before the first frame: the move to (4, 796), its read-back or the window found there failed,
+    and no event said which. Parking precedes the capture, so the row kept no frame and the review loop had nothing to
+    open."""
+
+    # Each way the park can fail, as the native primitives would answer it, and the checks the fixed park names.
+    # window-over-point is a visible window of the GUI that WindowFromPoint passes over (a disabled one): the
+    # d0148a49 park asked WindowFromPoint alone, so it let that pointer stand and clicked.
+    CASES = {
+        "cursor-move": (lambda native: setattr(native, "cursor_refused", 5), ["cursor-move", "cursor-readback"]),
+        "cursor-readback": (lambda native: setattr(native, "cursor_drift", (1, 0)), ["cursor-readback"]),
+        "window-at-point": (lambda native: setattr(native, "under", {"hwnd": MAIN + 7, "class": "SunAwtWindow", "root": MAIN + 7,
+                                                                       "rootClass": "SunAwtWindow", "pid": JVM}),
+                            ["window-at-point"]),
+        "window-over-point": (lambda native: native.extra_windows.append({"hwnd": MAIN + 8, "pid": JVM, "threadId": 11,
+                                                                          "class": "SunAwtWindow", "visible": True,
+                                                                          "rect": [0, 300, 139, 800]}),
+                              ["window-over-point"]),
+    }
+
+    def before(self):
+        fixture = Path(__file__).parent / "fixtures" / "windows_document_gui_picker"
+        source = fixture / "session_park.before.source"
+        self.assertEqual(json.loads((fixture / "provenance.json").read_bytes())["files"][source.name]["sha256"],
+                         hashlib.sha256(source.read_bytes()).hexdigest())
+        return source
+
+    def before_session(self, source, change):
+        """A session whose park and step are the d0148a49 ones, over primitives answering as they did then."""
+        namespace = dict(picker.__dict__)
+        exec(compile(source.read_bytes(), str(source), "exec"), namespace)
+        session = self.attached()
+        self.native.legacy = True
+        change(self.native)
+        return session, namespace
+
+    def test_a_refused_park_names_each_failed_check_with_what_it_saw_and_keeps_one_unreviewable_frame_RED_bare_GREEN(self):
+        from agent_tools.tests import red_gate
+        source = self.before()
+        if red_gate.red_required(self, source):
+            for name, (change, _) in self.CASES.items():
+                with self.subTest(before=name):
+                    session, namespace = self.before_session(source, change)
+                    with mock.patch.object(picker.Session, "park", namespace["park"]), \
+                            mock.patch.object(picker.Session, "step", namespace["step"]):
+                        if name == "window-over-point":
+                            # RED: the pointer stood under a window of the GUI and the step clicked.
+                            session.step("routing-nav")
+                            self.assertEqual([POINTS["routing-nav"]], self.native.clicks)
+                            continue
+                        # RED: one bare reason, no check named, nothing observed recorded and no frame to open.
+                        with self.assertRaisesRegex(RuntimeError, r"\Adocument-gui-picker-park\Z"):
+                            session.step("routing-nav")
+                    self.assertNotIn("document-gui-picker-park-refused", self.owner.kinds())
+                    self.assertEqual([], self.frames())
+        for name, (change, failed) in self.CASES.items():
+            with self.subTest(name=name):
+                session = self.attached()
+                change(self.native)
+                with self.assertRaisesRegex(RuntimeError, r"\Adocument-gui-picker-park-%s:routing-nav\Z" % failed[0]):
+                    session.step("routing-nav")
+                self.assertEqual([], self.native.clicks)
+                self.assertNotIn(("cursor",) + POINTS["routing-nav"], self.native.trace, "the pointer never went to the point")
+                self.assertEqual(["document-gui-picker-frame-00-park-routing-nav.png"], self.frames())
+                refused = dict(self.owner.events)["document-gui-picker-park-refused"]
+                frame = dict(self.owner.events)["document-gui-picker-frame"]
+                self.assertEqual((failed, list(picker.PARK), False, False, None), (refused["failed"], refused["park"],
+                                 refused["frameReviewable"], refused["clicked"], refused["frameError"]))
+                self.assertEqual((frame, "park-diagnostic", [0, 0, 1280, 800]), (refused["frame"], frame["kind"], frame["rect"]))
+                self.assertEqual(self.native.cursor, tuple(refused["cursor"]))
+                self.assertNotIn("document-gui-picker-unreviewed", self.owner.kinds())
+        observed = {}
+        for name, (change, _) in self.CASES.items():
+            session = self.attached()
+            change(self.native)
+            with self.assertRaises(RuntimeError):
+                session.step("routing-nav")
+            observed[name] = dict(self.owner.events)["document-gui-picker-park-refused"]
+        self.assertEqual(({"setCursorPos": 5, "getCursorPos": 0}, False), (observed["cursor-move"]["winerror"],
+                                                                          observed["cursor-move"]["moved"]))
+        self.assertEqual([71, 400], observed["cursor-readback"]["cursor"])
+        self.assertEqual(("SunAwtWindow", JVM), (observed["window-at-point"]["under"]["rootClass"],
+                                                 observed["window-at-point"]["under"]["pid"]))
+        self.assertEqual([MAIN + 8], [row["hwnd"] for row in observed["window-over-point"]["covering"]])
+        self.assertEqual(DESKTOP_WINDOW, observed["window-over-point"]["under"])
+
+    def test_a_park_where_window_from_point_names_no_window_is_bare_RED_refused_GREEN(self):
+        """No window at all under the pointer is the bare desktop as much as the desktop window is."""
+        from agent_tools.tests import red_gate
+        source = self.before()
+        change = lambda native: setattr(native, "no_window", True)  # noqa: E731
+        if red_gate.red_required(self, source):
+            session, namespace = self.before_session(source, change)
+            with mock.patch.object(picker.Session, "park", namespace["park"]), \
+                    mock.patch.object(picker.Session, "step", namespace["step"]):
+                with self.assertRaisesRegex(RuntimeError, r"\Adocument-gui-picker-park\Z"):
+                    session.step("routing-nav")
+        session = self.attached(profile=picker.PROFILE)
+        change(self.native)
+        with self.assertRaisesRegex(RuntimeError, r"\Adocument-gui-picker-frame-unreviewed:routing-nav\Z"):
+            session.step("routing-nav")
+        self.assertEqual(["document-gui-picker-frame-00-routing-nav.png"], self.frames(), "the step's own frame, to review")
+        self.assertNotIn("document-gui-picker-park-refused", self.owner.kinds())
+
+    def test_a_park_point_inside_the_crop_is_refused_with_every_check_it_fails(self):
+        session = self.attached()
+        with mock.patch.object(picker, "PARK", (200, 100)):
+            with self.assertRaisesRegex(RuntimeError, r"\Adocument-gui-picker-park-window-at-point:routing-nav\Z"):
+                session.step("routing-nav")
+        refused = dict(self.owner.events)["document-gui-picker-park-refused"]
+        self.assertEqual((["window-at-point", "window-over-point", "point-in-crop"], [MAIN]),
+                         (refused["failed"], [row["hwnd"] for row in refused["covering"]]))
+        self.assertEqual([], self.native.clicks)
+
+    def test_a_diagnostic_frame_that_cannot_be_taken_leaves_the_park_its_reason(self):
+        session = self.attached()
+        self.native.cursor_drift, self.native.capture_error = (0, 3), "document-gui-picker-bitblt"
+        with self.assertRaisesRegex(RuntimeError, r"\Adocument-gui-picker-park-cursor-readback:routing-nav\Z"):
+            session.step("routing-nav")
+        refused = dict(self.owner.events)["document-gui-picker-park-refused"]
+        self.assertEqual((None, "RuntimeError:document-gui-picker-bitblt"), (refused["frame"], refused["frameError"]))
+        self.assertEqual([], self.frames())
+
+    def test_the_park_point_is_bare_on_the_canonical_display_away_from_its_edges_and_the_placement(self):
+        x, y = picker.PARK
+        left, top, right, bottom = picker._placement_rect()
+        width, height = picker.DISPLAY
+        margin = 64
+        self.assertTrue(margin <= x < width - margin and margin <= y < height - margin, "no edge, corner or taskbar band")
+        self.assertTrue(x < left - margin or x >= right + margin or y < top - margin or y >= bottom + margin,
+                        "never over the placement or its frame")
 
 
 # ---- The cold flow in the real owner ---------------------------------------------------------------------------------
@@ -790,6 +942,20 @@ class PickerFlowTests(unittest.TestCase):
         kinds = [kind for kind, _ in guest.events]
         self.assertLess(kinds.index("document-gui-picker-dialog-cancel-intent"), kinds.index("document-gui-owner-quit-intent"))
         self.assertEqual([picker.IDOK, picker.IDCANCEL], [identifier for _, identifier, _ in self.native.commands])
+
+    def test_a_refused_park_ends_known_with_its_diagnostic_frame_collected_and_the_gui_quit(self):
+        """Operation 91947c84 ended bare document-gui-picker-park with nothing kept for the coordinator to open."""
+        guest, code = self.run_picker(desktop=lambda native: setattr(native, "cursor_refused", 5))
+        self.assertEqual((1, [], "document-gui-picker-park-cursor-move:routing-nav"), (code, guest.parks, guest.finished[0][2]))
+        self.assertEqual(([], []), (self.native.clicks, self.native.texts))
+        names = sorted(path.name for path in guest.root.glob("document-gui-picker-frame-*"))
+        self.assertEqual(["document-gui-picker-frame-00-park-routing-nav.png"], names)
+        self.assertTrue(re.fullmatch(host_job.EVIDENCE_NAME, names[0]), "the evidence zip collects the diagnostic frame")
+        refused = self.events("document-gui-picker-park-refused")[0]
+        self.assertEqual((["cursor-move", "cursor-readback"], 5, False), (refused["failed"], refused["winerror"]["setCursorPos"],
+                                                                         refused["frameReviewable"]))
+        self.assertEqual(["show", "restore"], self.lease.trace)
+        self.assertTrue(all(child.terminal is not None for child in guest.owner_object.children), "the GUI was quit")
 
     def test_a_picker_that_cannot_open_its_desktop_handle_still_closes_the_gui_it_started(self):
         guest, code = self.run_picker(session_error="document-gui-picker-input-desktop-open")

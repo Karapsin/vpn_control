@@ -3418,6 +3418,44 @@ file name control IDs (1001 Save, 1148 Open), the GUI's own export and import th
 `PROFILE`. The ctypes structure layouts were not checked on Windows. Still open: the reviewed profile, one native run
 per step, and then the row's first full pass.
 
+### GUI picker park refused before the first frame, with nothing recorded or kept (native, `91947c84` 2026-11-17)
+
+Discovery run `91947c84-dbc6-4565-9450-a85e5eed82a4` of `windows-document-cold.gui-picker` on 2.2.19 ended
+`task_exit_code` with the owner's known failure `document-gui-picker-park` (`windows_document_gui_picker.py:662`).
+The GUI attached, the display was 1280 x 800, the input desktop switched and the window was placed at
+`[140, 16, 1140, 736]`. Then the park at (4, 796) failed before the first frame capture, the desktop was restored and
+the GUI quit with exit 0. No click was sent. The park asked `SetCursorPos`, `GetCursorPos` and `WindowFromPoint` and
+raised one bare reason, so no event says which check failed or what it saw. Parking comes before the capture, so the
+row kept no frame and the click-review loop had nothing to open. Excerpts of the original evidence (zip sha256
+`91cb8412…f304`) and the unfixed module are in `.runtime/windows-parity-20261107/evidence/fix-gui-park/`.
+
+Cause: partly known. The taskbar is ruled out. The owned desktop has no shell: the attach census (event 50) lists only
+the JVM's four windows, and the step's own census just before the park passed, which refuses any window of another
+process, so no Explorer `Shell_TrayWnd` was there. The placement read back exactly (event 52), so the window did not
+cover the point. The evidence cannot show which of the rest failed: `SetCursorPos` refused, the pointer read back
+elsewhere, or `WindowFromPoint` named no window or a window of the GUI.
+
+Fix. The park now makes every check and names each failed one with what it saw in a `document-gui-picker-park-refused`
+event, ending `document-gui-picker-park-<check>:<step>`. It keeps one unreviewable frame of the whole display
+(`document-gui-picker-frame-<nn>-park-<step>.png`, kind `park-diagnostic`). `WindowFromPoint` may also name no window,
+because the census of every top-level window of the desktop must now show no visible window over the point. That
+census check also catches a window of the GUI that `WindowFromPoint` passes over because it is disabled, which the
+old park let stand. The point moved to (70, 400), away from every edge and corner and 64 pixels or more from the
+placement.
+
+| Failure type | Regression | RED on `d0148a49` / GREEN |
+| --- | --- | --- |
+| A refused park records nothing and keeps no frame | `ParkTests.test_a_refused_park_names_each_failed_check_with_what_it_saw_and_keeps_one_unreviewable_frame_RED_bare_GREEN`, `PickerFlowTests.test_a_refused_park_ends_known_with_its_diagnostic_frame_collected_and_the_gui_quit`, `ReviewedStepTests.test_a_pointer_that_cannot_rest_on_the_bare_desktop_stops_before_the_steps_frame` | In-suite RED half on the beforeimage `fixtures/windows_document_gui_picker/session_park.before.source`, over primitives that answer as the `d0148a49` ones did. A refused move, a read-back elsewhere and an owned window at the point each end bare `document-gui-picker-park`, with no event and no frame. GREEN: each names its checks, its errors, the read-back position and the window at the point, and keeps the diagnostic frame. In the real owner the frame is collected and the GUI is quit. |
+| A pointer under a disabled window of the GUI taken as parked | the same test, case `window-over-point` | RED: the old park let the pointer stand and the step clicked. GREEN: `window-over-point`, no click. |
+| A pointer over no window at all refused | `ParkTests.test_a_park_where_window_from_point_names_no_window_is_bare_RED_refused_GREEN` | RED: `document-gui-picker-park`. GREEN: the step's own frame is kept for review. |
+| The park point at an edge or near the placement | `ParkTests.test_the_park_point_is_bare_on_the_canonical_display_away_from_its_edges_and_the_placement`, `test_a_park_point_inside_the_crop_is_refused_with_every_check_it_fails`, `test_a_diagnostic_frame_that_cannot_be_taken_leaves_the_park_its_reason` | Constant and guard checks. RED on the base for the point (4, 796). |
+
+Base-module RED and GREEN runs of these tests (`red_runner.py`, the `d0148a49` module loaded in place) gave 10 failures
+and 1 error, then OK, the same on Python 3.14.3 and 3.12.13. The tests run in `test_windows_document_gui_picker`, part of
+the routine agent suite. Native only: which check failed in `91947c84`, whether `WindowFromPoint` on an owned desktop
+names its desktop window or no window, and the first frame at the new point. The next discovery run of the row must show
+either the routing-nav step's own frame or a `park-refused` event with its diagnostic frame.
+
 ### The windows-visual matrix had no producer, and a harness failure was the product's `failed` (offline, 2026-11-17)
 
 Coverage audit 2026-11-13 (`.runtime/windows-parity-20261107/audit/coverage-20261113.md`, GAP-VIS, section 7

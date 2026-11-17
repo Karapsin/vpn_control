@@ -13,7 +13,10 @@ input is one of the closed steps below, at a reviewed point, into a window of th
   parks (OwnedNoTrayDesktop.show and restore).
 - The main window is moved to the canonical placement of the visual suite's window frame (140, 16, 1000 x 720 on the
   1280 x 800, 96 DPI display), so a reviewed point means the same control on every run.
-- Before every click the pointer is parked on the bare desktop, the main window's region is captured from the screen
+- Before every click the pointer is parked on the bare desktop (Session.park: it reads back there, WindowFromPoint
+  names the desktop window or none, and no visible window of the desktop's census holds the point; a refused park
+  names each failed check with what it saw and keeps one unreviewable frame of the whole display), the main window's
+  region is captured from the screen
   of that desktop until two consecutive captures are identical (the region capture's stable-frame rule, VISUAL-002),
   and the frame is kept in the operation root as document-gui-picker-frame-<nn>-<step>.png, which the evidence zip
   collects. The click happens only when the frame's pixels inside the step's reviewed anchor rectangle have the
@@ -53,7 +56,11 @@ DISPLAY = (1280, 800)
 DPI = 96
 # WindowsRegionScenes.windowFrame: left, top, width, height.
 PLACEMENT = (140, 16, 1000, 720)
-PARK = (4, 796)  # Outside the placement: the pointer rests on the bare private desktop, so no control shows hover.
+# Where the pointer rests before every frame, so no control shows hover: in the 140-pixel gutter left of the placement,
+# halfway down, at least 64 pixels from the placement and from every display edge. A shell's taskbar, where a desktop
+# has one, is a band along an edge (48 pixels at the bottom on Windows 11), and nothing on the owned desktop is at an
+# edge or a corner. Session.park proves the point bare on every run.
+PARK = (70, 400)
 DESKTOP_WINDOW_CLASS = "#32769"
 DIALOG_CLASS = "#32770"
 MAIN_CLASS = "SunAwtFrame"
@@ -476,22 +483,29 @@ class Win32:
         return self.on_desktop(grab)
 
     def point_cursor(self, x, y):
-        """SetCursorPos, then the pointer's own position read back. A move is not a click."""
+        """SetCursorPos, then the pointer's own position read back, and the error of each call that failed. A move is
+        not a click."""
         def move():
+            ctypes.set_last_error(0)
             moved = bool(self.set_cursor(x, y))
+            errors = {"setCursorPos": 0 if moved else ctypes.get_last_error(), "getCursorPos": 0}
             where = W.POINT()
+            ctypes.set_last_error(0)
             read = bool(self.get_cursor(ctypes.byref(where)))
-            return moved, (where.x, where.y) if read else None
+            if not read:
+                errors["getCursorPos"] = ctypes.get_last_error()
+            return moved, ((where.x, where.y) if read else None), errors
         return self.on_desktop(move)
 
     def window_at(self, x, y):
+        """WindowFromPoint: the window it names and its root (the desktop window is its own root), or None."""
         def read():
             hwnd = self.from_point(W.POINT(x, y))
             if not hwnd:
                 return None
             root = self.ancestor(hwnd, _GA_ROOT) or hwnd
             pid, _ = self._pid(root)
-            return {"hwnd": int(hwnd), "root": int(root), "rootClass": self._name(root), "pid": pid}
+            return {"hwnd": int(hwnd), "class": self._name(hwnd), "root": int(root), "rootClass": self._name(root), "pid": pid}
         return self.on_desktop(read)
 
     def click(self):
@@ -656,11 +670,41 @@ class Session:
 
     # -- the reviewed steps --
 
-    def park(self):
-        moved, where = self.native.point_cursor(*PARK)
-        under = self.native.window_at(*PARK)
-        need(moved and where == PARK and under is not None and under["rootClass"] == DESKTOP_WINDOW_CLASS,
-             "document-gui-picker-park")
+    def park(self, step):
+        """The pointer at PARK, over the bare owned desktop and outside the crop, before the step's frame.
+
+        Every check is made, and each one that fails is named in one document-gui-picker-park-refused event with what it
+        observed: SetCursorPos's answer and error, the position read back, the window WindowFromPoint names there, and
+        the visible windows of the desktop whose rectangle holds the point. WindowFromPoint must name the desktop window
+        (#32769, its own root) or no window at all. It passes over hidden and disabled windows, so the census of every
+        top-level window of the desktop must also show none over the point. A refused park keeps one frame of the whole
+        display, a diagnostic that is never a step's reviewed frame, and the row ends there with no click."""
+        x, y = PARK
+        moved, where, errors = self.native.point_cursor(x, y)
+        under = self.native.window_at(x, y)
+        rows, pids = self.census("park-" + step)
+        crop = _placement_rect(self.profile)
+        covering = [row for row in rows if row["visible"] and row["rect"][0] <= x < row["rect"][2]
+                    and row["rect"][1] <= y < row["rect"][3]]
+        passed = {"cursor-move": moved is True, "cursor-readback": where == PARK,
+                  "window-at-point": under is None or (under["hwnd"] == under["root"] and under["rootClass"] == DESKTOP_WINDOW_CLASS
+                                                       and under["pid"] not in pids),
+                  "window-over-point": not covering,
+                  "point-in-crop": not (crop[0] <= x < crop[2] and crop[1] <= y < crop[3])}
+        failed = [check for check, held in passed.items() if not held]
+        if not failed:
+            return
+        frame = frame_error = None
+        display = (0, 0) + DISPLAY
+        try:
+            frame = self.keep("park-" + step, Frame(display, self.native.capture(display)), "park-diagnostic")
+        except Exception as error:  # The park's own refusal stays the reason; a park of the owner is never caught.
+            frame_error = (type(error).__name__ + ":" + str(error))[:160]
+        self.owner.event("document-gui-picker-park-refused", {"step": step, "park": list(PARK), "failed": failed,
+            "moved": moved, "winerror": errors, "cursor": None if where is None else list(where), "under": under,
+            "covering": covering, "crop": list(crop), "frame": frame, "frameError": frame_error, "frameReviewable": False,
+            "clicked": False, "replayAllowed": False})
+        raise RuntimeError("document-gui-picker-park-" + failed[0] + ":" + step)
 
     def main_unchanged(self, step):
         rows, pids = self.census(step)
@@ -674,7 +718,7 @@ class Session:
         """One reviewed click: parked pointer, stable frame, reviewed anchor, the pointer at the point over the GUI."""
         need(self.child.process.poll() is None and self.lease.switched, "document-gui-picker-step-context:" + step)
         pids = self.main_unchanged(step)
-        self.park()
+        self.park(step)
         frame, kept = self.stable(step, _placement_rect(self.profile), "before-click")
         entry = reviewed(self.profile, step)
         if entry is None:
@@ -687,11 +731,12 @@ class Session:
                 "observed": digest, "reviewed": entry["sha256"], "clicked": False, "replayAllowed": False})
             raise RuntimeError("document-gui-picker-anchor-mismatch:" + step)
         x, y = entry["point"]
-        moved, where = self.native.point_cursor(x, y)
+        moved, where, errors = self.native.point_cursor(x, y)
         under = self.native.window_at(x, y)
         if not (moved and where == (x, y) and under is not None and under["pid"] in pids):
             self.owner.event("document-gui-picker-point-refused", {"step": step, "point": [x, y], "moved": moved, "cursor": where,
-                                                                   "under": under, "clicked": False, "replayAllowed": False})
+                                                                   "winerror": errors, "under": under, "clicked": False,
+                                                                   "replayAllowed": False})
             raise RuntimeError("document-gui-picker-point-not-owned:" + step)
         self.owner.event("document-gui-picker-click-intent", {"step": step, "point": [x, y], "under": under, "frame": kept["name"],
                                                               "anchorSha256": digest, "oneEffect": True, "replayAllowed": False})

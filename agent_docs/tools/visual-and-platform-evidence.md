@@ -1769,8 +1769,21 @@ frame placement (140, 16, 1000 x 720). In order:
 The input desktop is then Default again, and the owner's pass closing quits the
 GUI-started owner as for `gui-owner`.
 
-Every click is reviewed. Before it the pointer is parked at (4, 796) on the bare
-desktop, and the main window's region is captured from that desktop's screen until
+Every click is reviewed. Before it the pointer is parked at (70, 400), in the gutter
+left of the placement and 64 pixels or more from it and from every display edge. The
+park holds only when `SetCursorPos` succeeds, the pointer reads back there,
+`WindowFromPoint` names the desktop window (`#32769`, its own root) or no window, and
+no visible window in the census of the owned desktop holds the point: the census
+also catches a window of the GUI that `WindowFromPoint` passes over because it is
+disabled. A refused park ends `document-gui-picker-park-<check>:<step>` with no
+click. Its `document-gui-picker-park-refused` event names every failed check
+(`cursor-move`, `cursor-readback`, `window-at-point`, `window-over-point`,
+`point-in-crop`) with what it saw: the `SetCursorPos` and `GetCursorPos` errors, the
+position read back, the window at the point and the windows over it. It keeps one
+frame of the whole display, `document-gui-picker-frame-<nn>-park-<step>.png` with
+kind `park-diagnostic`, so the review loop still has a frame to open. That frame is
+never a step's reviewed frame: the pointer was not parked when it was taken. Then the
+main window's region is captured from that desktop's screen until
 two consecutive captures are identical (at most 20, 250 ms apart: the region
 capture's stable-frame rule). The frame is kept as
 `document-gui-picker-frame-<nn>-<step>.png` in the operation root, which the
@@ -1800,7 +1813,8 @@ dialog's control census.
 Other known ends:
 
 - `document-gui-picker-foreign-window:<step>`, with the census;
-- `-window-unresolved`, `-display-not-canonical`, `-placement`, `-park`;
+- `-window-unresolved`, `-display-not-canonical`, `-placement`;
+- `-park-<check>:<step>`, with its diagnostic frame;
 - `-frame-unstable:<step>` and `-frame-blank:<step>`, each with its last frame;
 - `-point-not-owned:<step>`;
 - `-click-refused:<step>`: `SendInput` inserted nothing, with its error;
