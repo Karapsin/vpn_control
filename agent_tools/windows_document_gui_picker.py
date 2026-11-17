@@ -98,6 +98,11 @@ PROFILE["steps"]["routing-nav"] = {"point": [1029, 704], "anchor": [1004, 686, 1
 # left, and the point is its centre.
 PROFILE["steps"]["export-menu"] = {"point": [316, 89], "anchor": [268, 62, 366, 116],
                                    "sha256": "6adc3b072ef29f1e79c80178bb421639390f86156bb4033859191c7080b5b6b4"}
+# export-file: reviewed by the coordinator from f87ce3aa frame 02 (pixels 754c75a2..., origin 140,16). The Export dropdown
+# open under the Export button with two items, File and Clipboard, and no dialog yet; the anchor holds only the File
+# item inside the menu panel, and the point is on that item.
+PROFILE["steps"]["export-file"] = {"point": [310, 146], "anchor": [273, 122, 381, 166],
+                                   "sha256": "e16e4dd9ca67c8f5931dcd70fee34a025f9826e6e3907d5334fe1a08b5825a2b"}
 
 
 def need(value, code):

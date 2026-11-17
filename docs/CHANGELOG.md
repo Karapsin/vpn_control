@@ -8,7 +8,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows GUI picker: a failed pointer park now names each failed check with observed values and keeps a diagnostic frame.
 - Windows native rows: the collector root accepts the protected owner-only ACL Windows actually reads back, and the reserved-stage squat reads its own operation status while it waits for the product journal.
 - Windows UAC decisions find the reviewed prompt at the height Windows drew it, keep a refused frame, and collect a grant whose approval was refused.
-- Windows GUI picker: the routing-nav and export-menu steps are reviewed from their native frames.
+- Windows GUI picker: the routing-nav, export-menu and export-file steps are reviewed from their native frames.
 
 ## 2.3.0 - 2026-11-17
 
