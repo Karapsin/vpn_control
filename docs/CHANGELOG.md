@@ -5,6 +5,11 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Windows UAC decisions reach a second administrator's credential through a reviewed, step-gated keyboard route, re-confirming the same consent before the secret.
+- Custom configurations: the injected direct-probe outbound resolves domains through the configuration's own default DNS server, so configs with two or more DNS servers (or SSH Routing) are no longer rejected by sing-box before the VPN or proxy starts.
+
+## 2.3.2 - 2026-11-17
+
 - Windows update grant rows read the SYSTEM collector worker's session from its retained handle while it runs, and a proof without a session fails on its own code.
 - Windows native runs accept a raced host cache copy, record a submit that provably never left the host as not_submitted, and keep the guest agent's own error for a lost file push.
 - Windows reboot rows read the Run key's owner, group and DACL only, without the SACL an ordinary user cannot read.
@@ -14,6 +19,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows failing-MSI collector chain takes the native protected forms and reads its worker's session while it runs.
 - Windows native collection gives collect, the decision read and the evidence pull separate transport budgets, and collects a refused-before-input approval on TUN and update grants as approval-unanswered with its evidence.
 - Windows scenario admission archives the closed journals of ended jobs out of the VM root, so a long-lived clone no longer hits the VM-root entry bound.
+- Windows native collection gives read-only admissions a readiness-sized budget and keeps a refused read of a terminal job pending with bounded retries instead of collector_unavailable.
 
 ## 2.3.1 - 2026-11-17
 
