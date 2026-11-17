@@ -8,6 +8,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows UAC decisions reach a second administrator's credential through a reviewed, step-gated keyboard route, re-confirming the same consent before the secret.
 - Custom configurations: the injected direct-probe outbound resolves domains through the configuration's own default DNS server, so configs with two or more DNS servers (or SSH Routing) are no longer rejected by sing-box before the VPN or proxy starts.
 - Windows reboot rows resolve task account names to SIDs, plant the legacy task in its creator-owned any-user shape, and refuse before any public toggle when the ordinary user could not change it.
+- Windows autostart treats a logon trigger whose Enabled element Task Scheduler omitted as enabled, so enabled tasks are no longer reported as conflicts when autostart is turned on or off.
 
 ## 2.3.2 - 2026-11-17
 
