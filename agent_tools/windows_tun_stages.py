@@ -17,14 +17,24 @@ make (windows_runtime_branch_cases), so each is the TUN half of a proxy row. A c
 config the ordinary user reads in its ready window with the bytes SYSTEM read for its ready record. A preparation
 failure in VPN mode raises no prompt and must leave A, pending B and the census as they were; a commit-readiness
 failure after an approval must bring A back as a new unelevated runtime with nothing scoped left. Neither asks a
-collector: no TUN comes up.
+collector: no TUN comes up. A commit-failure row whose approved start ended RUNTIME_FAILED before its commit (A never
+stopped, so nothing to recover) is a known end once A, pending B and the census are as before.
+
+While finish waits for the terminal, a read-only preparation watch records how far the product's VPN start got (the
+approved broker, its private stage, the sing-box it started, the launch's VPN config, redacted). On a terminal the
+variant does not expect, the stages publish the product's own diagnostics (scoped-tun-product-diagnostics: the
+operation's ledger record, its log, its diagnostics report, the workspace runtime log and folder, that watch) before any
+check of the end, and the known end names the diagnosis: a failed row shows why.
 """
 from __future__ import annotations
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import socket
+import threading
+import time
 import uuid
 
 # The reserved cases (windows_tun_reserved_cases) restart into their own pending location: resources-grant and ssh-grant
@@ -62,6 +72,29 @@ TUN_SUBNET = ('172.19.250.0', 30)  # DesktopProxyConfigFactory's generated TUN a
 # Its transport codes (exit 2) and an answer from no or another controller leave the request's outcome open.
 REFUSED_EXITS = {**dict.fromkeys(('INVALID_ARGUMENT','NOT_FOUND','AMBIGUOUS_LOCATION','READ_ONLY_SOURCE','BUSY','CONFLICT',
     'UNSUPPORTED','INTERACTION_REQUIRED','PERMISSION_DENIED','PERSISTENCE_FAILED','RUNTIME_FAILED'),1),'CANCELLED':130}
+# The preparation watch: what the ordinary user can see of the product's VPN start while the row's operation runs. The
+# approved broker writes no log of its own (its stderr goes to its hidden console) and runs as the approving administrator,
+# so its exit code is not readable here; how far it got is: its process, the private stage it creates once its pipe, peer,
+# job and runtime digest are admitted, and the suspended sing-box it starts there (DesktopWindowsVpnBroker, VpnRuntimeBroker.Run).
+WATCH_INTERVAL = 0.01  # The product's own pipe poll is 25 ms; a broker refused at admission lives a few tens of ms.
+WATCH_SECONDS = 330  # finish waits 300 s for the terminal.
+WATCH_ITEMS = 32  # Distinct processes, stages or candidate folders kept per kind.
+CANDIDATE_PREFIX = 'candidate-'  # DesktopProxyRuntimeManager: one folder per launch under the workspace runtime folder.
+# The product's own diagnostics on an unexpected terminal, each bounded so the one event stays under the owner's 256 KiB.
+LOG_ENTRIES = 200
+LOG_MESSAGE_CHARS = 1000
+TEXT_CHARS = 48*1024
+DIAGNOSTICS_EVENT_BYTES = 200*1024
+# agent_docs/runtime-troubleshooting.md: redact endpoints, subscription URLs, UUIDs, credentials and tokens. Loopback, the
+# generated TUN subnet and the sampler's benchmark address are the row's own and stay readable.
+SECRET_KEYS = frozenset({'password','uuid','private_key','pre_shared_key','psk','token','auth','auth_str','secret','short_id',
+    'public_key','obfs_password','username','user','key','key_path','private_key_path','certificate','certificate_path'})
+ENDPOINT_KEYS = frozenset({'server','domain','server_name','host','hostname','sni'})
+URL = re.compile(r'\b([A-Za-z][A-Za-z0-9+.-]{0,15})://[^\s"\'<>]+')
+UUID_TEXT = re.compile(r'\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\b')
+IPV4 = re.compile(r'(?<![\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d.])')
+CREDENTIAL = re.compile(r'(?i)\b(password|passwd|token|secret|private[_-]?key|psk|auth|uuid)(\s*[=:]\s*"?)[^\s",}]+')
+LOCAL_HOSTS = frozenset({'localhost','127.0.0.1','::1','0.0.0.0'})
 
 
 def require(value, reason):
@@ -141,6 +174,302 @@ def unscoped(inputs, observer, state, baseline):
     require(found['brokers']==[] and found['routes']==[] and set(found['runtimes'])<=set(baseline['runtimes'])
             and found['stages']==baseline['stages'],'scoped-tun-unexpected-terminal-scoped-state')
     return found
+
+
+def local_ipv4(text):
+    """Loopback, the unspecified address, the generated TUN subnet or the sampler's benchmark address: the row's own."""
+    match=IPV4.fullmatch(text.split('/')[0]) if type(text) is str else None
+    if match is None or any(int(part)>255 for part in match.groups()):
+        return False
+    value=int.from_bytes(bytes(int(part) for part in match.groups()),'big')
+    network,bits=TUN_SUBNET;mask=(0xffffffff<<(32-bits))&0xffffffff
+    return (value>>24==127 or value==0 or match.group(0)=='198.18.0.1'
+            or value&mask==int.from_bytes(socket.inet_aton(network),'big'))
+
+
+def redact_text(text):
+    """URLs, UUIDs, credential assignments and endpoints that are not the row's own: runtime-troubleshooting.md."""
+    text=URL.sub(lambda match:match.group(1)+'://<redacted>',text)
+    text=UUID_TEXT.sub('<uuid>',text)
+    text=CREDENTIAL.sub(lambda match:match.group(1)+match.group(2)+'<redacted>',text)
+    return IPV4.sub(lambda match:match.group(0) if local_ipv4(match.group(0)) else '<ipv4>',text)
+
+
+def redact_config(value, key=None):
+    """A sing-box config with every secret and foreign endpoint replaced; its structure, tags and TUN fields stay."""
+    name=key.casefold() if type(key) is str else None
+    if type(value) is dict:
+        return {item:redact_config(child,item) for item,child in value.items()}
+    if type(value) is list:
+        return [redact_config(child,key) for child in value]
+    if name in SECRET_KEYS and value not in (None,True,False,''):
+        return '<redacted>'
+    if type(value) is str:
+        if name in ENDPOINT_KEYS and value.casefold() not in LOCAL_HOSTS and not local_ipv4(value):
+            return '<endpoint>'
+        return redact_text(value)
+    return value
+
+
+def tun_summary(value):
+    """What decides a VPN start on Windows, without the redacted body: the TUN inbound, the outbounds and the route's end."""
+    if type(value) is not dict:
+        return None
+    inbounds=[row for row in value.get('inbounds') or [] if type(row) is dict]
+    return {'tun':[{key:row.get(key) for key in ('tag','interface_name','address','auto_route','strict_route','stack','mtu')}
+                   for row in inbounds if row.get('type')=='tun'],
+            'inbounds':[[row.get('type'),row.get('tag')] for row in inbounds],
+            'outbounds':[[row.get('type'),row.get('tag')] for row in value.get('outbounds') or [] if type(row) is dict],
+            'route':{key:(value.get('route') or {}).get(key) for key in ('final','auto_detect_interface')}}
+
+
+def clip(text, limit=TEXT_CHARS):
+    """The last limit characters of a redacted text: a failure is at its end."""
+    text=redact_text(text)
+    return text if len(text)<=limit else '<clipped '+str(len(text)-limit)+' chars>'+text[-limit:]
+
+
+def read_shared(owner, path, limit):
+    """A product file's bytes, opened with read, write and delete sharing so the product can still replace or remove it;
+    None when it does not exist or cannot be opened. Never writes, never holds the handle past the read."""
+    import ctypes
+    native=owner.native
+    handle=native.k.CreateFileW(str(path),0x80000000,7,None,3,0x00200000,None)
+    if handle==ctypes.c_void_p(-1).value:
+        return None
+    try:
+        raw=bytearray()
+        for block in native.read_blocks(handle):
+            raw+=block
+            require(len(raw)<=limit,'scoped-tun-diagnostic-file-bound')
+        return bytes(raw)
+    finally:
+        native.k.CloseHandle(handle)
+
+
+def runtime_folder(state):
+    return Path(state['workspace'])/'runtime'
+
+
+def candidates(state):
+    """The product's launch folders now in the workspace runtime folder."""
+    return sorted(name for name in os.listdir(str(runtime_folder(state))) if name.startswith(CANDIDATE_PREFIX))
+
+
+class PrepareWatch:
+    """How far the product's VPN start got, as the ordinary user sees it, while finish waits for the row's terminal.
+
+    Read only, on its own thread: the approved broker process and its parent, the private ProgramData stage it creates,
+    the sing-box it starts there, any other new sing-box, and the product's new launch folder, whose config.json (the VPN
+    config the broker is sent) is read once, shared, and kept only redacted. A broker refused at admission or before its
+    pipe lives tens of milliseconds and creates no stage; one that failed on its inputs has created its stage; one that
+    started its suspended child has reached READY. Nothing here can fail the row: each read error is counted and kept.
+    """
+
+    def __init__(self, owner, lease, observer, clock=time.monotonic):
+        state=lease['state']
+        self.owner,self.observer,self.clock,self.state=owner,observer,clock,state
+        self.program_data=lease['inputs']['programData']
+        self.known_runtimes=set(lease['baseline']['runtimes'])|{state['actors']['runtime']['pid']}
+        self.known_stages=set(lease['baseline']['stages'])
+        self.known_candidates=set(lease.get('candidateBaseline') or ())
+        self.items={'brokers':{},'runtimes':{},'stages':{},'candidates':{}}
+        self.configs,self.attempts,self.errors={},{},{}
+        self.samples,self.started,self.native,self.thread=0,None,None,None
+        self.halt,self.lock=threading.Event(),threading.Lock()
+
+    def note(self, kind, error):
+        entry=self.errors.setdefault(kind,{'count':0,'first':type(error).__name__+': '+str(error)[:200]})
+        entry['count']+=1
+
+    def capture(self, name):
+        """The launch folder's config.json, once it parses: a launch writes it before its preflight and keeps it until retired."""
+        if name in self.configs or self.attempts.get(name,0)>=200:
+            return
+        self.attempts[name]=self.attempts.get(name,0)+1
+        try:
+            raw=read_shared(self.owner,runtime_folder(self.state)/name/'config.json',CONFIG_BYTES)
+            if raw is None:
+                return
+            value=json.loads(raw)
+        except Exception as error:
+            self.note('candidate-config',error)
+            return
+        redacted=json.dumps(redact_config(value),sort_keys=True,separators=(',',':'))
+        self.configs[name]={'sizeBytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'summary':tun_summary(value),
+                            'redacted':redacted if len(redacted)<=TEXT_CHARS else None}
+
+    def step(self):
+        with self.lock:
+            now=round(self.clock()-self.started,3);self.samples+=1;seen={}
+            try:
+                if self.native is None:
+                    self.native=self.observer.WindowsNative()
+                rows=self.native.processes()
+                brokers={row['pid']:{'pid':row['pid'],'parentPid':row.get('parentPid')} for row in rows
+                         if row['name'].casefold()==BROKER_LEAF}
+                parents=set(self.items['brokers'])|set(brokers)
+                seen['brokers']=brokers
+                seen['runtimes']={row['pid']:{'pid':row['pid'],'parentPid':row.get('parentPid'),
+                                              'brokerChild':row.get('parentPid') in parents}
+                                  for row in rows if row['name'].casefold()=='sing-box.exe' and row['pid'] not in self.known_runtimes}
+            except Exception as error:
+                self.note('processes',error)
+            try:
+                seen['stages']={name:{'name':name} for name in os.listdir(self.program_data)
+                                if name.casefold().startswith(STAGE_PREFIX) and name not in self.known_stages}
+            except Exception as error:
+                self.note('stages',error)
+            try:
+                seen['candidates']={name:{'name':name} for name in candidates(self.state) if name not in self.known_candidates}
+                for name in seen['candidates']:
+                    self.capture(name)
+            except Exception as error:
+                self.note('candidates',error)
+            for kind,found in seen.items():  # A kind whose read failed keeps its last presence.
+                table=self.items[kind]
+                for key,value in found.items():
+                    if key not in table and len(table)<WATCH_ITEMS:
+                        table[key]={**value,'firstSeen':now}
+                    if key not in table:
+                        continue
+                    table[key]['lastSeen']=now
+                    if kind=='runtimes':
+                        table[key]['brokerChild']=table[key]['brokerChild'] or value['brokerChild']
+                for key,item in table.items():
+                    item['present']=key in found
+
+    def run(self):
+        while not self.halt.wait(WATCH_INTERVAL) and self.clock()-self.started<WATCH_SECONDS:
+            self.step()
+
+    def start(self):
+        self.started=self.clock()
+        self.step()
+        self.thread=threading.Thread(target=self.run,name='scoped-tun-prepare-watch',daemon=True)
+        self.thread.start()
+        return self
+
+    def stop(self):
+        """The last sample is taken here, after the terminal, so a broker still present then is reported present."""
+        self.halt.set()
+        if self.thread is not None:
+            self.thread.join(5)
+        self.step()
+        with self.lock:
+            return {'intervalSeconds':WATCH_INTERVAL,'samples':self.samples,
+                    'durationSeconds':round(self.clock()-self.started,3),
+                    **{kind:list(table.values()) for kind,table in self.items.items()},
+                    'candidateConfigs':dict(self.configs),'errors':dict(self.errors)}
+
+
+def diagnosis(timeline, logs=None):
+    """How far the VPN start got, from the watch, and the product's own last log lines: the why of a failed grant row."""
+    if type(timeline) is not dict or timeline.get('samples',0)<1:
+        reach='unobserved'
+    elif any(row.get('brokerChild') for row in timeline['runtimes']):
+        reach='broker-child-created'  # The broker created its suspended sing-box: preparation reached READY or later.
+    elif timeline['stages']:
+        reach='broker-stage-created'  # Admitted pipe, peer, job and runtime digest; failed on its files, config or child.
+    elif timeline['brokers']:
+        # Before its stage: the broker's own admission, the owner process, the pipe, the peer, the job or the runtime digest.
+        reach='broker-running-without-stage' if any(row['present'] for row in timeline['brokers']) else 'broker-ended-before-stage'
+    else:
+        reach='no-broker-observed'
+    brokers=(timeline or {}).get('brokers') or []
+    return {'reach':reach,'brokers':len(brokers),
+            'brokerObservedSeconds':None if not brokers else round(brokers[0]['lastSeen']-brokers[0]['firstSeen'],3),
+            'watchErrors':sorted((timeline or {}).get('errors') or {}),
+            'lastProductLog':[row.get('message') for row in (logs or [])[-3:] if type(row) is dict]}
+
+
+def fit(value, limit=None):
+    """The diagnostics event under its bound: the bulkiest texts give way to their digests, the largest first."""
+    limit=DIAGNOSTICS_EVENT_BYTES if limit is None else limit
+    def size():
+        return len(json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode())
+    for path in (('diagnosticsExport','text'),('runtimeLog','tail'),('watch','candidateConfigs'),('logs',)):
+        if size()<=limit:
+            break
+        holder=value
+        for step in path[:-1]:
+            holder=holder.get(step) if type(holder) is dict else None
+        if type(holder) is dict and path[-1] in holder:
+            raw=json.dumps(holder[path[-1]],sort_keys=True).encode()
+            holder[path[-1]]={'dropped':True,'sizeBytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+    require(size()<=limit,'scoped-tun-diagnostics-bound')
+    return value
+
+
+def product_diagnostics(owner, lease, runtime, terminal, timeline):
+    """On a terminal the variant does not expect: the product's own account of it, before any check of the end runs.
+
+    The operation's ledger record, the product's log (logs, its own redaction), its diagnostics report (diagnostics export,
+    its own redaction: preflight, VPN capability, connection log, runtime log tail), the workspace runtime log and runtime
+    folder, the VPN config the launch held (from the watch, redacted), a reserved job's correlation journals, and the watch.
+    Each read is best effort: a failed one is recorded, never raised, and nothing is written to the product.
+    """
+    state=lease['state'];workspace,identity=state['workspace'],state['identity']
+    operation=lease['accepted']['operationId']
+    found={'variant':lease['inputs']['variant'],'terminal':terminal,'watch':timeline,'replayAllowed':False}
+
+    def part(name, read):
+        try:
+            found[name]=read()
+        except Exception as error:
+            found[name]={'error':type(error).__name__+': '+str(error)[:200]}
+
+    def ledger():
+        rows=[row for row in runtime.result(owner,workspace,identity,'operations','list')['data']['operations']
+              if type(row) is dict and row.get('id')==operation]
+        return rows[0] if len(rows)==1 else {'matches':len(rows)}
+
+    def logs():
+        entries=runtime.result(owner,workspace,identity,'logs','--limit',str(LOG_ENTRIES))['data']['entries']
+        return [{key:(clip(item,LOG_MESSAGE_CHARS) if type(item) is str else item) for key,item in row.items()}
+                for row in entries[-LOG_ENTRIES:] if type(row) is dict]
+
+    def report():
+        reply=owner.invoke(workspace,'--json','--controller-id',identity,'diagnostics','export','--output','-')
+        raw=reply.stdout.encode()
+        return {'exitCode':reply.returncode,'stderr':clip(reply.stderr,2000),'sizeBytes':len(raw),
+                'sha256':hashlib.sha256(raw).hexdigest(),'text':clip(reply.stdout)}
+
+    def runtime_log():
+        raw=read_shared(owner,runtime_folder(state)/'runtime-sing-box.log',CONFIG_BYTES)
+        if raw is None:
+            return {'absent':True}
+        return {'sizeBytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),
+                'tail':clip(raw[-4*TEXT_CHARS:].decode('utf-8','replace'))}
+
+    part('operation',ledger)
+    part('logs',logs)
+    part('diagnosticsExport',report)
+    part('runtimeLog',runtime_log)
+    part('runtimeFolder',lambda:sorted(os.listdir(str(runtime_folder(state))))[:64])
+    if 'reserved' in lease:
+        part('journals',lambda:sorted(lease['reserved'].journals(workspace)))
+    found['diagnosis']=diagnosis(timeline,found['logs'] if type(found['logs']) is list else None)
+    owner.event('scoped-tun-product-diagnostics',fit(found))
+    return found['diagnosis']
+
+
+def watching(owner, lease, observer):
+    """A started preparation watch, or the error that kept it from starting: a watch never fails the row."""
+    try:
+        return PrepareWatch(owner,lease,observer).start()
+    except Exception as error:
+        return error
+
+
+def watched(watch):
+    """The watch's timeline once stopped; a watch that could not start or stop is an unobserved one, with its error."""
+    if isinstance(watch,PrepareWatch):
+        try:
+            return watch.stop()
+        except Exception as error:
+            watch=error
+    return {'samples':0,'errors':{'watch':{'count':1,'first':type(watch).__name__+': '+str(watch)[:200]}}}
 
 
 def refused(owner, state, inputs, runtime, cases, observer, operation, children, known):
@@ -285,6 +614,11 @@ def begin(owner, state, inputs, runtime, cases, observer, branches=None, reserve
             'owned-small-proxy-config-beforeimage')
     runtime.publish(owner,owner.root/'tun-active-a-beforeimage.json',raw)
     config.close()
+    # The launch folders before the request (active A's): the preparation watch reads only the ones the request adds.
+    try:
+        candidate_baseline=candidates(state)
+    except OSError:
+        candidate_baseline=None
     # From here on the product may hold an open operation, a prompt or a broker: any failure parks the owner,
     # unless the request's own reply proves it final and nothing changed.
     owner.tun_operation_requested=True
@@ -300,7 +634,8 @@ def begin(owner, state, inputs, runtime, cases, observer, branches=None, reserve
     require(type(accepted['operationId']) is str and str(uuid.UUID(accepted['operationId']))==accepted['operationId']
             and str(uuid.UUID(accepted['requestId']))==accepted['requestId'], 'scoped-tun-original-accepted-job')
     lease={'state':state,'inputs':inputs,'before':before,'pending':pending,'accepted':accepted,
-           'activeConfig':config,'baseline':baseline,'finished':False,**({} if added is None else {'document':added})}
+           'activeConfig':config,'baseline':baseline,'candidateBaseline':candidate_baseline,'finished':False,
+           **({} if added is None else {'document':added})}
     if not hasattr(owner,'tun_operation_leases'):owner.tun_operation_leases=[]
     owner.tun_operation_leases.append(lease)
     if variant in PROMPTLESS:
@@ -406,12 +741,35 @@ def finish(owner, lease, runtime, cases, observer, handoff=None, receipts=None):
         return squat_finish(owner,lease,runtime,cases,observer)
     # The default wait parks at 120 s, about as long as a prompt lives, so it must outlast the prompt.
     # Every final code the stages know is read; one this variant does not expect is known only as checked below.
-    terminal=runtime.finish_operation(owner,state,lease['accepted'],
-        {'OK','RUNTIME_FAILED','CANCELLED','PERMISSION_DENIED'},seconds=300)
+    # The preparation watch runs exactly while the wait does: the prompt is answered only after begin published it.
+    watch=watching(owner,lease,observer)
+    try:
+        terminal=runtime.finish_operation(owner,state,lease['accepted'],
+            {'OK','RUNTIME_FAILED','CANCELLED','PERMISSION_DENIED'},seconds=300)
+    finally:
+        timeline=watched(watch)
     status=runtime.result(owner,state['workspace'],state['identity'],'status')
     # A fault variant's own end: RUNTIME_FAILED with A kept (preparation) or A back as a new runtime (commit).
     if variant in FAULTS and terminal['code']=='RUNTIME_FAILED':
-        found=(prepared_failure if variant in PROMPTLESS else commit_failure)(owner,lease,status,runtime,cases,observer)
+        try:
+            found=(prepared_failure if variant in PROMPTLESS else commit_failure)(owner,lease,status,runtime,cases,observer)
+        except AssertionError as mismatch:
+            if variant in PROMPTLESS:
+                raise  # Its oracle already is the known-end check: A kept and nothing scoped.
+            # The approved start ended before its commit: A was never stopped, so nothing was recovered. A definite
+            # RUNTIME_FAILED with A, pending B and the census as before is a known end, closed by the row's own steps;
+            # anything else (A replaced, something scoped left) keeps parking with the oracle's own reason.
+            diagnosed=product_diagnostics(owner,lease,runtime,terminal,timeline)
+            try:
+                kept(state,lease['inputs'],lease['before'],lease['pending'],lease['activeConfig'].initial,status,cases,observer)
+                found=unscoped(lease['inputs'],observer,state,lease['baseline'])
+            except AssertionError:
+                raise mismatch from None
+            lease.update(finished=True,knownEnd=terminal['code'])
+            owner.event('scoped-tun-unexpected-terminal-known',{'variant':variant,'terminal':terminal,'status':status,
+                'census':found,'diagnosis':diagnosed,'oracle':str(mismatch),'commitReached':False,
+                'knownFailure':True,'replayAllowed':False})
+            return {'terminal':terminal,'status':status,'nativeRecord':None,'knownFailure':terminal['code']}
         lease.update(finished=True,faultRecovered=terminal['code'])
         owner.event('scoped-tun-fault-recovered',{'variant':variant,'terminal':terminal,'status':status,'census':found,
             'actors':state['actors'],'promptExpected':variant not in PROMPTLESS,'replayAllowed':False})
@@ -421,13 +779,15 @@ def finish(owner, lease, runtime, cases, observer, handoff=None, receipts=None):
     unexpected=terminal['code'] not in (denials(variant) if denied else set() if variant in PROMPTLESS
                                         else {'CANCELLED'} if variant in FAULTS else {'OK','CANCELLED'})
     if denied or cancelled or unexpected:
+        # The product's own account first, so a row that parks on the checks below keeps it too.
+        diagnosed=product_diagnostics(owner,lease,runtime,terminal,timeline) if unexpected else None
         kept(state,lease['inputs'],lease['before'],lease['pending'],lease['activeConfig'].initial,status,cases,observer)
         if unexpected:
             # A refused preparation, say, before any prompt: known only with A intact and nothing scoped started.
             found=unscoped(lease['inputs'],observer,state,lease['baseline'])
             lease.update(finished=True,knownEnd=terminal['code'])
             owner.event('scoped-tun-unexpected-terminal-known',{'variant':lease['inputs']['variant'],'terminal':terminal,
-                'status':status,'census':found,'knownFailure':True,'replayAllowed':False})
+                'status':status,'census':found,'diagnosis':diagnosed,'knownFailure':True,'replayAllowed':False})
             return {'terminal':terminal,'status':status,'nativeRecord':None,'knownFailure':terminal['code']}
     else:
         require(variant in GRANTS and handoff is not None and receipts is not None,'actual-tun-native-file-required')

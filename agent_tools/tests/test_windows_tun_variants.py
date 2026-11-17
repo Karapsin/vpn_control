@@ -312,6 +312,37 @@ class CommitFailureTests(VariantWorld):
                     self.finish(lease, "RUNTIME_FAILED", **status)
                 self.assertFalse(lease["finished"], "an open outcome parks")
 
+    def test_a_failure_before_the_commit_with_a_untouched_and_nothing_running_is_a_known_end(self):
+        """449c0f39: approved, then RUNTIME_FAILED with A's same runtime and nothing new running. The commit was never
+        reached, so there was nothing to recover; the oracle's mismatch parked the owner over serve and fixture
+        (scenario-failure-with-retained-child). The product's end is final and nothing scoped exists: a known end."""
+        lease = self.leased("vpn-commit-failure")
+        with mock.patch.object(stages, "product_diagnostics", lambda owner, lease, runtime, terminal, timeline: {"reach": "broker-ended-before-stage"}, create=True):
+            result, actors = self.finish(lease, "RUNTIME_FAILED")
+        self.assertEqual("RUNTIME_FAILED", result["knownFailure"])
+        self.assertNotIn("faultRecovered", result)
+        self.assertEqual([(70, False), (77, False)], actors, "the same A, unelevated")
+        kind, value = self.owner.events[-1]
+        self.assertEqual("scoped-tun-unexpected-terminal-known", kind)
+        self.assertEqual(("scoped-tun-commit-failure-did-not-recover-active-a", False, {"reach": "broker-ended-before-stage"}),
+                         (value["oracle"], value["commitReached"], value["diagnosis"]))
+        self.assertEqual("RUNTIME_FAILED", lease["knownEnd"])
+        self.assertTrue(stages.settled(lease), "the driver closes it by the row's own steps and ends 1, instead of parking")
+        self.assertEqual(77, lease["state"]["actors"]["runtime"]["pid"], "the row's off and census take the A it had")
+
+    def test_a_failure_before_the_commit_that_left_anything_still_parks_with_the_oracles_reason(self):
+        for name, change in (("new-runtime", lambda: self.processes.append({"pid": 79, "parentPid": 70, "name": "sing-box.exe"})),
+                             ("broker", lambda: self.processes.append({"pid": 141, "parentPid": 70, "name": "vpn-control-vpn-broker.exe"})),
+                             ("pending-b-lost", lambda: self.status.update(selectedLocationId="a"))):
+            with self.subTest(left=name):
+                self.setUp()
+                lease = self.leased("vpn-commit-failure")
+                change()
+                with self.assertRaisesRegex(AssertionError, "^scoped-tun-commit-failure-did-not-recover-active-a$"):
+                    self.finish(lease, "RUNTIME_FAILED")
+                self.assertFalse(lease["finished"], "an open outcome parks")
+                self.assertEqual("scoped-tun-product-diagnostics", self.owner.events[-1][0], "its diagnostics are kept")
+
     def test_an_expired_prompt_is_a_known_end_and_a_tun_that_came_up_parks(self):
         lease = self.leased("vpn-commit-failure")
         result, _ = self.finish(lease, "CANCELLED")

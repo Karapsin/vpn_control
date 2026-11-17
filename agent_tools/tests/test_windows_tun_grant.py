@@ -910,6 +910,31 @@ class TunGrantFamilyTests(FamilyBase):
                 self.assertNotIn("collector", kinds)
                 self.forget(plan)
 
+    def test_a_failed_grant_receipt_names_why_its_vpn_start_failed(self):
+        """79828e7d failed RUNTIME_FAILED after its approval and its receipt said only that. The owner's known end now
+        names the stages' diagnosis, and the receipt carries its reach and the broker's observed lifetime."""
+        install, _ = self.install_base()
+        diagnosis = {"reach": "broker-ended-before-stage", "brokerObservedSeconds": 0.04, "brokers": 1, "watchErrors": [],
+                     "lastProductLog": ["VPN start failed"]}
+
+        def ended(value):
+            return (AWAITING, ("scoped-tun-unexpected-terminal-known", {"variant": "restart-grant", "terminal": {"code": "RUNTIME_FAILED"},
+                                                                         **value}), closed(knownFailure="RUNTIME_FAILED"))
+        for name, journal, expected in (
+                ("diagnosed", ended({"diagnosis": diagnosis}), {"reach": "broker-ended-before-stage", "brokerObservedSeconds": 0.04}),
+                ("no-seconds", ended({"diagnosis": {**diagnosis, "brokerObservedSeconds": None}}),
+                 {"reach": "broker-ended-before-stage", "brokerObservedSeconds": None}),
+                ("odd-reach", ended({"diagnosis": {**diagnosis, "reach": "Broker; drop"}}), "unread"),
+                ("no-diagnosis", ended({}), "unread"),
+                ("cancelled", GRANT_CANCELLED, "absent")):
+            with self.subTest(case=name):
+                self.qga.needs, self.qga.task_exit = [], 1
+                self.qga.evidence_factory = lambda m, journal=journal: owner_journal(m, journal)
+                plan, code, receipt, kinds = self.run_grant(install)
+                self.assertEqual((1, "failed"), (code, receipt["result"]))
+                self.assertEqual(expected, receipt["tun"].get("diagnosis", "absent"))
+                self.forget(plan)
+
     def test_the_deny_row_keeps_no_collector_hold_or_folder(self):
         row = windows.RECIPES["windows-scoped-tun.restart-deny"]
         self.assertEqual({"variant": "restart-deny"}, row["tun"])

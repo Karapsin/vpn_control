@@ -205,6 +205,8 @@ DECLARED_ROLES = ("guiLauncher", "gui", "controllerLauncher", "controller", "run
 _EVENT_NAME = re.compile(r"event-[0-9]{6}-([a-z0-9-]{1,80})\.json\Z")
 # A TUN grant's known end as the dedicated driver names it: "cancelled", or a ControlCode final code.
 _KNOWN_END = re.compile(r"(?:cancelled|[A-Z][A-Z_]{1,40})\Z")
+# How far a TUN row's VPN start got, as windows_tun_stages.diagnosis names it in the owner's journal.
+_TUN_REACH = re.compile(r"[a-z][a-z-]{2,40}\Z")
 AUTOSTART_INTENTS = frozenset({"autostart-public-toggle-intent", "autostart-highest-fixture-intent", "product-autostart-start-intent"})
 # readiness-reboot's own VM-root journal: the only reboot submitter's record of the reboot a postboot follows.
 _RECOVERY_INTENT = re.compile(r"readiness-recovery-([0-9a-f]{64})\.intent\.json\Z")
@@ -2110,6 +2112,28 @@ class Job:
             return "unread"
         known = closed[0].get("knownFailure") if closed else None
         return known if known is None or type(known) is str and _KNOWN_END.fullmatch(known) else "unread"
+
+    def _tun_diagnosis(self):
+        """Why a TUN row ended unexpectedly, as its owner's journal names it: the reach of the product's VPN start and how
+        long its broker was seen (windows_tun_stages.diagnosis, on its one scoped-tun-unexpected-terminal-known event).
+        None when no such end was journaled, "unread" when the copy cannot say. Read only; it never changes the job's exit."""
+        if self.evidence is None:
+            return "unread"
+        try:
+            raw = (self.data / self.evidence["name"]).read_bytes()
+            if _sha(raw) != self.evidence["sha256"]:
+                return "unread"
+            ends = [value["value"] for _, value in evidence_events(raw) if value["kind"] == "scoped-tun-unexpected-terminal-known"]
+        except (OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile):
+            return "unread"
+        if not ends:
+            return None
+        found = ends[0].get("diagnosis") if len(ends) == 1 and type(ends[0]) is dict else None
+        if type(found) is not dict or type(found.get("reach")) is not str or _TUN_REACH.fullmatch(found["reach"]) is None:
+            return "unread"
+        seconds = found.get("brokerObservedSeconds")
+        return {"reach": found["reach"],
+                "brokerObservedSeconds": seconds if type(seconds) in (int, float) and 0 <= seconds <= 3600 else None}
 
     def _prior_root(self, prior):
         """The preboot's own operation root, under the profile its receipt recorded."""
@@ -4033,6 +4057,9 @@ class Job:
                                                                                            "released": record["release"] is not None})
                                                      for stage, record in sorted(self.collected.items())},
                                       "knownEnd": self._tun_known_end()}
+                    diagnosis = self._tun_diagnosis()
+                    if diagnosis is not None:
+                        receipt["tun"]["diagnosis"] = diagnosis  # Why an unexpected end happened, from the owner's journal.
                     if self.tun_facts is not None:
                         receipt["tun"]["broker"] = self.tun_facts
                 raw = (json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")

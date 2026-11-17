@@ -1300,10 +1300,36 @@ selects it in VPN mode and asks for the restart.
   unelevated, the runtime log naming the `owned-conflict` bind on the fixture's port,
   and no broker, TUN route, new stage or other runtime left. The row's own off and
   census then take the recovered A. An `OK` (the TUN came up) parks; an expired prompt
-  is the known `cancelled` end.
+  is the known `cancelled` end. A `RUNTIME_FAILED` that left A's own runtime untouched
+  means the approved start ended before its commit, so there was nothing to recover:
+  with A, pending B and the census as before it is a known `RUNTIME_FAILED` end
+  (`commitReached: false`, the oracle's reason kept), closed by the row's own steps; if
+  A changed or anything scoped is left, it still parks with the oracle's reason.
 
 The fault variants' expected end is their pass, so a later oracle failure closes as a
-known failure. Nothing here has run natively: the broker's log after a failed commit,
+known failure.
+
+While `finish` waits for the terminal, a read-only preparation watch samples every
+10 ms what the ordinary user can see of the approved start: `vpn-control-vpn-broker.exe`
+and its parent, the new `ProgramData\vpn-control-vpn-*` stage, any new `sing-box.exe`
+(and whether the broker started it), and the product's new launch folder under the
+workspace `runtime` folder, whose `config.json` (the VPN config the broker is sent) is
+read once with full sharing and kept only redacted (secrets, URLs, UUIDs and endpoints
+other than loopback, the TUN subnet and the benchmark address). The broker writes no log
+and its exit code is not readable as the ordinary user, so the watch is how a failure
+after approval is located. On a final code the variant does not expect, before any check
+of the end, the stages publish `scoped-tun-product-diagnostics`: the operation's ledger
+record, the product's `logs` and its `diagnostics export` report (both its own
+redaction), the workspace `runtime-sing-box.log` tail and runtime folder listing (the
+stages' redaction), a reserved job's correlation journals, the watch, and a `diagnosis`
+whose `reach` is `no-broker-observed`, `broker-ended-before-stage`,
+`broker-running-without-stage`, `broker-stage-created` or `broker-child-created`. Every
+read is best effort and recorded on failure; the event stays under 200 KiB, the bulkiest
+texts giving way to their digests. The known end repeats the diagnosis, and the job's
+receipt carries it as `tun.diagnosis` (reach and the broker's observed seconds).
+Windows event logs are not read: a broker that refuses ends normally with exit 1, which
+the Application and System logs do not record, and process-exit auditing is off and
+unreadable by the ordinary user. Nothing here has run natively: the broker's log after a failed commit,
 its stage cleanup, and a large document through the broker channel are first seen on
 the fixture.
 

@@ -3567,6 +3567,31 @@ snapshot boot, and NG's profile in two deny runs; 4bd56d3e on ND may have been a
 that a frame refusal's reply carries its 3 MB frame through the transport; each clone's own profile (NG needs one: its
 computer name differs); and the approval's first typed answer through a reviewed profile.
 
+### Approved scoped-TUN starts ending RUNTIME_FAILED before the commit (native S_D4, 2.2.19, 2026-11-17)
+
+Two approved rows on clone NG reached the product, and the product failed: `restart-grant` `79828e7d` (operation
+`c1dd5a30`, tools `5876e8a3`) and `vpn-commit-failure` `449c0f39` (operation `5429f5f5`, tools `d711e9f2`). Both
+decisions typed the approval and closed the prompt (31.7 s and 33.9 s). Both operations then ended `RUNTIME_FAILED`
+within about 5 s, with A's own runtime untouched (same `runtimeId` and start time, proxy-only, B pending in VPN mode)
+and an empty census. `DesktopRuntimeTransition.startLocked` always stops A once `prepare` returns, so the failure is
+inside the broker preparation after the approval: the helper connection, the peer check, the captured inputs or the
+child creation. A commit or readiness failure is ruled out, and so are the TUN, wintun and the fixture network, since
+no sing-box was ever resumed. The two configs differ (generated SOCKS versus the CUSTOM conflict document), so the
+config content is an unlikely cause. The evidence does not say which step failed: the broker has no log, and the rows
+read only status and operations. The evidence and excerpts are in
+`.runtime/windows-parity-20261107/evidence/fix-grant-runtime/`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A failed grant row held no product diagnostics: only status and operations, with no product log, report, runtime log, VPN config or broker reach (TOOL) | `test_windows_tun_stages.ProductDiagnosticsTests` (5 tests), `PrepareWatchTests` (5 tests); `test_windows_tun_grant.TunGrantFamilyTests.test_a_failed_grant_receipt_names_why_its_vpn_start_failed` | RED on `5876e8a3`: no `scoped-tun-product-diagnostics` event, and the receipt has no `tun.diagnosis`. The stages now watch the approved start while `finish` waits. On an unexpected terminal, they publish the product's own diagnostics before any check of the end, and the known end and the receipt name the reach. |
+| `vpn-commit-failure` parked UNKNOWN (`scenario-failure-with-retained-child`) on `scoped-tun-commit-failure-did-not-recover-active-a`, with serve and fixture kept, although the product's `RUNTIME_FAILED` was final and nothing new ran (TOOL) | `test_windows_tun_variants.CommitFailureTests.test_a_failure_before_the_commit_with_a_untouched_and_nothing_running_is_a_known_end`, `...test_a_failure_before_the_commit_that_left_anything_still_parks_with_the_oracles_reason` | RED on `5876e8a3`: `scoped-tun-commit-failure-did-not-recover-active-a`, which is the native park reason. The oracle raised before the lease settled, so the driver re-raised and the owner parked over its live children. A mismatch now settles as a known `RUNTIME_FAILED` end (`commitReached: false`, oracle reason kept) only when A, pending B and the census are as before, then closes by the row's own off and quit and ends 1. Nothing is replayed: the product's operation is final and no broker or stage exists. A changed A or anything scoped left still parks. |
+| An approved VPN start ends `RUNTIME_FAILED` in broker preparation, before A is stopped (PRODUCT, cause unresolved) | None yet | The next native run of either row decides the step through `scoped-tun-product-diagnostics`. Its `watch` and `diagnosis.reach` say how far the broker got. `broker-ended-before-stage` means the broker's own admission or `VpnRuntimeBroker.Run` refused before its stage: the owner `OpenProcess(0x101040)`, its token, the pipe, the peer or the job `DuplicateHandle`. The leading hypothesis is that over-the-shoulder elevation runs the broker as another administrator, which the standard user's process DACL does not grant `PROCESS_DUP_HANDLE`. `broker-stage-created` points at the files, config normalization or `CreateProcess`, and `broker-child-created` points at the READY acknowledgment. `diagnosticsExport.text` adds the product's preflight (`scoped Windows broker`) and capability lines. A product fix needs a RED regression for the identified step. |
+
+Routine suite: the modules above, with `test_windows_tun_reserved`, `test_windows_proxy_lifecycle`,
+`test_windows_ordinary_task`, `test_windows_scenario_host_job` and `test_windows_uac_decision` on Python 3.14 and
+3.12. Only a native run confirms the watch's Toolhelp and ProgramData reads as the ordinary user, the shared read of
+the launch config, and the product's actual reach.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

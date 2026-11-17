@@ -640,6 +640,219 @@ class FinishTests(StageWorld):
         self.assertFalse(lease["finished"])
 
 
+LEDGER_ROW = {"id": None, "operation": "restart", "phase": "failed", "final": True, "code": "RUNTIME_FAILED"}
+VPN_CONFIG = {"log": {"level": "info"},
+              "inbounds": [{"type": "tun", "tag": "tun-in", "interface_name": "vpn-control", "address": ["172.19.250.1/30"],
+                            "auto_route": True, "strict_route": True, "stack": "system"}],
+              "outbounds": [{"type": "vless", "tag": "proxy", "server": "edge.example.net", "server_port": 443,
+                             "uuid": "0b6f8a5e-9a2b-4e8f-8c1d-2f3a4b5c6d7e", "tls": {"server_name": "edge.example.net", "enabled": True}},
+                            {"type": "socks", "tag": "owned", "server": "127.0.0.1", "server_port": 49968, "password": "fixture-secret"},
+                            {"type": "direct", "tag": "direct"}],
+              "dns": {"servers": [{"type": "https", "server": "9.9.9.9", "path": "https://dns.example.org/dns-query"}]},
+              "route": {"final": "proxy", "auto_detect_interface": True}}
+
+
+class ProductDiagnosticsTests(StageWorld):
+    """79828e7d: an approved restart-grant ended RUNTIME_FAILED with A untouched, and its evidence held only status and
+    operations. An unexpected terminal now publishes the product's own diagnostics, and its known end names the why."""
+
+    def setUp(self):
+        super().setUp()
+        self.files = {"runtime-sing-box.log": b"INFO started\nFATAL dial https://sub.example.com/token?x=1 from 10.2.3.4 password=hunter2\n"}
+        patcher = mock.patch.object(stages, "read_shared", lambda owner, path, limit: self.files.get(Path(str(path).replace("\\", "/")).name), create=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.reports = []
+
+        def invoke(workspace, *arguments, timeout=30, stdin=None):
+            self.reports.append(arguments)
+            return subprocess.CompletedProcess(arguments, 0, "VPN Control Desktop Diagnostics\n[preflight]\nscoped Windows broker: PASS\n"
+                                               "[connection_log]\n1: VPN start failed\n", "")
+        self.owner.invoke = invoke
+
+    def runtime(self):
+        runtime = super().runtime()
+        result = runtime.result
+
+        def answered(owner, workspace, identity, *arguments, **options):
+            if arguments[-2:] == ("operations", "list"):
+                self.calls.append(arguments)
+                return {"data": {"operations": [{**LEDGER_ROW, "id": "other"}, dict(LEDGER_ROW, id=self.operation)]}}
+            if arguments[:2] == ("logs", "--limit"):
+                self.calls.append(arguments)
+                return {"data": {"entries": [{"createdAtEpochMillis": 1, "message": "Connecting"},
+                                             {"createdAtEpochMillis": 2, "message": "VPN start failed via https://host.example/x"}]}}
+            return result(owner, workspace, identity, *arguments, **options)
+        runtime.result = answered
+        return runtime
+
+    def finished(self, code="RUNTIME_FAILED", variant="restart-grant"):
+        lease = self.begin(self.inputs(variant))
+        self.operation = lease["accepted"]["operationId"]
+        runtime = self.runtime()
+        runtime.finish_operation = lambda *args, **options: {"code": code, "final": True}
+        cases = types.SimpleNamespace(config_bytes=lambda path: dict(lease["activeConfig"].initial), exact_actor=lambda *args, **options: None)
+        return lease, stages.finish(self.owner, lease, runtime, cases, self.observer, handoff=lambda *args: self.fail("no collector"),
+                                    receipts=object())
+
+    def test_an_unexpected_terminal_publishes_the_products_own_diagnostics_before_its_known_end(self):
+        lease, outcome = self.finished()
+        self.assertEqual("RUNTIME_FAILED", outcome["knownFailure"])
+        kinds = [kind for kind, _ in self.owner.events]
+        self.assertEqual(["scoped-tun-product-diagnostics", "scoped-tun-unexpected-terminal-known"], kinds[-2:])
+        found = self.owner.events[-2][1]
+        self.assertEqual(dict(LEDGER_ROW, id=self.operation), found["operation"], "the operation's own ledger record")
+        self.assertEqual(["Connecting", "VPN start failed via https://<redacted>"], [row["message"] for row in found["logs"]])
+        self.assertEqual(("--json", "--controller-id", "controller-1", "diagnostics", "export", "--output", "-"), self.reports[0])
+        self.assertIn("scoped Windows broker: PASS", found["diagnosticsExport"]["text"])
+        self.assertEqual(0, found["diagnosticsExport"]["exitCode"])
+        tail = found["runtimeLog"]["tail"]
+        self.assertIn("FATAL dial https://<redacted> from <ipv4> password=<redacted>", tail)
+        self.assertNotIn("hunter2", tail)
+        self.assertEqual({"reach", "brokers", "brokerObservedSeconds", "watchErrors", "lastProductLog"}, set(found["diagnosis"]))
+        self.assertEqual(found["diagnosis"], self.owner.events[-1][1]["diagnosis"], "the known end names the why")
+        self.assertGreaterEqual(found["watch"]["samples"], 2, "the watch sampled while finish waited, and once after")
+        self.assertFalse(any(call[-1] in ("on", "off", "restart") or call[:1] == ("--async",) for call in self.calls[-3:]),
+                         "only reads: nothing is asked of the product again")
+
+    def test_the_diagnostics_are_kept_when_the_end_itself_then_parks(self):
+        lease = self.begin(self.inputs("restart-grant"))
+        self.operation = lease["accepted"]["operationId"]
+        runtime = self.runtime()
+        runtime.finish_operation = lambda *args, **options: {"code": "RUNTIME_FAILED", "final": True}
+        self.status.update(selectedLocationId="a")
+        cases = types.SimpleNamespace(config_bytes=lambda path: dict(lease["activeConfig"].initial), exact_actor=lambda *args, **options: None)
+        with self.assertRaisesRegex(AssertionError, "^uac-denial-lost-active-a-or-pending-b$"):
+            stages.finish(self.owner, lease, runtime, cases, self.observer)
+        self.assertEqual("scoped-tun-product-diagnostics", self.owner.events[-1][0])
+        self.assertFalse(lease["finished"])
+
+    def test_a_denial_or_a_cancelled_grant_reads_no_diagnostics(self):
+        for variant, code in (("restart-deny", "CANCELLED"), ("restart-grant", "CANCELLED")):
+            with self.subTest(variant=variant):
+                self.setUp()
+                self.finished(code, variant)
+                self.assertNotIn("scoped-tun-product-diagnostics", [kind for kind, _ in self.owner.events])
+                self.assertEqual([], self.reports)
+
+    def test_a_failed_read_is_recorded_and_never_fails_the_row(self):
+        del self.owner.invoke
+        self.files.clear()
+        _, outcome = self.finished()
+        self.assertEqual("RUNTIME_FAILED", outcome["knownFailure"])
+        found = self.owner.events[-2][1]
+        self.assertIn("AttributeError", found["diagnosticsExport"]["error"])
+        self.assertEqual({"absent": True}, found["runtimeLog"])
+
+    def test_the_event_stays_under_its_bound_with_the_bulkiest_texts_as_digests(self):
+        self.files["runtime-sing-box.log"] = (b"line of runtime output\n" * 20000)
+        reply = "x" * (400 * 1024)
+        self.owner.invoke = lambda workspace, *arguments, **options: subprocess.CompletedProcess(arguments, 0, reply, "")
+        with mock.patch.object(stages, "DIAGNOSTICS_EVENT_BYTES", 60 * 1024):
+            self.finished()
+        found = self.owner.events[-2][1]
+        self.assertLessEqual(len(json.dumps(found).encode()), 60 * 1024)
+        self.assertTrue(found["diagnosticsExport"]["text"]["dropped"])
+        self.assertEqual(len(reply), found["diagnosticsExport"]["sizeBytes"], "the raw report's size and digest stay")
+
+
+class PrepareWatchTests(unittest.TestCase):
+    """How far an approved VPN start got, from what the ordinary user sees: the reach a failed grant row reports."""
+
+    def watch(self, frames, files=None):
+        """One frame per sample: (processes, ProgramData entries, runtime folder entries)."""
+        index = {"value": 0}
+        frame = lambda: frames[min(index["value"], len(frames) - 1)]
+        fake_os = types.SimpleNamespace(name="nt", listdir=lambda path: list(frame()[1] if "ProgramData" in str(path) else frame()[2]))
+        observer = types.SimpleNamespace(WindowsNative=lambda: types.SimpleNamespace(processes=lambda: [dict(row) for row in frame()[0]]))
+        lease = {"state": {"workspace": WORKSPACE, "actors": {"runtime": {"pid": 77}}}, "inputs": {"programData": "C:\\ProgramData"},
+                 "baseline": {"runtimes": [88], "stages": ["vpn-control-vpn-old"]}, "candidateBaseline": ["candidate-a"]}
+        clock = iter(range(1000))
+        with mock.patch.object(stages, "os", fake_os), \
+                mock.patch.object(stages, "read_shared", lambda owner, path, limit: (files or {}).get(str(path).replace("\\", "/").split("/")[-2])):
+            watch = stages.PrepareWatch(Recorder(), lease, observer, clock=lambda: next(clock) / 100)
+            watch.started = watch.clock()
+            for number in range(len(frames)):
+                index["value"] = number
+                watch.step()
+            watch.thread = None
+            return watch.stop()
+
+    A = {"pid": 77, "parentPid": 70, "name": "sing-box.exe"}
+    BROKER = {"pid": 300, "parentPid": 70, "name": "vpn-control-vpn-broker.exe"}
+    CHILD = {"pid": 301, "parentPid": 300, "name": "sing-box.exe"}
+    STAGE = "vpn-control-vpn-0f0f0f0f-0000-4000-8000-00000000abcd"
+
+    def test_each_reach_of_an_approved_start(self):
+        base, runtime = ["Microsoft", "vpn-control-vpn-old"], ["candidate-a", "candidate-b", "runtime-sing-box.log"]
+        cases = (("no-broker-observed", [([self.A], base, runtime)] * 3),
+                 ("broker-ended-before-stage", [([self.A], base, runtime), ([self.A, self.BROKER], base, runtime), ([self.A], base, runtime)]),
+                 ("broker-running-without-stage", [([self.A], base, runtime), ([self.A, self.BROKER], base, runtime)]),
+                 ("broker-stage-created", [([self.A, self.BROKER], base + [self.STAGE], runtime), ([self.A], base, runtime)]),
+                 ("broker-child-created", [([self.A, self.BROKER], base + [self.STAGE], runtime),
+                                           ([self.A, self.BROKER, self.CHILD], base + [self.STAGE], runtime), ([self.A], base, runtime)]))
+        for reach, frames in cases:
+            with self.subTest(reach=reach):
+                timeline = self.watch(frames)
+                self.assertEqual(reach, stages.diagnosis(timeline)["reach"])
+                self.assertEqual({}, timeline["errors"])
+                self.assertNotIn(88, [row["pid"] for row in timeline["runtimes"]], "a runtime the row did not start is not its")
+                self.assertNotIn("vpn-control-vpn-old", [row["name"] for row in timeline["stages"]])
+        timeline = self.watch(cases[1][1])
+        self.assertEqual([{"pid": 300, "parentPid": 70, "firstSeen": 0.02, "lastSeen": 0.02, "present": False}], timeline["brokers"])
+        self.assertEqual(0.0, stages.diagnosis(timeline)["brokerObservedSeconds"])
+        self.assertEqual([{"name": "candidate-b", "firstSeen": 0.01, "lastSeen": 0.04, "present": True}], timeline["candidates"],
+                         "the launch folders active A had before the request are not the start's")
+
+    def test_the_launch_config_is_kept_only_redacted(self):
+        raw = json.dumps(VPN_CONFIG).encode()
+        timeline = self.watch([([self.A], [], ["candidate-a", "candidate-b"])] * 2, files={"candidate-b": raw})
+        config = timeline["candidateConfigs"]["candidate-b"]
+        self.assertEqual((len(raw), __import__("hashlib").sha256(raw).hexdigest()), (config["sizeBytes"], config["sha256"]))
+        for secret in ("edge.example.net", "0b6f8a5e", "fixture-secret", "9.9.9.9", "dns.example.org"):
+            self.assertNotIn(secret, config["redacted"])
+        redacted = json.loads(config["redacted"])
+        self.assertEqual({"type": "socks", "tag": "owned", "server": "127.0.0.1", "server_port": 49968, "password": "<redacted>"},
+                         redacted["outbounds"][1], "the row's own loopback endpoint stays readable")
+        self.assertEqual([{"tag": "tun-in", "interface_name": "vpn-control", "address": ["172.19.250.1/30"], "auto_route": True,
+                           "strict_route": True, "stack": "system", "mtu": None}], config["summary"]["tun"])
+        self.assertNotIn("candidate-a", timeline["candidateConfigs"])
+
+    def test_a_read_that_fails_is_counted_and_keeps_the_last_presence(self):
+        calls = {"count": 0}
+        frames = [([self.A, self.BROKER], [], [])] * 3
+
+        def failing():
+            calls["count"] += 1
+            if calls["count"] == 2:
+                raise OSError("snapshot")
+            return [dict(self.A), dict(self.BROKER)]
+        fake_os = types.SimpleNamespace(name="nt", listdir=lambda path: [])
+        observer = types.SimpleNamespace(WindowsNative=lambda: types.SimpleNamespace(processes=failing))
+        lease = {"state": {"workspace": WORKSPACE, "actors": {"runtime": {"pid": 77}}}, "inputs": {"programData": "C:\\ProgramData"},
+                 "baseline": {"runtimes": [], "stages": []}}
+        with mock.patch.object(stages, "os", fake_os):
+            watch = stages.PrepareWatch(Recorder(), lease, observer, clock=iter(range(100)).__next__)
+            watch.started = 0
+            watch.step()
+            watch.step()
+            timeline = watch.stop()
+        self.assertEqual({"processes": {"count": 1, "first": "OSError: snapshot"}}, timeline["errors"])
+        self.assertTrue(timeline["brokers"][0]["present"])
+        self.assertEqual(["processes"], stages.diagnosis(timeline)["watchErrors"])
+
+    def test_a_watch_that_cannot_start_is_an_unobserved_one(self):
+        timeline = stages.watched(stages.watching(Recorder(), {"state": {}}, None))
+        self.assertEqual(0, timeline["samples"])
+        self.assertEqual("unobserved", stages.diagnosis(timeline)["reach"])
+
+    def test_text_redaction_keeps_only_the_rows_own_addresses(self):
+        text = ("dial 127.0.0.1:49968 via 172.19.250.1 to 198.18.0.1 and 203.0.113.9; https://sub.example.com/a?token=x "
+                "uuid=0b6f8a5e-9a2b-4e8f-8c1d-2f3a4b5c6d7e token: abc")
+        self.assertEqual("dial 127.0.0.1:49968 via 172.19.250.1 to 198.18.0.1 and <ipv4>; https://<redacted> "
+                         "uuid=<redacted> token: <redacted>", stages.redact_text(text))
+
+
 class NativeRecordSourceTests(unittest.TestCase):
     """A collector record's source binds to the product source the row runs, which the driver keeps on the lease.
 

@@ -1046,7 +1046,7 @@ class Owner:
         if action in {"windows-public-update", "windows-proxy-lifecycle"}:
             driver_path = str(Path(__file__).with_name("windows_ordinary_dedicated_driver.py"))
             pin = self.by_path[str(absolute(driver_path)).casefold()]
-            require(pin.record["sha256"] == "196c84c514e48ae943a029d24478d2d9ab3c053ea592c206b4effb98c4ada562",
+            require(pin.record["sha256"] == "4d95dbf915231201e530d171f8a963ed9de0bdd37c485f83b6913ceff104b964",
                     "held-fixed-dedicated-driver-source")
             driver = self.module(driver_path, "_owned_fixed_dedicated_driver")
             return driver.run(self, action)
