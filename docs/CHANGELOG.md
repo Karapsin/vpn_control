@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Windows update grant rows read the SYSTEM collector worker's session from its retained handle while it runs, and a proof without a session fails on its own code.
+
 ## 2.3.1 - 2026-11-17
 
 - Windows GUI picker: a failed pointer park now names each failed check with observed values and keeps a diagnostic frame.
