@@ -24,7 +24,10 @@ While finish waits for the terminal, a read-only preparation watch records how f
 approved broker, its private stage, the sing-box it started, the launch's VPN config, redacted). On a terminal the
 variant does not expect, the stages publish the product's own diagnostics (scoped-tun-product-diagnostics: the
 operation's ledger record, its log, its diagnostics report, the workspace runtime log and folder, that watch) before any
-check of the end, and the known end names the diagnosis: a failed row shows why.
+check of the end, and the known end names the diagnosis: a failed row shows why. Every other unexpected end does the
+same: a final refusal of the request itself, a final code no step expects (finish_operation's, a reserved case's), a
+reserved row's end before its correlation journal (watched while the case waits), and a reserved case's park while its
+operation's outcome is open, which reads them through the case's ``diagnose`` because a park never returns.
 """
 from __future__ import annotations
 import hashlib
@@ -410,7 +413,7 @@ def product_diagnostics(owner, lease, runtime, terminal, timeline):
     Each read is best effort: a failed one is recorded, never raised, and nothing is written to the product.
     """
     state=lease['state'];workspace,identity=state['workspace'],state['identity']
-    operation=lease['accepted']['operationId']
+    operation=(lease.get('accepted') or {}).get('operationId')  # None for a request refused before any operation.
     found={'variant':lease['inputs']['variant'],'terminal':terminal,'watch':timeline,'replayAllowed':False}
 
     def part(name, read):
@@ -420,6 +423,8 @@ def product_diagnostics(owner, lease, runtime, terminal, timeline):
             found[name]={'error':type(error).__name__+': '+str(error)[:200]}
 
     def ledger():
+        if operation is None:
+            return None
         rows=[row for row in runtime.result(owner,workspace,identity,'operations','list')['data']['operations']
               if type(row) is dict and row.get('id')==operation]
         return rows[0] if len(rows)==1 else {'matches':len(rows)}
@@ -454,6 +459,11 @@ def product_diagnostics(owner, lease, runtime, terminal, timeline):
     found['diagnosis']=diagnosis(timeline,found['logs'] if type(found['logs']) is list else None)
     owner.event('scoped-tun-product-diagnostics',fit(found))
     return found['diagnosis']
+
+
+def unexpected_terminal(error):
+    """A step's own check found a final code it does not expect: the case's, or finish_operation's."""
+    return str(error) in ('reserved-operation-unexpected-terminal','original-operation-unexpected-terminal')
 
 
 def watching(owner, lease, observer):
@@ -492,6 +502,8 @@ def refused(owner, state, inputs, runtime, cases, observer, operation, children,
             and body.get('final') is True and body.get('ok') is False and type(body.get('code')) is str
             and reply.returncode==REFUSED_EXITS.get(body['code'])):
         return
+    # The product's own account of the refusal first, so a row that parks on the checks below keeps it too.
+    product_diagnostics(owner,{'state':state,'inputs':inputs,'accepted':body},runtime,body,None)
     status=runtime.result(owner,state['workspace'],state['identity'],'status')
     kept(state,inputs,known['before'],known['pending'],known['initial'],status,cases,observer)
     found=unscoped(inputs,observer,state,known['baseline'])
@@ -546,7 +558,15 @@ def capture_refused(owner, state, inputs, runtime, cases, observer, reserved, kn
             'scoped-tun-refused-pending-not-established')
     owner.tun_operation_requested=True
     accepted=runtime.result(owner,state['workspace'],state['identity'],'--async','restart',final=False,codes=('ACCEPTED',))
-    body=reserved.terminal(state,accepted,{'UNSUPPORTED'})
+    # This request's own account, for an end it does not expect or a park while it is still pending.
+    lease={'state':state,'inputs':inputs,'accepted':accepted,'reserved':reserved}
+    reserved.diagnose=lambda last:product_diagnostics(owner,lease,runtime,last,None)
+    try:
+        body=reserved.terminal(state,accepted,{'UNSUPPORTED'})
+    except AssertionError as error:
+        if unexpected_terminal(error):
+            product_diagnostics(owner,lease,runtime,getattr(error,'terminal',None),None)
+        raise
     status=runtime.result(owner,state['workspace'],state['identity'],'status')
     kept(state,inputs,known['before'],pending,known['initial'],status,cases,observer)
     found=unscoped(inputs,observer,state,known['baseline'])
@@ -647,16 +667,30 @@ def begin(owner, state, inputs, runtime, cases, observer, branches=None, reserve
         return lease
     if reserved is not None:
         # Before the decision may answer: a mutable job's correlation journal, and a squat row's folder at its stage.
+        # The preparation watch runs while the case waits: a start that ends before its journal leaves only what the
+        # product shows, and the case reads the product's diagnostics through the stages before any park of its own.
         lease['reserved']=reserved
+        watch=watching(owner,lease,observer);timeline=[]
+
+        def stopped():
+            if not timeline:
+                timeline.append(watched(watch))
+            return timeline[0]
+        reserved.diagnose=lambda last:product_diagnostics(owner,lease,runtime,last,stopped())
         try:
             lease['beforeDecision']=reserved.before_prompt(state,accepted)
         except reserved.EndedBeforeJournal as ended:
+            # 3260bc21: resources-grant's restart ended RUNTIME_FAILED before its journal, and the evidence held no
+            # product log or report. The product's own account comes first, so a row that parks below keeps it too.
+            product_diagnostics(owner,lease,runtime,ended.terminal,stopped())
             try:
                 ended_before_journal(owner,state,inputs,runtime,cases,observer,reserved,ended.terminal,
                                      {'before':before,'pending':pending,'initial':config.initial,'baseline':baseline})
             finally:
                 if owner.tun_operation_requested is False:
                     lease.update(finished=True,knownEnd='ended-before-journal')
+        finally:
+            stopped()
     # windows-uac-decision's census reads this event's variant and expectedApprovingAdminSid; it is published once.
     owner.event('scoped-tun-awaiting-current-input', {'accepted':accepted,'variant':inputs['variant'],
         'ordinarySid':owner.request['context']['ordinarySid'],
@@ -744,12 +778,19 @@ def finish(owner, lease, runtime, cases, observer, handoff=None, receipts=None):
     # The default wait parks at 120 s, about as long as a prompt lives, so it must outlast the prompt.
     # Every final code the stages know is read; one this variant does not expect is known only as checked below.
     # The preparation watch runs exactly while the wait does: the prompt is answered only after begin published it.
-    watch=watching(owner,lease,observer)
+    watch=watching(owner,lease,observer);timeline=None
     try:
         terminal=runtime.finish_operation(owner,state,lease['accepted'],
             {'OK','RUNTIME_FAILED','CANCELLED','PERMISSION_DENIED'},seconds=300)
-    finally:
+    except AssertionError as error:
+        # A final code no variant here knows (CONFLICT, UNSUPPORTED, BUSY, ...): its account before the failure parks.
         timeline=watched(watch)
+        if unexpected_terminal(error):
+            product_diagnostics(owner,lease,runtime,None,timeline)
+        raise
+    finally:
+        if timeline is None:
+            timeline=watched(watch)
     status=runtime.result(owner,state['workspace'],state['identity'],'status')
     # A fault variant's own end: RUNTIME_FAILED with A kept (preparation) or A back as a new runtime (commit).
     if variant in FAULTS and terminal['code']=='RUNTIME_FAILED':
@@ -900,7 +941,12 @@ def squat_finish(owner, lease, runtime, cases, observer):
     the squat folder is exactly as created, and nothing scoped is left once the case removed its own folder. An expired
     prompt is the grant's own known CANCELLED, with the same checks."""
     state,reserved=lease['state'],lease['reserved']
-    terminal=reserved.terminal(state,lease['accepted'],{'CONFLICT','CANCELLED'})
+    try:
+        terminal=reserved.terminal(state,lease['accepted'],{'CONFLICT','CANCELLED'})
+    except AssertionError as error:
+        if unexpected_terminal(error):
+            product_diagnostics(owner,lease,runtime,getattr(error,'terminal',None),None)
+        raise
     status=runtime.result(owner,state['workspace'],state['identity'],'status')
     kept(state,lease['inputs'],lease['before'],lease['pending'],lease['activeConfig'].initial,status,cases,observer)
     reserved.squat_kept_and_removed()

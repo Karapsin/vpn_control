@@ -60,7 +60,7 @@ CONTROLLER = "controller-1"
 ACCEPTED = {"schemaVersion": 1, "controllerId": CONTROLLER, "requestId": "7a7a7a7a-1111-4222-8333-944455556666", "ok": True,
             "code": "ACCEPTED", "final": False, "operationId": "23c36015-4482-4324-ac20-c82ac6bdd097"}
 # The public CLI's exit for each ControlCode (ControlModels.kt at 93b7ac64).
-CODE_EXITS = {"OK": 0, "ACCEPTED": 0, "PERMISSION_DENIED": 1, "BUSY": 1, "CONFLICT": 1, "UNSUPPORTED": 1, "CANCELLED": 130,
+CODE_EXITS = {"OK": 0, "ACCEPTED": 0, "PERMISSION_DENIED": 1, "BUSY": 1, "CONFLICT": 1, "UNSUPPORTED": 1, "RUNTIME_FAILED": 1, "CANCELLED": 130,
               "UNAVAILABLE": 2, "OUTCOME_UNKNOWN": 2, "TIMEOUT": 2}
 
 
@@ -165,7 +165,9 @@ class FakeCase:
         if self.then is not None:
             self.then()
         if code not in codes:
-            raise AssertionError("reserved-operation-unexpected-terminal")
+            unexpected = AssertionError("reserved-operation-unexpected-terminal")
+            unexpected.terminal = {"code": code, "final": True, "ok": False}  # The case's UnexpectedTerminal carries it.
+            raise unexpected
         return {"code": code, "final": True}
 
     def journals(self, workspace):
@@ -177,9 +179,8 @@ class FakeCase:
             raise AssertionError("reserved-squat-touched")
 
 
-class StagesHookTests(StageWorld):
-    """windows_tun_stages around a reserved row's request: the refused capture before it, the case's hook before the
-    decision event, and the squat's own terminal."""
+class ReservedStageWorld(StageWorld):
+    """The stages' world with a reserved case's own location selections."""
 
     def runtime(self):
         runtime = super().runtime()
@@ -204,6 +205,11 @@ class StagesHookTests(StageWorld):
 
     def reserved_inputs(self, variant, **changes):
         return self.inputs(variant, pendingLocation=PENDING[variant], **changes)
+
+
+class StagesHookTests(ReservedStageWorld):
+    """windows_tun_stages around a reserved row's request: the refused capture before it, the case's hook before the
+    decision event, and the squat's own terminal."""
 
     def test_resources_refuses_its_capture_before_any_prompt_then_asks_once(self):
         case = FakeCase(self, "resources-grant", terminals=["UNSUPPORTED"])
@@ -298,7 +304,8 @@ class StagesHookTests(StageWorld):
             self.begin(self.reserved_inputs("stage-squat"), reserved_case=FakeCase(self, "stage-squat", ended="PERMISSION_DENIED"))
         self.assertFalse(self.owner.tun_operation_requested, "nothing is open: the driver closes the row as a known failure")
         kinds = [kind for kind, _ in self.owner.events]
-        self.assertEqual(["scoped-tun-reserved-ended-before-journal"], kinds, "no decision event: nothing is asked")
+        self.assertEqual(["scoped-tun-product-diagnostics", "scoped-tun-reserved-ended-before-journal"], kinds,
+                         "no decision event: nothing is asked; the product's own account comes first (3260bc21)")
         self.assertEqual({"code": "PERMISSION_DENIED", "final": True, "ok": False}, self.owner.events[-1][1]["terminal"])
         self.assertEqual(1, sum(1 for call in self.calls if call[:1] == ("--async",)), "never resent")
         lease = self.owner.tun_operation_leases[-1]
@@ -318,6 +325,92 @@ class StagesHookTests(StageWorld):
                 self.assertTrue(self.owner.tun_operation_requested, "not shown closed: the owner parks")
                 self.assertFalse(stages.settled(self.owner.tun_operation_leases[-1]))
                 self.assertNotIn("scoped-tun-reserved-ended-before-journal", [kind for kind, _ in self.owner.events])
+
+
+class ReservedDiagnosticsTests(ReservedStageWorld):
+    """3260bc21 (2.3.1, ND2): resources-grant's restart into ``Owned resources`` ended RUNTIME_FAILED with no prompt and
+    no correlation journal, and the reserved path published no scoped-tun-product-diagnostics: the evidence held no
+    product log, report or runtime log to say why. Every unexpected end of a reserved row now carries them first."""
+
+    def setUp(self):
+        super().setUp()
+        self.accepted = []
+        files = {"runtime-sing-box.log": b"FATAL to continuing using this feature, set ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER\n"}
+        patcher = mock.patch.object(stages, "read_shared", lambda owner, path, limit: files.get(PureWindowsPath(str(path)).name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.reports = []
+
+        def invoke(workspace, *arguments, timeout=30, stdin=None):
+            self.reports.append(arguments)
+            if "--json" in arguments:  # ControlCliParser: a raw stdout export has no envelope.
+                return types.SimpleNamespace(returncode=1, stdout='{"code":"INVALID_ARGUMENT"}', stderr="")
+            return types.SimpleNamespace(returncode=0, stdout="[preflight]\nconfig validation: FAIL missing domain_resolver\n", stderr="")
+        self.owner.invoke = invoke
+
+    def runtime(self):
+        runtime = super().runtime()
+        result = runtime.result
+
+        def answered(owner, workspace, identity, *arguments, **options):
+            if arguments[-2:] == ("operations", "list"):
+                return {"data": {"operations": [{"id": operation, "code": "RUNTIME_FAILED", "final": True} for operation in self.accepted]}}
+            if arguments[:2] == ("logs", "--limit"):
+                return {"data": {"entries": [{"message": "VPN start failed"}]}}
+            value = result(owner, workspace, identity, *arguments, **options)
+            if arguments[:1] == ("--async",):
+                self.accepted.append(value["operationId"])
+            return value
+        runtime.result = answered
+        return runtime
+
+    def diagnostics(self):
+        found = [value for kind, value in self.owner.events if kind == "scoped-tun-product-diagnostics"]
+        self.assertEqual(1, len(found), [kind for kind, _ in self.owner.events])
+        return found[0]
+
+    def test_a_start_that_ended_before_its_journal_publishes_the_products_own_diagnostics_first(self):
+        case = FakeCase(self, "resources-grant", terminals=["UNSUPPORTED"], ended="RUNTIME_FAILED")
+        with self.assertRaisesRegex(AssertionError, "^scoped-tun-reserved-ended-before-journal$"):
+            self.begin(self.reserved_inputs("resources-grant"), reserved_case=case)
+        kinds = [kind for kind, _ in self.owner.events]
+        self.assertEqual(["scoped-tun-capture-refused-before-prompt", "scoped-tun-product-diagnostics",
+                          "scoped-tun-reserved-ended-before-journal"], kinds)
+        found = self.diagnostics()
+        self.assertEqual(("resources-grant", "RUNTIME_FAILED"), (found["variant"], found["terminal"]["code"]))
+        self.assertEqual({"id": self.accepted[-1], "code": "RUNTIME_FAILED", "final": True}, found["operation"],
+                         "the row's own second request, not the refused capture's")
+        self.assertEqual(["VPN start failed"], [row["message"] for row in found["logs"]])
+        self.assertIn("config validation: FAIL", found["diagnosticsExport"]["text"])
+        self.assertEqual([("--controller-id", "controller-1", "diagnostics", "export", "--output", "-")], self.reports,
+                         "the raw report, never with --json (affb1ff7)")
+        self.assertIn("ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER", found["runtimeLog"]["tail"])
+        self.assertIsInstance(found["runtimeFolder"], list)
+        self.assertEqual([], found["journals"])
+        self.assertGreaterEqual(found["watch"]["samples"], 2, "watched while the case waited, and once at its end")
+        self.assertEqual(1, sum(1 for call in self.calls if call[:1] == ("--async",)) - 1, "only reads: nothing is resent")
+
+    def test_a_case_that_parks_reads_them_through_the_stages(self):
+        case = FakeCase(self, "stage-squat")
+        lease = self.begin(self.reserved_inputs("stage-squat"), reserved_case=case)
+        self.assertTrue(callable(getattr(case, "diagnose", None)), "the stages hand the case their diagnose")
+        case.diagnose({"code": "ACCEPTED", "final": False})
+        found = self.diagnostics()
+        self.assertEqual(({"code": "ACCEPTED", "final": False}, lease["accepted"]["operationId"]),
+                         (found["terminal"], found["operation"]["id"]))
+
+    def test_an_unexpected_terminal_of_the_refused_capture_or_the_squat_publishes_them(self):
+        with self.assertRaisesRegex(AssertionError, "^reserved-operation-unexpected-terminal$"):
+            self.begin(self.reserved_inputs("resources-grant"), reserved_case=FakeCase(self, "resources-grant", terminals=["CANCELLED"]))
+        self.assertEqual("CANCELLED", self.diagnostics()["terminal"]["code"])
+        self.assertTrue(self.owner.tun_operation_requested, "still parks: its outcome is not shown")
+        self.setUp()
+        lease = self.begin(self.reserved_inputs("stage-squat"), reserved_case=FakeCase(self, "stage-squat", terminals=["OK"]))
+        cases = types.SimpleNamespace(config_bytes=lambda path: dict(lease["activeConfig"].initial), exact_actor=lambda *args: None)
+        with self.assertRaisesRegex(AssertionError, "^reserved-operation-unexpected-terminal$"):
+            stages.finish(self.owner, lease, self.runtime(), cases, self.observer)
+        self.assertEqual("OK", self.diagnostics()["terminal"]["code"])
+        self.assertFalse(stages.settled(lease))
 
 
 class Owner:
@@ -512,6 +605,47 @@ class BeforeDecisionTests(CaseWorld):
                         RuntimeError, "^parked:scoped-tun-reserved-ended-outcome-open-no-replay$"):
                     ask(reserved.Case(self.owner, "stage-squat"), self.state)
                 self.assertEqual(code, self.owner.events[-1][1]["lastStatus"]["code"])
+
+    def test_every_park_while_the_outcome_is_open_reads_the_products_diagnostics_first(self):
+        """3260bc21: a reserved row's end before its journal kept no product log. A park never returns, so the case calls
+        the stages' diagnose right before it; a refused end returns to the stages, which read them themselves."""
+        reads = int(reserved.JOURNAL_SECONDS // getattr(reserved, "STATUS_SECONDS", 5)) + 2
+        for name, replies, reason in (("pending", [status()] * reads, "journal-absent"),
+                                      ("outcome-open", [status("UNAVAILABLE")], "ended-outcome-open"),
+                                      ("refused", [status("RUNTIME_FAILED")], None)):
+            with self.subTest(case=name):
+                self.setUp()
+                case = reserved.Case(self.owner, "resources-grant")
+                diagnosed = []
+                case.diagnose = lambda last: diagnosed.append((last["code"], len(self.owner.events)))
+                with self.waiting(replies):
+                    if reason is None:
+                        with self.assertRaises(reserved.EndedBeforeJournal):
+                            ask(case, self.state)
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "^parked:scoped-tun-reserved-" + reason + "-no-replay$"):
+                            ask(case, self.state)
+                expected = [] if reason is None else [(replies[-1][1]["code"], len(self.owner.events))]
+                self.assertEqual(expected, diagnosed, "read once, after the wait's own event and before the park")
+        self.setUp()
+        case = reserved.Case(self.owner, "resources-grant")
+        case.diagnose = lambda last: (_ for _ in ()).throw(KeyError("lost"))
+        with self.waiting([status("UNAVAILABLE")]), self.assertRaisesRegex(RuntimeError, "^parked:scoped-tun-reserved-ended-outcome-open-no-replay$"):
+            ask(case, self.state)
+        self.assertEqual("scoped-tun-product-diagnostics-unavailable", self.owner.events[-1][0], "a failed read never loses the park")
+
+    def test_an_unexpected_terminal_carries_its_body_and_a_pending_one_is_diagnosed_before_its_park(self):
+        case = reserved.Case(self.owner, "resources-grant")
+        diagnosed = []
+        case.diagnose = lambda last: diagnosed.append(last["code"])
+        with self.waiting([status("CANCELLED")]), self.assertRaisesRegex(AssertionError, "^reserved-operation-unexpected-terminal$") as raised:
+            case.terminal(self.state, ACCEPTED, {"UNSUPPORTED"})
+        self.assertEqual("CANCELLED", raised.exception.terminal["code"], "the stages publish the diagnostics with this body")
+        self.assertEqual([], diagnosed, "an end that returns to the stages is theirs to read")
+        reads = int(reserved.TERMINAL_SECONDS / 0.2) + 2
+        with self.waiting([status()] * reads), self.assertRaisesRegex(RuntimeError, "^parked:scoped-tun-reserved-terminal-pending-no-replay$"):
+            case.terminal(self.state, ACCEPTED, {"UNSUPPORTED"})
+        self.assertEqual(["ACCEPTED"], diagnosed)
 
     def test_a_journal_written_before_the_operation_ended_is_still_the_job(self):
         case = reserved.Case(self.owner, "stage-squat")

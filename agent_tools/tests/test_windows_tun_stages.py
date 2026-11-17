@@ -315,8 +315,11 @@ class BeginTests(StageWorld):
                 with self.assertRaisesRegex(AssertionError, "^scoped-tun-request-refused$"):
                     self.begin(runtime=self.answering(exit_code, body))
                 self.assertFalse(self.owner.tun_operation_requested, "nothing is open: the driver closes the row as a known failure")
-                self.assertEqual(["scoped-tun-request-refused-known"], [kind for kind, _ in self.owner.events], "no prompt event: nothing awaits a decision")
-                self.assertEqual(body, self.owner.events[0][1]["reply"])
+                self.assertEqual(["scoped-tun-product-diagnostics", "scoped-tun-request-refused-known"],
+                                 [kind for kind, _ in self.owner.events], "no prompt event: nothing awaits a decision; the product's account first")
+                self.assertEqual((body, body), (self.owner.events[0][1]["terminal"], self.owner.events[1][1]["reply"]))
+                self.assertEqual(None if operation is None else {"error": "KeyError: 'operations'"}, self.owner.events[0][1]["operation"],
+                                 "no ledger read for a request refused before any operation")
                 self.assertEqual([(70, False), (77, False)], self.actors, "owner and runtime stay unelevated")
                 self.assertEqual([], getattr(self.owner, "tun_operation_leases", []))
                 self.assertEqual(1, sum(1 for call in self.calls if call[:1] == ("--async",)), "the request is never sent again")
@@ -349,7 +352,8 @@ class BeginTests(StageWorld):
                 with self.assertRaisesRegex(AssertionError, "^" + reason + "$"):
                     self.begin(runtime=self.answering(1, self.reply("RUNTIME_FAILED", operationId=str(uuid.uuid4())), then=change))
                 self.assertTrue(self.owner.tun_operation_requested)
-                self.assertEqual([], self.owner.events)
+                self.assertEqual(["scoped-tun-product-diagnostics"], [kind for kind, _ in self.owner.events],
+                                 "the product's account is kept beside the park")
 
     def test_another_operations_decision_or_a_caller_field_is_refused_before_any_read(self):
         for inputs, reason in ((self.inputs(uacDecisionId=stages.decision_id(str(uuid.uuid4()))), "scoped-tun-route-decision"),
@@ -738,6 +742,35 @@ class ProductDiagnosticsTests(StageWorld):
             stages.finish(self.owner, lease, runtime, cases, self.observer)
         self.assertEqual("scoped-tun-product-diagnostics", self.owner.events[-1][0])
         self.assertFalse(lease["finished"])
+
+    def test_a_final_code_no_step_expects_publishes_them_before_it_parks(self):
+        """finish_operation refuses a final code outside the four the stages read (CONFLICT, UNSUPPORTED, BUSY, ...):
+        the row parks on it, and its evidence now carries the product's own account first, as for 3260bc21."""
+        lease = self.begin(self.inputs("restart-grant"))
+        self.operation = lease["accepted"]["operationId"]
+        runtime = self.runtime()
+
+        def finish_operation(*args, **options):
+            raise AssertionError("original-operation-unexpected-terminal")
+        runtime.finish_operation = finish_operation
+        cases = types.SimpleNamespace(config_bytes=lambda path: dict(lease["activeConfig"].initial), exact_actor=lambda *args, **options: None)
+        with self.assertRaisesRegex(AssertionError, "^original-operation-unexpected-terminal$"):
+            stages.finish(self.owner, lease, runtime, cases, self.observer)
+        kind, found = self.owner.events[-1]
+        self.assertEqual("scoped-tun-product-diagnostics", kind)
+        self.assertEqual(dict(LEDGER_ROW, id=self.operation), found["operation"], "the ledger names the code the step refused")
+        self.assertIn("scoped Windows broker: PASS", found["diagnosticsExport"]["text"])
+        self.assertGreaterEqual(found["watch"]["samples"], 2)
+        self.assertFalse(lease["finished"], "still parks")
+        self.owner.events.clear()
+
+        def lost(*args, **options):
+            raise AssertionError("original-operation-status-join")
+        runtime.finish_operation = lost
+        lease = self.begin(self.inputs("restart-grant"))
+        with self.assertRaisesRegex(AssertionError, "^original-operation-status-join$"):
+            stages.finish(self.owner, lease, runtime, cases, self.observer)
+        self.assertNotIn("scoped-tun-product-diagnostics", [kind for kind, _ in self.owner.events], "no terminal was read")
 
     def test_a_denial_or_a_cancelled_grant_reads_no_diagnostics(self):
         for variant, code in (("restart-deny", "CANCELLED"), ("restart-grant", "CANCELLED")):

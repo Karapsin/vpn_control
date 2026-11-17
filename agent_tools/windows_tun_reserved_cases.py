@@ -29,6 +29,10 @@ stage-squat (custom ``Owned resources``, no collector): from the journal the ord
 Both mutable rows read their own operation while the journal is awaited: a definite refusal before any journal ends
   the row as a known failure with the product's terminal (the stages check A, pending B and the census first); an end
   that leaves the outcome open, or an operation still pending at JOURNAL_SECONDS, parks with what was read.
+Every such end, an unexpected terminal (``UnexpectedTerminal``) and every park while the operation's outcome is open
+  first carry the product's own diagnostics (windows_tun_stages' scoped-tun-product-diagnostics): the stages read them
+  for an end that returns to them, and the case calls their ``diagnose`` right before a park, which never returns.
+  On 2.3.1 (3260bc21) resources-grant ended RUNTIME_FAILED before its journal with no product log in the evidence.
 
 A connect-first pipe racer before admission is not deterministic; the peer-PID checks stay with the product's tests.
 No key material is ever an event, argument or assertion message: the key file lives in the fixture folder, which
@@ -186,19 +190,31 @@ def operation_status(owner, state, accepted):
     return body, value.returncode
 
 
-def terminal(owner, state, accepted, codes, seconds=TERMINAL_SECONDS):
+class UnexpectedTerminal(AssertionError):
+    """The row's own operation ended with a final code the step does not expect: the stages publish the product's
+    diagnostics for ``terminal`` before the failure propagates."""
+
+    def __init__(self, terminal):
+        super().__init__("reserved-operation-unexpected-terminal")
+        self.terminal = terminal
+
+
+def terminal(owner, state, accepted, codes, seconds=TERMINAL_SECONDS, diagnose=None):
     """The final public terminal of the row's own operation, one of ``codes``, read through operations status.
 
-    Never resent: a pending operation is read again until the bound, then the owner parks."""
+    Never resent: a pending operation is read again until the bound, then the owner parks, with the product's own
+    diagnostics read first through ``diagnose`` (a park never returns)."""
     until = time.monotonic() + seconds
     while True:
         body, returncode = operation_status(owner, state, accepted)
         if body.get("final") is True:
-            require(body.get("code") in codes and returncode == EXITS.get(body["code"])
-                    and body.get("ok") is (returncode == 0), "reserved-operation-unexpected-terminal")
+            if not (body.get("code") in codes and returncode == EXITS.get(body["code"]) and body.get("ok") is (returncode == 0)):
+                raise UnexpectedTerminal(body)
             owner.event("scoped-tun-reserved-terminal", {"accepted": accepted, "terminal": body, "replayAllowed": False})
             return body
         if time.monotonic() >= until:
+            if diagnose is not None:
+                diagnose(body)
             owner.park("scoped-tun-reserved-terminal-pending-no-replay")
         time.sleep(0.2)
 
@@ -256,9 +272,13 @@ def pipe_races(owner, pipe):
 
 
 class Case:
-    """One reserved row's case: built by the driver before the stages begin, used by them and by its grant steps."""
+    """One reserved row's case: built by the driver before the stages begin, used by them and by its grant steps.
+
+    ``diagnose`` is the stages' own product-diagnostics read for the row's operation, set by them once it exists. The
+    case calls it only right before a park of its own: a park never returns, so the stages could not read them after."""
     REFUSED = REFUSED
     EndedBeforeJournal = EndedBeforeJournal
+    UnexpectedTerminal = UnexpectedTerminal
 
     def __init__(self, owner, variant, relay=None):
         require(variant in VARIANTS and (relay is not None) == (variant == "ssh-grant"), "reserved-variant-binding")
@@ -268,13 +288,24 @@ class Case:
         self.job = self.squat = self.rules_sha256 = None
         self.journal_baseline = None
         self.closed = False
+        self.diagnose = None
 
     @property
     def pending(self):
         return PENDING[self.variant]
 
+    def diagnosed(self, last):
+        """The stages' diagnostics before a park; a read that fails is an event, never a lost park."""
+        if self.diagnose is None:
+            return
+        try:
+            self.diagnose(last)
+        except Exception as error:
+            self.owner.event("scoped-tun-product-diagnostics-unavailable", {"error": type(error).__name__ + ": " + str(error)[:200],
+                             "replayAllowed": False})
+
     def terminal(self, state, accepted, codes):
-        return terminal(self.owner, state, accepted, codes)
+        return terminal(self.owner, state, accepted, codes, diagnose=self.diagnosed)
 
     @staticmethod
     def journals(workspace):
@@ -365,12 +396,14 @@ class Case:
                                      "statusReads": reads, "journals": 0, "replayAllowed": False})
                     if not (last.get("code") in REFUSALS and returncode == REFUSALS[last["code"]] and last.get("ok") is False):
                         # OK with no journal, or a code that leaves the outcome open: nothing proves the request closed.
+                        self.diagnosed(last)
                         self.owner.park("scoped-tun-reserved-ended-outcome-open-no-replay")
-                    raise EndedBeforeJournal(last)
+                    raise EndedBeforeJournal(last)  # The stages read the diagnostics before their own checks.
             if time.monotonic() >= until:
                 # Still pending: a prompt or broker may be up. What was read stays in the evidence beside the park.
                 self.owner.event("scoped-tun-reserved-journal-wait", {"accepted": accepted, "lastStatus": last,
                                  "statusReads": reads, "journals": 0, "replayAllowed": False})
+                self.diagnosed(last)
                 self.owner.park("scoped-tun-reserved-journal-absent-no-replay")
             time.sleep(0.1)
         require(len(found) == 1, "reserved-one-correlation-journal")

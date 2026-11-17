@@ -1385,6 +1385,14 @@ whose `reach` is `no-broker-observed`, `broker-ended-before-stage`,
 read is best effort and recorded on failure; the event stays under 200 KiB, the bulkiest
 texts giving way to their digests. The known end repeats the diagnosis, and the job's
 receipt carries it as `tun.diagnosis` (reach and the broker's observed seconds).
+Every other unexpected end publishes the same event first: a final refusal of the request
+itself (no ledger read without an operation), a final code `finish_operation` or a
+reserved case's own terminal does not expect (that terminal, `UnexpectedTerminal`), a
+reserved row's end before its correlation journal (watched while the case waits for the
+journal), and a reserved case's park while its operation's outcome is open (still pending
+at its bound, or a final code that leaves it open). A park never returns, so the case calls
+the stages' `diagnose` right before it; a failed read there is a
+`scoped-tun-product-diagnostics-unavailable` event, never a lost park.
 Windows event logs are not read: a broker that refuses ends normally with exit 1, which
 the Application and System logs do not record, and process-exit auditing is off and
 unreadable by the ordinary user. Nothing here has run natively: the broker's log after a failed commit,
