@@ -91,12 +91,18 @@ object SingBoxCustomConfigTransformer {
             } +
                 HomeSshRouteConfigBuilder.buildOutbounds(validatedHomeRoute)
         }
+        val dns = if (validatedHomeRoute == null) {
+            root["dns"]
+        } else {
+            injectBootstrapDns(root["dns"] as? JsonObject)
+        }
         val transformedOutbounds = if (trustedDirectBypassRules.isEmpty()) {
             routedOutbounds
         } else {
             routedOutbounds + buildJsonObject {
                 put("type", "direct")
                 put("tag", TRUSTED_DIRECT_BYPASS_OUTBOUND_TAG)
+                directProbeDomainResolver(root["route"] as? JsonObject, dns)?.let { put("domain_resolver", it) }
             }
         }
         val finalOutbound = (root["route"] as? JsonObject)
@@ -123,11 +129,6 @@ object SingBoxCustomConfigTransformer {
             homeRouteEnabled = validatedHomeRoute != null,
             trustedDirectBypassRules = trustedDirectBypassRules,
         )
-        val dns = if (validatedHomeRoute == null) {
-            root["dns"]
-        } else {
-            injectBootstrapDns(root["dns"] as? JsonObject)
-        }
 
         val transformed = buildJsonObject {
             root.forEach { (key, value) -> put(key, value) }
@@ -169,6 +170,23 @@ object SingBoxCustomConfigTransformer {
                 "Custom config outbound type '$type' cannot be proven to use the SSH route",
             )
         }
+    }
+
+    /**
+     * The injected probe outbound dials directly, so sing-box (1.12+) wants a domain resolver for it once the
+     * configuration names two or more DNS servers without `route.default_domain_resolver`; 1.13 refuses the whole
+     * configuration otherwise ("missing `route.default_domain_resolver` or `domain_resolver` in dial fields"), so a
+     * custom configuration that passes `sing-box check` on its own would fail it after this transform (CONFIG-003).
+     * The probe takes the configuration's own default server, as sing-box does with one server: `dns.final`, else the
+     * first server. With no server, or the configuration's own default resolver, nothing is added.
+     */
+    private fun directProbeDomainResolver(route: JsonObject?, dns: JsonElement?): String? {
+        if (route?.get("default_domain_resolver") != null) return null
+        val config = dns as? JsonObject ?: return null
+        val servers = (config["servers"] as? JsonArray)?.mapNotNull { it as? JsonObject }.orEmpty()
+        if (servers.isEmpty()) return null
+        return (config["final"] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank)
+            ?: servers.first().string("tag").takeIf(String::isNotBlank)
     }
 
     private fun injectManagementInbound(existing: JsonArray?, port: Int): JsonArray {

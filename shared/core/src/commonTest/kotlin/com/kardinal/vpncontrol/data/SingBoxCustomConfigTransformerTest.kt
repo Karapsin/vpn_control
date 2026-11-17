@@ -141,6 +141,39 @@ class SingBoxCustomConfigTransformerTest {
         )
     }
 
+    /**
+     * Native resources-grant 3260bc21 (2.3.1): a custom location with two DNS servers ended RUNTIME_FAILED before any
+     * prompt. Its own JSON passes `sing-box check` (1.13.4); the transformed one failed it, because the injected probe
+     * outbound dials without a domain resolver while two servers and no route.default_domain_resolver are configured
+     * ("missing `route.default_domain_resolver` or `domain_resolver` in dial fields is deprecated", FATAL in 1.13).
+     */
+    @Test
+    fun theProbeOutboundResolvesThroughTheConfigsOwnDefaultDnsServer() {
+        fun probe(raw: String, homeRoute: HomeSshRouteRuntimeOptions? = null) =
+            Json.parseToJsonElement(SingBoxCustomConfigTransformer.transform(
+                rawConfig = raw, managementProxyPort = 24080, homeRoute = homeRoute,
+                trustedDirectBypassRules = listOf(buildJsonObject {
+                    put("process_name", "vpn-control-probe-sing-box")
+                    put("action", "route")
+                    put("outbound", SingBoxCustomConfigTransformer.TRUSTED_DIRECT_BYPASS_OUTBOUND_TAG)
+                }),
+            )).jsonObject.getValue("outbounds").jsonArray.map { it.jsonObject }
+                .single { it.string("tag") == SingBoxCustomConfigTransformer.TRUSTED_DIRECT_BYPASS_OUTBOUND_TAG }
+        val outbounds = """"outbounds":[{"type":"socks","tag":"up","server":"127.0.0.1","server_port":1080}]"""
+        val servers = """"servers":[{"type":"https","tag":"doh","server":"127.0.0.1"},{"type":"h3","tag":"doh3","server":"127.0.0.1"}]"""
+
+        assertEquals("doh3", probe("""{"dns":{$servers,"final":"doh3"},$outbounds}""").string("domain_resolver"),
+            "the config's dns.final")
+        assertEquals("doh", probe("""{"dns":{$servers},$outbounds}""").string("domain_resolver"),
+            "without dns.final, its first server, as sing-box itself defaults")
+        assertEquals("remote-dns", probe("""{"dns":{"servers":[{"type":"https","tag":"remote-dns","server":"9.9.9.9"}]},$outbounds}""",
+            homeOptions()).string("domain_resolver"), "SSH Routing's bootstrap server makes two; the config's own stays default")
+        for (raw in listOf("""{$outbounds}""", """{"dns":{"servers":[]},$outbounds}""",
+                """{"dns":{$servers},$outbounds,"route":{"default_domain_resolver":"doh"}}""")) {
+            assertEquals(setOf("type", "tag"), probe(raw).keys, "nothing to resolve through, or the config's own default: $raw")
+        }
+    }
+
     private fun homeOptions() = HomeSshRouteRuntimeOptions(
         settings = HomeSshRouteSettings(
             enabled = true,
