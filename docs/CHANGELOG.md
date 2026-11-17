@@ -6,6 +6,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Windows update grant rows read the SYSTEM collector worker's session from its retained handle while it runs, and a proof without a session fails on its own code.
+- Windows native runs accept a raced host cache copy, record a submit that provably never left the host as not_submitted, and keep the guest agent's own error for a lost file push.
 
 ## 2.3.1 - 2026-11-17
 
