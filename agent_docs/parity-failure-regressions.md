@@ -3749,6 +3749,28 @@ change: the canonical call's bytes, the real `_STAGE` answers, and a submit whos
 native run can confirm two things: a raced stage now submits, and the next NE2-style push loss names its QGA reply.
 Whether that loss is corruption of the virtio-serial channel or of the guest agent needs the evidence named above.
 
+### Install-helper review found no consent prompt: the host copy named it two minutes late (native NE3, S_Q, 2026-11-17)
+
+Update grant review runs `b53e32c5` (success-off) and `27c2f7b8` (different-admin) on clone NE3 (fixture set S_Q, tools
+`2db462ee`) reached `update-uac-action-pending`. Every `windows-uac-review` gate then refused
+`instance_uac_consent_absent`, and both rows ended CANCELLED. The gate was right: no consent.exe existed. The guest
+FILETIMEs and the host timings show the prompt had already expired. In `27c2f7b8` the install CLI was born at 08:02:50.5
+and the owner published the event at once. The host copy named it only at 08:04:53, when the before-install collector
+program returned (206 s; 214 s in `b53e32c5`). The install CLI had answered CANCELLED before 08:05:12, about 2 min 20 s
+after it started, in both rows. The first review began at 08:05:13. The guest and host clocks agree within seconds:
+the host served the before-install need within a poll of the guest event that asked for it. The black operator frames
+are a sleeping display. The review wakes it only after it finds consent.exe, so the frames do not bear on the cause.
+The product is not implicated. It raises the helper's prompt with `ShellExecuteEx` `runas`, as it does the broker's,
+and the broker prompt passes the same gate on other clones. Evidence (zips, reviews, host timings, the unfixed source,
+RED/GREEN logs): `.runtime/windows-parity-20261107/evidence/fix-install-consent/`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The host status copy stayed stale while a collector program that is not a cancel watch ran, so a prompt that rose during its proof and teardown reached the UAC client after it expired (TOOL) | `test_windows_scenario_host_job.UpdateFamilyTests.test_a_grant_prompt_event_reaches_the_host_copy_while_the_before_install_collector_still_runs` | The worker publishes `before-install.json` and then the bootstrap rehashes every pin before it returns (see the 72c2fa02 entry). The owner reads the file and starts the install meanwhile. `_collector_stage` polled `_on_status(serve=False)` only for the install-cancelled watch. It now polls it for every collector program and still serves no other need until the program returns. `wait_uac_pending` therefore sees the event within one status read. The fake keeps a non-watch collector open for `collector_polls`. RED (the unfixed host job, 3.14 and 3.12): the host copy said `[]` at all four polls. GREEN: OK. The consent gate is unchanged. |
+
+Only a native grant run confirms that the review now finds the install-helper's consent.exe within its gate. On NE3 that
+means `uac-pending` within seconds of the install CLI's birth, then a wake and a retained frame.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

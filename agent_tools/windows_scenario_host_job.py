@@ -3305,10 +3305,13 @@ class Job:
                                     "kind": "data", "raw": raw}], role)[role]
         source = self._collector_source(request, pin)
         watch = stage == "before-install" and self.update.get("cancelWatch") is True
-        # A cancel watch runs through the prompt and the install it cancels: the status copy stays current meanwhile, so a
-        # client sees the prompt event and its decision, and no other need is served until the watch returns.
+        # The status copy stays current through every collector program, and no other need is served until it returns.
+        # A cancel watch runs through the prompt and the install it cancels. Any other program is still proving and closing
+        # after it published, while its owner goes on: a grant's owner reads before-install and raises the install-helper
+        # prompt at once. Without these polls the copy named that prompt only when the program returned, two minutes
+        # later on NE3, and windows-uac-review found the unanswered prompt already expired (b53e32c5, 27c2f7b8).
         terminal, pid = self.guest_program("collector-" + stage, source, budget=COLLECTOR_BUDGET_SECONDS,
-                                           on_poll=(lambda: self._on_status(serve=False)) if watch else None)
+                                           on_poll=lambda: self._on_status(serve=False))
         proof = self._collector_proof("collector-" + stage, terminal, pid)
         result = self._validate_collector_child(stage, request, pin, proof)
         if watch:

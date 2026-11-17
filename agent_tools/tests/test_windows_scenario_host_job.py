@@ -3417,6 +3417,9 @@ class UpdateQga(FakeQga):
         self.copy = None  # (pid, birth) of the participating copy the case started, as its child events record it.
         self.watch = None  # What a cancel watch saw: the observations its before-install collector publishes after its own.
         self.watch_polls = 0  # Status polls of the SYSTEM run's copy while the watch collector runs.
+        # Polls any other collector program stays open after it published: natively its proof and teardown, which on NE3
+        # outlasted the owner's next step by two minutes (b53e32c5, 27c2f7b8). 0 ends it at its first status read.
+        self.collector_polls = 0
         self.status_reads = []  # Which program, if any, was open while the status copy was read.
         self.root_form = "P"  # The DACL control a collector root reads back: natively P.
         self.child_session = 0  # The worker session a collector's proof carries: null where the bootstrap read none (72c2fa02).
@@ -3447,7 +3450,8 @@ class UpdateQga(FakeQga):
             terminal = self._release(source, pid) if kind == "collector-release" else self._collector(source, pid)
             self.programs.append((kind, source))
             watching = kind == "collector" and "cancelWatchHelper" in self.collectors[-1]["collectorRequest"].get("fileInputs", {})
-            self.pending[pid] = {"polls": self.watch_polls if watching else 0, "terminal": terminal, "collector": kind == "collector"}
+            polls = self.watch_polls if watching else self.collector_polls if kind == "collector" else 0
+            self.pending[pid] = {"polls": polls, "terminal": terminal, "collector": kind == "collector"}
             return {"pid": pid}
         self.admin_requested = "administratorSid=" in source
         ack = super()._guest_exec(arguments)
@@ -4107,6 +4111,40 @@ class UpdateFamilyTests(UpdateFamilyBase):
                 for stage in ("before-install", "authorization"):
                     self.assertTrue((Path(plan["dataDirectory"]) / "collectors" / stage / "census.json").exists())
                 self.assertLessEqual(len((Path(plan["dataDirectory"]) / "scenario-receipt.json").read_bytes()), job.RECEIPT_BYTES)
+
+    def test_a_grant_prompt_event_reaches_the_host_copy_while_the_before_install_collector_still_runs(self):
+        """b53e32c5 and 27c2f7b8 (NE3, tools 2db462ee): the owner reads before-install, starts the install and publishes
+        update-uac-action-pending while the SYSTEM collector program is still proving and closing (214 and 206 s natively).
+        No status poll ran during a collector that is not a cancel watch, so the host copy named the prompt only once that
+        program returned, about two minutes after the prompt rose. Every windows-uac-review gate then ran after the
+        unanswered prompt had expired (instance_uac_consent_absent), and the grant ended CANCELLED. The copy must stay
+        current through every collector program, which still serves no other need until it returns."""
+        base, target = self.prepared()
+        self.grant_guest(target)
+        self.qga.collector_polls = 3
+        plan = self.update_plan("success-off", base, target)
+        self.addCleanup(self.forget_modules, plan["operationId"])
+        status = Path(plan["dataDirectory"]) / "status.json"
+        copies, served = [], []
+        polled = self.qga._guest_exec_status
+
+        def poll(arguments):
+            row = self.qga.pending.get(arguments["pid"])
+            if row is not None and row.get("collector") and len(self.qga.collectors) == 1:
+                # What the host copy, which windows-uac-review's caller waits on, said during the before-install program.
+                copies.append(json.loads(status.read_bytes()).get("uacEvents") if status.exists() else None)
+                served.append(len(self.qga.collectors))
+            return polled(arguments)
+        self.qga._guest_exec_status = poll
+        code = job.run_job(self.rt, plan, self.files)
+        receipt = self.receipt(plan)
+        self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
+        self.assertEqual(4, len(copies), "three open polls and the exit")
+        self.assertIn(["update-uac-action-pending"], copies,
+                      "the host copy named the pending prompt before the before-install collector program returned")
+        self.assertEqual([1] * len(served), served, "no other collector started while before-install ran")
+        self.assertEqual(["before-install", "authorization", "terminal-actors", "returned-cleanup"],
+                         [request["collectorRequest"]["stage"] for request in self.qga.collectors])
 
     def test_authorization_takes_only_the_jobs_own_live_coordinator_and_worker(self):
         """Every refusal leaves the owner waiting on authorization, so it is UNKNOWN with its own finite code and no
