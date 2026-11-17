@@ -24,6 +24,26 @@ public static class VcAutostartNative {
  public static bool InJob() {
   bool v; if(!IsProcessInJob(Process.GetCurrentProcess().Handle,IntPtr.Zero,out v))throw new Exception("PROCESS_JOB_QUERY");return v;
  }
+ [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool LookupAccountNameW(string s,string n,byte[] sid,ref int sidSize,System.Text.StringBuilder d,ref int dSize,out int use);
+ // The SID this machine's authority maps an account name to; null only for ERROR_NONE_MAPPED (1332). Every other
+ // outcome throws, so a failed lookup never reads as an unmapped or a mapped name.
+ public static string AccountSid(string name) {
+  int size=0,dsize=0,use;
+  if(LookupAccountNameW(null,name,null,ref size,null,ref dsize,out use)) throw new Exception("ACCOUNT_LOOKUP_SIZE");
+  int e=Marshal.GetLastWin32Error(); if(e==1332) return null;
+  if(e!=122||size<8||size>68||dsize<1||dsize>1024) throw new Exception("ACCOUNT_LOOKUP_"+e);
+  byte[] sid=new byte[size]; var domain=new System.Text.StringBuilder(dsize);
+  if(!LookupAccountNameW(null,name,sid,ref size,domain,ref dsize,out use)) throw new Exception("ACCOUNT_LOOKUP_"+Marshal.GetLastWin32Error());
+  return SidString(sid,size);
+ }
+ // A binary SID in its string form: revision 1, the 48-bit big-endian authority, then little-endian subauthorities.
+ public static string SidString(byte[] b,int n) {
+  if(n<8||n>b.Length||b[0]!=1||n!=8+4*b[1]) throw new Exception("ACCOUNT_SID_SHAPE");
+  ulong a=0; for(int i=2;i<8;i++) a=(a<<8)|b[i];
+  var s=new System.Text.StringBuilder("S-1-"+a);
+  for(int i=0;i<b[1];i++) s.Append('-').Append(BitConverter.ToUInt32(b,8+4*i));
+  return s.ToString();
+ }
 }
 '@
 function Test-TaskAbsent($record) {
@@ -39,7 +59,32 @@ function Get-StartupTask($folder) {
  try { return $folder.GetTask('VPN Control') } catch { if (-not (Test-TaskAbsent $_)) { throw } }
  return $null
 }
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+function Resolve-AccountSid([string]$name) { return [VcAutostartNative]::AccountSid($name) }
+function Get-TaskAccounts([string]$xml) {
+ # Task Scheduler keeps a principal's SID but may store a logon trigger's user as an account name: native 7ca6638a read
+ # DESKTOP-4MOOMEI\fixtureuser for a trigger registered with the ordinary SID. Each distinct principal or logon-trigger
+ # UserId that is no SID is looked up here, on the guest, as this ordinary user, and recorded with what it maps to.
+ # The owner takes a name only when it maps to exactly its own SID; an unmapped name stays null.
+ $settings = [Xml.XmlReaderSettings]::new()
+ $settings.DtdProcessing = [Xml.DtdProcessing]::Prohibit
+ $settings.XmlResolver = $null
+ $reader = [Xml.XmlReader]::Create([IO.StringReader]::new($xml), $settings)
+ $document = [Xml.XmlDocument]::new()
+ $document.XmlResolver = $null
+ try { $document.Load($reader) } finally { $reader.Dispose() }
+ $names = [Xml.XmlNamespaceManager]::new($document.NameTable)
+ $names.AddNamespace('t', 'http://schemas.microsoft.com/windows/2004/02/mit/task')
+ $nodes = $document.SelectNodes('/t:Task/t:Principals/t:Principal/t:UserId | /t:Task/t:Triggers/t:LogonTrigger/t:UserId', $names)
+ if ($nodes.Count -gt 8) { throw 'TASK_ACCOUNT_BOUND' }
+ $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+ foreach ($node in $nodes) {
+  $name = [string]$node.InnerText
+  if ($name.Length -gt 512) { throw 'TASK_ACCOUNT_BOUND' }
+  if ($name.Length -eq 0 -or $name -cmatch '\AS-1-[0-9]+(-[0-9]+)+\z' -or -not $seen.Add($name)) { continue }
+  [ordered]@{ name = $name; sid = (Resolve-AccountSid $name) }
+ }
+}
+$identity =[Security.Principal.WindowsIdentity]::GetCurrent()
 $machine = $null
 $key = $null
 try {
@@ -65,9 +110,10 @@ try {
     state = [int]$instance.State; currentAction = $action }
   }
   $lastRun = [DateTime]$task.LastRunTime
+  $accounts = @(Get-TaskAccounts $xml)
   $taskData = @{state='present'; path=[string]$task.Path; xml=$xml; sddl=$sddl; enabled=[bool]$task.Enabled;
    lastRunFileTimeUtc=[string]$lastRun.ToUniversalTime().ToFileTimeUtc(); lastTaskResult=[int]$task.LastTaskResult;
-   schedulerState=[int]$task.State; runningInstances=$running }
+   schedulerState=[int]$task.State; runningInstances=$running; accounts=$accounts }
  }
  $run = @{state='absent'; keyState='absent'}
  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Run',$false)
@@ -89,7 +135,7 @@ try {
  if ($null -eq $machine) { throw 'MACHINE_KEY_ABSENT' }
  $machineGuid = [string]$machine.GetValue('MachineGuid')
  $openingBoot = [VcAutostartNative]::Boot()
- $result = @{schemaVersion=2; collector='exact-autostart-read-only-v2'; sid=$identity.User.Value;
+ $result = @{schemaVersion=3; collector='exact-autostart-read-only-v3'; sid=$identity.User.Value;
   sessionId=$process.SessionId; pid=$process.Id; creationFileTime=[string]$process.StartTime.ToUniversalTime().ToFileTimeUtc();
   elevated=[VcAutostartNative]::Elevated(); inJob=[VcAutostartNative]::InJob();
   bootIdentifier=$openingBoot; machineGuid=$machineGuid; task=$taskData; run=$run}

@@ -37,6 +37,21 @@ RUNTIME = hashlib.sha256(b"bundled sing-box.exe").hexdigest()
 BOOT = "134368653065000000"
 CONTEXT = {"deploymentId": "33333333-4444-4555-8666-777777777777", "ordinarySid": SID, "ordinarySessionId": 2,
            "machineGuid": "a1b2c3d4-0000-4000-8000-000000000001", "bootIdentifier": "11111111-2222-4333-8444-555555555555", "bootFileTimeUtc": BOOT}
+# schtasks /SC ONLOGON runs "whenever any user logs on": a logon trigger with no user, explicitly enabled.
+ANY_USER_TRIGGER = "<LogonTrigger><Enabled>true</Enabled></LogonTrigger>"
+# Native 7ca6638a: Task Scheduler kept the principal's SID but stored the trigger registered with that SID as a name.
+ACCOUNT = "DESKTOP-4MOOMEI\\fixtureuser"
+
+
+def guest_accounts(xml, resolved):
+    """What the snapshot's Get-TaskAccounts records: each distinct principal or logon-trigger UserId that is no SID, in
+    document order, with the SID the guest's LookupAccountName maps it to, or None when the name maps to nothing."""
+    namespace = {"t": autostart.NS}
+    root = autostart.ET.fromstring(xml)
+    values = [node.text or "" for node in root.findall("t:Principals/t:Principal/t:UserId", namespace)
+              + root.findall("t:Triggers/t:LogonTrigger/t:UserId", namespace)]
+    names = [value for value in values if value and not re.fullmatch(r"S-1-[0-9]+(?:-[0-9]+)+", value)]
+    return [{"name": name, "sid": resolved.get(name)} for name in dict.fromkeys(names)]
 
 
 class Parked(BaseException):
@@ -222,6 +237,10 @@ class World:
         self.clock = None
         self.locations, self.revision, self.settings = [], 0, {"autostart": False}
         self.next_pid, self.visible, self.last_run = 500, True, None
+        # Each task's principal user and logon trigger as Task Scheduler exports them, and the guest's LookupAccountName
+        # of an account name. The planter registers schtasks /SC ONLOGON's trigger: any user, explicitly enabled.
+        self.principal_user, self.trigger = {"highest": SID, "limited": SID}, {"highest": ANY_USER_TRIGGER, "limited": ANY_USER_TRIGGER}
+        self.accounts = {}
 
     def envelope(self, data=None, code="OK"):
         self.revision += 0
@@ -296,14 +315,15 @@ class World:
         task = {"state": "absent"}
         if self.task != "absent":
             level = "<RunLevel>HighestAvailable</RunLevel>" if self.task == "highest" else ""
-            xml = ('<Task xmlns="' + autostart.NS + '"><Principals><Principal id="Author"><UserId>' + SID + '</UserId><LogonType>InteractiveToken'
-                   '</LogonType>' + level + '</Principal></Principals><Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>'
+            principal, trigger = self.principal_user[self.task], self.trigger[self.task]
+            xml = ('<Task xmlns="' + autostart.NS + '"><Principals><Principal id="Author"><UserId>' + principal + '</UserId><LogonType>InteractiveToken'
+                   '</LogonType>' + level + '</Principal></Principals><Triggers>' + trigger + '</Triggers>'
                    '<Actions Context="Author"><Exec><Command>' + GUI + '</Command><Arguments>--autostart --state-dir "' + self.owner.request["workspace"]
                    + '"</Arguments></Exec></Actions></Task>')
             task = {"state": "present", "path": autostart.TASK, "xml": xml, "sddl": "D:P(A;;FA;;;SY)", "enabled": True, "lastRunFileTimeUtc": str(self.last_run or BOOT),
-                    "lastTaskResult": 0, "schedulerState": 3, "runningInstances": []}
+                    "lastTaskResult": 0, "schedulerState": 3, "runningInstances": [], "accounts": guest_accounts(xml, self.accounts)}
         context = self.owner.request["context"]
-        return {"schemaVersion": 2, "collector": "exact-autostart-read-only-v2", "sid": SID, "sessionId": 2, "pid": child.pid,
+        return {"schemaVersion": 3, "collector": "exact-autostart-read-only-v3", "sid": SID, "sessionId": 2, "pid": child.pid,
                 "creationFileTime": child.birth, "elevated": 0, "inJob": False, "bootIdentifier": context["bootIdentifier"],
                 "machineGuid": context["machineGuid"], "task": task, "run": {"state": "absent", "keyState": "present"}}
 
@@ -1395,7 +1415,7 @@ public sealed class LegacyFakeActions {public string Context;public List<LegacyF
 public sealed class LegacyFakeDefinition {public LegacyFakeRegistration RegistrationInfo=new LegacyFakeRegistration();
  public LegacyFakePrincipal Principal=new LegacyFakePrincipal();public LegacyFakeSettings Settings=new LegacyFakeSettings();
  public LegacyFakeTriggers Triggers=new LegacyFakeTriggers();public LegacyFakeActions Actions=new LegacyFakeActions();}
-public sealed class LegacyFakeTask {public string Path;public LegacyFakeDefinition Definition;}
+public sealed class LegacyFakeTask {public string Path,Xml;public LegacyFakeDefinition Definition;}
 public sealed class LegacyFakeFolder {public string Mode="";public List<string> Calls=new List<string>();
  public Dictionary<string,LegacyFakeTask> Tasks=new Dictionary<string,LegacyFakeTask>();
  public LegacyFakeTask GetTask(string name){Calls.Add("get");if(Mode=="denied")throw new COMException("fake",-2147024891);
@@ -1405,6 +1425,15 @@ public sealed class LegacyFakeFolder {public string Mode="";public List<string> 
   if(Mode=="register-denied")throw new UnauthorizedAccessException("Access is denied. (Exception from HRESULT: 0x80070005 (E_ACCESSDENIED))");
   if(Tasks.ContainsKey(name))throw new COMException("fake",-2147024713);
   var t=new LegacyFakeTask{Path="\\"+name,Definition=d};Tasks[name]=t;return t;}
+ public LegacyFakeTask RegisterTask(string name,string xml,int flags,string user,object password,int logon,object sddl){
+  Calls.Add("registerXml:"+name+":"+flags+":"+user+":"+(password==null)+":"+logon+":"+(sddl==null));
+  if(Mode=="register-denied")throw new UnauthorizedAccessException("Access is denied. (Exception from HRESULT: 0x80070005 (E_ACCESSDENIED))");
+  if(Tasks.ContainsKey(name))throw new COMException("fake",-2147024713);
+  var doc=new System.Xml.XmlDocument();doc.LoadXml(xml);
+  var ns=new System.Xml.XmlNamespaceManager(doc.NameTable);ns.AddNamespace("t","http://schemas.microsoft.com/windows/2004/02/mit/task");
+  var d=new LegacyFakeDefinition();d.RegistrationInfo.Description=doc.SelectSingleNode("/t:Task/t:RegistrationInfo/t:Description",ns).InnerText;
+  d.Principal.RunLevel=doc.SelectSingleNode("/t:Task/t:Principals/t:Principal/t:RunLevel",ns).InnerText=="HighestAvailable"?1:0;
+  var t=new LegacyFakeTask{Path="\\"+name,Definition=d,Xml=xml};Tasks[name]=t;return t;}
  public void DeleteTask(string name,int flags){Calls.Add("delete:"+name);if(!Tasks.Remove(name))throw new COMException("fake",-2147024894);}
  public void Plant(string description,int runLevel){var d=new LegacyFakeDefinition();d.RegistrationInfo.Description=description;
   d.Principal.RunLevel=runLevel;Tasks["VPN Control"]=new LegacyFakeTask{Path="\\VPN Control",Definition=d};}}
@@ -1425,11 +1454,7 @@ function Fresh([string]$sid,[string]$mode){[LegacyFakeIdentity]::Sid=$sid;$scrip
 function Planted($folder){
  $t=$null;if($folder.Tasks.ContainsKey('VPN Control')){$t=$folder.Tasks['VPN Control']}
  if($null -eq $t){return $null}
- $d=$t.Definition
- return [ordered]@{description=$d.RegistrationInfo.Description;principal=@($d.Principal.Id,$d.Principal.UserId,$d.Principal.LogonType,$d.Principal.RunLevel);
-  settings=@($d.Settings.Enabled,$d.Settings.DisallowStartIfOnBatteries,$d.Settings.StopIfGoingOnBatteries,$d.Settings.ExecutionTimeLimit);
-  triggers=@($d.Triggers.Items|ForEach-Object {'{0}|{1}|{2}' -f $_.Type,$_.Enabled,$_.UserId});context=$d.Actions.Context;
-  actions=@($d.Actions.Items|ForEach-Object {'{0}|{1}|{2}' -f $_.Type,$_.Path,$_.Arguments})}
+ return [ordered]@{description=$t.Definition.RegistrationInfo.Description;runLevel=$t.Definition.Principal.RunLevel;xml=$t.Xml}
 }
 """
 
@@ -1491,7 +1516,7 @@ class LegacyAutostartPlantTests(unittest.TestCase):
         self.assertLess(plant, at("$registered=$folder.RegisterTaskDefinition($name"), "planted before the owner's task")
         self.assertLess(plant, at("$script:P.launchConsumed=$true"), "planted before the owner can run")
         self.assertEqual(2, self.template.count("'" + LEGACY_DESCRIPTION + "'"), "both cleanups know the planter's own description")
-        self.assertIn("$task.RegistrationInfo.Description = '" + LEGACY_DESCRIPTION + "'", self.planter)
+        self.assertIn("    <Description>" + LEGACY_DESCRIPTION + "</Description>\n", self.planter)
         self.assertEqual(1, self.template.count("'" + LEGACY_RESULT + "'"))
         self.assertEqual(1, self.planter.count(" '" + LEGACY_RESULT + "'\n"), "the planter answers on the pipeline")
         self.assertNotIn("[Console]::", self.planter, "the SYSTEM run replies on the console; the planter never writes to it")
@@ -1500,13 +1525,14 @@ class LegacyAutostartPlantTests(unittest.TestCase):
     def test_the_planter_registers_the_legacy_task_for_the_ordinary_user_only_as_system(self):
         body = r"""
 $out = [ordered]@{}
-foreach ($case in @('system','ordinary','existing','system-principal','register-denied')) {
+foreach ($case in @('system','system-ampersand','ordinary','existing','system-principal','register-denied')) {
  $sid = $(if ($case -ceq 'ordinary') { 'PRINCIPAL' } else { 'S-1-5-18' })
  $folder = Fresh $sid $(if ($case -ceq 'register-denied') { 'register-denied' } else { '' })
  if ($case -ceq 'existing') { $folder.Plant('another task', 0) }
  $principal = $(if ($case -ceq 'system-principal') { 'S-1-5-18' } else { 'PRINCIPAL' })
  $answer = $null; $threw = $null
- try { $answer = @(& ([scriptblock]::Create($planterText)) -GuiPath 'C:\Program Files\VPN Control\vpn-control.exe' -Workspace 'C:\w' -PrincipalSid $principal) }
+ $gui = $(if ($case -ceq 'system-ampersand') { 'C:\R&D <x>\vpn-control.exe' } else { 'C:\Program Files\VPN Control\vpn-control.exe' })
+ try { $answer = @(& ([scriptblock]::Create($planterText)) -GuiPath $gui -Workspace "C:\w'&" -PrincipalSid $principal) }
  catch { $threw = [string]$_.Exception.Message }
  $out[$case] = [ordered]@{answer=$answer; threw=$threw; calls=@($folder.Calls|Where-Object {$_ -cne 'get'}); task=(Planted $folder)}
 }
@@ -1514,12 +1540,19 @@ foreach ($case in @('system','ordinary','existing','system-principal','register-
         out = self.run_powershell(body)
         system = out["system"]
         self.assertEqual(([LEGACY_RESULT], None), (system["answer"], system["threw"]))
-        self.assertEqual(["register:VPN Control:2:" + PRINCIPAL + ":True:3:True"], system["calls"],
+        self.assertEqual(["registerXml:VPN Control:2:" + PRINCIPAL + ":True:3:True"], system["calls"],
                          "TASK_CREATE, the ordinary user, no password, an interactive token, the scheduler's own SDDL")
-        self.assertEqual({"description": LEGACY_DESCRIPTION, "principal": ["Author", PRINCIPAL, 3, 1],
-                          "settings": [True, False, False, "PT0S"], "triggers": ["9|True|" + PRINCIPAL], "context": "Author",
-                          "actions": [r'0|C:\Program Files\VPN Control\vpn-control.exe|--autostart --state-dir "C:\w"']},
-                         system["task"])
+        self.assertEqual((LEGACY_DESCRIPTION, 1), (system["task"]["description"], system["task"]["runLevel"]))
+        # The registered XML is schtasks /SC ONLOGON /RL HIGHEST's task: any user's logon, explicitly enabled.
+        for case, gui in (("system", r"C:\Program Files\VPN Control\vpn-control.exe"), ("system-ampersand", r"C:\R&D <x>\vpn-control.exe")):
+            with self.subTest(case=case):
+                xml = out[case]["task"]["xml"]
+                self.assertEqual({"principalUser": PRINCIPAL, "logonType": "InteractiveToken", "runLevel": "HighestAvailable", "command": gui,
+                                  "arguments": '--autostart --state-dir "C:\\w\'&"', "workingDirectory": "", "triggerUser": "",
+                                  "triggerEnabled": "true", "actionsContext": "Author", "principalId": "Author"}, autostart.task_fields(xml))
+                settings = autostart.ET.fromstring(xml).find("t:Settings", {"t": autostart.NS})
+                self.assertEqual({"DisallowStartIfOnBatteries": "false", "StopIfGoingOnBatteries": "false", "ExecutionTimeLimit": "PT0S",
+                                  "Enabled": "true"}, {child.tag.split("}")[1]: child.text for child in settings})
         self.assertEqual(("FIXTURE_SYSTEM_PLANTER", []), (out["ordinary"]["threw"], out["ordinary"]["calls"]))
         self.assertEqual(("EXISTING_STARTUP_TASK_REFUSED", []), (out["existing"]["threw"], out["existing"]["calls"]))
         self.assertEqual("another task", out["existing"]["task"]["description"])
@@ -1589,6 +1622,235 @@ CLOSING   }
             self.assertEqual((False, None, False), (out["absent:" + path]["unknown"], out["absent:" + path]["threw"], out["absent:" + path]["left"]))
         self.assertTrue(out["denied:refusal"]["unknown"], "a failed lookup is no proof of absence")
         self.assertEqual("RUN_LEGACY_AUTOSTART_CLOSING_OBSERVATION", out["denied:closing"]["threw"])
+
+
+TRIGGER_ACCOUNT = Path(__file__).parent / "fixtures/windows_autostart_trigger_account"
+NATIVE_SID = "S-1-5-21-132019854-1662204854-2277972956-1004"
+OTHER_SID = "S-1-5-21-132019854-1662204854-2277972956-1005"
+NAMED_TRIGGER = "<LogonTrigger><Enabled>true</Enabled><UserId>" + ACCOUNT + "</UserId></LogonTrigger>"
+
+
+def source_module(path, name):
+    """A preserved before-source, run as the module it was."""
+    module = types.ModuleType(name)
+    exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module.__dict__)
+    return module
+
+
+def binary_sid(text):
+    """The binary form LookupAccountName returns for a SID string."""
+    parts = text.split("-")
+    subauthorities = [int(value) for value in parts[3:]]
+    return bytes([1, len(subauthorities)]) + int(parts[2]).to_bytes(6, "big") + b"".join(
+        value.to_bytes(4, "little") for value in subauthorities)
+
+
+class TriggerAccountTests(WorldCase):
+    """Native 7ca6638a (autostart-migration.pre, clone NF2, S_D4, tools 3a081133). The SYSTEM run planted the legacy
+    HighestAvailable task, which read back with the ordinary SID as its principal and the right command. Task Scheduler
+    stored its logon trigger, registered with that SID, as the account name DESKTOP-4MOOMEI\\fixtureuser, and ownership()
+    took only the SID or no user, so the owner refused exact-owned-startup-task before any public autostart step."""
+
+    def setUp(self):
+        super().setUp()
+        self.record = json.loads((TRIGGER_ACCOUNT / "native-7ca6638a-snapshot.json").read_text(encoding="utf-8"))
+        raw = base64.b64decode(self.record["child"]["stdoutBase64"])
+        self.assertEqual(self.record["child"]["stdoutSha256"], hashlib.sha256(raw).hexdigest())
+        self.native = json.loads(raw)
+        fields = autostart.task_fields(self.native["task"]["xml"])
+        prefix = '--autostart --state-dir "'
+        self.assertTrue(fields["arguments"].startswith(prefix) and fields["arguments"].endswith('"'))
+        self.gui, self.workspace = fields["command"], fields["arguments"][len(prefix):-1]
+
+    def native_v3(self, accounts, xml=None):
+        """The native snapshot as the fixed collector writes it: the guest's lookup of each account name added."""
+        snapshot = json.loads(json.dumps(self.native))
+        snapshot.update(schemaVersion=3, collector="exact-autostart-read-only-v3")
+        snapshot["task"]["accounts"] = accounts
+        if xml is not None:
+            snapshot["task"]["xml"] = xml
+        return snapshot
+
+    def owned(self, snapshot, sid=NATIVE_SID):
+        return autostart.ownership(snapshot, self.gui, self.workspace, sid)
+
+    def test_the_recorded_native_snapshot_names_the_trigger_user_and_the_unfixed_owner_refused_it(self):
+        child = self.record["child"]
+        self.assertEqual(("autostart-read-only", 0, 0), (child["label"], child["exitCode"], child["stderrBytes"]))
+        self.assertEqual(NATIVE_SID, self.native["sid"])
+        task = autostart.ET.fromstring(self.native["task"]["xml"])
+        namespace = {"t": autostart.NS}
+        self.assertEqual([NATIVE_SID], [node.text for node in task.findall("t:Principals/t:Principal/t:UserId", namespace)])
+        self.assertEqual([ACCOUNT], [node.text for node in task.findall("t:Triggers/t:LogonTrigger/t:UserId", namespace)])
+        self.assertEqual([], task.findall("t:Triggers/t:LogonTrigger/t:Enabled", namespace),
+                         "the object model's Enabled=true left no element")
+        for name, entry in self.record["beforeSources"].items():
+            self.assertEqual(entry["sha256"], hashlib.sha256((TRIGGER_ACCOUNT / entry["path"]).read_bytes()).hexdigest(), name)
+        before = TRIGGER_ACCOUNT / self.record["beforeSources"]["reboot"]["path"]
+        self.assertTrue(before.read_text().split("\n")[87].startswith('    require(fields["sid"] == sid and'))
+        self.assertIn("windows_autostart_reboot.py:88", self.record["ownerTerminal"]["frames"])
+        unfixed = source_module(before, "unfixed_windows_autostart_reboot")
+        with self.assertRaisesRegex(AssertionError, "^exact-owned-startup-task$"):
+            unfixed.ownership(self.native, self.gui, self.workspace, NATIVE_SID)
+        self.assertIn("$trigger.UserId = $PrincipalSid", (TRIGGER_ACCOUNT / self.record["beforeSources"]["planter"]["path"]).read_text())
+
+    def test_a_trigger_account_name_is_owned_only_when_the_guest_resolves_it_to_the_ordinary_sid(self):
+        self.assertEqual("highest", self.owned(self.native_v3([{"name": ACCOUNT, "sid": NATIVE_SID}])))
+        for accounts, code in (([{"name": ACCOUNT, "sid": OTHER_SID}], "exact-owned-startup-task"),
+                               ([{"name": ACCOUNT, "sid": None}], "task-account-unresolved-on-guest"),
+                               ([], "task-accounts-not-the-task-names"),
+                               ([{"name": ACCOUNT.upper(), "sid": NATIVE_SID}], "task-accounts-not-the-task-names"),
+                               ([{"name": ACCOUNT, "sid": NATIVE_SID}, {"name": "OTHER\\user", "sid": NATIVE_SID}],
+                                "task-accounts-not-the-task-names"),
+                               ([{"name": ACCOUNT, "sid": "fixtureuser"}], "bounded-task-account-resolution"),
+                               ([{"name": ACCOUNT, "sid": NATIVE_SID, "use": 1}], "bounded-task-account-resolution")):
+            with self.subTest(accounts=accounts):
+                with self.assertRaisesRegex(AssertionError, "^" + code + "$"):
+                    self.owned(self.native_v3(accounts))
+        with self.assertRaisesRegex(AssertionError, "^ordinary-native-snapshot$"):
+            self.owned(self.native)
+        with self.assertRaisesRegex(AssertionError, "^ordinary-native-snapshot$"):
+            self.owned(self.native_v3([{"name": ACCOUNT, "sid": NATIVE_SID}]), OTHER_SID)
+
+    def test_a_principal_account_name_is_held_to_the_same_rule(self):
+        xml = self.native["task"]["xml"]
+        principal = "<UserId>" + NATIVE_SID + "</UserId>"
+        self.assertEqual(1, xml.count(principal))
+        named = xml.replace(principal, "<UserId>" + ACCOUNT + "</UserId>")
+        self.assertEqual("highest", self.owned(self.native_v3([{"name": ACCOUNT, "sid": NATIVE_SID}], named)))
+        with self.assertRaisesRegex(AssertionError, "^exact-owned-startup-task$"):
+            self.owned(self.native_v3([{"name": ACCOUNT, "sid": OTHER_SID}], named))
+        # A SID other than the ordinary one is never looked up, and never owned.
+        with self.assertRaisesRegex(AssertionError, "^exact-owned-startup-task$"):
+            self.owned(self.native_v3([{"name": ACCOUNT, "sid": NATIVE_SID}], xml.replace(principal, "<UserId>" + OTHER_SID + "</UserId>")))
+
+    def test_the_native_legacy_trigger_shape_ends_the_row_before_any_public_autostart_step(self):
+        for trigger in ("<LogonTrigger><UserId>" + ACCOUNT + "</UserId></LogonTrigger>", NAMED_TRIGGER, "<LogonTrigger></LogonTrigger>"):
+            with self.subTest(trigger=trigger):
+                owner = self.owner("autostart-migration")
+                owner.world.trigger["highest"] = trigger
+                owner.world.accounts = {ACCOUNT: SID}
+                with self.assertRaisesRegex(AssertionError, "^legacy-fixture-any-user-enabled-logon-trigger$"):
+                    preboot.run_preboot(owner, owner.config, source_roles, postboot)
+                calls = [" ".join(tail) for label, tail in owner.world.trace if label == "public-cli"]
+                self.assertEqual([], [call for call in calls if "autostart" in call], "no public autostart step ran")
+                self.assertEqual([], [kind for kind, _ in owner.events if kind in job.AUTOSTART_INTENTS],
+                                 "no autostart intent: the receipt says untouched and holds no clone")
+                self.assertEqual("highest", owner.world.task)
+
+    def test_a_migration_that_writes_a_user_by_account_name_keeps_the_same_identities(self):
+        # The product's schtasks /Change re-registers the task; a user it writes back as a name is the same user.
+        for scenario in sorted(autostart.SCENARIOS):
+            with self.subTest(scenario=scenario):
+                owner = self.after_reboot(scenario, principal_user={"highest": SID, "limited": ACCOUNT}, accounts={ACCOUNT: SID})
+                self.assertEqual(0, postboot.run_postboot(owner, owner.config, source_roles))
+                self.assertEqual("absent", owner.world.task)
+                observed = [value for kind, value in owner.events if kind == "whole-postboot-startup-observed"]
+                self.assertEqual([[{"name": ACCOUNT, "sid": SID}]], [value["snapshot"]["task"]["accounts"] for value in observed],
+                                 "the snapshot records the name and the SID the guest resolved it to")
+        for changed, code in (({"principal_user": {"highest": SID, "limited": ACCOUNT}, "accounts": {ACCOUNT: OTHER_SID}},
+                               "exact-owned-startup-task"),
+                              ({"trigger": {"highest": ANY_USER_TRIGGER, "limited": NAMED_TRIGGER}, "accounts": {ACCOUNT: SID}},
+                               "migration-preserves-action-trigger-principal")):
+            with self.subTest(changed=sorted(changed)):
+                owner = self.owner("autostart-migration")
+                for key, value in changed.items():
+                    setattr(owner.world, key, value)
+                with self.assertRaisesRegex(AssertionError, "^" + code + "$"):
+                    preboot.run_preboot(owner, owner.config, source_roles, postboot)
+
+    def test_a_new_boot_compares_each_user_by_the_sid_it_names(self):
+        owner = types.SimpleNamespace(request={"workspace": r"C:\w", "context": CONTEXT})
+        world = World(owner, "explicit-off")
+        world.task, world.accounts = "limited", {ACCOUNT: SID}
+        world.trigger["limited"] = "<LogonTrigger><Enabled>true</Enabled><UserId>" + SID + "</UserId></LogonTrigger>"
+        checkpoint_task = world.snapshot(types.SimpleNamespace(pid=1, birth="1"))["task"]
+        world.trigger["limited"] = NAMED_TRIGGER
+        snapshot = world.snapshot(types.SimpleNamespace(pid=2, birth="2"))
+        snapshot["qualifiedOwnership"] = "limited"
+        checkpoint = {"kind": "owned-reboot-checkpoint", "machineGuid": snapshot["machineGuid"], "deploymentId": "d", "oldBootFileTimeUtc": BOOT,
+                      "ordinarySid": SID, "workspace": r"C:\w", "task": checkpoint_task, "oldControllerId": "old", "scenario": "explicit-off",
+                      "operationId": "op", "guiPath": GUI, "activeLocationName": None, "activeMode": None}
+        context = {"machineGuid": snapshot["machineGuid"], "deploymentId": "d", "bootIdentifier": snapshot["bootIdentifier"], "ordinarySid": SID,
+                   "ordinarySessionId": 2, "bootFileTimeUtc": str(int(BOOT) + 1)}
+        gui = {"sid": SID, "sessionId": 2, "elevated": 0, "creationFileTime": int(BOOT) + 2, "image": GUI}
+        status = {"code": "OK", "final": True, "controllerId": "new", "data": {"runtimeRunning": False}}
+        new_owner = {"context": context, "workspace": r"C:\w"}
+        self.assertEqual("explicit-off", autostart.qualify_new_boot(checkpoint, snapshot, new_owner, status, gui, None)["scenario"])
+        snapshot["task"]["accounts"] = [{"name": ACCOUNT, "sid": OTHER_SID}]
+        with self.assertRaisesRegex(AssertionError, "^same-ordinary-autostart-registration-after-reboot$"):
+            autostart.qualify_new_boot(checkpoint, snapshot, new_owner, status, gui, None)
+
+    def test_the_planted_legacy_task_is_the_schtasks_onlogon_shape_the_owner_and_product_take(self):
+        planter = (ROOT / PLANTER).read_text(encoding="ascii")
+        self.assertNotIn("$trigger.UserId", planter, "the planter names no trigger user")
+        template = planter.split("$template = @'\n", 1)[1].split("\n'@\n", 1)[0]
+        self.assertEqual(1, planter.count("$xml = [string]::Format($template, $PrincipalSid, [Security.SecurityElement]::Escape($GuiPath),"))
+        self.assertEqual(1, planter.count("$folder.RegisterTask('VPN Control',$xml,2,$PrincipalSid,$null,3,$null)"))
+        xml = template.format(SID, GUI, r"C:\w")
+        fields = autostart.task_fields(xml)
+        self.assertEqual(("", "true", "HighestAvailable", SID), (fields["triggerUser"], fields["triggerEnabled"], fields["runLevel"], fields["principalUser"]))
+        snapshot = World(types.SimpleNamespace(request={"workspace": r"C:\w", "context": CONTEXT}), "autostart-migration").snapshot(
+            types.SimpleNamespace(pid=1, birth="1"))
+        snapshot["task"] = {"state": "present", "path": autostart.TASK, "xml": xml, "sddl": "D:P(A;;FA;;;SY)", "enabled": True,
+                            "accounts": guest_accounts(xml, {})}
+        self.assertEqual("highest", autostart.ownership(snapshot, GUI, r"C:\w", SID))
+        # The product's own recognizer (DesktopAutostartManager WindowsTaskXml.inspect) needs the trigger's Enabled text.
+        product = (ROOT / "desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopAutostartManager.kt").read_text(encoding="utf-8")
+        self.assertIn('if (directText(trigger, "Enabled")?.equals("true", ignoreCase = true) != true)', product)
+
+    def snapshot_native_class(self):
+        script = (ROOT / "agent_tools/windows_autostart_snapshot.ps1").read_text(encoding="ascii")
+        return script.split("Add-Type -TypeDefinition @'\n", 1)[1].split("\n'@\n", 1)[0], script
+
+    def test_the_snapshot_looks_each_account_name_up_on_the_guest(self):
+        native, script = self.snapshot_native_class()
+        self.assertIn("LookupAccountNameW(string s,string n,byte[] sid,ref int sidSize,", native)
+        self.assertIn("if(e==1332) return null;", native, "only ERROR_NONE_MAPPED is an unmapped name")
+        function = powershell_function(script, "Get-TaskAccounts")
+        self.assertIn("'/t:Task/t:Principals/t:Principal/t:UserId | /t:Task/t:Triggers/t:LogonTrigger/t:UserId'", function)
+        self.assertIn("[Xml.DtdProcessing]::Prohibit", function)
+        self.assertEqual(1, script.count("  $accounts = @(Get-TaskAccounts $xml)\n"))
+        self.assertIn("runningInstances=$running; accounts=$accounts }", script)
+        self.assertIn("$result = @{schemaVersion=3; collector='exact-autostart-read-only-v3';", script)
+
+    @unittest.skipUnless(POWERSHELL, "a PowerShell interpreter is required")
+    def test_the_snapshot_records_each_name_with_the_sid_the_guest_maps_it_to_under_powershell(self):
+        native, script = self.snapshot_native_class()
+        function = powershell_function(script, "Get-TaskAccounts")
+        named = self.native["task"]["xml"].replace("<UserId>" + NATIVE_SID + "</UserId>", "<UserId>" + ACCOUNT + "</UserId>")
+        unmapped = self.native["task"]["xml"].replace(ACCOUNT, "DESKTOP-4MOOMEI\\gone")
+        body = "Add-Type -TypeDefinition @'\n" + native + "\n'@\n" + function + (
+            "function Resolve-AccountSid([string]$name) { if ($name -ceq 'ACCOUNT') { return 'NATIVE_SID' }; return $null }\n"
+            + "$out = [ordered]@{}\n"
+            + "foreach ($case in @(@('native', $nativeXml), @('named', $namedXml), @('unmapped', $unmappedXml))) {\n"
+            + " $out[$case[0]] = @(Get-TaskAccounts $case[1])\n}\n"
+            + "$out['sid'] = [VcAutostartNative]::SidString([Convert]::FromBase64String('SID_BYTES'), SID_SIZE)\n"
+            # Revision 2 is no SID: the conversion throws rather than print one.
+            + "$out['sidShape'] = $(try { [VcAutostartNative]::SidString([byte[]]@(2,0,0,0,0,0,0,5), 8) } "
+            + "catch { $_.Exception.InnerException.Message })\n"
+        ).replace("ACCOUNT", ACCOUNT).replace("NATIVE_SID", NATIVE_SID)
+        sid = binary_sid(NATIVE_SID)
+        body = body.replace("SID_BYTES", base64.b64encode(sid).decode()).replace("SID_SIZE", str(len(sid)))
+        assign = "".join("$" + key + "Xml = @'\n" + value + "\n'@\n" for key, value in
+                         (("native", self.native["task"]["xml"]), ("named", named), ("unmapped", unmapped)))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "accounts.ps1"
+            path.write_text("$ErrorActionPreference = 'Stop'\nSet-StrictMode -Version Latest\n" + assign + body
+                            + "[Console]::Out.Write(($out | ConvertTo-Json -Depth 6 -Compress))\n", encoding="utf-8")
+            result = subprocess.run([POWERSHELL, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(path)],
+                                    capture_output=True, text=True, timeout=180, env=dict(os.environ, POWERSHELL_TELEMETRY_OPTOUT="1"))
+        self.assertEqual((0, ""), (result.returncode, result.stderr), result.stdout)
+        out = json.loads(result.stdout)
+        self.assertEqual([{"name": ACCOUNT, "sid": NATIVE_SID}], out["native"])
+        self.assertEqual([{"name": ACCOUNT, "sid": NATIVE_SID}], out["named"], "a name in both users is looked up once")
+        self.assertEqual([{"name": "DESKTOP-4MOOMEI\\gone", "sid": None}], out["unmapped"])
+        self.assertEqual(NATIVE_SID, out["sid"])
+        self.assertEqual("ACCOUNT_SID_SHAPE", out["sidShape"])
+        # The collector's own record of the native task, through the owner: the name is that SID's, so the task is owned.
+        self.assertEqual("highest", self.owned(self.native_v3(out["native"])))
+        with self.assertRaisesRegex(AssertionError, "^task-account-unresolved-on-guest$"):
+            self.owned(self.native_v3(out["unmapped"], unmapped))
 
 
 if __name__ == "__main__":

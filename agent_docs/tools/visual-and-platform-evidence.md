@@ -986,8 +986,12 @@ public LeastPrivilege one, then a graceful quit of its own serve. The legacy tas
 planted by the SYSTEM run before it starts the ordinary owner, for the ordinary user,
 from the pinned `windows_autostart_create_highest_fixture.ps1`: the pre-migration
 product registered it from an elevated process, and an unelevated ordinary token may
-not. So the owner's first observation is that task, and no public toggle comes before
-it. A planting that fails is `refused_before_launch` and leaves nothing. A planted task
+not. It registers the task as XML in the shape `schtasks /Create /SC ONLOGON` gives:
+a logon trigger for any user, explicitly enabled. So the owner's first observation is
+that task, and no public toggle comes before it; a trigger read back otherwise ends the
+row there. The snapshot looks up each principal or trigger user that Task Scheduler
+stored as an account name on the guest, and the owner takes a name only as the
+ordinary SID it maps to. A planting that fails is `refused_before_launch` and leaves nothing. A planted task
 that the product never migrated is removed in the run's closing. It then starts
 the app through the product's own autostart task, measures traffic for reconnect,
 stops its upstream and finishes with the app running and no child of its own. A

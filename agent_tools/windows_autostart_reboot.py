@@ -10,6 +10,7 @@ import hashlib
 import json
 import ntpath
 from pathlib import Path
+import re
 import uuid
 import xml.etree.ElementTree as ET
 
@@ -63,16 +64,44 @@ def task_fields(xml):
         require(len(elements) <= 1, "duplicate-task-field")
         return "" if not elements else (elements[0].text or "")
     principal, action, trigger = principals[0], actions[0], triggers[0]
-    return {"sid": text(principal, "UserId"), "logonType": text(principal, "LogonType"),
+    return {"principalUser": text(principal, "UserId"), "logonType": text(principal, "LogonType"),
         "runLevel": text(principal, "RunLevel"), "command": text(action, "Command"),
         "arguments": text(action, "Arguments"), "workingDirectory": text(action, "WorkingDirectory"),
-        "triggerSid": text(trigger, "UserId"), "triggerEnabled": text(trigger, "Enabled"),
+        "triggerUser": text(trigger, "UserId"), "triggerEnabled": text(trigger, "Enabled"),
         "actionsContext": root.find("t:Actions", {"t": NS}).get("Context", ""),
         "principalId": principal.get("id", "")}
 
 
+# A UserId in SID form, as the snapshot's Get-TaskAccounts tells it from an account name (case-sensitive both).
+SID_FORM = re.compile(r"S-1-[0-9]+(?:-[0-9]+)+\Z")
+USER_FIELDS = ("principalUser", "triggerUser")
+
+
+def identity_fields(task):
+    """task_fields with each user as the SID it names on the guest.
+
+    Task Scheduler keeps a principal's SID but stored a logon trigger registered with that SID as an account name
+    (native 7ca6638a: DESKTOP-4MOOMEI\\fixtureuser). The snapshot looked up each such name on the guest, as the ordinary
+    user, and recorded it with its SID. A name counts only as that SID; one the guest left unmapped, or a recorded set
+    other than exactly the task's names, refuses. An empty trigger user (any user) stays empty.
+    """
+    fields = task_fields(task["xml"])
+    rows = task["accounts"]
+    require(type(rows) is list and len(rows) <= 8 and all(
+        type(row) is dict and set(row) == {"name", "sid"} and type(row["name"]) is str and 0 < len(row["name"]) <= 512
+        and (row["sid"] is None or (type(row["sid"]) is str and SID_FORM.match(row["sid"]))) for row in rows)
+        and len({row["name"] for row in rows}) == len(rows), "bounded-task-account-resolution")
+    resolved = {row["name"]: row["sid"] for row in rows}
+    names = {fields[key] for key in USER_FIELDS if fields[key] and not SID_FORM.match(fields[key])}
+    require(set(resolved) == names, "task-accounts-not-the-task-names")
+    require(all(resolved[name] is not None for name in names), "task-account-unresolved-on-guest")
+    for key in USER_FIELDS:
+        fields[key] = resolved.get(fields[key], fields[key])
+    return fields
+
+
 def ownership(snapshot, gui, workspace, sid):
-    require(snapshot["schemaVersion"] == 2 and snapshot["collector"] == "exact-autostart-read-only-v2"
+    require(snapshot["schemaVersion"] == 3 and snapshot["collector"] == "exact-autostart-read-only-v3"
             and snapshot["sid"] == sid and snapshot["elevated"] == 0, "ordinary-native-snapshot")
     task, run = snapshot["task"], snapshot["run"]
     require(run["state"] in {"present", "absent"}, "legacy-run-known-state")
@@ -84,11 +113,11 @@ def ownership(snapshot, gui, workspace, sid):
         return "absent"
     require(task["path"] == TASK and task["enabled"] is True and type(task["sddl"]) is str
             and 0 < len(task["sddl"]) <= 32768, "enabled-exact-task-security")
-    fields = task_fields(task["xml"])
-    require(fields["sid"] == sid and fields["logonType"] == "InteractiveToken"
+    fields = identity_fields(task)
+    require(fields["principalUser"] == sid and fields["logonType"] == "InteractiveToken"
             and ntpath.normcase(fields["command"]) == ntpath.normcase(path_value(gui))
             and fields["arguments"] == f'--autostart --state-dir "{path_value(workspace)}"'
-            and fields["workingDirectory"] == "" and fields["triggerSid"] in {"", sid}
+            and fields["workingDirectory"] == "" and fields["triggerUser"] in {"", sid}
             and fields["triggerEnabled"] in {"", "true"}
             and fields["actionsContext"] == fields["principalId"] != "", "exact-owned-startup-task")
     # Exported XML omits RunLevel for the limited default; only HighestAvailable elevates.
@@ -153,8 +182,10 @@ def toggle(owner, state, inputs, enabled):
             and before["machineGuid"] == after["machineGuid"] and before["bootIdentifier"] == after["bootIdentifier"],
             "actual-public-toggle-registration")
     if enabled and before["qualifiedOwnership"] == "highest":
+        # SDDL names every trustee by SID, so the DACL compares as text.
         require(after["task"]["sddl"] == before["task"]["sddl"], "migration-preserves-entire-task-dacl")
-        before_fields, after_fields = task_fields(before["task"]["xml"]), task_fields(after["task"]["xml"])
+        # A user written as a name on one side and a SID on the other is the same user.
+        before_fields, after_fields = identity_fields(before["task"]), identity_fields(after["task"])
         before_fields["runLevel"] = after_fields["runLevel"]
         require(before_fields == after_fields, "migration-preserves-action-trigger-principal")
     owner.event("autostart-public-toggle-observed", {"before": before, "after": after})
@@ -172,6 +203,11 @@ def migration(owner, state, inputs):
     before = collect(owner, inputs)
     require(before["qualifiedOwnership"] == "highest" and before["run"]["state"] == "absent",
             "legacy-highest-fixture-planted-before-owner")
+    # The planted task is schtasks /SC ONLOGON's: a trigger for any user, explicitly enabled, which the product's
+    # recognizer requires. Read back otherwise (7ca6638a: a named user, no Enabled), the product would refuse it only
+    # after the public toggle, so the row ends here, before any autostart change of the product's.
+    legacy = task_fields(before["task"]["xml"])
+    require(legacy["triggerUser"] == "" and legacy["triggerEnabled"] == "true", "legacy-fixture-any-user-enabled-logon-trigger")
     owner.event("autostart-legacy-fixture-observed", {"before": before})
     # A read must leave the actual high task unchanged before explicit mutation.
     public(owner, state, "settings", "show")
@@ -277,7 +313,7 @@ def qualify_new_boot(checkpoint, new_snapshot, new_owner, new_status, gui_actor,
             and new_owner["workspace"] == checkpoint["workspace"], "new-native-boot-context-changed-or-pending")
     require(new_snapshot["qualifiedOwnership"] == "limited" and new_snapshot["run"]["state"] == "absent"
             and new_snapshot["task"]["sddl"] == checkpoint["task"]["sddl"]
-            and task_fields(new_snapshot["task"]["xml"]) == task_fields(checkpoint["task"]["xml"]),
+            and identity_fields(new_snapshot["task"]) == identity_fields(checkpoint["task"]),
             "same-ordinary-autostart-registration-after-reboot")
     require(new_status["code"] == "OK" and new_status["final"] is True
             and new_status["controllerId"] != checkpoint["oldControllerId"], "fresh-controller-after-real-boot")

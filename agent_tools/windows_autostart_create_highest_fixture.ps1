@@ -21,6 +21,41 @@ function Get-StartupTask($folder) {
  try { return $folder.GetTask('VPN Control') } catch { if (-not (Test-TaskAbsent $_)) { throw } }
  return $null
 }
+# schtasks /Create /SC ONLOGON runs the task "whenever any user logs on": its logon trigger names no user. Native
+# 7ca6638a registered a trigger for the ordinary SID instead, and Task Scheduler stored that user as an account name.
+# The definition is registered as this XML, so the trigger keeps the explicit Enabled the product's recognizer reads
+# (DesktopAutostartManager WindowsTaskXml); the object model's Enabled=true left no element (7ca6638a).
+$template = @'
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>VPN Control owned acceptance legacy run-level fixture</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{0}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{1}</Command>
+      <Arguments>--autostart --state-dir "{2}"</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+'@
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 try {
  if ($identity.User.Value -cne 'S-1-5-18') { throw 'FIXTURE_SYSTEM_PLANTER' }
@@ -29,30 +64,15 @@ try {
   # A local drive path only, on any host's .NET: IsPathRooted also takes \x and, off Windows, refuses C:\x.
   if ($value -cnotmatch '\A[A-Za-z]:\\' -or $value.IndexOfAny([char[]]"`r`n`0`"") -ge 0) { throw 'FIXTURE_EXACT_PATH' }
  }
+ $xml = [string]::Format($template, $PrincipalSid, [Security.SecurityElement]::Escape($GuiPath),
+  [Security.SecurityElement]::Escape($Workspace))
  $service = New-Object -ComObject 'Schedule.Service'
  $service.Connect()
  $folder = $service.GetFolder('\')
  if ($null -ne (Get-StartupTask $folder)) { throw 'EXISTING_STARTUP_TASK_REFUSED' }
- $task = $service.NewTask(0)
- $task.RegistrationInfo.Description = 'VPN Control owned acceptance legacy run-level fixture'
- $task.Principal.Id = 'Author'
- $task.Principal.UserId = $PrincipalSid
- $task.Principal.LogonType = 3
- $task.Principal.RunLevel = 1
- $task.Settings.Enabled = $true
- $task.Settings.DisallowStartIfOnBatteries = $false
- $task.Settings.StopIfGoingOnBatteries = $false
- $task.Settings.ExecutionTimeLimit = 'PT0S'
- $trigger = $task.Triggers.Create(9)
- $trigger.Enabled = $true
- $trigger.UserId = $PrincipalSid
- $task.Actions.Context = 'Author'
- $action = $task.Actions.Create(0)
- $action.Path = $GuiPath
- $action.Arguments = '--autostart --state-dir "' + $Workspace + '"'
  # TASK_CREATE=2. A raced same-name task fails; never replace or update it. No SDDL: the scheduler's own default,
  # as the legacy elevated schtasks /Create left it.
- $registered = $folder.RegisterTaskDefinition('VPN Control',$task,2,$PrincipalSid,$null,3,$null)
+ $registered = $folder.RegisterTask('VPN Control',$xml,2,$PrincipalSid,$null,3,$null)
  if ($registered.Path -cne '\VPN Control') { throw 'FIXTURE_REGISTERED_WRONG_PATH' }
  '{"schemaVersion":1,"taskPath":"\\VPN Control","runLevel":"HighestAvailable"}'
 } finally { $identity.Dispose() }

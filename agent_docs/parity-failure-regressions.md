@@ -3736,6 +3736,70 @@ Native only: whether the SYSTEM-planted task's default DACL lets the product's u
 `schtasks /Change` keeps that DACL (`migration-preserves-entire-task-dacl`). If the product cannot migrate it, that is a
 product finding for legacy users whose task an elevated process authored.
 
+### The planted legacy task's logon trigger read back as an account name (native, `7ca6638a` 2026-11-17)
+
+NF2 run `7ca6638a` (`windows-autostart-migration.pre`, fresh clone, S_D4, tools `3a081133`) planted the legacy task
+from the SYSTEM run. Child 17 (`autostart-read-only`, exit 0, empty stderr) read it back as `\VPN Control`,
+HighestAvailable, an interactive token, the ordinary SID as principal, and the right command and arguments. But Task
+Scheduler stored the logon trigger, which the planter registered with that SID, as `<UserId>DESKTOP-4MOOMEI\fixtureuser</UserId>`.
+The trigger also carried no `<Enabled>`, although the planter set `Enabled = $true`. `ownership()`
+(`windows_autostart_reboot.py:88`) took only the SID or no trigger user, so the owner refused `exact-owned-startup-task`
+before any public autostart step. The receipt said `untouched` and the clone was not held. The evidence is in
+`.runtime/windows-scenarios/7ca6638a-cefd-491b-82e8-4c6402233f1f/evidence-1.zip`. RED/GREEN logs and mutant runs are in
+`.runtime/windows-parity-20261107/evidence/fix-trigger-account/`.
+
+Cause (TOOL, known), in two parts:
+- The check assumed every user field is a SID. Task Scheduler kept the principal's SID but wrote the trigger's user
+  as a name.
+- The planted trigger was not the legacy one. The pre-migration product ran `schtasks /Create /SC ONLOGON`, which runs
+  the task "whenever any user logs on", so its trigger names no user. The product's own recognizer
+  (`DesktopAutostartManager` `WindowsTaskXml.inspect`) also requires the trigger's `<Enabled>true</Enabled>`. Past this
+  check, the planted task would have reached the product's public migration and been refused there as `CONFLICT`,
+  after the toggle intent, which holds the clone.
+
+Fix:
+- `windows_autostart_snapshot.ps1` (collector `exact-autostart-read-only-v3`) reads every principal and logon-trigger
+  `UserId` from the task XML with DTDs prohibited. Each distinct one that is not in SID form is looked up on the guest
+  with `LookupAccountNameW`, as the ordinary user. `task.accounts` records each `{name, sid}`, where `sid` is null only
+  for `ERROR_NONE_MAPPED`. Every other lookup outcome throws. The binary SID is converted in the script itself, with no
+  .NET principal type.
+- `identity_fields()` replaces each user name with the SID the guest recorded. The recorded names must be exactly the
+  task's names (`task-accounts-not-the-task-names`), and each must have mapped (`task-account-unresolved-on-guest`).
+  `ownership()` still requires exactly the ordinary SID, so a different account is `exact-owned-startup-task`. It
+  checks the principal and the trigger the same way, and an empty trigger user (any user) stays allowed.
+- The migration comparison (`migration-preserves-action-trigger-principal`) and the new-boot join
+  (`same-ordinary-autostart-registration-after-reboot`) compare those identity fields. A user that the product's
+  `schtasks /Change` writes back as a name is then the same user, while a trigger moved from any user to one user
+  still fails. `migration-preserves-entire-task-dacl` stays a text comparison, because SDDL names every trustee by SID.
+- The planter registers the task as XML (`RegisterTask`, TASK_CREATE, the ordinary SID, an interactive token, the
+  scheduler's own SDDL), in the `schtasks /SC ONLOGON /RL HIGHEST` shape: a logon trigger with no user and an explicit
+  `<Enabled>true</Enabled>`. Paths are XML-escaped.
+- `migration()` requires the planted trigger to read back as exactly that shape
+  (`legacy-fixture-any-user-enabled-logon-trigger`) before `settings show` and the toggle. If Windows drops the
+  explicit `Enabled` again, the row ends before any autostart change of the product's and holds no clone.
+- The `autostart`, `snapshotScript` and `migrationScript` role digests name the new bytes.
+
+| Failure type | Regression | RED / GREEN |
+| --- | --- | --- |
+| An account-name task user refused as a foreign task (TOOL) | `test_windows_reboot_actions.TriggerAccountTests`: `test_a_trigger_account_name_is_owned_only_when_the_guest_resolves_it_to_the_ordinary_sid`, `test_a_principal_account_name_is_held_to_the_same_rule`, `test_a_new_boot_compares_each_user_by_the_sid_it_names`, `test_a_migration_that_writes_a_user_by_account_name_keeps_the_same_identities`, `test_the_snapshot_looks_each_account_name_up_on_the_guest`, `test_the_snapshot_records_each_name_with_the_sid_the_guest_maps_it_to_under_powershell`; control `test_the_recorded_native_snapshot_names_the_trigger_user_and_the_unfixed_owner_refused_it` | Fixture `fixtures/windows_autostart_trigger_account/`: child 17's stdout (sha256 `dd441416…`, as its child-terminal event recorded it), the owner's terminal frames, and the unfixed reboot module, snapshot and planter. The control runs the unfixed `ownership()` on the native snapshot and gets `exact-owned-startup-task`. Under PowerShell, `Get-TaskAccounts` over the native XML with a faked lookup gives `[{name, sid}]`, and that record passes `ownership()` as `highest`. A name the guest left unmapped refuses, and `SidString` turns the native SID's binary form back into its text. A name mapping to another SID, an unmapped name, a missing or extra or differently cased record, and a malformed record each refuse. Mutants: without the name replacement, 6 of these tests fail. Accepting an unmapped name fails 3 cases. Comparing raw XML users in the migration and the new-boot join fails 4 cases (`migration-preserves-action-trigger-principal`, `same-ordinary-autostart-registration-after-reboot`). |
+| The planted legacy trigger was not `schtasks /SC ONLOGON`'s and lacked the `Enabled` the product reads (TOOL) | `TriggerAccountTests.test_the_planted_legacy_task_is_the_schtasks_onlogon_shape_the_owner_and_product_take`, `test_the_native_legacy_trigger_shape_ends_the_row_before_any_public_autostart_step`; `LegacyAutostartPlantTests.test_the_planter_registers_the_legacy_task_for_the_ordinary_user_only_as_system` (now over the registered XML, with an XML-escaped path) | The planter's template, formatted as PowerShell's `[string]::Format` does, parses to an any-user, enabled trigger that the owner takes as `highest`. The native trigger shape (named, no `Enabled`), a named enabled trigger and a trigger with no `Enabled` each end the row with `legacy-fixture-any-user-enabled-logon-trigger`, with no public autostart call and no autostart intent. Mutants: the unfixed planter fails 3 of these tests. Without the guard, all 3 trigger shapes get past the first observation and fail only after the public toggle, at `migration-preserves-action-trigger-principal`. |
+| A role digest not repinned (TOOL) | `StartupTaskAbsenceTests.test_the_owner_role_pins_name_the_current_reboot_sources` | Every mutant above also fails it. |
+
+RED with the final tests over an archive of `3a081133`: 38 failures and 1 error on Python 3.14.3 and 3.12.13. Most
+failures are `ordinary-native-snapshot`, because the world now writes the v3 collector. The mutants above give the
+causal RED of each part. GREEN: all 56 tests of the module pass on both Pythons, under PowerShell 7.4.6.
+
+Native only:
+- whether Windows keeps the explicit trigger `Enabled` of a task registered as XML. If it does not, the row ends at
+  `legacy-fixture-any-user-enabled-logon-trigger`, holding no clone.
+- whether `LookupAccountNameW` maps the stored trigger name for the ordinary token.
+- whether the product's unelevated `schtasks /Change /RL LIMITED` may change the SYSTEM-registered task. Its default
+  DACL read back as `(A;;FR;;;<ordinary SID>)` beside full access for BA and SY, which grants the ordinary user read
+  only. A denied `/Change` fails after the public toggle and so holds the clone. That would be a product finding only
+  if an elevated administrator's own legacy task carries the same DACL. This fixture cannot tell.
+- whether the product, without elevation, may re-register a task whose logon trigger is for any user. This is product
+  behaviour. A real legacy task carries that trigger.
+
 ### The SYSTEM collector's worker session, read after the worker exited (native NE2, S_Q, 2026-11-17)
 
 Update grant row `72c2fa02` (success-off review, clone NE2, fixture set S_Q, tools with the collector-root fix) ended
