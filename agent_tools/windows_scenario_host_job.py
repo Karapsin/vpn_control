@@ -18,6 +18,7 @@ import hashlib
 import hmac
 import io
 import json
+import math
 import ntpath
 import os
 from pathlib import Path, PureWindowsPath
@@ -102,6 +103,13 @@ INSTALLED_FACTS = ("packageSha256", "productCode", "productVersion", "packageCod
 # the reply again: 64 KiB of child output stays far below the 256 KiB event cap and MAX_TERMINAL_BYTES.
 COLLECTOR_RAW_LIMIT = 65536
 COLLECTOR_BUDGET_SECONDS = 1800
+# A close hold's release program re-proves the pins its collector's bootstrap held: at opening and before and after its one
+# publication, where the bootstrap made two passes. Its deadline follows what this job just measured that collector take on
+# the same pins (release_budget). 6bd0b715's release had the flat budget of any program and outlived it.
+RELEASE_WORK_FACTOR = 2
+# What a release program that parks writes, create-only, beside its release before it sleeps for good.
+RELEASE_PARKED_LEAF = "close-release-parked.json"
+RELEASE_NOTICE_BYTES = 1024
 # collector_contract.root_policy: the publisher's CreateDirectory with a protected descriptor reads back O:SYD:P natively
 # (every collector root of 723417ea); a later SetSecurityInfo reads back PAI. Both are the same protected owner-only DACL.
 COLLECTOR_ROOT_FORMS = ("P", "PAI")
@@ -259,11 +267,20 @@ class Refused(Exception):
 
 
 class KnownFailure(Exception):
-    """Nothing is left running and the outcome is known: exit 1."""
+    """Nothing is left running and the outcome is known: exit 1. The one exception is a close hold's release program the
+    finished owner proved it consumed (collector_release_unproven): it stays open, and its fence blocks the VM's next job."""
 
 
 class Unknown(Exception):
     """A lost reply, a parked owner, a passed deadline or an open child outcome: exit 3, nothing is stopped."""
+
+
+class ProgramDeadline(Unknown):
+    """A guest program still open at its deadline. Its outcome is unknown, and it is never sent again."""
+
+
+class ReleaseParked(Exception):
+    """A close hold's release program named why it parked: it sleeps for good and never exits."""
 
 
 def token(value, limit=120):
@@ -645,6 +662,12 @@ def layout(operation, context, row):
 
 def fixture_id(operation):
     return str(uuid.uuid5(uuid.UUID(operation), "windows-public-update-fixture"))
+
+
+def release_budget(collector_seconds):
+    """A release program's deadline: the budget of any program plus RELEASE_WORK_FACTOR times what its own collector took
+    on the same pins, and never more than the collector's own budget."""
+    return min(COLLECTOR_BUDGET_SECONDS, PROGRAM_BUDGET_SECONDS + RELEASE_WORK_FACTOR * math.ceil(max(0.0, collector_seconds)))
 
 
 def collector_operation(operation, stage):
@@ -1682,6 +1705,9 @@ class Job:
         # How long each stage and guest program took, for timing.json beside the receipt. Never evidence, never decides.
         self.timing = {"schemaVersion": 1, "stages": [], "programs": []}
         self.started = rt.monotonic()
+        # A close hold's release program that outlived its deadline or parked: {"stage", "reason"}. It stays open (its
+        # fence blocks the VM's next job) and is never sent again; only the owner's own finish proves its release.
+        self.release_unresolved = None
 
     def _timed(self, kind, name, began):
         try:
@@ -1741,7 +1767,7 @@ class Job:
             if type(terminal) is dict and terminal.get("exited") is True:
                 break
             if self.rt.monotonic() >= deadline:
-                raise Unknown("guest_program_deadline:" + label)
+                raise ProgramDeadline("guest_program_deadline:" + label)
             if on_poll is not None:
                 on_poll()
             self.rt.sleep(poll)
@@ -3331,8 +3357,10 @@ class Job:
         # after it published, while its owner goes on: a grant's owner reads before-install and raises the install-helper
         # prompt at once. Without these polls the copy named that prompt only when the program returned, two minutes
         # later on NE3, and windows-uac-review found the unanswered prompt already expired (b53e32c5, 27c2f7b8).
+        began = self.rt.monotonic()
         terminal, pid = self.guest_program("collector-" + stage, source, budget=COLLECTOR_BUDGET_SECONDS,
                                            on_poll=lambda: self._on_status(serve=False))
+        seconds = self.rt.monotonic() - began
         proof = self._collector_proof("collector-" + stage, terminal, pid)
         result = self._validate_collector_child(stage, request, pin, proof)
         if watch:
@@ -3347,8 +3375,22 @@ class Job:
             self.collected[CANCEL_STAGE] = {"operationId": collector, "requestSha256": pin["sha256"], "publications": 1, "release": None}
         record = {"operationId": collector, "requestSha256": pin["sha256"], "publications": len(result["publications"]), "release": None}
         if request["closeHold"] is not None:
-            record["release"] = self._collector_release(stage, request, pin, proof, terminal, source, result)
+            # The ready this collector returned proves the driver's result final: 0, every child terminal. Its journal is
+            # copied now, so a release that never returns still leaves the row's evidence and its TUN diagnosis.
+            self._pre_release_evidence(stage)
+            record["release"] = self._collector_release(stage, request, pin, proof, terminal, source, result, seconds)
         return record
+
+    def _pre_release_evidence(self, stage):
+        """The owner's journal as it stands once its driver's result is final, before any release. The zip shares every
+        file it reads, as the copy after the run does; a refused copy only leaves the one after the run."""
+        if not self.published or "evidence" not in self.row["stages"] or self.plan.get("stopAfter") is not None:
+            return
+        try:
+            self.stage_evidence()
+        except KnownFailure as error:
+            self._keep("collectors/" + stage + "/pre-release-evidence.json",
+                       (json.dumps({"failure": token(error)}, sort_keys=True) + "\n").encode())
 
     def _collector_stages(self):
         """The SYSTEM collector stages this row's owner may ask for: an update row's, or a TUN grant's one."""
@@ -3891,8 +3933,12 @@ class Job:
                  and ready["collectorChild"] == {key: actor[key] for key in ("pid", "birthFileTimeUtc")}, "collector-held-ready-original-generations")
         return result
 
-    def _collector_release(self, stage, request, pin, proof, terminal, source, result):
-        """collector_wrapper's start_release and render_release_source, on the stdin route: the caller's hold ends only here."""
+    def _collector_release(self, stage, request, pin, proof, terminal, source, result, collector_seconds):
+        """collector_wrapper's start_release and render_release_source, on the stdin route: the caller's hold ends only here.
+
+        Its deadline follows the collector's own measured time (release_budget). A program that outlives it, or that names
+        its park, is left as it is and never sent again: the run goes on, and only the owner's own finish, which a held
+        owner reaches only after its hold read the release, settles the row (stage_run). None then stands for the release."""
         protocol = self._load("windows_system_collector/hold_protocol")
         contract = self._load("windows_system_collector/collector_contract")
         hold = result["callerHold"]
@@ -3919,7 +3965,14 @@ class Job:
                 raise ValueError("collector-release-placeholder-count")
             template = template.replace("@@" + key + "@@", value)
         label = "collector-release-" + stage
-        released, pid = self.guest_program(label, self._rendered(lambda: self._stdin_collector(self._bound(template, self._lower_context()).encode("utf-8-sig"))))
+        rendered = self._rendered(lambda: self._stdin_collector(self._bound(template, self._lower_context()).encode("utf-8-sig")))
+        try:
+            released, pid = self.guest_program(label, rendered, budget=release_budget(collector_seconds), poll=STATUS_POLL_SECONDS,
+                                               on_poll=lambda: self._release_poll(stage, request))
+        except ProgramDeadline:
+            return self._release_unresolved(stage, "deadline")
+        except ReleaseParked as parked:
+            return self._release_unresolved(stage, "parked:" + str(parked))
         p = self._collector_proof(label, released, pid)
         if (type(p) is not dict or set(p) != {"schemaVersion", "state", "operationId", "requestSha256", "releasePath", "releaseSha256",
                                               "releaseNativeIdentity", "sourceClosing", "originalCollectorKnownClosed", "productMutation",
@@ -3932,6 +3985,56 @@ class Job:
         protocol.native_identity(p["releaseNativeIdentity"])
         return p["releaseSha256"]
 
+    def _release_poll(self, stage, request):
+        """Between two polls of a release program: the status copy, and the notice a parked release leaves. Only its own
+        Park-Original writes that name, so once it exists the program never exits, whatever the bytes say."""
+        self._on_status(serve=False)
+        try:
+            raw = self.read_guest_file(request["operationRoot"] + "\\" + RELEASE_PARKED_LEAF, RELEASE_NOTICE_BYTES)
+        except Exception:
+            return  # Not there: still working, or parked before it could name why. Its deadline decides.
+        reason = "notice-unreadable"
+        try:
+            value = json.loads(raw.decode("utf-8-sig"), object_pairs_hook=_unique)
+            if (type(value) is dict and set(value) == {"schemaVersion", "state", "operationId", "reason", "releaseAttempted"}
+                    and value["schemaVersion"] == 1 and value["state"] == "collector-release-parked"
+                    and value["operationId"] == request["operationId"] and type(value["reason"]) is str
+                    and type(value["releaseAttempted"]) is bool):
+                reason = token(value["reason"], 64)
+        except (ValueError, UnicodeDecodeError):
+            pass
+        self._keep("collectors/" + stage + "/release-parked.json", raw)
+        raise ReleaseParked(reason)
+
+    def _release_unresolved(self, stage, reason):
+        self.release_unresolved = {"stage": stage, "reason": reason}
+        self._keep("collectors/" + stage + "/release-unresolved.json", (json.dumps(self.release_unresolved, sort_keys=True) + "\n").encode())
+        return None
+
+    def _release_settled(self):
+        """An unresolved release whose effect the owner proved: the task finished and was deleted and the owner returned,
+        unparked. A held owner returns only once its hold read the release (windows_ordinary_dedicated_driver close_hold);
+        every other path parks it."""
+        task = self.task or {}
+        return (self.release_unresolved is not None and task.get("state") == "task-finished" and task.get("taskDeleted") is True
+                and type(task.get("ownerExitCode")) is int and not task.get("parkedFiles"))
+
+    def _open_programs(self):
+        """Programs whose terminal is not saved, less a settled release: it only sleeps parked or rehashes its pins, and
+        writes nothing the owner's journal holds, so the copy after the run may go on. Its fence stays open."""
+        return self.program_open - int(self._release_settled())
+
+    def _release_token(self, prefix):
+        return prefix + ":" + token(self.release_unresolved["stage"]) + ":" + self.release_unresolved["reason"]
+
+    def _collector_receipt(self):
+        rows = {}
+        for stage, record in sorted(self.collected.items()):
+            rows[stage] = None if record is None else {"requestSha256": record["requestSha256"], "released": record["release"] is not None}
+            if record is not None and (self.release_unresolved or {}).get("stage") == stage:
+                rows[stage]["releaseUnresolved"] = self.release_unresolved["reason"]
+        return rows
+
     def _system_run_source(self, m):
         emitter = self._load("windows_artifact_transfer")
         parts = fragments(self._bundle_source(OWNER_SOURCE), emitter)
@@ -3941,6 +4044,23 @@ class Job:
         return wrap_output(emitter._boot_bound(template, self.raw_context))
 
     def stage_run(self):
+        """The SYSTEM run. A release left unresolved inside it settles only by the owner's finish: then the row ends known,
+        never passed, with its evidence copied; any other end of the run stays UNKNOWN and names the release."""
+        try:
+            self._stage_run()
+        except (Unknown, KnownFailure) as error:
+            if self.release_unresolved is None or isinstance(error, KnownFailure) and self._release_settled():
+                raise
+            # The run's own end stays beside the release that held it open.
+            self._keep("collectors/" + token(self.release_unresolved["stage"]) + "/run-after-release.json",
+                       (json.dumps({"failure": token(error)}, sort_keys=True) + "\n").encode())
+            raise Unknown(self._release_token("collector_release_unresolved")) from None
+        if self.release_unresolved is not None:
+            if not self._release_settled():
+                raise Unknown(self._release_token("collector_release_unresolved"))
+            raise KnownFailure(self._release_token("collector_release_unproven"))
+
+    def _stage_run(self):
         task = self.rendered_task
         m = {"schemaVersion": 1, "operationId": self.op, "mode": self.row["bootstrapMode"], "scenarioId": self.plan["scenarioId"],
              "context": self.context, "workspace": self.workspace, "taskName": task["taskName"], "taskRequestPin": self.request_pin,
@@ -4171,10 +4291,7 @@ class Job:
                     prior = self.plan.get("prior") or {}
                     # The base install this row started from (installed above is what it found there before its task), the
                     # earlier install of its target that recorded the target's tree, and what its task left installed.
-                    receipt["update"] = {"variant": self.update["variant"],
-                                         "collectors": {stage: (None if record is None else {"requestSha256": record["requestSha256"],
-                                                                                              "released": record["release"] is not None})
-                                                        for stage, record in sorted(self.collected.items())},
+                    receipt["update"] = {"variant": self.update["variant"], "collectors": self._collector_receipt(),
                                          "baseInstall": prior.get("install"), "targetInstall": prior.get("targetInstall"),
                                          "installedAfter": self.update_after}
                     # What the first native runs must show: the installer's live actors as a SYSTEM census found them,
@@ -4197,10 +4314,7 @@ class Job:
                     # What the first native runs must show: the controller, the approved broker and its runtime as the
                     # SYSTEM census found them, elevated as the approving administrator, and their parents as recorded.
                     # An approved row with no collector (stage-squat) names only its known end, which collect joins.
-                    receipt["tun"] = {"variant": self.row["tun"]["variant"],
-                                      "collectors": {stage: (None if record is None else {"requestSha256": record["requestSha256"],
-                                                                                           "released": record["release"] is not None})
-                                                     for stage, record in sorted(self.collected.items())},
+                    receipt["tun"] = {"variant": self.row["tun"]["variant"], "collectors": self._collector_receipt(),
                                       "knownEnd": self._tun_known_end()}
                     diagnosis = self._tun_diagnosis()
                     if diagnosis is not None:
@@ -4255,7 +4369,7 @@ class Job:
                 code, failure = EXIT_UNKNOWN, "unexpected:" + type(error).__name__
             else:  # Only guest-ping went out. A partly saved intent still blocks through prior_fence_open.
                 code, failure = EXIT_REFUSED, "host_prepare:" + type(error).__name__
-        if (code == EXIT_FAILED and self.update and self.update_after is None and stop is None and not self.program_open
+        if (code == EXIT_FAILED and self.update and self.update_after is None and stop is None and not self._open_programs()
                 and (self.task or {}).get("state") == "task-finished" and self.task.get("taskDeleted") is True):
             # A known failure once the update task was deleted, such as a grant whose prompt ended CANCELLED: what the
             # task left installed is read the same way and stands beside the failure, which it never changes. Only a
@@ -4270,7 +4384,7 @@ class Job:
             except Exception as error:
                 code = EXIT_UNKNOWN
                 failure = failure or token(error if isinstance(error, Unknown) else "unexpected:" + type(error).__name__)
-        if self.published and not self.program_open and stop is None and "evidence" in self.row["stages"]:
+        if self.published and not self._open_programs() and stop is None and "evidence" in self.row["stages"]:
             # Only after the last program returned: a lost ack or terminal ends the job here. This copy
             # stops and deletes nothing and leaves a parked owner's live files as they are; its one
             # new file is the zip in the workspace.

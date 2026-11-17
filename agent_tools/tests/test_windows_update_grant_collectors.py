@@ -76,7 +76,8 @@ class RequestFormTests(unittest.TestCase):
     """Writer and every reader of a collector request agree on one form: the one a published file reads back natively.
 
     At 70ed16cc the chain demanded O:SYD:P, which no writer of this route produces, so every collector row ended at
-    publish with collector_file_policy, and the release program would have refused its own published release."""
+    publish with collector_file_policy. The release the release program publishes has a writer of its own: see
+    test_the_release_program_takes_the_release_as_its_own_writer_creates_it."""
 
     def test_the_contract_takes_the_form_a_published_file_reads_back(self):
         self.assertIsNone(contract.file_policy({"ownerSid": SYSTEM, "sddl": NATIVE_FORM}, SID))
@@ -94,8 +95,8 @@ class RequestFormTests(unittest.TestCase):
             contract.file_policy({"ownerSid": "S-1-5-32-544", "sddl": NATIVE_FORM}, SID)
 
     def test_every_reader_and_the_job_state_that_one_form(self):
-        """The bootstrap admits its request, the release program its request and the release it publishes, and the job
-        checks the owner's pin before any task, all against the contract's own form."""
+        """The bootstrap and the release program admit their request, and the job checks the owner's pin before any task,
+        all against the contract's own form."""
         prefix = NATIVE_FORM[:-len(SID) - 1]
         bootstrap = (COLLECTOR / "system_bootstrap_template.ps1").read_text(encoding="utf-8")
         release = (COLLECTOR / "release_template.ps1").read_text(encoding="utf-8")
@@ -104,8 +105,41 @@ class RequestFormTests(unittest.TestCase):
                           "release": re.findall(r"^\$required='([^']*)'\+\$request\.context\.ordinarySid\+'\)'$", release, re.M)})
         self.assertIn("$requestRecord.security.sddl -cne $requiredFilePolicy", bootstrap)
         self.assertIn("$requestRecord.security.sddl -cne $required)", release)
-        self.assertIn("$publishedSecurity[1] -cne $required", release)
         self.assertEqual(NATIVE_FORM, job.COLLECTOR_FILE_SDDL.format(sid=SID))
+
+    def test_the_release_program_takes_the_release_as_its_own_writer_creates_it(self):
+        """The release is not the publisher's: the release program writes it with PublishMachineFile, whose descriptor is
+        protected at create time and so reads back without the auto-inherited flag, as every collector root made with a
+        protected descriptor did (723417ea). On 6bd0b715 the release freed the owner, then failed its own PAI-only check
+        and parked for good, until the job's deadline. It takes that form and the same DACL auto-inherited, nothing else."""
+        native = (COLLECTOR / "system_collector_native.cs").read_text(encoding="utf-8")
+        [writer] = re.findall(r'PublishMachineFile\(string path,byte\[\] bytes,string ordinarySid\)\{.*?'
+                              r'ConvertStringSecurityDescriptorToSecurityDescriptor\("(O:SYD:[^"]*)"\+ordinarySid\+"\)"', native, re.S)
+        release = (COLLECTOR / "release_template.ps1").read_text(encoding="utf-8")
+        aces = re.findall(r"^\$fileAces='([^']*)'\+\$request\.context\.ordinarySid\+'\)'$", release, re.M)
+        forms = re.findall(r"^\$publishedForms=@\(\('([^']*)'\+\$fileAces\),\('([^']*)'\+\$fileAces\)\)$", release, re.M)
+        self.assertEqual((["(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;"], [("O:SYD:P", "O:SYD:PAI")]), (aces, forms))
+        self.assertEqual("O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;", writer, "the writer protects its DACL at create time")
+        self.assertIn(writer, [form + aces[0] for form in forms[0]])
+        self.assertIn("$publishedForms -cnotcontains $publishedSecurity[1]", release)
+        self.assertNotIn("$publishedSecurity[1] -cne $required", release)
+
+    def test_a_parked_release_names_why_where_the_job_reads_it_and_every_pass_still_proves_each_pin(self):
+        """A release program parks for good on any failure; on the stdin route nothing of it reaches the job until it
+        exits, so it first writes the notice the job reads between its polls (Windows_scenario_host_job._release_poll),
+        once its request named the root. Its passes before and after the publication each assert every pin, hash it and
+        assert it again (Get-PinHash), without the duplicate leading assert of 6bd0b715's template."""
+        release = (COLLECTOR / "release_template.ps1").read_text(encoding="utf-8")
+        park = release[release.index("function Park-Original"):release.index("$bridgeRecord=")]
+        self.assertIn("(Join-Path $script:C.root '" + job.RELEASE_PARKED_LEAF + "')", park)
+        self.assertLess(park.index("PublishMachineFile"), park.index("while($true){[Threading.Thread]::Sleep(1000)}"))
+        self.assertIn("$notice=[ordered]@{schemaVersion=1;state='collector-release-parked';operationId=$script:C.operation;"
+                      "reason=$code;releaseAttempted=$script:C.releaseAttempted}", park)
+        self.assertIn("{throw 'ACK_FIXED_REQUEST_RELEASE_JOIN'}\n$script:C.root=$request.operationRoot;$script:C.sid=$request.context.ordinarySid;"
+                      "$script:C.operation=$request.operationId\n", release)
+        self.assertEqual(2, release.count("foreach($p in $script:C.pins){if($p.directory){Assert-Pin $p}else{[void](Get-PinHash $p)}}"))
+        self.assertIn("function Get-PinHash([object]$Pin) {\nAssert-Pin $Pin;", release)
+        self.assertIn("Assert-Pin $Pin;return $value\n}", release)
 
 
 # A collector root as the publisher's CreateDirectory with a protected descriptor leaves it: natively every collector root

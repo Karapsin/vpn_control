@@ -1,7 +1,19 @@
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 $script:C=@{pins=[Collections.Generic.List[object]]::new();unknown=$null;releaseAttempted=$false}
-function Park-Original([string]$Reason,[object]$ErrorObject){$script:C.unknown=@{reason=$Reason;primary=$ErrorObject};while($true){[Threading.Thread]::Sleep(1000)}}
+function Park-Original([string]$Reason,[object]$ErrorObject){
+$script:C.unknown=@{reason=$Reason;primary=$ErrorObject}
+# A parked release never exits, so the job could only wait out its deadline: it names why here, create-only, then parks.
+try{
+if($null -ne $script:C.root){
+$e=$ErrorObject.Exception;$code=[string]$e.Message
+if($code -cnotmatch '\A[A-Z][A-Z0-9_]{2,63}\z'){$code=$e.GetType().Name;if($e -is [ComponentModel.Win32Exception]){$code+='-'+$e.NativeErrorCode}}
+$notice=[ordered]@{schemaVersion=1;state='collector-release-parked';operationId=$script:C.operation;reason=$code;releaseAttempted=$script:C.releaseAttempted}
+[ScFacts]::PublishMachineFile((Join-Path $script:C.root 'close-release-parked.json'),[Text.UTF8Encoding]::new($false).GetBytes(($notice|ConvertTo-Json -Compress)),$script:C.sid)
+}
+}catch{$script:C.unknown.noticeError=$_}
+while($true){[Threading.Thread]::Sleep(1000)}
+}
 $bridgeRecord=([Text.UTF8Encoding]::new($false,$true)).GetString([Convert]::FromBase64String('@@BRIDGE_PIN_BASE64@@'))|ConvertFrom-Json
 $script:C.bridge=[IO.File]::Open($bridgeRecord.path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
 $bridge=$script:C.bridge
@@ -52,7 +64,13 @@ try{$request=$reader.ReadToEnd()|ConvertFrom-Json}finally{$reader.Dispose()}
 $releaseBytes=[Convert]::FromBase64String('@@RELEASE_BASE64@@')
 $release=([Text.UTF8Encoding]::new($false,$true)).GetString($releaseBytes)|ConvertFrom-Json
 if($request.operationId -cne '@@OPERATION@@' -or $release.collectorOperationId -cne $request.operationId -or $request.closeHold.releasePath -cne (Join-Path $request.operationRoot 'close-release.json') -or $release.collectorRequestSha256 -cne $requestRecord.sha256 -or $release.bootIdentifier -cne $request.context.bootIdentifier){throw 'ACK_FIXED_REQUEST_RELEASE_JOIN'}
+$script:C.root=$request.operationRoot;$script:C.sid=$request.context.ordinarySid;$script:C.operation=$request.operationId
 $required='O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+$request.context.ordinarySid+')'
+# The release itself is written by PublishMachineFile with a protected descriptor at create time, which reads back without
+# the auto-inherited flag, as every CreateDirectory-made collector root did natively. Both forms are SYSTEM-owned,
+# protected and hold exactly these three explicit ACEs.
+$fileAces='(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+$request.context.ordinarySid+')'
+$publishedForms=@(('O:SYD:P'+$fileAces),('O:SYD:PAI'+$fileAces))
 if($requestRecord.security.ownerSid -cne 'S-1-5-18' -or $requestRecord.security.sddl -cne $required){throw 'ACK_MACHINE_REQUEST_POLICY'}
 foreach($record in $request.directoryPins){$p=@{record=$record;directory=$true;handle=[ScFacts]::OpenDirectory($record.path)};$script:C.pins.Add($p);Assert-Pin $p}
 foreach($record in $request.filePins){[void](Add-FilePin $record)}
@@ -66,17 +84,17 @@ $ready=Add-FilePin $readyRecord
 Assert-Id ([ScFacts]::Identity($ready.stream.SafeFileHandle,$false)) $release.holdReadyNativeIdentity
 $token=[ScFacts]::Token()
 if($token[0] -cne 'S-1-5-18' -or $token[1] -cne '0' -or $token[2] -cne '1' -or [ScFacts]::BootIdentifier() -cne $request.context.bootIdentifier){throw 'ACK_NATIVE_SYSTEM_BOOT'}
-foreach($p in $script:C.pins){Assert-Pin $p;if(-not $p.directory){[void](Get-PinHash $p)}}
+foreach($p in $script:C.pins){if($p.directory){Assert-Pin $p}else{[void](Get-PinHash $p)}}
 $script:C.releaseAttempted=$true
 [ScFacts]::PublishMachineFile($request.closeHold.releasePath,$releaseBytes,$request.context.ordinarySid)
 # Publication is one-way. Ordinary task liveness is deliberately not required after this exact release.
 $script:C.published=[ScFacts]::OpenHeld($request.closeHold.releasePath);$published=$script:C.published
 $publishedSecurity=[ScFacts]::Security($published.SafeFileHandle)
-if($publishedSecurity[0] -cne 'S-1-5-18' -or $publishedSecurity[1] -cne $required -or $published.Length -ne $releaseBytes.Length){throw 'ACK_PUBLISHED_NATIVE_POLICY'}
+if($publishedSecurity[0] -cne 'S-1-5-18' -or $publishedForms -cnotcontains $publishedSecurity[1] -or $published.Length -ne $releaseBytes.Length){throw 'ACK_PUBLISHED_NATIVE_POLICY'}
 $hash=[Security.Cryptography.SHA256]::Create();try{$sha=([BitConverter]::ToString($hash.ComputeHash($published))).Replace('-','').ToLowerInvariant()}finally{$hash.Dispose()}
 $expectedHash=[Security.Cryptography.SHA256]::Create();try{$expectedSha=([BitConverter]::ToString($expectedHash.ComputeHash($releaseBytes))).Replace('-','').ToLowerInvariant()}finally{$expectedHash.Dispose()}
 if($sha -cne $expectedSha){throw 'ACK_PUBLISHED_BYTES'}
-foreach($p in $script:C.pins){Assert-Pin $p;if(-not $p.directory){[void](Get-PinHash $p)}}
+foreach($p in $script:C.pins){if($p.directory){Assert-Pin $p}else{[void](Get-PinHash $p)}}
 $r=[ordered]@{schemaVersion=1;state='collector-release-published';operationId=$request.operationId;requestSha256=$requestRecord.sha256;releasePath=$request.closeHold.releasePath;releaseSha256=$sha;releaseNativeIdentity=[ScFacts]::Identity($published.SafeFileHandle,$false);sourceClosing=$true;originalCollectorKnownClosed=$true;productMutation=$false}
 [Console]::WriteLine(($r|ConvertTo-Json -Depth 8 -Compress))
 }catch{Park-Original 'ACK_ORIGINAL_UNKNOWN' $_}

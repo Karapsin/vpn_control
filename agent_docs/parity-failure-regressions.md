@@ -3822,6 +3822,36 @@ RED/GREEN logs): `.runtime/windows-parity-20261107/evidence/fix-install-consent/
 Only a native grant run confirms that the review now finds the install-helper's consent.exe within its gate. On NE3 that
 means `uac-pending` within seconds of the install CLI's birth, then a wake and a retained frame.
 
+### The TUN release program parked after freeing its owner, and the row lost its evidence (native NG2, S_D5, 2026-11-17)
+
+`windows-scoped-tun.restart-grant` `6bd0b715` on clone NG2 (S_D5 2.3.1 with the broker fix, tools `29c457eb`, reset
+`d78361c9`): the approval was acked (decision `703f1605`, prompt closed, 48.2 s) and the row ran 1312 s, past the
+S_D4 `RUNTIME_FAILED` point. It ended UNKNOWN `guest_program_deadline:collector-release-tun`, exit 3, 30 guest programs,
+no evidence copy, so the TUN outcome is unread and the clone blocked. The host records stay on the VM host; the
+operator's `read_unknown` output, the executor journal and the unfixed sources are in
+`.runtime/windows-parity-20261107/evidence/fix-release-deadline/`. From the code: the release ran only after the
+collector returned with its hold's ready, so the driver's result was already 0 and final. The release program is the first
+ever to run natively (every earlier grant row ended before it). It publishes the release with `PublishMachineFile`,
+whose protected descriptor is given at create time and reads back `O:SYD:P(...)`, as every collector root made that way
+did (`723417ea`). It then checked that release against the request's `PAI` form (the 1493 row above extended that check
+to the release), threw `ACK_PUBLISHED_NATIVE_POLICY` and parked for good in `Park-Original`, which on the stdin route
+reaches the job only as a deadline. Its release had already freed the owner. The job waited inside the SYSTEM run's poll
+for the flat 600 s budget of any program, then ended UNKNOWN with the run and the release both open, so no copy was
+taken. A slow release can end the same way: the program asserted every pin eight times and hashed it three times, where
+the bootstrap that took 95 s per pass on 2,692 pins (`72c2fa02`) asserts four and hashes twice. Which of the two fired
+cannot be read from the host without the VM host's records. The fix covers both.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The release program refused the release it had just published, in the form its own writer creates, and parked after freeing the owner (TOOL) | `test_windows_update_grant_collectors.RequestFormTests.test_the_release_program_takes_the_release_as_its_own_writer_creates_it`; `test_windows_tun_grant.TunGrantFamilyTests.test_the_release_frees_the_owner_and_returns_on_the_release_its_writer_publishes` | `release_template.ps1` takes `O:SYD:P` and `O:SYD:PAI` with the three explicit file ACEs for what it published, and keeps the PAI-only request check. The fake release follows the rendered template's own check against the writer form read from `system_collector_native.cs`, and parks when it refuses. RED (unfixed sources, 3.14 and 3.12): the grant ends `(3, guest_program_deadline:collector-release-tun)`, the native signature. GREEN: passed. |
+| A release outliving its fixed 600 s, whatever its work (TOOL) | `TunGrantFamilyTests.test_the_release_deadline_follows_what_its_collector_took` | `release_budget`: the program budget plus twice what the job just measured the collector take on the same pins, at most 1800 s. Each of the release's passes before and after its publication now runs `Get-PinHash` (assert, hash, assert) without the duplicate leading assert, which leaves the same checks at each point. RED: a 400 s collector and a 700 s release end UNKNOWN at the deadline. GREEN: passed. |
+| A parked release program was visible only as a deadline (TOOL) | `TunGrantFamilyTests.test_a_release_that_parks_after_its_owner_finished_ends_known_with_the_row_evidence`; `RequestFormTests.test_a_parked_release_names_why_where_the_job_reads_it_and_every_pass_still_proves_each_pin` | `Park-Original` writes `close-release-parked.json` (its code and whether it published) create-only beside the release once its request named the root, then sleeps. The job reads it between its 5 s polls of the release, with the status copy, and stops waiting at once. |
+| A release problem after the row's result was final lost the row's evidence (TOOL) | the parked test above; `test_a_release_still_working_at_its_deadline_settles_by_the_owner_finish`; `test_a_release_that_never_frees_its_owner_ends_unknown_with_the_evidence_copied_before_it` | The job copies the owner's journal once the collector returned with the hold's ready, before the release. A release left unresolved is never sent again and its fence stays open, so the VM's next job refuses `prior_fence_open`. The run goes on. If the task then finished, was deleted and the owner returned unparked, which a held owner does only after its hold read the release, the row ends known, never passed: `collector_release_unproven:<stage>:<deadline or parked:CODE>`, with the copy after the run collected. Any other end stays UNKNOWN, `collector_release_unresolved:...`, and the receipt names the copy taken before the release, from which it reads the TUN known end and diagnosis. RED: every case ends `guest_program_deadline:collector-release-tun` with no copy. |
+
+Only a native grant run confirms the release form and its time: on S_D5 the release should return within seconds of
+the owner's finish, and `timing.json` should show `collector-release-tun` well inside its budget. The before-images are
+in that evidence folder.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

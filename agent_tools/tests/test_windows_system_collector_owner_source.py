@@ -10,7 +10,7 @@ ROOT=Path(__file__).resolve().parents[2]
 BEFORE=False
 
 ROUTINE_PATH=ROOT/'agent_tools/tests/test_windows_system_collector.py'
-ROUTINE_SHA='ad083c3e79101a1c1b97bbf5913f254421babea83cef5684303c94cf7277e66f'
+ROUTINE_SHA='c2402cbbee5643a77422946cf8566d025b468bdb02531e1d43deef6ab2dac2b7'
 _qualified=None
 
 def _guard_qualified():

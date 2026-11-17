@@ -1272,7 +1272,20 @@ original handles signaled with exit times after that moment, since the collector
 publishes off once both signal for any reason, a crash included. It proves exactly the
 approved broker and runtime ended after the product's off, not that the elevated stop
 spared any other process. The closing census, the fixture stop and quit follow; the
-driver then hands its result to the hold, which the job's release program frees. The
+driver then hands its result to the hold, which the job's release program frees. Once the
+collector returned with the hold's ready, which proves the driver's result final, the job
+copies the owner's journal (`evidence-1.zip`) and then starts the release. The release's
+deadline is the program budget plus twice the time the job just measured its collector
+take on the same pins, at most 1800 s. A release program that parks writes
+`close-release-parked.json` beside its release before it sleeps, and the job stops waiting
+at that notice. A release that outlives its deadline or parks is never sent again, and
+its fence stays open, so the VM's next job refuses with `prior_fence_open`. The run goes
+on. The owner returns only after its hold read the release. If the run then ends with the
+task finished, deleted and the owner returned unparked, the row ends known, never passed:
+`collector_release_unproven:<stage>:<deadline|parked:CODE>`, with the copy after the run.
+Any other end stays UNKNOWN, `collector_release_unresolved:...`, and the receipt names the
+copy taken before the release. The receipt's collector row then carries
+`releaseUnresolved`. The
 receipt keeps `tun.collectors`, `tun.broker` (controller, broker, runtime, parents,
 the console) and `tun.knownEnd`, the known end the owner's own journal in the evidence
 copy names (`cancelled`, an unexpected code, none, or `unread`). Collect passes the row
@@ -1619,9 +1632,13 @@ The publisher writes each collector request and then protects it with
 `SetAccessControl`, so it reads back
 `O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;<user>)`: every native
 `worker-request.json` pin did. The contract, the SYSTEM bootstrap and the release
-program take exactly that form, and the release program checks the release it
-publishes against it. The job reads the owner's pin, published the same way, before
-any task: any other form ends at publish with `collector_file_policy`. A collector
+program take exactly that form for the request. The job reads the owner's pin, published
+the same way, before any task: any other form ends at publish with
+`collector_file_policy`. The release the release program publishes has its own writer,
+`PublishMachineFile`, which gives the protected descriptor at create time, so it reads
+back `O:SYD:P(...)` as a collector root does. The release program takes that form and the
+same DACL auto-inherited (`PAI`), nothing else. Its PAI-only check freed the owner of
+`6bd0b715` and then parked the program for good. A collector
 root is created by the publisher's `CreateDirectory` with a protected descriptor, so
 it reads back
 `O:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;<user>)`. Every

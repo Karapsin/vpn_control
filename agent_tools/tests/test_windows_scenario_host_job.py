@@ -3408,6 +3408,29 @@ def watch_observations(request, **changes):
     return value
 
 
+def release_writer_sddl(sid):
+    """What the release a release program publishes reads back as: PublishMachineFile (system_collector_native.cs) creates it
+    with this protected descriptor, and a protected DACL given at create time reads back without the auto-inherited flag,
+    as every CreateDirectory-made collector root did natively (723417ea)."""
+    native = (ROOT / "agent_tools/windows_system_collector/system_collector_native.cs").read_text(encoding="utf-8")
+    [prefix] = re.findall(r'ConvertStringSecurityDescriptorToSecurityDescriptor\("(O:SYD:[^"]*)"\+ordinarySid\+"\)"', native)
+    return prefix + sid + ")"
+
+
+def release_published_forms(source, sid):
+    """The forms the rendered release program takes for the release it published, followed from its own text."""
+    def literal(name):
+        [value] = re.findall(r"^\$" + name + r"='([^']*)'\+\$request\.context\.ordinarySid\+'\)'$", source, re.M)
+        return value + sid + ")"
+    if "$publishedForms -cnotcontains $publishedSecurity[1]" in source:
+        aces = literal("fileAces")
+        [forms] = re.findall(r"^\$publishedForms=@\((.*)\)$", source, re.M)
+        return [prefix + aces for prefix in re.findall(r"\('([^']*)'\+\$fileAces\)", forms)]
+    if "$publishedSecurity[1] -cne $required" in source:
+        return [literal("required")]
+    raise AssertionError("release publication check changed")
+
+
 class UpdateQga(FakeQga):
     """The same wire peer, plus what an update row's owner and SYSTEM collector would leave: the owner asks for each of its
     stages once the one before was served, and its task ends after the release.
@@ -3442,6 +3465,13 @@ class UpdateQga(FakeQga):
         self.collector_polls = 0
         self.status_reads = []  # Which program, if any, was open while the status copy was read.
         self.root_form = "P"  # The DACL control a collector root reads back: natively P.
+        # The release program, as its rendered text says it behaves: it publishes the release, which frees the owner, then
+        # checks what it published against the forms it takes and parks for good on any other, naming why when its text
+        # does. release_seconds is how long it works before it returns, on the runtime's clock (clock).
+        self.release_seconds = 0
+        self.release_publishes = True  # False: it parks before publishing, with release_park_reason, and the owner waits.
+        self.release_park_reason = "ACK_ORIGINAL_UNKNOWN"
+        self.clock = lambda: 0.0
         self.child_session = 0  # The worker session a collector's proof carries: null where the bootstrap read none (72c2fa02).
 
     def install(self, worker):
@@ -3452,6 +3482,9 @@ class UpdateQga(FakeQga):
         self.effect_pending = self.update_effect is not None
 
     def _guest_exec_status(self, arguments):
+        row = self.pending.get(arguments["pid"])
+        if row is not None and self.clock() < row.get("until", 0):
+            return {"exited": False}
         terminal = super()._guest_exec_status(arguments)
         if arguments["pid"] == self.run_pid and terminal.get("exited") is True and self.effect_pending:
             self.effect_pending = False
@@ -3472,6 +3505,10 @@ class UpdateQga(FakeQga):
             watching = kind == "collector" and "cancelWatchHelper" in self.collectors[-1]["collectorRequest"].get("fileInputs", {})
             polls = self.watch_polls if watching else self.collector_polls if kind == "collector" else 0
             self.pending[pid] = {"polls": polls, "terminal": terminal, "collector": kind == "collector"}
+            if kind == "collector-release" and terminal is None:
+                self.pending[pid]["polls"] = 10 ** 9  # Parked: Park-Original sleeps for good.
+            elif kind == "collector-release":
+                self.pending[pid]["until"] = self.clock() + self.release_seconds
             return {"pid": pid}
         self.admin_requested = "administratorSid=" in source
         ack = super()._guest_exec(arguments)
@@ -3671,8 +3708,21 @@ class UpdateQga(FakeQga):
         pin, request = self._request(source, r"\$requestRecord=.*?FromBase64String\('([A-Za-z0-9+/=]+)'\)")
         release = base64.b64decode(re.search(r"\$releaseBytes=\[Convert\]::FromBase64String\('([A-Za-z0-9+/=]+)'\)", source)[1])
         self.releases.append(json.loads(release))
-        if self.run_pid in self.pending:
-            self.pending[self.run_pid]["polls"] = 0  # The caller's hold is released: its owner finishes.
+        reason = self.release_park_reason
+        if self.release_publishes:
+            self.files[request["closeHold"]["releasePath"]] = release
+            if self.run_pid in self.pending:
+                self.pending[self.run_pid]["polls"] = 0  # The caller's hold is released: its owner finishes.
+            if release_writer_sddl(SID) in release_published_forms(source, SID):
+                reason = None
+            else:
+                reason = "ACK_PUBLISHED_NATIVE_POLICY"
+        if reason is not None:
+            if "'close-release-parked.json'" in source:
+                self.files[request["operationRoot"] + "\\close-release-parked.json"] = json.dumps(
+                    {"schemaVersion": 1, "state": "collector-release-parked", "operationId": request["operationId"], "reason": reason,
+                     "releaseAttempted": self.release_publishes}).encode()
+            return None
         proof = {"schemaVersion": 1, "state": "collector-release-published", "operationId": request["operationId"], "requestSha256": pin["sha256"],
                  "releasePath": request["closeHold"]["releasePath"], "releaseSha256": hashlib.sha256(release).hexdigest(),
                  "releaseNativeIdentity": self._pin(request["closeHold"]["releasePath"], raw=release)["nativeIdentity"], "sourceClosing": True,
@@ -3827,7 +3877,8 @@ class UpdateFamilyTests(UpdateFamilyBase):
         kinds = self.qga.kinds()
         run = kinds.index("system-run")
         self.assertEqual(["collector-observe", "endpoints", "verify", "collector", "collector-observe", "endpoints", "verify", "collector",
-                          "collector-release"], kinds[run + 1:run + 10], "both stages run between two polls of the SYSTEM run")
+                          "evidence-zip", "collector-release"], kinds[run + 1:run + 11],
+                         "both stages run between two polls of the SYSTEM run; the journal is copied before the release")
         self.assertEqual(["before-install", "terminal-actors"], [request["collectorRequest"]["stage"] for request in self.qga.collectors])
         first, final = self.qga.collectors
         self.assertIsNone(first["closeHold"])
@@ -4099,7 +4150,8 @@ class UpdateFamilyTests(UpdateFamilyBase):
                 self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
                 kinds = self.qga.kinds()
                 run = kinds.index("system-run")
-                self.assertEqual(["collector-observe", "endpoints", "verify", "collector"] * 4 + ["collector-release"], kinds[run + 1:run + 18])
+                self.assertEqual(["collector-observe", "endpoints", "verify", "collector"] * 4 + ["evidence-zip", "collector-release"],
+                                 kinds[run + 1:run + 19])
                 before, authorization, terminal, cleanup = self.qga.collectors
                 self.assertEqual(["before-install", "authorization", "terminal-actors", "returned-cleanup"],
                                  [request["collectorRequest"]["stage"] for request in self.qga.collectors])

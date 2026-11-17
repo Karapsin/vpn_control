@@ -21,6 +21,7 @@ from pathlib import Path, PureWindowsPath
 import re
 import types
 import unittest
+import uuid
 from unittest import mock
 
 from agent_tools import native_scenario_windows as windows
@@ -30,7 +31,7 @@ from agent_tools import windows_tun_native_observer as tun_observer
 from agent_tools import windows_tun_stages as tun_stages
 from agent_tools.tests.test_windows_ordinary_task import DedicatedDispatchPeer, DedicatedParked
 from agent_tools.tests.test_windows_scenario_host_job import (CLI_PATH, INSTALLED_ROOT, PROFILE, SID, VERSION, FakeRuntime, FamilyBase,
-                                                               UpdateQga, encoded, out_data, process_row)
+                                                               UpdateQga, encoded, out_data, process_row, release_writer_sddl)
 from agent_tools.windows_public_updater import update_receipts
 from agent_tools.windows_system_collector import collector_contract as contract
 from agent_tools.windows_system_collector import hold_protocol
@@ -623,6 +624,7 @@ class TunGrantFamilyTests(FamilyBase):
         self.qga = TunGrantQga()
         self.qga.evidence_factory = lambda m: owner_journal(m, GRANT_PASSED)
         self.rt = FakeRuntime(self.vm, self.qga)
+        self.qga.clock = lambda: self.rt.clock
         loaded = job.Job._load
 
         def load(instance, name):
@@ -659,8 +661,10 @@ class TunGrantFamilyTests(FamilyBase):
         self.assertEqual({"installedPackage": True, "packageSha256": self.packages["targetPackage"]["sha256"]}, receipt["windows"],
                          "a passed grant claims the installed package like any product row")
         run = kinds.index("system-run")
-        self.assertEqual(["collector-observe", "endpoints", "verify", "collector", "collector-release"], kinds[run + 1:run + 6],
-                         "one stage, served between two polls of the SYSTEM run, behind its caller hold")
+        self.assertEqual(["collector-observe", "endpoints", "verify", "collector", "evidence-zip", "collector-release"], kinds[run + 1:run + 7],
+                         "one stage, served between two polls of the SYSTEM run, behind its caller hold; the owner's journal is "
+                         "copied once its driver's result is final, before the release")
+        self.assertEqual(("evidence-2.zip", "evidence-zip"), (receipt["evidence"]["name"], kinds[-1]), "the copy after the run is the row's")
         source = [source for kind, source in self.qga.programs if kind == "system-run"][-1]
         from agent_tools.tests.test_windows_scenario_host_job import program_input
         self.assertEqual((True, ["scoped-tun-awaiting-current-input"]), (program_input(source)["nativeNeeds"], program_input(source)["uacKinds"]))
@@ -706,6 +710,88 @@ class TunGrantFamilyTests(FamilyBase):
         self.assertEqual(contract.COLLECTORS["tun"], harness["LIFECYCLE_INPUTS"]["tun"]["collectorSourceSha256"])
         self.assertEqual([], self.classify()["unresolved"])
         return plan, request
+
+    def test_the_release_frees_the_owner_and_returns_on_the_release_its_writer_publishes(self):
+        """6bd0b715 (NG2, S_D5): approved, the TUN up and off, the collector returned with its hold's ready, and the release
+        program published the release that freed the owner. It then checked that release against the request's PAI form,
+        while PublishMachineFile creates it with a protected descriptor that reads back P, and parked for good. The job
+        waited its flat 600 s and ended UNKNOWN guest_program_deadline:collector-release-tun with no evidence copy. The
+        release program now takes its writer's own form, so it returns and the row passes."""
+        self.assertEqual("O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;" + SID + ")", release_writer_sddl(SID))
+        plan, request = self.granted()
+        self.assertFalse((Path(plan["dataDirectory"]) / "collectors" / "tun" / "release-unresolved.json").exists())
+
+    def refusing_template(self):
+        """The release program as it stands, but taking only the request's form for what it published: any refusal after
+        its publication, which parks it with its notice."""
+        path = "agent_tools/windows_system_collector/release_template.ps1"
+        template = self.files[path]
+        self.assertEqual(1, template.count(b"$publishedForms=@(('O:SYD:P'+$fileAces),('O:SYD:PAI'+$fileAces))"))
+        self.files[path] = template.replace(b"$publishedForms=@(('O:SYD:P'+$fileAces),('O:SYD:PAI'+$fileAces))",
+                                            b"$publishedForms=@(('O:SYD:PAI'+$fileAces))")
+        return {"files": {key: {"sha256": sha(raw), "sizeBytes": len(raw)} for key, raw in self.files.items()}}
+
+    def test_a_release_that_parks_after_its_owner_finished_ends_known_with_the_row_evidence(self):
+        """A release program that parks after its release freed the owner names why; the job stops waiting at that notice,
+        the run returns with the owner's own finish, and the row ends known, never passed, with the copy after the run.
+        The program is never sent again: its fence stays open, and the VM's next job refuses on it."""
+        install, _ = self.install_base()
+        plan, code, receipt, kinds = self.run_grant(install, **self.refusing_template())
+        self.assertEqual((1, "collector_release_unproven:tun:parked:ACK_PUBLISHED_NATIVE_POLICY", "failed"),
+                         (code, receipt["failure"], receipt["result"]))
+        self.assertEqual({"tun": {"requestSha256": self.qga.request_pins[0]["sha256"], "released": False,
+                                  "releaseUnresolved": "parked:ACK_PUBLISHED_NATIVE_POLICY"}}, receipt["tun"]["collectors"])
+        self.assertEqual(("evidence-2.zip", "evidence-zip", None), (receipt["evidence"]["name"], kinds[-1], receipt["tun"]["knownEnd"]),
+                         "the owner's journal after its finish is the row's evidence, collected")
+        self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+        self.assertTrue((self.vm / ("direct-guest-" + plan["operationId"] + ".terminal.json")).exists(), "the job's own exit is known")
+        release = "direct-guest-" + str(uuid.uuid5(uuid.UUID(plan["operationId"]), "collector-release-tun"))
+        self.assertEqual((True, False), ((self.vm / (release + ".intent.json")).exists(), (self.vm / (release + ".terminal.json")).exists()),
+                         "the parked program's fence stays open")
+        kept = Path(plan["dataDirectory"]) / "collectors" / "tun"
+        self.assertEqual("ACK_PUBLISHED_NATIVE_POLICY", json.loads((kept / "release-parked.json").read_bytes())["reason"])
+        self.assertLess(self.rt.clock, 600, "the notice ends the wait at once, not at the deadline")
+        later, code, _, _ = self.run_grant(install)
+        self.assertEqual((2, "prior_fence_open"), (code, self.rt.emitted[-1]["failure"]))
+
+    def test_a_release_that_never_frees_its_owner_ends_unknown_with_the_evidence_copied_before_it(self):
+        """A release program that parks before it published leaves the owner held, so the run never settles: UNKNOWN,
+        naming the release. The copy taken once the driver's result was final still names the row's TUN outcome."""
+        self.qga.evidence_factory = lambda m: owner_journal(m, GRANT_PASSED if m["evidenceNumber"] == 1 else ())
+        install, _ = self.install_base()
+        self.qga.release_publishes, self.qga.release_park_reason = False, "ACK_ROOT_MACHINE_POLICY"
+        plan, code, receipt, kinds = self.run_grant(install)
+        self.assertEqual((3, "collector_release_unresolved:tun:parked:ACK_ROOT_MACHINE_POLICY"), (code, receipt["failure"]))
+        self.assertEqual(("evidence-1.zip", None), (receipt["evidence"]["name"], receipt["tun"]["knownEnd"]),
+                         "the copy before the release, read for the TUN outcome")
+        self.assertEqual("evidence-zip", kinds[kinds.index("collector-release") - 1])
+        self.assertEqual(1, kinds.count("evidence-zip"), "no copy after a run that never settled")
+        self.assertFalse(self.fence(plan, ".terminal.json").exists())
+        kept = Path(plan["dataDirectory"]) / "collectors" / "tun" / "run-after-release.json"
+        self.assertEqual({"failure": "guest_program_deadline:system-run"}, json.loads(kept.read_bytes()), "the run's own end is kept")
+
+    def test_the_release_deadline_follows_what_its_collector_took(self):
+        """A collector that worked 400 s on its pins: its release rehashes the same pins, and works 700 s here. The flat
+        600 s of any program ended such a row UNKNOWN while the release was still proving; the deadline is now the program
+        budget plus twice the measured collector, so it returns and the row passes."""
+        install, _ = self.install_base()
+        self.qga.collector_polls, self.qga.release_seconds = 400, 700
+        plan, code, receipt, kinds = self.run_grant(install)
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        self.assertEqual((600, 1000, 1800, 1800), (job.release_budget(0), job.release_budget(199.2), job.release_budget(600), job.release_budget(5000)))
+        timing = json.loads((Path(plan["dataDirectory"]) / "timing.json").read_bytes())
+        seconds = {row["name"]: row["seconds"] for row in timing["programs"]}
+        self.assertGreaterEqual(seconds["collector-tun"], 400)
+        self.assertGreaterEqual(seconds["collector-release-tun"], 700)
+
+    def test_a_release_still_working_at_its_deadline_settles_by_the_owner_finish(self):
+        """Past even that deadline, a release that already freed the owner settles by the owner's own finish: known, with
+        the copy after the run, the program left as it is."""
+        install, _ = self.install_base()
+        self.qga.release_seconds = 10 ** 6
+        plan, code, receipt, kinds = self.run_grant(install)
+        self.assertEqual((1, "collector_release_unproven:tun:deadline", "evidence-2.zip"), (code, receipt["failure"], receipt["evidence"]["name"]))
+        self.assertEqual("deadline", receipt["tun"]["collectors"]["tun"]["releaseUnresolved"])
 
     def test_the_real_observer_and_stages_take_what_this_job_builds(self):
         """windows_tun_native_observer, the pinned TUN collector's own code, over the request this job built, with the
