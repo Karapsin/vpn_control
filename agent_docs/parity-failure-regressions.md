@@ -3681,6 +3681,57 @@ Native only: the next `.pre` of each reboot row must show child 17 reporting `ru
 `keySddl`, then the migration row's highest fixture registering its task and the snapshot reading that task's
 descriptor.
 
+### The ordinary owner could not plant the legacy HighestAvailable task (native, `5594b6f5` 2026-11-17)
+
+With the Run key fix, NF run `5594b6f5` (`windows-autostart-migration.pre`, tools `29c457eb`, S_D4) read three snapshots
+and observed the public autostart off. Then child 22 (`autostart-highest-fixture`,
+`windows_autostart_create_highest_fixture.ps1` as the ordinary user) failed with `Access is denied. (Exception from
+HRESULT: 0x80070005 (E_ACCESSDENIED))`, and the owner refused `highest-fixture-original-child-terminal` (`windows_autostart_reboot.py:178`). The public
+toggle (child 19) had already run, so the receipt said `changed` and the reboot chain held the clone. Evidence is in
+`.runtime/windows-parity-20261107/evidence/fix-autostart-snapshot/round3/`.
+
+Cause (TOOL, known). The fixture did not arise the way the legacy state did. The pre-migration product (`6f87f740`)
+called `DesktopWindowsElevation.elevateIfRequired` at launch, which relaunched through `Start-Process -Verb RunAs`.
+The elevated app then ran `schtasks /Create /SC ONLOGON /RL HIGHEST /F`. `bbb7b046` later kept the GUI unelevated.
+An unelevated ordinary token may not register a HighestAvailable task, and the fixture user is a standard user (the
+owner requires no Administrators membership and the default elevation type). Every reboot `.pre` runs the migration
+first, so all three would have failed here.
+
+Fix. The SYSTEM run plants the legacy task, an existing SYSTEM channel that already registers the owner's task:
+- It plants for the three reboot preboots (`LEGACY_AUTOSTART_SCENARIOS`), and never for the query row or a `.post`.
+- It plants before it registers or runs the ordinary owner, so before any public toggle. It runs the pinned
+  `windows_autostart_create_highest_fixture.ps1` (role `migrationScript`, held at its digest) in its own process.
+- The planter now refuses any token but SYSTEM. It registers for the ordinary SID: an interactive token,
+  HighestAvailable, TASK_CREATE, and the scheduler's default SDDL, as the elevated `schtasks /Create` left it. It
+  answers on the pipeline, never on the console the SYSTEM run replies on.
+- A planting that fails, or any refusal before the owner's launch, removes only the task carrying the planter's own
+  description and ends `refused_before_launch`. The owner never ran, so the receipt says `untouched` and holds no clone.
+- After a launched owner, the run's closing removes the planted task if it is still this run's and still
+  HighestAvailable, meaning the product never migrated it. A migrated task is the row's.
+- `migration` no longer toggles off or plants. Its first snapshot must show the `highest` task (`autostart-legacy-fixture-observed`).
+  Then the ordinary query must leave it unchanged, and the one public toggle (on) must migrate it, keeping its DACL,
+  action, trigger and principal.
+- The planter's path check is now a local drive pattern. On any host's .NET, `IsPathRooted` also takes `\x`, and off
+  Windows it refuses `C:\x`.
+- The `migrationScript` and `autostart` role digests name the new bytes.
+
+What the row proves is unchanged: an owned legacy HighestAvailable task, the product's unelevated ordinary
+migration of it, and an ordinary query that does not migrate it. Absence before planting is now proven by the SYSTEM
+run's lookup and by TASK_CREATE, not by a public toggle off. The off toggle is still proven by `closing_off` in
+every postboot. The principal is the ordinary user, as the row requires. The real legacy principal was the elevated
+administrator itself, so the task's default DACL, given to a SYSTEM author, may differ from one an elevated
+administrator authored.
+
+| Failure type | Regression | RED on `29c457eb` / GREEN |
+| --- | --- | --- |
+| The legacy HighestAvailable task registered from the unelevated ordinary token (TOOL) | `test_windows_reboot_actions.LegacyAutostartPlantTests`: `test_the_planter_registers_the_legacy_task_for_the_ordinary_user_only_as_system`, `test_the_system_run_plants_marks_and_refuses_as_the_template_says`, `test_the_system_run_removes_only_its_own_unmigrated_task`, `test_the_system_run_plants_before_the_owner_and_cleans_only_its_own_task`, control `test_the_legacy_task_arose_from_the_elevated_pre_migration_product`; `test_windows_scenario_host_job.RebootFamilyTests.test_each_reboot_preboot_has_the_system_run_plant_its_legacy_task_and_no_other_row_does` | Fixture `fixtures/windows_autostart_legacy_plant/`: the native child 22 stderr record. Under PowerShell, with a faked scheduler and token, the planter registers exactly the legacy task as SYSTEM and refuses an ordinary token, an existing task and a SYSTEM principal. The template's own planting block marks before planting and never marks an existing task. Its two cleanups remove only an unmigrated task of the planter's description, keep a migrated or foreign one, and treat a failed lookup as unknown. RED with the tests over `29c457eb`, together with the two rows below: 12 failures and 7 errors on Python 3.14.3 and 3.12.13. The base planter refuses SYSTEM (`FIXTURE_ORDINARY_SID`) and has no `-PrincipalSid`, and the template has no planting block and no `legacyAutostart` input. |
+| A fixture failure after a public toggle held the clone (TOOL) | `test_windows_reboot_actions.PrebootActionTests.test_a_missing_legacy_fixture_finishes_the_owner_with_exit_1_before_any_autostart_change`, `test_the_planted_legacy_task_is_observed_before_any_public_autostart_toggle` | RED on `29c457eb`: the owner toggles off and then runs the planter itself, which the test world refuses as native `5594b6f5` did. GREEN: without the planted task it refuses with no public toggle and no autostart intent, so the receipt says `untouched`. With the task, the first observation is `highest` and the one toggle is the migration. |
+
+Native only: whether the SYSTEM-planted task's default DACL lets the product's unelevated `schtasks /Query /XML` and
+`/Change /RL LIMITED` read and migrate it, whether the snapshot's `GetSecurityDescriptor(7)` reads it, and whether
+`schtasks /Change` keeps that DACL (`migration-preserves-entire-task-dacl`). If the product cannot migrate it, that is a
+product finding for legacy users whose task an elevated process authored.
+
 ### The SYSTEM collector's worker session, read after the worker exited (native NE2, S_Q, 2026-11-17)
 
 Update grant row `72c2fa02` (success-off review, clone NE2, fixture set S_Q, tools with the collector-root fix) ended

@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::
 @@INPUT@@
 @@ASSERTIONS@@
 @@POLICY_VALIDATOR@@
-$script:P=[ordered]@{pins=[Collections.Generic.List[object]]::new();folder=$null;registered=$false;launchConsumed=$false}
+$script:P=[ordered]@{pins=[Collections.Generic.List[object]]::new();folder=$null;registered=$false;launchConsumed=$false;legacy=$false;legacyPlanted=$false}
 function N($value,$code){if(-not $value){throw $code}}
 function Hash-Bytes([byte[]]$raw){$h=[Security.Cryptography.SHA256]::Create();try{return ([BitConverter]::ToString($h.ComputeHash($raw))).Replace('-','').ToLowerInvariant()}finally{$h.Dispose()}}
 function Open-Pin($record,$directory){
@@ -86,6 +86,21 @@ try{
  N ($name -ceq ('VpnControlOrdinary-'+$q.operationId)) 'RUN_TASK_NAME'
  $service=New-Object -ComObject 'Schedule.Service';$service.Connect();$folder=$service.GetFolder('\');$script:P.folder=$folder
  $present=$null;try{$present=$folder.GetTask($name)}catch{N (Is-TaskAbsent $_) 'RUN_TASK_ABSENCE_OBSERVATION'};N ($null -eq $present) 'RUN_TASK_EXISTS'
+ if($null -ne $m.legacyAutostart){
+  # A reboot preboot's owned legacy HighestAvailable task, which only an elevated or SYSTEM token may
+  # register, planted here before the owner starts and so before any public toggle. The planter runs in this process
+  # from its pinned bytes; legacy is set before it runs, as registered is, and legacyPlanted once it answered.
+  $legacy=$m.legacyAutostart
+  N ($m.mode -ceq 'python-worker' -and [string]$legacy.principalSid -ceq [string]$m.context.ordinarySid) 'RUN_LEGACY_AUTOSTART_INPUT'
+  $planterPin=Open-Pin $legacy.planterPin $false
+  $planter=[Text.UTF8Encoding]::new($false,$true).GetString((Read-PinBytes $planterPin 65536))
+  $legacyPresent=$null;try{$legacyPresent=$folder.GetTask('VPN Control')}catch{N (Is-TaskAbsent $_) 'RUN_LEGACY_AUTOSTART_ABSENCE_OBSERVATION'};N ($null -eq $legacyPresent) 'RUN_LEGACY_AUTOSTART_EXISTS'
+  $script:P.legacy=$true
+  $planted=@(& ([scriptblock]::Create($planter)) -GuiPath ([string]$legacy.guiPath) -Workspace ([string]$legacy.workspace) -PrincipalSid ([string]$legacy.principalSid))
+  N ($planted.Count -eq 1 -and [string]$planted[0] -ceq '{"schemaVersion":1,"taskPath":"\\VPN Control","runLevel":"HighestAvailable"}') 'RUN_LEGACY_AUTOSTART_RESULT'
+  $script:P.legacyPlanted=$true
+  Guard-Full
+ }
  $definition=$service.NewTask(0);$definition.XmlText=$m.taskXml
  $script:P.registered=$true
  $registered=$folder.RegisterTaskDefinition($name,$definition,2,$m.context.ordinarySid,$null,3,$null)
@@ -161,15 +176,25 @@ try{
    }
   }
   $workers=@(Get-ChildItem -LiteralPath $root -File -Filter 'event-*.json').Count
+  if($script:P.legacyPlanted){
+   # The owner ended before the product migrated the planted task: still this run's own and still HighestAvailable, it
+   # goes, so a row that failed before its migration leaves the clone as it found it. A migrated task is the row's.
+   $own=$null;try{$own=$folder.GetTask('VPN Control')}catch{N (Is-TaskAbsent $_) 'RUN_LEGACY_AUTOSTART_CLOSING_OBSERVATION'}
+   if($null -ne $own -and [string]$own.Definition.RegistrationInfo.Description -ceq 'VPN Control owned acceptance legacy run-level fixture' -and [int]$own.Definition.Principal.RunLevel -eq 1){
+    $folder.DeleteTask('VPN Control',0);$legacyGone=$false
+    try{$null=$folder.GetTask('VPN Control')}catch{N (Is-TaskAbsent $_) 'RUN_LEGACY_AUTOSTART_DELETE_OBSERVATION';$legacyGone=$true}
+    N $legacyGone 'RUN_LEGACY_AUTOSTART_NOT_DELETED'
+   }
+  }
   $folder.DeleteTask($name,0);$deleted=$false
   try{$null=$folder.GetTask($name)}catch{N (Is-TaskAbsent $_) 'RUN_TASK_DELETE_OBSERVATION';$deleted=$true}
   N $deleted 'RUN_TASK_NOT_DELETED'
   Guard-Full
-  $r=[ordered]@{schemaVersion=1;state='task-finished';operationId=$q.operationId;taskName=$name;instanceGuid=$instance;enginePid=$enginePid;ownerPid=$(if($null -eq $start){$null}else{[int]$start.ownerPid});ownerBirthFileTimeUtc=$birth;ownerExitCode=$ownerExit;lastTaskResult=$lastResult;terminalExitCode=$(if($null -eq $terminal){$null}else{[int]$terminal.value.exitCode});commandLineMatched=$commandMatched;events=@($rows.ToArray());rawStreams=@($streams.ToArray());workerEvents=$workers;taskDeleted=$deleted;polls=$polls;statusFailures=$statusFailures;parkedFiles=@();sourceClosing=$true;productOperation=$false}
+  $r=[ordered]@{schemaVersion=1;state='task-finished';operationId=$q.operationId;taskName=$name;instanceGuid=$instance;enginePid=$enginePid;ownerPid=$(if($null -eq $start){$null}else{[int]$start.ownerPid});ownerBirthFileTimeUtc=$birth;ownerExitCode=$ownerExit;lastTaskResult=$lastResult;terminalExitCode=$(if($null -eq $terminal){$null}else{[int]$terminal.value.exitCode});commandLineMatched=$commandMatched;events=@($rows.ToArray());rawStreams=@($streams.ToArray());workerEvents=$workers;taskDeleted=$deleted;polls=$polls;statusFailures=$statusFailures;parkedFiles=@();sourceClosing=$true;productOperation=$false;legacyAutostartLeft=$false}
  }else{
   # A parked owner or a passed row deadline: report and touch nothing. The task,
   # its owner and every file stay exactly as they are for reading the original.
-  $r=[ordered]@{schemaVersion=1;state=$(if($end -ceq 'parked'){'owner-parked'}else{'deadline'});operationId=$q.operationId;taskName=$name;instanceGuid=$instance;enginePid=$enginePid;ownerPid=$(if($null -eq $start){$null}else{[int]$start.ownerPid});polls=$polls;statusFailures=$statusFailures;parkedFiles=$parked;lastStatus=$lastStatus;taskDeleted=$false;sourceClosing=$false;productOperation=$false}
+  $r=[ordered]@{schemaVersion=1;state=$(if($end -ceq 'parked'){'owner-parked'}else{'deadline'});operationId=$q.operationId;taskName=$name;instanceGuid=$instance;enginePid=$enginePid;ownerPid=$(if($null -eq $start){$null}else{[int]$start.ownerPid});polls=$polls;statusFailures=$statusFailures;parkedFiles=$parked;lastStatus=$lastStatus;taskDeleted=$false;sourceClosing=$false;productOperation=$false;legacyAutostartLeft=$script:P.legacyPlanted}
  }
 }catch{
  $code=[string]$_.Exception.Message;if($code.Length -gt 200){$code=$code.Substring(0,200)}
@@ -178,7 +203,12 @@ try{
   # Registered and never run: nothing started, so the task can go and this stays a refusal.
   try{$script:P.folder.DeleteTask($m.taskName,0)}catch{if(-not (Is-TaskAbsent $_)){$unknown=$true}}
  }
- $r=[ordered]@{schemaVersion=1;state=$(if($unknown){'post-launch-unknown'}else{'refused-before-launch'});operationId=$m.operationId;code=$code;taskDeleted=$false;sourceClosing=$false;productOperation=$false}
+ if(-not $unknown -and $script:P.legacy){
+  # Planted and never run: only the task this run planted goes, known by the planter's own description.
+  try{$own=$script:P.folder.GetTask('VPN Control');if([string]$own.Definition.RegistrationInfo.Description -ceq 'VPN Control owned acceptance legacy run-level fixture'){$script:P.folder.DeleteTask('VPN Control',0)}}catch{if(-not (Is-TaskAbsent $_)){$unknown=$true}}
+  if(-not $unknown){$script:P.legacyPlanted=$false}
+ }
+ $r=[ordered]@{schemaVersion=1;state=$(if($unknown){'post-launch-unknown'}else{'refused-before-launch'});operationId=$m.operationId;code=$code;taskDeleted=$false;sourceClosing=$false;productOperation=$false;legacyAutostartLeft=$script:P.legacyPlanted}
 }
 foreach($p in $script:P.pins){try{if($p.directory){$p.handle.Dispose()}elseif($null -ne $p.stream){$p.stream.Dispose()}}catch{}}
 # The result, durable before the boot-bound closing and the reply: a reply the job cannot decode is read back

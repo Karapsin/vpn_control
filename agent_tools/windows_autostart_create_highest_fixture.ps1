@@ -1,6 +1,11 @@
+# The owned legacy autostart task as the pre-migration product left it: "VPN Control", RunLevel HighestAvailable,
+# an interactive token for the ordinary user. That product elevated itself at launch and ran schtasks /RL HIGHEST
+# elevated; an unelevated ordinary token may not register a HighestAvailable task (native 5594b6f5, E_ACCESSDENIED).
+# So the SYSTEM run plants it, in its own process, from its pinned bytes, before the ordinary owner starts and before
+# any public toggle. Its one result goes to the pipeline, never to the console the SYSTEM run replies on.
 param([Parameter(Mandatory=$true)][string]$GuiPath,
       [Parameter(Mandatory=$true)][string]$Workspace,
-      [Parameter(Mandatory=$true)][string]$ExpectedSid)
+      [Parameter(Mandatory=$true)][string]$PrincipalSid)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 function Test-TaskAbsent($record) {
@@ -18,9 +23,11 @@ function Get-StartupTask($folder) {
 }
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 try {
- if ($identity.User.Value -cne $ExpectedSid) { throw 'FIXTURE_ORDINARY_SID' }
+ if ($identity.User.Value -cne 'S-1-5-18') { throw 'FIXTURE_SYSTEM_PLANTER' }
+ if ($PrincipalSid -cnotmatch '\AS-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+\z') { throw 'FIXTURE_ORDINARY_PRINCIPAL' }
  foreach ($value in @($GuiPath,$Workspace)) {
-  if (-not [IO.Path]::IsPathRooted($value) -or $value.StartsWith('\\') -or $value.IndexOfAny([char[]]"`r`n`0`"") -ge 0) { throw 'FIXTURE_EXACT_PATH' }
+  # A local drive path only, on any host's .NET: IsPathRooted also takes \x and, off Windows, refuses C:\x.
+  if ($value -cnotmatch '\A[A-Za-z]:\\' -or $value.IndexOfAny([char[]]"`r`n`0`"") -ge 0) { throw 'FIXTURE_EXACT_PATH' }
  }
  $service = New-Object -ComObject 'Schedule.Service'
  $service.Connect()
@@ -29,7 +36,7 @@ try {
  $task = $service.NewTask(0)
  $task.RegistrationInfo.Description = 'VPN Control owned acceptance legacy run-level fixture'
  $task.Principal.Id = 'Author'
- $task.Principal.UserId = $ExpectedSid
+ $task.Principal.UserId = $PrincipalSid
  $task.Principal.LogonType = 3
  $task.Principal.RunLevel = 1
  $task.Settings.Enabled = $true
@@ -38,13 +45,14 @@ try {
  $task.Settings.ExecutionTimeLimit = 'PT0S'
  $trigger = $task.Triggers.Create(9)
  $trigger.Enabled = $true
- $trigger.UserId = $ExpectedSid
+ $trigger.UserId = $PrincipalSid
  $task.Actions.Context = 'Author'
  $action = $task.Actions.Create(0)
  $action.Path = $GuiPath
  $action.Arguments = '--autostart --state-dir "' + $Workspace + '"'
- # TASK_CREATE=2. A raced same-name task fails; never replace or update it.
- $registered = $folder.RegisterTaskDefinition('VPN Control',$task,2,$ExpectedSid,$null,3,$null)
+ # TASK_CREATE=2. A raced same-name task fails; never replace or update it. No SDDL: the scheduler's own default,
+ # as the legacy elevated schtasks /Create left it.
+ $registered = $folder.RegisterTaskDefinition('VPN Control',$task,2,$PrincipalSid,$null,3,$null)
  if ($registered.Path -cne '\VPN Control') { throw 'FIXTURE_REGISTERED_WRONG_PATH' }
- [Console]::WriteLine('{"schemaVersion":1,"taskPath":"\\VPN Control","runLevel":"HighestAvailable"}')
+ '{"schemaVersion":1,"taskPath":"\\VPN Control","runLevel":"HighestAvailable"}'
 } finally { $identity.Dispose() }

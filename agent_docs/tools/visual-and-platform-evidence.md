@@ -969,7 +969,13 @@ and `windows-autostart-migration.pre|.post`. Each `.pre` runs the
 `windows-preboot-reboot` worker action in a fresh product workspace: an in-guest
 SOCKS upstream on loopback port 41081, the owned profile (source set before the
 first location), autostart migration from a legacy HighestAvailable task to the
-public LeastPrivilege one, then a graceful quit of its own serve. It then starts
+public LeastPrivilege one, then a graceful quit of its own serve. The legacy task is
+planted by the SYSTEM run before it starts the ordinary owner, for the ordinary user,
+from the pinned `windows_autostart_create_highest_fixture.ps1`: the pre-migration
+product registered it from an elevated process, and an unelevated ordinary token may
+not. So the owner's first observation is that task, and no public toggle comes before
+it. A planting that fails is `refused_before_launch` and leaves nothing. A planted task
+that the product never migrated is removed in the run's closing. It then starts
 the app through the product's own autostart task, measures traffic for reconnect,
 stops its upstream and finishes with the app running and no child of its own. A
 passed `.pre` publishes `product-allowance.json` into its own ProgramData workspace

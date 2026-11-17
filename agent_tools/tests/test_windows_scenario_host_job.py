@@ -521,7 +521,7 @@ class FakeQga:
             reply.update({"state": "task-finished", "taskName": m["taskName"], "instanceGuid": "{guid}", "enginePid": 900, "ownerPid": 901,
                           "ownerBirthFileTimeUtc": "134368653065000002", "ownerExitCode": exit_code, "lastTaskResult": exit_code, "terminalExitCode": exit_code,
                           "commandLineMatched": True, "workerEvents": 0, "taskDeleted": True, "polls": 2, "statusFailures": 0, "parkedFiles": [],
-                          "sourceClosing": True,
+                          "sourceClosing": True, "legacyAutostartLeft": False,
                           "events": [{"name": "task-event-00000" + str(i) + "-" + kind + ".json", "bytes": 9, "sha256": "0" * 64, "kind": kind}
                                      for i, kind in enumerate(("submission-intent", "submitted", "terminal"))],
                           "rawStreams": ([stream("stdout", "stdout|scenario-ok"), stream("stderr", "stderr|scenario-ok")] if m["mode"] == "qualification"
@@ -2670,9 +2670,9 @@ class RebootFamilyTests(FamilyBase):
         events = [] if config is None else [("owner-started", {"operationId": operation, "pid": 900}),
                                             ("child-started", {"child": 0, "pid": 901}), ("child-started", {"child": 1, "pid": 902})]
         if config is not None and config["phase"] == "preboot-reboot" and config["scenario"] != "query-first":
-            # An intent precedes each autostart change and the product's own start.
-            events += [("autostart-public-toggle-intent", {"enabled": False}), ("autostart-highest-fixture-intent", {}),
-                       ("autostart-public-toggle-intent", {"enabled": True}), ("product-autostart-start-intent", {})]
+            # The SYSTEM run's planted legacy task first, then an intent before each autostart change and the product's own start.
+            events += [("autostart-legacy-fixture-observed", {}), ("autostart-public-toggle-intent", {"enabled": True}),
+                       ("autostart-public-toggle-observed", {}), ("product-autostart-start-intent", {})]
             events.append(("reboot-checkpoint", {"schemaVersion": 3, "kind": "owned-reboot-checkpoint", "operationId": operation,
                            "scenario": config["scenario"], "deploymentId": MACHINE, "ordinarySid": SID, "oldSessionId": 2,
                            "oldBootFileTimeUtc": self.qga.boot_filetime, "workspace": worker["workspace"],
@@ -2784,6 +2784,26 @@ class RebootFamilyTests(FamilyBase):
                 planner.worker_request({key: worker[key] for key in job._COMMON_FIELDS | {"pythonRuntime"}}, worker["action"],
                                        **{key: worker[key] for key in ("cliPath", "workspace", "productVersion", "postbootAcceptance")})
         self.assertEqual([], self.classify()["unresolved"])
+
+    def test_each_reboot_preboot_has_the_system_run_plant_its_legacy_task_and_no_other_row_does(self):
+        # Native 5594b6f5: an unelevated ordinary token may not register the HighestAvailable task, so the SYSTEM run
+        # plants it from the pinned planter, for the ordinary user, before the owner it then starts.
+        for name in ("windows-reboot-reconnect", "windows-reboot-explicit-off", "windows-autostart-migration"):
+            with self.subTest(name=name):
+                self.fresh_history()
+                pre, code, receipt, kinds = self.run_reboot(name + ".pre")
+                self.assertEqual(0, code)
+                source = next(source for kind, source in reversed(self.qga.programs) if kind == "system-run")
+                legacy = program_input(source)["legacyAutostart"]
+                worker = self.qga.requests_seen[-1]["worker"]
+                inputs = worker["postbootAcceptance"]["autostartInputs"]
+                pin = next(pin for pin in worker["filePins"] if pin["path"] == inputs["migrationScriptPath"])
+                self.assertEqual({"planterPin": pin, "guiPath": inputs["guiPath"], "workspace": inputs["workspace"], "principalSid": SID}, legacy)
+                self.assertEqual(planner.POSTBOOT_ROLE_HASHES["migrationScript"], pin["sha256"])
+                self.assertEqual("changed", receipt["reboot"]["autostart"])
+        for name in ("windows-reboot-reconnect.post", "windows-query-owner-gui-reconnect"):
+            self.assertIsNone(job.legacy_autostart_input(driver.RECIPES[name], None, {}, None), name)
+        self.assertIsNone(job.legacy_autostart_input({"workerAction": "qualification"}, None, {}, None))
 
     def test_a_declaration_with_any_wrong_fact_is_never_published(self):
         cases = {

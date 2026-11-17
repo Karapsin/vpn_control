@@ -208,6 +208,8 @@ _KNOWN_END = re.compile(r"(?:cancelled|[A-Z][A-Z_]{1,40})\Z")
 # How far a TUN row's VPN start got, as windows_tun_stages.diagnosis names it in the owner's journal.
 _TUN_REACH = re.compile(r"[a-z][a-z-]{2,40}\Z")
 AUTOSTART_INTENTS = frozenset({"autostart-public-toggle-intent", "autostart-highest-fixture-intent", "product-autostart-start-intent"})
+# The reboot preboots that migrate a legacy task the SYSTEM run planted (windows_autostart_reboot.migration).
+LEGACY_AUTOSTART_SCENARIOS = frozenset({"reconnect", "explicit-off", "autostart-migration"})
 # readiness-reboot's own VM-root journal: the only reboot submitter's record of the reboot a postboot follows.
 _RECOVERY_INTENT = re.compile(r"readiness-recovery-([0-9a-f]{64})\.intent\.json\Z")
 # The document rows: the shared worker's document-acceptance action, a large routing document the publisher makes
@@ -1486,6 +1488,23 @@ def worker_inputs(row, paths, product, *, product_code=None, runtime_authority=N
             "casesPath": paths["file:cases"], "harnessPath": paths["file:harness"]}
 
 
+def legacy_autostart_input(row, closed, file_pins, context):
+    """What the SYSTEM run plants before a reboot preboot's owner starts, from that owner's own request.
+
+    Each reboot preboot first migrates an owned legacy HighestAvailable task. The pre-migration product registered
+    that task from an elevated process; an unelevated ordinary token may not (native 5594b6f5, E_ACCESSDENIED). So the
+    SYSTEM run plants it with the pinned planter, for the ordinary user, before the owner and any public toggle. The
+    query row, which never migrates, and every other row plant nothing."""
+    reboot = row.get("reboot") or {}
+    if reboot.get("phase") != "pre" or reboot.get("scenario") not in LEGACY_AUTOSTART_SCENARIOS:
+        return None
+    inputs = closed["postbootAcceptance"]["autostartInputs"]
+    pin = file_pins["migrationScript"]
+    if pin["path"] != inputs["migrationScriptPath"]:
+        raise ValueError("legacy_autostart_planter_pin")
+    return {"planterPin": pin, "guiPath": inputs["guiPath"], "workspace": inputs["workspace"], "principalSid": context["ordinarySid"]}
+
+
 def update_worker_inputs(paths, product):
     """The one public-update request: the installed base's CLI, the fixed sibling case module and the literal harness."""
     return {"cliPath": paths["cli"], "workspace": paths["productWorkspace"], "productVersion": product["baseVersion"],
@@ -1632,6 +1651,7 @@ class Job:
         self.python_tree = self.installed_tree = self.installed = self.python_facts = self.worker = None
         self.installed_matched = self.task_checked = False
         self.prior_preboot = self.preboot = self.runtime_authority = self.runtime_sha256 = self.preboot_pins = self.readiness_reboot = None
+        self.legacy_autostart = None
         self.generated = {}
         self.update = self.row.get("update")
         self.collected = {}
@@ -3115,6 +3135,7 @@ class Job:
             worker_common = planner.common_request(self.context, self.op, self.operation_root, worker_files, worker_directories,
                                                    worker_trees, limit, runtime)
             requests["worker"] = planner.worker_request(worker_common, row["workerAction"], **closed)
+            self.legacy_autostart = legacy_autostart_input(row, closed, self.file_pins, self.context)
             expected["worker"] = {"inputs": closed, "files": {pin["path"]: pin["sha256"] for pin in worker_files},
                                   "directories": [pin["path"] for pin in worker_directories], "trees": worker_trees}
             expected["pythonRuntime"] = runtime
@@ -3926,7 +3947,8 @@ class Job:
              "taskArguments": task["policyExpected"]["Arguments"], "deadlineSeconds": self.row["deadlineSeconds"],
              # A BSTR is UTF-16: the planner's UTF-8 declaration describes bytes COM never sees.
              "taskXml": re.sub(r"\A<\?xml[^>]*\?>\s*", "", task["xmlUtf8"]),
-             "uacKinds": [self.row["uac"]["event"]] if self.row.get("uac") else [], "nativeNeeds": bool(self.update) or self._tun_grant()}
+             "uacKinds": [self.row["uac"]["event"]] if self.row.get("uac") else [], "nativeNeeds": bool(self.update) or self._tun_grant(),
+             "legacyAutostart": self.legacy_autostart}
         source = self._rendered(lambda: self._system_run_source(m))
         terminal, pid = self.guest_program("system-run", source, budget=self.row["deadlineSeconds"] + RUN_MARGIN_SECONDS,
                                            poll=STATUS_POLL_SECONDS, on_poll=self._on_status)

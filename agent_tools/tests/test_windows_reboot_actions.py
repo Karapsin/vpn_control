@@ -220,7 +220,6 @@ class World:
         self.relaunch_controller, self.relaunch_gui = False, True
         self.controller_linger, self.controller_pids, self.exiting = 0.0, set(), {}
         self.clock = None
-        self.fixture_refused = False  # The first native gate: a standard user may not register the legacy task.
         self.locations, self.revision, self.settings = [], 0, {"autostart": False}
         self.next_pid, self.visible, self.last_run = 500, True, None
 
@@ -364,10 +363,8 @@ class World:
         if script.endswith("snapshotScript.data"):
             return child.end(0, json.dumps(self.snapshot(child)))
         if script.endswith("migrationScript.data"):
-            if self.fixture_refused:
-                return child.end(1, "", "Access is denied.")
-            self.task = "highest"
-            return child.end(0, json.dumps({"schemaVersion": 1, "taskPath": autostart.TASK, "runLevel": "HighestAvailable"}))
+            # Native 5594b6f5: the ordinary token may not register a HighestAvailable task. Only the SYSTEM run plants it.
+            raise AssertionError("the ordinary owner never runs the legacy planter")
         if script.endswith("startScript.data"):
             self.start_product(40)
             return child.end(0, json.dumps({"schemaVersion": 1, "taskPath": autostart.TASK, "instanceGuid": "{instance}"}))
@@ -467,6 +464,9 @@ class Owner:
                 "migrationScriptPath": roles["migrationScript"], "startScriptPath": roles["startScript"], "guiPath": GUI}
         self.config = {"schemaVersion": 1, "phase": phase, "scenario": scenario, "sourceRoles": roles, "autostartInputs": auto, "trafficInputPath": traffic}
         self.world = World(self, scenario)
+        if phase == "preboot-reboot" and scenario in autostart.SCENARIOS:
+            # The SYSTEM run planted the legacy task for this ordinary user before the owner started.
+            self.world.task = "highest"
         self.native = Native(self.world)
         self.native.identity = lambda handle, directory=False: {"sizeBytes": 2}
         self.native.security = lambda handle: {"ownerSid": SID, "sddl": "D:P"}
@@ -618,7 +618,8 @@ class PrebootActionTests(WorldCase):
                                  "the runtime is declared by the installed record's digest")
                 self.assertEqual("Owned Reboot" if running else None, checkpoint[0]["activeLocationName"])
                 labels = [child.label for child in owner.children]
-                self.assertLess(labels.index("autostart-highest-fixture"), labels.index("product-autostart-start"))
+                self.assertNotIn("autostart-highest-fixture", labels, "the owner never plants; the SYSTEM run did")
+                self.assertLess(labels.index("autostart-read-only"), labels.index("product-autostart-start"))
                 self.assertEqual(["terminate"], [kind for kind, _ in owner.world.trace if kind == "terminate"], "one owned upstream stop")
                 self.assertEqual(running, owner.world.running)
                 order = [" ".join(tail) for label, tail in owner.world.trace if label == "public-cli"]
@@ -665,15 +666,35 @@ class PrebootActionTests(WorldCase):
         self.assertEqual(1, [kind for kind, _ in owner.events].count("preboot-refusal-quit-intent"))
         self.assertIsNone(owner.reboot_effect)
 
-    def test_a_refused_legacy_fixture_finishes_the_owner_with_exit_1(self):
-        # The first native gate: the serve is live when the standard user cannot register the HighestAvailable task.
-        owner = self.owner("autostart-migration")
-        owner.world.fixture_refused = True
-        result, finished = self.main(owner, "windows-preboot-reboot")
-        self.assertEqual((1, [1]), (result, finished), "a known refusal finishes; it never parks")
-        self.assertEqual([], [child.label for child in owner.children if child.terminal is None])
-        self.assertEqual(("absent", None), (owner.world.task, owner.world.controller), "nothing is left registered or running")
-        self.assertNotIn("product-autostart-start", [child.label for child in owner.children])
+    def test_a_missing_legacy_fixture_finishes_the_owner_with_exit_1_before_any_autostart_change(self):
+        # Native 5594b6f5: the toggle off ran, then the planting failed, so the receipt said changed and held the clone.
+        # The legacy task is now the SYSTEM run's, before this owner; without it the owner refuses before any public toggle.
+        for scenario in sorted(autostart.SCENARIOS):
+            with self.subTest(scenario=scenario):
+                owner = self.owner(scenario)
+                owner.world.task = "absent"
+                result, finished = self.main(owner, "windows-preboot-reboot")
+                self.assertEqual((1, [1]), (result, finished), "a known refusal finishes; it never parks")
+                self.assertEqual([], [child.label for child in owner.children if child.terminal is None])
+                self.assertEqual(("absent", None), (owner.world.task, owner.world.controller), "nothing is left registered or running")
+                self.assertNotIn("product-autostart-start", [child.label for child in owner.children])
+                calls = [" ".join(tail) for label, tail in owner.world.trace if label == "public-cli"]
+                self.assertEqual([], [call for call in calls if "autostart" in call], "no public autostart toggle ran")
+                self.assertEqual([], [kind for kind, _ in owner.events if kind in job.AUTOSTART_INTENTS],
+                                 "the journal holds no autostart intent, so the receipt says untouched and holds no clone")
+
+    def test_the_planted_legacy_task_is_observed_before_any_public_autostart_toggle(self):
+        for scenario in sorted(autostart.SCENARIOS):
+            with self.subTest(scenario=scenario):
+                owner = self.owner(scenario)
+                self.assertEqual(0, preboot.run_preboot(owner, owner.config, source_roles, postboot))
+                kinds = [kind for kind, _ in owner.events]
+                observed = kinds.index("autostart-legacy-fixture-observed")
+                self.assertLess(observed, kinds.index("autostart-public-toggle-intent"))
+                self.assertEqual("highest", owner.events[observed][1]["before"]["qualifiedOwnership"])
+                toggles = [value["enabled"] for kind, value in owner.events if kind == "autostart-public-toggle-intent"]
+                self.assertEqual([True], toggles, "the one public toggle is the migration itself")
+                self.assertEqual("limited", owner.world.task)
 
     def test_a_known_refusal_after_the_query_gui_started_finishes_with_exit_1(self):
         owner = self.owner("query-first")
@@ -1351,6 +1372,223 @@ class RunKeySecurityTests(unittest.TestCase):
             for literal in SECTION_CAST.findall((ROOT / relative).read_text()):
                 self.assertNotIn("Audit", observed[literal][1].split(", "), relative + ": .NET reads this cast as asking for the SACL")
         self.assertEqual([14, "Access, Owner, Group"], observed["'Access, Owner, Group'"])
+
+
+
+PLANTER = "agent_tools/windows_autostart_create_highest_fixture.ps1"
+RUN_TEMPLATE = "agent_tools/windows_scenario_system_run.ps1.template"
+LEGACY_DESCRIPTION = "VPN Control owned acceptance legacy run-level fixture"
+LEGACY_RESULT = '{"schemaVersion":1,"taskPath":"\\\\VPN Control","runLevel":"HighestAvailable"}'
+PRINCIPAL = "S-1-5-21-3038404602-721382561-1826266252-1004"
+# Task Scheduler and the token, faked: each folder call is recorded with what it was given.
+LEGACY_FAKES = r"""
+using System;using System.Collections.Generic;using System.Runtime.InteropServices;
+public sealed class LegacyFakeRegistration {public string Description;}
+public sealed class LegacyFakePrincipal {public string Id,UserId;public int LogonType,RunLevel;}
+public sealed class LegacyFakeSettings {public bool Enabled,DisallowStartIfOnBatteries=true,StopIfGoingOnBatteries=true;public string ExecutionTimeLimit;}
+public sealed class LegacyFakeTrigger {public int Type;public bool Enabled;public string UserId;}
+public sealed class LegacyFakeTriggers {public List<LegacyFakeTrigger> Items=new List<LegacyFakeTrigger>();
+ public LegacyFakeTrigger Create(int type){var t=new LegacyFakeTrigger{Type=type};Items.Add(t);return t;}}
+public sealed class LegacyFakeAction {public int Type;public string Path,Arguments;}
+public sealed class LegacyFakeActions {public string Context;public List<LegacyFakeAction> Items=new List<LegacyFakeAction>();
+ public LegacyFakeAction Create(int type){var a=new LegacyFakeAction{Type=type};Items.Add(a);return a;}}
+public sealed class LegacyFakeDefinition {public LegacyFakeRegistration RegistrationInfo=new LegacyFakeRegistration();
+ public LegacyFakePrincipal Principal=new LegacyFakePrincipal();public LegacyFakeSettings Settings=new LegacyFakeSettings();
+ public LegacyFakeTriggers Triggers=new LegacyFakeTriggers();public LegacyFakeActions Actions=new LegacyFakeActions();}
+public sealed class LegacyFakeTask {public string Path;public LegacyFakeDefinition Definition;}
+public sealed class LegacyFakeFolder {public string Mode="";public List<string> Calls=new List<string>();
+ public Dictionary<string,LegacyFakeTask> Tasks=new Dictionary<string,LegacyFakeTask>();
+ public LegacyFakeTask GetTask(string name){Calls.Add("get");if(Mode=="denied")throw new COMException("fake",-2147024891);
+  LegacyFakeTask t;if(Tasks.TryGetValue(name,out t))return t;throw new COMException("fake",-2147024894);}
+ public LegacyFakeTask RegisterTaskDefinition(string name,LegacyFakeDefinition d,int flags,string user,object password,int logon,object sddl){
+  Calls.Add("register:"+name+":"+flags+":"+user+":"+(password==null)+":"+logon+":"+(sddl==null));
+  if(Mode=="register-denied")throw new UnauthorizedAccessException("Access is denied. (Exception from HRESULT: 0x80070005 (E_ACCESSDENIED))");
+  if(Tasks.ContainsKey(name))throw new COMException("fake",-2147024713);
+  var t=new LegacyFakeTask{Path="\\"+name,Definition=d};Tasks[name]=t;return t;}
+ public void DeleteTask(string name,int flags){Calls.Add("delete:"+name);if(!Tasks.Remove(name))throw new COMException("fake",-2147024894);}
+ public void Plant(string description,int runLevel){var d=new LegacyFakeDefinition();d.RegistrationInfo.Description=description;
+  d.Principal.RunLevel=runLevel;Tasks["VPN Control"]=new LegacyFakeTask{Path="\\VPN Control",Definition=d};}}
+public sealed class LegacyFakeService {public LegacyFakeFolder Folder=new LegacyFakeFolder();public void Connect(){}
+ public LegacyFakeFolder GetFolder(string path){return Folder;}public LegacyFakeDefinition NewTask(int flags){return new LegacyFakeDefinition();}}
+public sealed class LegacyFakeSid {public string Value;}
+public sealed class LegacyFakeIdentity {public static string Sid;public LegacyFakeSid User=new LegacyFakeSid{Value=Sid};
+ public static LegacyFakeIdentity GetCurrent(){return new LegacyFakeIdentity();}public void Dispose(){}}
+"""
+LEGACY_DRIVER = r"""
+function New-Object([string]$TypeName,[object[]]$ArgumentList,[string]$ComObject){
+ if($ComObject -ceq 'Schedule.Service'){return $script:service}
+ if($ComObject){throw 'LEGACY_FAKE_COM'}
+ return ,(Microsoft.PowerShell.Utility\New-Object -TypeName $TypeName -ArgumentList $ArgumentList)
+}
+function N($value,$code){if(-not $value){throw $code}}
+function Fresh([string]$sid,[string]$mode){[LegacyFakeIdentity]::Sid=$sid;$script:service=[LegacyFakeService]::new();$script:service.Folder.Mode=$mode;return $script:service.Folder}
+function Planted($folder){
+ $t=$null;if($folder.Tasks.ContainsKey('VPN Control')){$t=$folder.Tasks['VPN Control']}
+ if($null -eq $t){return $null}
+ $d=$t.Definition
+ return [ordered]@{description=$d.RegistrationInfo.Description;principal=@($d.Principal.Id,$d.Principal.UserId,$d.Principal.LogonType,$d.Principal.RunLevel);
+  settings=@($d.Settings.Enabled,$d.Settings.DisallowStartIfOnBatteries,$d.Settings.StopIfGoingOnBatteries,$d.Settings.ExecutionTimeLimit);
+  triggers=@($d.Triggers.Items|ForEach-Object {'{0}|{1}|{2}' -f $_.Type,$_.Enabled,$_.UserId});context=$d.Actions.Context;
+  actions=@($d.Actions.Items|ForEach-Object {'{0}|{1}|{2}' -f $_.Type,$_.Path,$_.Arguments})}
+}
+"""
+
+
+def indented_block(text, first):
+    """The block that opens on the line `first` and closes on the next line that is its own indent and a brace."""
+    lines = text.split("\n")
+    start = lines.index(first)
+    indent = first[:len(first) - len(first.lstrip(" "))]
+    end = lines.index(indent + "}", start + 1)
+    return "\n".join(lines[start:end + 1]) + "\n"
+
+
+class LegacyAutostartPlantTests(unittest.TestCase):
+    """Native 5594b6f5: the ordinary owner's RegisterTaskDefinition of the HighestAvailable task was E_ACCESSDENIED, after its
+    public autostart toggle had already run, so the receipt said changed and the reboot chain held the clone. The
+    pre-migration product (6f87f740) elevated itself at launch (DesktopWindowsElevation) and ran schtasks /RL HIGHEST
+    elevated. The SYSTEM run now plants that task, for the ordinary user, before the owner and any public toggle."""
+
+    def setUp(self):
+        self.planter = (ROOT / PLANTER).read_text()
+        self.template = (ROOT / RUN_TEMPLATE).read_text(encoding="ascii")
+
+    def faked_planter(self):
+        call = "[Security.Principal.WindowsIdentity]::GetCurrent()"
+        self.assertEqual(1, self.planter.count(call))
+        return self.planter.replace(call, "[LegacyFakeIdentity]::GetCurrent()")
+
+    def run_powershell(self, body):
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "legacy.ps1"
+            planter = Path(directory) / "planter.ps1"
+            planter.write_text(self.faked_planter(), encoding="utf-8")
+            script.write_text("$ErrorActionPreference = 'Stop'\nAdd-Type -TypeDefinition @'\n" + LEGACY_FAKES + "\n'@\n" + LEGACY_DRIVER
+                              + "$planterText = [IO.File]::ReadAllText('" + str(planter).replace("'", "''") + "')\n" + body
+                              + "[Console]::Out.Write(($out | ConvertTo-Json -Depth 8 -Compress))\n", encoding="utf-8")
+            result = subprocess.run([POWERSHELL, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(script)],
+                                    capture_output=True, text=True, timeout=180, env=dict(os.environ, POWERSHELL_TELEMETRY_OPTOUT="1"))
+        self.assertEqual((0, ""), (result.returncode, result.stderr), result.stdout)
+        return json.loads(result.stdout)
+
+    def test_the_legacy_task_arose_from_the_elevated_pre_migration_product(self):
+        # The recorded native child: the ordinary token's registration refused.
+        evidence = json.loads((Path(__file__).parent / "fixtures/windows_autostart_legacy_plant/native-planter-child.json").read_text())
+        raw = base64.b64decode(evidence["stderrBase64"])
+        self.assertEqual(evidence["stderrSha256"], hashlib.sha256(raw).hexdigest())
+        self.assertIn("Access is denied. (Exception from HRESULT: 0x80070005 (E_ACCESSDENIED))", raw.decode("utf-8"))
+        self.assertEqual(("autostart-highest-fixture", 1), (evidence["label"], evidence["exitCode"]))
+        # The planter now refuses any token but SYSTEM, and the owner never runs it.
+        self.assertIn("if ($identity.User.Value -cne 'S-1-5-18') { throw 'FIXTURE_SYSTEM_PLANTER' }", self.planter)
+        self.assertNotIn("migrationScriptPath", (ROOT / "agent_tools/windows_autostart_reboot.py").read_text().split("def collect", 1)[1]
+                         .split("def toggle", 1)[1])
+
+    def test_the_system_run_plants_before_the_owner_and_cleans_only_its_own_task(self):
+        lines = self.template.split("\n")
+        at = lambda text: next(number for number, line in enumerate(lines) if text in line)
+        plant = at("if($null -ne $m.legacyAutostart){")
+        self.assertLess(at("$script:P.legacy=$true"), at("[scriptblock]::Create($planter)"), "marked before the planter runs")
+        self.assertLess(plant, at("$registered=$folder.RegisterTaskDefinition($name"), "planted before the owner's task")
+        self.assertLess(plant, at("$script:P.launchConsumed=$true"), "planted before the owner can run")
+        self.assertEqual(2, self.template.count("'" + LEGACY_DESCRIPTION + "'"), "both cleanups know the planter's own description")
+        self.assertIn("$task.RegistrationInfo.Description = '" + LEGACY_DESCRIPTION + "'", self.planter)
+        self.assertEqual(1, self.template.count("'" + LEGACY_RESULT + "'"))
+        self.assertEqual(1, self.planter.count(" '" + LEGACY_RESULT + "'\n"), "the planter answers on the pipeline")
+        self.assertNotIn("[Console]::", self.planter, "the SYSTEM run replies on the console; the planter never writes to it")
+
+    @unittest.skipUnless(POWERSHELL, "a PowerShell interpreter is required")
+    def test_the_planter_registers_the_legacy_task_for_the_ordinary_user_only_as_system(self):
+        body = r"""
+$out = [ordered]@{}
+foreach ($case in @('system','ordinary','existing','system-principal','register-denied')) {
+ $sid = $(if ($case -ceq 'ordinary') { 'PRINCIPAL' } else { 'S-1-5-18' })
+ $folder = Fresh $sid $(if ($case -ceq 'register-denied') { 'register-denied' } else { '' })
+ if ($case -ceq 'existing') { $folder.Plant('another task', 0) }
+ $principal = $(if ($case -ceq 'system-principal') { 'S-1-5-18' } else { 'PRINCIPAL' })
+ $answer = $null; $threw = $null
+ try { $answer = @(& ([scriptblock]::Create($planterText)) -GuiPath 'C:\Program Files\VPN Control\vpn-control.exe' -Workspace 'C:\w' -PrincipalSid $principal) }
+ catch { $threw = [string]$_.Exception.Message }
+ $out[$case] = [ordered]@{answer=$answer; threw=$threw; calls=@($folder.Calls|Where-Object {$_ -cne 'get'}); task=(Planted $folder)}
+}
+""".replace("PRINCIPAL", PRINCIPAL)
+        out = self.run_powershell(body)
+        system = out["system"]
+        self.assertEqual(([LEGACY_RESULT], None), (system["answer"], system["threw"]))
+        self.assertEqual(["register:VPN Control:2:" + PRINCIPAL + ":True:3:True"], system["calls"],
+                         "TASK_CREATE, the ordinary user, no password, an interactive token, the scheduler's own SDDL")
+        self.assertEqual({"description": LEGACY_DESCRIPTION, "principal": ["Author", PRINCIPAL, 3, 1],
+                          "settings": [True, False, False, "PT0S"], "triggers": ["9|True|" + PRINCIPAL], "context": "Author",
+                          "actions": [r'0|C:\Program Files\VPN Control\vpn-control.exe|--autostart --state-dir "C:\w"']},
+                         system["task"])
+        self.assertEqual(("FIXTURE_SYSTEM_PLANTER", []), (out["ordinary"]["threw"], out["ordinary"]["calls"]))
+        self.assertEqual(("EXISTING_STARTUP_TASK_REFUSED", []), (out["existing"]["threw"], out["existing"]["calls"]))
+        self.assertEqual("another task", out["existing"]["task"]["description"])
+        self.assertEqual(("FIXTURE_ORDINARY_PRINCIPAL", []), (out["system-principal"]["threw"], out["system-principal"]["calls"]))
+        self.assertIn("E_ACCESSDENIED", out["register-denied"]["threw"])
+        self.assertIsNone(out["register-denied"]["task"])
+
+    @unittest.skipUnless(POWERSHELL, "a PowerShell interpreter is required")
+    def test_the_system_run_plants_marks_and_refuses_as_the_template_says(self):
+        plant = indented_block(self.template, " if($null -ne $m.legacyAutostart){")
+        absent = indented_block(self.template, "function Is-TaskAbsent($record){")
+        body = absent + r"""
+function Open-Pin($record,$directory){return $record}
+function Read-PinBytes($p,$limit){return ,[Text.UTF8Encoding]::new($false).GetBytes($planterText)}
+function Guard-Full {}
+$out = [ordered]@{}
+foreach ($case in @('absent','existing','refused','other-principal')) {
+ $folder = Fresh $(if ($case -ceq 'refused') { 'PRINCIPAL' } else { 'S-1-5-18' }) ''
+ if ($case -ceq 'existing') { $folder.Plant('another task', 0) }
+ $script:P = [ordered]@{legacy=$false; legacyPlanted=$false}
+ $m = [pscustomobject]@{mode='python-worker'; context=[pscustomobject]@{ordinarySid='PRINCIPAL'};
+  legacyAutostart=[pscustomobject]@{planterPin=@{}; guiPath='C:\gui.exe'; workspace='C:\w'; principalSid=$(if ($case -ceq 'other-principal') { 'S-1-5-21-9-9-9-1000' } else { 'PRINCIPAL' })}}
+ $threw = $null
+ try {
+PLANT } catch { $threw = [string]$_.Exception.Message }
+ $out[$case] = [ordered]@{threw=$threw; legacy=$script:P.legacy; planted=$script:P.legacyPlanted; task=$(if ($null -eq (Planted $folder)) { $null } else { (Planted $folder).description })}
+}
+""".replace("PLANT", plant).replace("PRINCIPAL", PRINCIPAL)
+        out = self.run_powershell(body)
+        self.assertEqual({"threw": None, "legacy": True, "planted": True, "task": LEGACY_DESCRIPTION}, out["absent"])
+        self.assertEqual({"threw": "RUN_LEGACY_AUTOSTART_EXISTS", "legacy": False, "planted": False, "task": "another task"}, out["existing"],
+                         "a task already there is never this run's: nothing marks it for removal")
+        self.assertEqual({"threw": "FIXTURE_SYSTEM_PLANTER", "legacy": True, "planted": False, "task": None}, out["refused"])
+        self.assertEqual({"threw": "RUN_LEGACY_AUTOSTART_INPUT", "legacy": False, "planted": False, "task": None}, out["other-principal"])
+
+    @unittest.skipUnless(POWERSHELL, "a PowerShell interpreter is required")
+    def test_the_system_run_removes_only_its_own_unmigrated_task(self):
+        absent = indented_block(self.template, "function Is-TaskAbsent($record){")
+        refusal = indented_block(self.template, " if(-not $unknown -and $script:P.legacy){")
+        closing = indented_block(self.template, "  if($script:P.legacyPlanted){")
+        body = absent + r"""
+$out = [ordered]@{}
+foreach ($case in @('own-highest','own-migrated','foreign','absent','denied')) {
+ foreach ($path in @('refusal','closing')) {
+  $folder = Fresh 'S-1-5-18' $(if ($case -ceq 'denied') { 'denied' } else { '' })
+  if ($case -ceq 'own-highest') { $folder.Plant('DESCRIPTION', 1) }
+  if ($case -ceq 'own-migrated') { $folder.Plant('DESCRIPTION', 0) }
+  if ($case -ceq 'foreign') { $folder.Plant('another task', 1) }
+  $script:P = [ordered]@{folder=$folder; legacy=$true; legacyPlanted=$true}
+  $unknown = $false; $threw = $null
+  try {
+   if ($path -ceq 'refusal') {
+REFUSAL   } else {
+CLOSING   }
+  } catch { $threw = [string]$_.Exception.Message }
+  $out[$case + ':' + $path] = [ordered]@{unknown=$unknown; threw=$threw; left=$folder.Tasks.ContainsKey('VPN Control'); planted=$script:P.legacyPlanted}
+ }
+}
+""".replace("REFUSAL", refusal).replace("CLOSING", closing).replace("DESCRIPTION", LEGACY_DESCRIPTION)
+        out = self.run_powershell(body)
+        self.assertEqual({"unknown": False, "threw": None, "left": False, "planted": False}, out["own-highest:refusal"])
+        self.assertEqual({"unknown": False, "threw": None, "left": False, "planted": True}, out["own-highest:closing"],
+                         "an owner that ended before the migration leaves the clone as it found it")
+        self.assertTrue(out["own-migrated:closing"]["left"], "a task the product migrated is the row's")
+        for path in ("refusal", "closing"):
+            self.assertTrue(out["foreign:" + path]["left"], "another task is never this run's to remove")
+            self.assertEqual((False, None, False), (out["absent:" + path]["unknown"], out["absent:" + path]["threw"], out["absent:" + path]["left"]))
+        self.assertTrue(out["denied:refusal"]["unknown"], "a failed lookup is no proof of absence")
+        self.assertEqual("RUN_LEGACY_AUTOSTART_CLOSING_OBSERVATION", out["denied:closing"]["threw"])
 
 
 if __name__ == "__main__":

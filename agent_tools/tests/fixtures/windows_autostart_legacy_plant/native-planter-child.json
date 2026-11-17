@@ -1,0 +1,13 @@
+{
+ "child": 22,
+ "description": "Child 22 of the native preboot, byte for byte from its evidence-1.zip: the ordinary owner's windows_autostart_create_highest_fixture.ps1 could not register the HighestAvailable task. Its public autostart toggle (child 19) had already run. The stderr hash is the one its child-terminal event recorded.",
+ "exitCode": 1,
+ "label": "autostart-highest-fixture",
+ "operationId": "5594b6f5-a42e-43e3-ad55-71b17107d816",
+ "package": "S_D4",
+ "row": "windows-autostart-migration.pre",
+ "schemaVersion": 1,
+ "stderrBase64": "QzpcUHJvZ3JhbURhdGFcVnBuQ29udHJvbE9yZGluYXJ5VGFzay01NTk0YjZmNS1hNDJlLTQzZTMtYWQ1NS03MWIxNzEwN2Q4MTZcd2luZG93c19hdXRvc3RhcnRfY3JlYXRlX2hpZ2hlc3RfZml4dHVyZS5wczENCiA6IEFjY2VzcyBpcyBkZW5pZWQuIChFeGNlcHRpb24gZnJvbSBIUkVTVUxUOiAweDgwMDcwMDA1IChFX0FDQ0VTU0RFTklFRCkpDQogICAgKyBDYXRlZ29yeUluZm8gICAgICAgICAgOiBPcGVyYXRpb25TdG9wcGVkOiAoOikgW3dpbmRvd3NfYXV0b3N0YS4uLmVzdF9maXh0dXJlLnBzMV0sIFVuYXV0aG9yaXplZEFjY2Vzc0V4Y2VwdGlvbg0KICAgICsgRnVsbHlRdWFsaWZpZWRFcnJvcklkIDogU3lzdGVtLlVuYXV0aG9yaXplZEFjY2Vzc0V4Y2VwdGlvbix3aW5kb3dzX2F1dG9zdGFydF9jcmVhdGVfaGlnaGVzdF9maXh0dXJlLnBzMQ0KIA0K",
+ "stderrSha256": "f5bc02f329e3646ae2dc7fd12f553bc32ae2cde2e1bc5d5c4ed52f0faca6c9c3",
+ "tools": "29c457eb"
+}

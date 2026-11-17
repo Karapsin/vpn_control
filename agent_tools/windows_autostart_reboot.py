@@ -161,34 +161,18 @@ def toggle(owner, state, inputs, enabled):
     return after
 
 
-def prepare_highest_fixture(owner, state, inputs):
-    """Create an exact owned legacy task once, only after public OFF removes ours.
+def migration(owner, state, inputs):
+    """The product's ordinary migration of the owned legacy HighestAvailable task.
 
-    The helper uses COM TASK_CREATE, never TASK_CREATE_OR_UPDATE. Existing or
-    raced names refuse. A native error is preserved; no elevated workaround.
+    The pre-migration product registered that task from an elevated process, which an unelevated ordinary token may
+    not do (native 5594b6f5, E_ACCESSDENIED). The SYSTEM run planted it for this ordinary user before this owner
+    started, so the first observation must already be that task, and nothing public ran before it: a planting that
+    fails ends the row before any autostart change of the product's.
     """
     before = collect(owner, inputs)
-    require(before["qualifiedOwnership"] == "absent" and before["run"]["state"] == "absent",
-            "legacy-fixture-exact-absence-required")
-    owner.event("autostart-highest-fixture-intent", {"before": before, "replayAllowed": False})
-    child = owner.child("autostart-highest-fixture", [inputs["powerShellPath"], "-NoProfile", "-NonInteractive",
-        "-ExecutionPolicy", "Bypass", "-File", inputs["migrationScriptPath"], "-GuiPath", inputs["guiPath"],
-        "-Workspace", inputs["workspace"], "-ExpectedSid", owner.request["context"]["ordinarySid"]])
-    output = child.completed()
-    require(output.returncode == 0 and output.stderr == "" and len(output.stdout.encode()) <= 4096,
-            "highest-fixture-original-child-terminal")
-    created = json.loads(output.stdout)
-    require(created == {"schemaVersion": 1, "taskPath": TASK, "runLevel": "HighestAvailable"},
-            "highest-fixture-helper-result")
-    after = collect(owner, inputs)
-    require(after["qualifiedOwnership"] == "highest", "actual-legacy-highest-fixture-required")
-    owner.event("autostart-highest-fixture-observed", {"before": before, "after": after, "child": child.ordinal})
-    return after
-
-
-def migration(owner, state, inputs):
-    toggle(owner, state, inputs, False)
-    before = prepare_highest_fixture(owner, state, inputs)
+    require(before["qualifiedOwnership"] == "highest" and before["run"]["state"] == "absent",
+            "legacy-highest-fixture-planted-before-owner")
+    owner.event("autostart-legacy-fixture-observed", {"before": before})
     # A read must leave the actual high task unchanged before explicit mutation.
     public(owner, state, "settings", "show")
     unchanged = collect(owner, inputs)
