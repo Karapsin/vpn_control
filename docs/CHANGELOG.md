@@ -8,6 +8,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows update grant rows read the SYSTEM collector worker's session from its retained handle while it runs, and a proof without a session fails on its own code.
 - Windows native runs accept a raced host cache copy, record a submit that provably never left the host as not_submitted, and keep the guest agent's own error for a lost file push.
 - Windows reboot rows read the Run key's owner, group and DACL only, without the SACL an ordinary user cannot read.
+- Windows update grant rows keep the host's status copy current through every SYSTEM collector program, so the install-helper prompt is reviewed before it expires.
 
 ## 2.3.1 - 2026-11-17
 
