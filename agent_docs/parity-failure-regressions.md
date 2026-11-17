@@ -3790,8 +3790,8 @@ failures are `ordinary-native-snapshot`, because the world now writes the v3 col
 causal RED of each part. GREEN: all 56 tests of the module pass on both Pythons, under PowerShell 7.4.6.
 
 Native only:
-- whether Windows keeps the explicit trigger `Enabled` of a task registered as XML. If it does not, the row ends at
-  `legacy-fixture-any-user-enabled-logon-trigger`, holding no clone.
+- whether Windows keeps the explicit trigger `Enabled` of a task registered as XML. It does not: `df48b890` read back a
+  bare `<LogonTrigger />` (see the next subsection).
 - whether `LookupAccountNameW` maps the stored trigger name for the ordinary token.
 
 #### The planted task's DACL let the ordinary user only read it (predicted from `7ca6638a`, coordinator decision)
@@ -3831,6 +3831,46 @@ Product findings, to verify natively and not fixed here:
   path, because each one migrates a planted legacy task.
 - The product's unelevated `schtasks /Change /RL LIMITED` re-registers a task whose logon trigger is for any user. It
   is unproven that an unelevated token may do that, even with full access to the task.
+
+#### An enabled trigger reads back without `Enabled` (native, `df48b890` 2026-11-17)
+
+NF2 run `df48b890` (`windows-autostart-migration.pre`, S_D4, tools `3d349640`) planted the task in the right shape:
+- a logon trigger for any user;
+- the ordinary SID as principal, with an interactive token and HighestAvailable;
+- the creator-owned DACL, which gave the ordinary token `grantedAccess` `0x1F01FF`.
+
+Task Scheduler still serialized the trigger as a bare `<LogonTrigger />`, even though the planter registered it as XML
+with an explicit `<Enabled>true</Enabled>`. Task Scheduler omits a trigger's `Enabled` when it is true, which is the
+schema default; the `7ca6638a` object-model registration read back the same way. The tool read the missing element as
+`""`, so the guard at `windows_autostart_reboot.py:214` refused `legacy-fixture-any-user-enabled-logon-trigger` before
+any public step, and the clone was not held. The evidence is in
+`.runtime/windows-scenarios/df48b890-b2ff-4d46-b0e1-598b19267dbe/evidence-1.zip`. The logs are in
+`.runtime/windows-parity-20261107/evidence/fix-trigger-account/enabled/`.
+
+The product had the same defect (PRODUCT, contracts DESKTOP-003 and DESKTOP-007). `WindowsTaskXml.inspect` reads the
+task through `schtasks /Query /TN "VPN Control" /XML`, which prints the registered definition: the same serialization
+the snapshot's `IRegisteredTask.Xml` read. It required `<Enabled>true</Enabled>` on the trigger and returned `CONFLICT`
+otherwise. So every enabled task that Task Scheduler serialized this way would be refused: a real legacy HighestAvailable
+task, and the product's own LeastPrivilege task. That means a failed `settings set autostart true` migration and a failed
+disable.
+
+Fix:
+- Tool: `task_fields` reads an absent trigger `Enabled` as `"true"`. A present one keeps its own text, and a duplicate
+  is `duplicate-task-field`. `ownership()` now requires exactly `"true"`, so only an explicit other value, such as
+  `false`, refuses (`exact-owned-startup-task`). The migration guard, the migration comparison and the new-boot join
+  all use the same reader. The snapshot reads no `Enabled`. The planter keeps its explicit element, and its comment now
+  says Windows drops it.
+- Product: `WindowsTaskXml.inspect` takes an absent `Enabled` as enabled. It still refuses one that is not `true`,
+  and it refuses two of them.
+- The `autostart` and `migrationScript` role digests name the new bytes.
+
+| Failure type | Regression | RED / GREEN |
+| --- | --- | --- |
+| An enabled trigger serialized without `Enabled` read as not enabled (TOOL) | `TriggerAccountTests.test_an_enabled_trigger_task_scheduler_wrote_without_enabled_is_the_legacy_shape` (fixture `native-df48b890-snapshot.json`: child 17's stdout, sha256 `d8df2a25…`, the owner's frames and the unfixed `reboot.df48b890.before.source`) | The unfixed reader gives `""` for the native trigger. The fix gives `"true"`, takes the native task as `highest` with `CHANGE_ACCESS`, and runs every reboot scenario through the postboot over a bare trigger. An explicit `false` reads as `"false"` and is never owned. RED with the final tests over an archive of `3d349640`: 2 failures on Python 3.14.3 and 3.12.13 (the native reader, and the product's absent-means-true line). GREEN: all tests pass on both Pythons. |
+| The product refused an enabled task whose trigger had no `Enabled` (PRODUCT) | `DesktopAutostartManagerTest.enabledTriggerThatTaskSchedulerWritesWithoutEnabledIsStillOwnedAndMigrates` | A bare trigger is `OwnedHighest` or `OwnedOrdinary`, and `setEnabled(true)` migrates it with exactly one `schtasks /Change /RL LIMITED`. An explicit `false` and a duplicate `Enabled` are each `CONFLICT`. RED on the unfixed product: 30 tests, this one failed. GREEN: 30 tests, 0 failures (`:desktopApp:test --tests DesktopAutostartManagerTest`). |
+
+Native only: that `schtasks /Query /XML` prints the same bare trigger as `IRegisteredTask.Xml`. Both serialize the
+registered definition, but the product's read has not yet been seen natively.
 
 ### The SYSTEM collector's worker session, read after the worker exited (native NE2, S_Q, 2026-11-17)
 

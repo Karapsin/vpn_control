@@ -660,6 +660,49 @@ class DesktopAutostartManagerTest {
     }
 
     @Test
+    fun enabledTriggerThatTaskSchedulerWritesWithoutEnabledIsStillOwnedAndMigrates() {
+        // Native df48b890: Task Scheduler omits a trigger's Enabled when it is true (the schema default), so an
+        // enabled legacy task reads back as a bare <LogonTrigger />. DESKTOP-003 / DESKTOP-007: it must migrate.
+        val bare = { runLevel: String ->
+            windowsTaskXml(runLevel = runLevel).replace("<LogonTrigger><Enabled>true</Enabled></LogonTrigger>", "<LogonTrigger />")
+        }
+        val command = "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe"
+        assertTrue(WindowsTaskXml.inspect(bare("HighestAvailable"), command, "--autostart", "S-1-5-21-1") is WindowsTaskOwnership.OwnedHighest)
+        assertTrue(WindowsTaskXml.inspect(bare("LeastPrivilege"), command, "--autostart", "S-1-5-21-1") is WindowsTaskOwnership.OwnedOrdinary)
+        for (trigger in listOf("<LogonTrigger><Enabled>false</Enabled></LogonTrigger>",
+                "<LogonTrigger><Enabled>true</Enabled><Enabled>true</Enabled></LogonTrigger>")) {
+            val disabled = windowsTaskXml(runLevel = "HighestAvailable").replace("<LogonTrigger><Enabled>true</Enabled></LogonTrigger>", trigger)
+            assertEquals(WindowsTaskOwnership.Unknown("CONFLICT"), WindowsTaskXml.inspect(disabled, command, "--autostart", "S-1-5-21-1"))
+        }
+
+        val commands = mutableListOf<List<String>>()
+        var taskXml = bare("HighestAvailable")
+        val manager = DesktopAutostartManager(
+            commandResolver = { command },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { argv ->
+                commands += argv
+                when {
+                    argv.first() == "powershell.exe" -> DesktopAutostartCommandResult(0, "ABSENT")
+                    argv.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
+                    argv.take(2) == listOf("reg", "query") -> DesktopAutostartCommandResult(1, missingRegistration())
+                    argv.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(0, taskXml)
+                    argv.take(2) == listOf("schtasks", "/Change") -> {
+                        taskXml = bare("LeastPrivilege")
+                        DesktopAutostartCommandResult(0, "ok")
+                    }
+                    else -> DesktopAutostartCommandResult(1, "unexpected")
+                }
+            },
+        )
+
+        assertTrue(manager.setEnabled(true).isSuccess)
+        assertEquals(listOf("schtasks", "/Change", "/TN", "VPN Control", "/RL", "LIMITED"),
+            commands.single { it.take(2) == listOf("schtasks", "/Change") })
+        assertTrue(commands.none { it.take(2) in listOf(listOf("schtasks", "/Create"), listOf("schtasks", "/Delete")) })
+    }
+
+    @Test
     fun migrationChangeFailureDoesNotReportSuccess() {
         val commands = mutableListOf<List<String>>()
         val manager = DesktopAutostartManager(

@@ -695,7 +695,10 @@ internal object WindowsTaskXml {
             return WindowsTaskOwnership.Unknown("CONFLICT")
         val trigger = directChildren(triggers).singleOrNull()
             ?: return WindowsTaskOwnership.Unknown("CONFLICT")
-        if (directText(trigger, "Enabled")?.equals("true", ignoreCase = true) != true)
+        // Task Scheduler omits a trigger's Enabled when it is true, the schema default: an enabled task's
+        // schtasks /Query /XML reads back as a bare <LogonTrigger />. Only an explicit other value is a disabled trigger.
+        val enabled = directChildren(trigger).filter { it.name() == "Enabled" }
+        if (enabled.size > 1 || enabled.any { !it.textContent.trim().equals("true", ignoreCase = true) })
             return WindowsTaskOwnership.Unknown("CONFLICT")
         val principal = elements(document, "Principal").singleOrNull()
             ?: return WindowsTaskOwnership.Unknown("CONFLICT")

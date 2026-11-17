@@ -23,8 +23,8 @@ function Get-StartupTask($folder) {
 }
 # schtasks /Create /SC ONLOGON runs the task "whenever any user logs on": its logon trigger names no user. Native
 # 7ca6638a registered a trigger for the ordinary SID instead, and Task Scheduler stored that user as an account name.
-# The definition is registered as this XML, so the trigger keeps the explicit Enabled the product's recognizer reads
-# (DesktopAutostartManager WindowsTaskXml); the object model's Enabled=true left no element (7ca6638a).
+# The definition is registered as this XML. Task Scheduler still stores an enabled trigger without Enabled, its schema
+# default (7ca6638a through the object model, df48b890 through this XML), and every reader takes absent as true.
 $template = @'
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>

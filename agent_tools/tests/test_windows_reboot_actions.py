@@ -1732,7 +1732,8 @@ class TriggerAccountTests(WorldCase):
             self.owned(self.native_v3([{"name": ACCOUNT, "sid": NATIVE_SID}], xml.replace(principal, "<UserId>" + OTHER_SID + "</UserId>")))
 
     def test_the_native_legacy_trigger_shape_ends_the_row_before_any_public_autostart_step(self):
-        for trigger in ("<LogonTrigger><UserId>" + ACCOUNT + "</UserId></LogonTrigger>", NAMED_TRIGGER, "<LogonTrigger></LogonTrigger>"):
+        # A named user, with or without Enabled; an explicit Enabled false is no owned task at all (exact-owned-startup-task).
+        for trigger in ("<LogonTrigger><UserId>" + ACCOUNT + "</UserId></LogonTrigger>", NAMED_TRIGGER):
             with self.subTest(trigger=trigger):
                 owner = self.owner("autostart-migration")
                 owner.world.trigger["highest"] = trigger
@@ -1802,9 +1803,11 @@ class TriggerAccountTests(WorldCase):
         snapshot["task"] = {"state": "present", "path": autostart.TASK, "xml": xml, "sddl": "D:P(A;;FA;;;SY)", "enabled": True,
                             "accounts": guest_accounts(xml, {}), "grantedAccess": FILE_ALL_ACCESS}
         self.assertEqual("highest", autostart.ownership(snapshot, GUI, r"C:\w", SID))
-        # The product's own recognizer (DesktopAutostartManager WindowsTaskXml.inspect) needs the trigger's Enabled text.
+        # The product's own recognizer (DesktopAutostartManager WindowsTaskXml.inspect) takes an absent Enabled as true,
+        # as Task Scheduler writes an enabled trigger (df48b890); its JVM regression is
+        # DesktopAutostartManagerTest.enabledTriggerThatTaskSchedulerWritesWithoutEnabledIsStillOwnedAndMigrates.
         product = (ROOT / "desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopAutostartManager.kt").read_text(encoding="utf-8")
-        self.assertIn('if (directText(trigger, "Enabled")?.equals("true", ignoreCase = true) != true)', product)
+        self.assertIn('val enabled = directChildren(trigger).filter { it.name() == "Enabled" }', product)
 
     def test_the_native_default_dacl_let_the_ordinary_user_only_read_and_the_planter_grants_its_creator_full_access(self):
         # 7ca6638a: registered by SYSTEM with the scheduler's default, the task gave the ordinary user FR only.
@@ -1849,6 +1852,41 @@ class TriggerAccountTests(WorldCase):
         self.assertEqual(1, script.count("  $grantedAccess = [VcAutostartNative]::TaskAccess($sddl)\n"))
         self.assertLess(script.index("$sddl = [string]$task.GetSecurityDescriptor(7)"), script.index("[VcAutostartNative]::TaskAccess($sddl)"))
         self.assertIn("   grantedAccess=$grantedAccess;", script)
+
+    def test_an_enabled_trigger_task_scheduler_wrote_without_enabled_is_the_legacy_shape(self):
+        # Native df48b890 (NF2, S_D4, tools 3d349640): the planted task was right in every field and its token held FA,
+        # but its trigger read back as a bare <LogonTrigger />, Task Scheduler's form of an enabled trigger (the schema
+        # default), and the guard took the missing Enabled as not enabled.
+        record = json.loads((TRIGGER_ACCOUNT / "native-df48b890-snapshot.json").read_text(encoding="utf-8"))
+        raw = base64.b64decode(record["child"]["stdoutBase64"])
+        self.assertEqual(record["child"]["stdoutSha256"], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(("autostart-read-only", 0, 0), (record["child"]["label"], record["child"]["exitCode"], record["child"]["stderrBytes"]))
+        self.assertEqual(["windows_autostart_reboot.py:214", "windows_autostart_reboot.py:24"], record["ownerTerminal"]["frames"][-2:])
+        native = json.loads(raw)
+        self.assertIn("<LogonTrigger />", native["task"]["xml"])
+        before = TRIGGER_ACCOUNT / record["beforeSources"]["reboot"]["path"]
+        self.assertEqual(record["beforeSources"]["reboot"]["sha256"], hashlib.sha256(before.read_bytes()).hexdigest())
+        self.assertIn('    require(legacy["triggerUser"] == "" and legacy["triggerEnabled"] == "true", "legacy-fixture-any-user-enabled-logon-trigger")',
+                      before.read_text().split("\n"))
+        self.assertEqual("", source_module(before, "unfixed_df48b890_reboot").task_fields(native["task"]["xml"])["triggerEnabled"],
+                         "the unfixed reader took the bare trigger as not enabled")
+        fields = autostart.task_fields(native["task"]["xml"])
+        self.assertEqual(("", "true", "HighestAvailable", NATIVE_SID), (fields["triggerUser"], fields["triggerEnabled"], fields["runLevel"], fields["principalUser"]))
+        workspace = fields["arguments"][len('--autostart --state-dir "'):-1]
+        owned = lambda snapshot: autostart.ownership(snapshot, fields["command"], workspace, NATIVE_SID)
+        self.assertEqual("highest", owned(native))
+        self.assertEqual(autostart.CHANGE_ACCESS, native["task"]["grantedAccess"] & autostart.CHANGE_ACCESS)
+        # The whole preboot over that trigger shape migrates, and so does the postboot.
+        for scenario in sorted(autostart.SCENARIOS):
+            with self.subTest(scenario=scenario):
+                owner = self.after_reboot(scenario, trigger={"highest": "<LogonTrigger />", "limited": "<LogonTrigger />"})
+                self.assertEqual(0, postboot.run_postboot(owner, owner.config, source_roles))
+        # A present Enabled keeps its own text: an explicit false is a disabled trigger, and a task with one is never owned.
+        disabled = native["task"]["xml"].replace("<LogonTrigger />", "<LogonTrigger><Enabled>false</Enabled></LogonTrigger>")
+        self.assertEqual("false", autostart.task_fields(disabled)["triggerEnabled"])
+        native["task"]["xml"] = disabled
+        with self.assertRaisesRegex(AssertionError, "^exact-owned-startup-task$"):
+            owned(native)
 
     def snapshot_native_class(self):
         script = (ROOT / "agent_tools/windows_autostart_snapshot.ps1").read_text(encoding="ascii")

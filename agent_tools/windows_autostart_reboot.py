@@ -63,11 +63,17 @@ def task_fields(xml):
         elements = node.findall("t:" + field, {"t": NS})
         require(len(elements) <= 1, "duplicate-task-field")
         return "" if not elements else (elements[0].text or "")
+    def enabled(node):
+        # Task Scheduler omits Enabled when it is true, the schema default (native df48b890: a bare <LogonTrigger />),
+        # so an absent element reads as "true"; a present one keeps its own text.
+        elements = node.findall("t:Enabled", {"t": NS})
+        require(len(elements) <= 1, "duplicate-task-field")
+        return "true" if not elements else (elements[0].text or "")
     principal, action, trigger = principals[0], actions[0], triggers[0]
     return {"principalUser": text(principal, "UserId"), "logonType": text(principal, "LogonType"),
         "runLevel": text(principal, "RunLevel"), "command": text(action, "Command"),
         "arguments": text(action, "Arguments"), "workingDirectory": text(action, "WorkingDirectory"),
-        "triggerUser": text(trigger, "UserId"), "triggerEnabled": text(trigger, "Enabled"),
+        "triggerUser": text(trigger, "UserId"), "triggerEnabled": enabled(trigger),
         "actionsContext": root.find("t:Actions", {"t": NS}).get("Context", ""),
         "principalId": principal.get("id", "")}
 
@@ -122,7 +128,7 @@ def ownership(snapshot, gui, workspace, sid):
             and ntpath.normcase(fields["command"]) == ntpath.normcase(path_value(gui))
             and fields["arguments"] == f'--autostart --state-dir "{path_value(workspace)}"'
             and fields["workingDirectory"] == "" and fields["triggerUser"] in {"", sid}
-            and fields["triggerEnabled"] in {"", "true"}
+            and fields["triggerEnabled"] == "true"
             and fields["actionsContext"] == fields["principalId"] != "", "exact-owned-startup-task")
     # Exported XML omits RunLevel for the limited default; only HighestAvailable elevates.
     require(fields["runLevel"] in {"", "LeastPrivilege", "HighestAvailable"}, "task-run-level")
@@ -207,9 +213,9 @@ def migration(owner, state, inputs):
     before = collect(owner, inputs)
     require(before["qualifiedOwnership"] == "highest" and before["run"]["state"] == "absent",
             "legacy-highest-fixture-planted-before-owner")
-    # The planted task is schtasks /SC ONLOGON's: a trigger for any user, explicitly enabled, which the product's
-    # recognizer requires. Read back otherwise (7ca6638a: a named user, no Enabled), the product would refuse it only
-    # after the public toggle, so the row ends here, before any autostart change of the product's.
+    # The planted task is schtasks /SC ONLOGON's: a trigger for any user, enabled. Task Scheduler writes an enabled
+    # trigger without Enabled (df48b890), which task_fields reads as true. A named user (7ca6638a) or an explicit
+    # Enabled other than true ends the row here, before any autostart change of the product's.
     legacy = task_fields(before["task"]["xml"])
     require(legacy["triggerUser"] == "" and legacy["triggerEnabled"] == "true", "legacy-fixture-any-user-enabled-logon-trigger")
     # A creator-owned legacy task grants its creator full access. The guest's AccessCheck for the ordinary token must
