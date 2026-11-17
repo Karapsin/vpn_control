@@ -1,0 +1,53 @@
+def _collect_terminal_owned(self, correlation_id: str, *, lease_guard) -> dict[str, Any]:
+    with self._journal_lock():
+        record = self._require(correlation_id)
+        plan = ScenarioPlan.from_mapping(record["plan"])
+        if record["state"] != ExecutionState.TERMINAL.value or plan.scenario_id not in _COLLECTED_SCENARIOS:
+            return self._public(record)
+        collection = record.get("collection")
+        if collection and collection["state"] == "complete":
+            return self._public(record)
+        # Reserve this read before leaving the lock. Concurrent observers
+        # cannot duplicate collection or expose incomplete terminal success.
+        record["collection"] = {"state": "collecting", "reason": "collector_pending", "rawJson": None}
+        self._write(record)
+        identity = JobIdentity.from_mapping(record["identity"])
+    lease_guard()
+    payload = None
+    reason = "collector_unavailable"
+    try:
+        collector = getattr(self.driver, "collect", None)
+        evidence = collector(plan, identity) if callable(collector) else None
+        if isinstance(evidence, Mapping):
+            raw = json.dumps(dict(evidence), sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+            if len(raw.encode("utf-8")) <= _COLLECTION_LIMIT:
+                payload = raw
+                if self._collection_matches(plan, record["exitCode"], evidence):
+                    reason = "collected"
+                else:
+                    reason = "collector_unknown"
+            else:
+                reason = "collector_output_limit"
+    except Exception:
+        reason = "collector_unavailable"
+    except BaseException:
+        # An interrupted observer must not leave an authored collecting
+        # state forever. The separate owned collection lease controls when
+        # a later read may resume; the mutation and terminal stay unchanged.
+        with self._journal_lock():
+            current = self._require(correlation_id)
+            if current["identity"] == identity.as_dict() and current["receipt"] == record["receipt"]:
+                current["collection"] = {"state": "unknown", "reason": "collector_interrupted", "rawJson": None}
+                self._write(current)
+        raise
+    lease_guard()
+    with self._journal_lock():
+        current = self._require(correlation_id)
+        if current["identity"] != identity.as_dict() or current["receipt"] != record["receipt"]:
+            return self._public(current)
+        current["collection"] = {"state": "complete" if reason == "collected" else "unknown",
+                                 "reason": reason, "rawJson": payload}
+        # Store the complete bounded actual collector payload privately
+        # before computing the finite public projection.
+        self._write(current)
+        return self._public(current)

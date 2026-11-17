@@ -1,0 +1,21 @@
+{
+  "commit": "3a081133b540dde133c737640d5bcbd26d8f65d8",
+  "files": {
+    "collect.before.source": {
+      "path": "agent_tools/native_scenario_windows.py",
+      "extract": "NativeScenarioWindowsDriver.collect, dedented",
+      "sha256": "d56f84da1e012b4e0293dc3725d975d762e1814b36e3d3cf724dcc115b3ecf73"
+    },
+    "status.before.source": {
+      "path": "agent_tools/native_scenario_windows.py",
+      "extract": "NativeScenarioWindowsDriver._status, dedented",
+      "sha256": "e790229a9247cc1f14776daf38e1ab44868e82de640865e6c09bf801e712049e"
+    },
+    "executor_collect.before.source": {
+      "path": "agent_tools/native_scenario_execution.py",
+      "extract": "ScenarioExecutor._collect_terminal_owned, dedented",
+      "sha256": "533c0bac70a261e2cdc1ae18bd2175772f6fb2fc30537ac165566587cf04a255"
+    }
+  },
+  "reason": "Windows collection and status reads before the loaded-coordinator fix (native 49358925 NG3 S_D5 reset and 6b6eca56 ND3 Python install, 2026-11-17, 1-minute load 21-30): one 60 s admission deadline carried a read-only call's admission and every read, so after a 15-47 s admission and a 21-41 s read the next read was refused at its prelaunch readiness check (readiness_deadline, readiness_observation_unavailable), and collect() and the executor made that refusal collector_unavailable at once, every time."
+}

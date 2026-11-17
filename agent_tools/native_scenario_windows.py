@@ -62,7 +62,17 @@ _EVIDENCE_CHUNK = 1024 * 1024
 # A row with more evidence needs a pull that resumes.
 _MAX_EVIDENCE = 8 * 1024 * 1024
 _SUBMIT_SECONDS = 180
-_OBSERVE_SECONDS = 60
+_OBSERVE_SECONDS = 60  # One read: its dispatch revalidation (an original-route status and a probe), transfer and run.
+# A read-only call's own admission, before its first read: readiness's own budget (readiness.NORMAL_BUDGET). On a loaded
+# coordinator (1-minute load 21-30) an admission took 15-47 s and a read 21-41 s (native 49358925, 6b6eca56); with one
+# 60 s deadline for the admission and every read of a collection, the evidence pull after them was refused at its
+# prelaunch revalidation, every time. A read-only admission's deadline is this budget plus each of its reads' own: the
+# collect, decision and pull admissions (b21c6b55) as much as the status, job-file and wait reads.
+_READ_ADMISSION_SECONDS = 180
+# A collection read refused before it ran only because the host-readiness check could not finish in its budget: passing
+# under load, not a fact about the job or the host. Collection stays pending and is read again (ScenarioExecutor).
+# Every other refusal (trust, identity, account, journal) still ends the collection unavailable at once.
+_PASSING_REFUSALS = frozenset({"readiness_deadline", "readiness_observation_unavailable"})
 _EVIDENCE_NAME = re.compile(r"evidence-[0-9]{1,6}\.zip\Z")
 # windows_uac_decision writes exactly these fields in a known input's terminal.
 _DECISION_FIELDS = frozenset({"state", "operationId", "attempt", "decision", "prompt", "promptClosed", "approvalSucceeded",
@@ -1543,7 +1553,7 @@ class NativeScenarioWindowsDriver:
         program = retained["program"]["program"]
         try:
             config = ssh_transport.load_config(self.configuration_root)
-            with self._admitted(config, plan, _OBSERVE_SECONDS):
+            with self._admitted(config, plan, _READ_ADMISSION_SECONDS + _OBSERVE_SECONDS):
                 reply = self._send(config, plan.host, carrier.durable_command(plan.correlation_id, program, retained["packet"], mode="observe", wait_seconds=0),
                                    seconds=_OBSERVE_SECONDS, plan=plan, label="observe")
         except (OSError, ValueError, ssh_transport.SshConfigError):
@@ -1595,7 +1605,7 @@ class NativeScenarioWindowsDriver:
 
     def _read_job_file(self, plan: native_scenario_execution.ScenarioPlan, data: str, name: str) -> Any:
         config = ssh_transport.load_config(self.configuration_root)
-        with self._admitted(config, plan, _OBSERVE_SECONDS):
+        with self._admitted(config, plan, _READ_ADMISSION_SECONDS + _OBSERVE_SECONDS):
             reply = self._send(config, plan.host, _py(_READ_JOB_FILE, data, name), seconds=_OBSERVE_SECONDS, plan=plan,
                                 label="read-" + name)
         return reply["value"] if isinstance(reply, Mapping) and reply.get("state") == "read" else None
@@ -1654,7 +1664,7 @@ class NativeScenarioWindowsDriver:
         _need(retained is not None, "windows_scenario_job_unknown")
         try:
             config = ssh_transport.load_config(self.configuration_root)
-            with self._admitted(config, plan, seconds + _OBSERVE_SECONDS):
+            with self._admitted(config, plan, _READ_ADMISSION_SECONDS + seconds + _OBSERVE_SECONDS):
                 reply = self._send(config, plan.host, _py(_WAIT_UAC, retained["program"]["dataDirectory"], uac["event"], str(seconds)),
                                    seconds=seconds + _OBSERVE_SECONDS, plan=plan, label="wait-uac")
         except (OSError, ValueError, ssh_transport.SshConfigError):
@@ -1682,7 +1692,7 @@ class NativeScenarioWindowsDriver:
         _need(root in (expected, "/private" + expected), "windows_scenario_job_unknown")
         try:
             config = ssh_transport.load_config(self.configuration_root)
-            with self._admitted(config, plan, seconds + _OBSERVE_SECONDS):
+            with self._admitted(config, plan, _READ_ADMISSION_SECONDS + seconds + _OBSERVE_SECONDS):
                 reply = self._send(config, plan.host, _py(_WAIT_JOB, root + "/" + plan.correlation_id, str(seconds)),
                                    seconds=seconds + _OBSERVE_SECONDS, plan=plan, label="wait-job")
         except (OSError, ValueError, ssh_transport.SshConfigError):
@@ -1707,6 +1717,11 @@ class NativeScenarioWindowsDriver:
             pass
 
     def collect(self, plan: native_scenario_execution.ScenarioPlan, identity: native_scenario_execution.JobIdentity) -> Mapping[str, Any] | None:
+        """Read a terminal job's receipt and evidence: reads only, each with its own budget inside its admission.
+
+        A read refused before it ran only because the host-readiness check ran out of time (_PASSING_REFUSALS) raises
+        CollectionPending: the executor keeps the collection pending and reads again. Any other failure is None.
+        """
         retained = self._retained(plan)
         if retained is None or identity.pid is None:
             return None
@@ -1714,8 +1729,9 @@ class NativeScenarioWindowsDriver:
         try:
             config = ssh_transport.load_config(self.configuration_root)
             # The receipt, the decision read and the evidence pull each take their own admission: natively (b21c6b55, a
-            # loaded host) the three shared one 60 s budget, and every pull was cut off at its end.
-            with self._admitted(config, plan, _OBSERVE_SECONDS):
+            # loaded host) the three shared one 60 s budget, and every pull was cut off at its end. Each read-only admission
+            # also allows for its own readiness check before its first read (49358925, 6b6eca56: up to 47 s).
+            with self._admitted(config, plan, _READ_ADMISSION_SECONDS + _OBSERVE_SECONDS):
                 reply = self._send(config, plan.host, _py(_COLLECT, data), seconds=_OBSERVE_SECONDS, plan=plan, label="collect")
             if reply is None or reply.get("state") != "collected":
                 return None
@@ -1728,6 +1744,10 @@ class NativeScenarioWindowsDriver:
                 return None
             if summary is not None:
                 self._pull_evidence(config, plan, data, json.loads(raw).get("evidence"))
+        except ssh_transport._readiness.ReadinessBlocked as refusal:
+            if refusal.reason in _PASSING_REFUSALS:
+                raise native_scenario_execution.CollectionPending(refusal.reason) from None
+            return None
         except (OSError, ValueError, KeyError, TypeError, ssh_transport.SshConfigError):
             return None
         return summary
@@ -1758,7 +1778,7 @@ class NativeScenarioWindowsDriver:
             return True
         decision = str(uuid.uuid5(uuid.UUID(plan.correlation_id), "windows-uac-decision"))
         root = _binding(self.root, plan)["spec"]["root"]
-        with self._admitted(config, plan, _OBSERVE_SECONDS):
+        with self._admitted(config, plan, _READ_ADMISSION_SECONDS + _OBSERVE_SECONDS):
             reply = self._send(config, plan.host, _py(_READ_DECISION, root, decision), seconds=_OBSERVE_SECONDS, plan=plan,
                                label="read-decision")
         if update and reply is None:
@@ -1812,7 +1832,7 @@ class NativeScenarioWindowsDriver:
         offset = 0
         # One admission for the whole pull, with a call's budget for each chunk: every chunk is a new SSH connection.
         chunks = max(1, -(-evidence["bytes"] // _EVIDENCE_CHUNK))
-        with self._admitted(config, plan, _OBSERVE_SECONDS * chunks):
+        with self._admitted(config, plan, _READ_ADMISSION_SECONDS + _OBSERVE_SECONDS * chunks):
             while offset < evidence["bytes"]:
                 reply = self._send(config, plan.host, _py(_PULL, data, evidence["name"], str(offset), str(_EVIDENCE_CHUNK)),
                                    seconds=_OBSERVE_SECONDS, plan=plan, label="pull")

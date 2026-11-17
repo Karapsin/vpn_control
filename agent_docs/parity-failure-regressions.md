@@ -3938,6 +3938,33 @@ admission archives the closed journals of the earlier rows. If the start itself 
 host-side archive action that this change does not provide. Only a native row on a long-lived clone confirms the
 move under the real lock.
 
+### Terminal jobs never collected on a loaded coordinator (native NG3 `49358925`, ND3 `6b6eca56`, 2026-11-17)
+
+Both guest jobs ended with exit 0, but their collection stayed `collecting` for more than 20 minutes and then ended
+`collector_unavailable`. The coordinator Mac had a 1-minute load of 21–30, and the archlinux host was healthy. The
+`timing.jsonl` files of both runs are in `.runtime/windows-parity-20261107/evidence/fix-pull-readiness/native/`.
+Under that load a readiness admission took 15–47 s. Each read took 21–41 s, because every read first revalidates its
+admission with two sequential SSH children: the original route's status and the probe. A read-only call's admission
+deadline was the same 60 s as one read's budget. That one deadline carried the admission, the receipt read and every
+evidence chunk (`b21c6b55`, the section above, split them into three admissions, each still counting its own
+admission against a read's budget). The pull after them was refused at its prelaunch check (`PrelaunchReadinessRefusal`
+`readiness_deadline`, or `readiness_observation_unavailable` when the expired budget surfaced inside the adapter).
+`collect()` returned None, and the executor recorded `collector_unavailable` on the first refusal. Every later
+`status` or `settle.py` read repeated the same arithmetic. Status reads lost the same way: an admission of 43 s or more
+left the observe read refused, which `status` reported as `observer_unavailable`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A read-only call's single deadline carried its admission and all of its reads, so a loaded coordinator could never read a terminal job (TOOL) | `test_native_scenario_windows`: `CollectionReadinessTests.test_a_loaded_coordinator_collects_the_most_evidence_inside_one_collection_RED_refused_GREEN`, `test_a_loaded_coordinator_reads_a_terminal_jobs_status_first_time_RED_refused_GREEN` | A read-only call's admission deadline is now readiness's own budget (`_READ_ADMISSION_SECONDS`, 180 s, `readiness.NORMAL_BUDGET`) plus each read's own `_OBSERVE_SECONDS`. On top of `b21c6b55`'s separate collect, decision and pull admissions (a pull allows 60 s per chunk), each of them, and the status, job-file and wait reads, now also allows for its own readiness check. Each read is still bounded by its own timeout from when it starts (`run_ssh`). The submit admission is unchanged. |
+| A passing readiness refusal of a terminal job's read became `collector_unavailable` at once, with no reason kept (TOOL) | `test_a_pull_refused_before_it_ran_is_read_again_after_a_wait_RED_unavailable_GREEN`, `test_passing_refusals_stay_pending_with_their_reason_until_the_bound`, `test_a_refused_admission_of_a_collection_is_pending_too`, `test_a_refusal_that_does_not_pass_is_unavailable_at_once`, `test_a_journal_refusal_outside_its_bound_or_state_is_invalid` | `collect()` raises `native_scenario_execution.CollectionPending` only for `readiness_deadline` and `readiness_observation_unavailable`. The executor reads again after waits of 30 s and 90 s. If the read is still refused, it keeps `collecting`/`collector_pending` with `refusal: {reason, attempts}` (public `collectionRefusal`). After 9 consecutive refusals it records `collector_unavailable` with that refusal. Any other refusal, such as trust, identity or `prepared_context_stale`, is still unavailable at once. |
+
+RED: each `_RED_` test first runs the 3a081133 `collect`, `_status` and `_collect_terminal_owned` from
+`fixtures/windows_collection_readiness/` (gated by `red_gate`). The same test module was also run against the
+complete unfixed modules in an isolated clone: `FAILED (failures=6)` on Python 3.14 and 3.12. GREEN: the class passes
+on both. `readiness.py` is unchanged, because mutating admissions keep their refusals. Only a native collection on a
+loaded coordinator can confirm the budgets, for example re-settling `49358925` and `6b6eca56` without replaying either
+job.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

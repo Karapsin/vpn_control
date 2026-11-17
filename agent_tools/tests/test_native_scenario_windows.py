@@ -6,7 +6,7 @@ the real durable owner through a fake ssh binary with a harmless job in its plac
 import ast
 import base64
 import contextlib
-from contextlib import contextmanager, nullcontext
+from contextlib import ExitStack, contextmanager, nullcontext
 import gzip
 import hashlib
 import json
@@ -973,8 +973,8 @@ class CollectionTests(DriverBase):
         self.finished(evidence={"name": "evidence-1.zip", "bytes": windows._MAX_EVIDENCE + 1, "sha256": "0" * 64, "entries": 1})
         self.assertEqual(("unknown", "terminal_collection_unverified"), tuple(self.status()[key] for key in ("state", "reason")))
         self.assertEqual(0, self.ssh.pulls)
-        # Every chunk shares one admission: each pull is a new SSH connection and a new python3.
-        self.assertLessEqual(windows._MAX_EVIDENCE // windows._EVIDENCE_CHUNK, windows._OBSERVE_SECONDS // 7)
+        # Every chunk shares one admission, and each is its own read with its own budget inside it: what a loaded
+        # coordinator needs for the most evidence is CollectionReadinessTests' first test.
 
     def test_evidence_names_are_closed(self):
         self.ssh.evidence = b"zip-bytes"
@@ -1003,6 +1003,233 @@ class CollectionTests(DriverBase):
         self.assertLessEqual(len(payload), execution._COLLECTION_LIMIT)
         self.assertLess(len(raw), 6144, "around 5 KB, as the spec sizes it")
         self.assertTrue(execution.ScenarioExecutor._collection_matches(self.plan(), 0, json.loads(payload)))
+
+
+class CollectionReadinessTests(DriverBase):
+    """A terminal job's reads on a loaded coordinator (native 49358925 and 6b6eca56, 1-minute load 21-30).
+
+    RED on 3a081133: one 60 s deadline carried a collection's admission and every read, so the evidence pull after a
+    15-47 s admission and a 21-41 s receipt read was refused at its prelaunch readiness check, and collect() made that
+    refusal collector_unavailable at once, on every later read too. Beforeimages: fixtures/windows_collection_readiness
+    (3a081133); each failure type's test proves its RED on them.
+    """
+    LIMIT = 9  # execution.COLLECTION_REFUSAL_LIMIT, named here so the RED run on the unfixed source reaches its asserts.
+
+    def setUp(self):
+        super().setUp()
+        self.executor().start(self.request())
+        self.sleeps = []
+        patcher = mock.patch.object(execution, "time", types.SimpleNamespace(sleep=self.sleeps.append), create=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.refused = []
+
+    def status(self):
+        return self.executor().status(self.operation)
+
+    BEFORE = ("collect.before.source", "status.before.source", "executor_collect.before.source")
+
+    def before(self, name):
+        fixture = Path(__file__).parent / "fixtures" / "windows_collection_readiness"
+        source = fixture / name
+        self.assertEqual(json.loads((fixture / "provenance.json").read_bytes())["files"][name]["sha256"],
+                         hashlib.sha256(source.read_bytes()).hexdigest())
+        return source
+
+    def red_required(self):
+        from agent_tools.tests import red_gate
+        return red_gate.red_required(self, *(self.before(name) for name in self.BEFORE))
+
+    @contextmanager
+    def unfixed(self):
+        """The driver's collect and _status and the executor's collection exactly as they were at 3a081133."""
+        functions = {}
+        for name, module in zip(self.BEFORE, (windows, windows, execution)):
+            namespace = dict(module.__dict__)
+            exec(compile(self.before(name).read_bytes(), name, "exec"), namespace)
+            functions[name] = namespace
+        with mock.patch.object(windows.NativeScenarioWindowsDriver, "collect", functions["collect.before.source"]["collect"]), \
+                mock.patch.object(windows.NativeScenarioWindowsDriver, "_status", functions["status.before.source"]["_status"]), \
+                mock.patch.object(execution.ScenarioExecutor, "_collect_terminal_owned",
+                                  functions["executor_collect.before.source"]["_collect_terminal_owned"]):
+            yield
+
+    def record(self):
+        return json.loads((self.journal / (self.operation + ".json")).read_text())
+
+    def refusal(self, reason="readiness_deadline"):
+        """What ssh_transport raises when a read's dispatch revalidation refuses: before any child ran."""
+        return transport.PrelaunchReadinessRefusal(transport._readiness.ReadinessBlocked(reason, self.operation), "0" * 64)
+
+    def refuse(self, kind, reason="readiness_deadline", times=None):
+        programs = {"collect": windows._COLLECT, "pull": windows._PULL}
+        run = self.ssh.run
+        left = [times]
+
+        def refusing(argv, **options):
+            if ast.literal_eval(argv[5][5:-1]) == programs[kind] and left[0] != 0:
+                left[0] = None if left[0] is None else left[0] - 1
+                self.refused.append(kind)
+                raise self.refusal(reason)
+            return run(argv, **options)
+        self.ssh.run = refusing
+
+    def with_evidence(self, size):
+        self.ssh.evidence = os.urandom(size)
+        self.finished(evidence={"name": "evidence-1.zip", "bytes": size, "sha256": hashlib.sha256(self.ssh.evidence).hexdigest(), "entries": 1})
+
+    def loaded(self):
+        """The slowest admission and read the two native runs timed, on a clock. Each read's budget is its own timeout
+        from when it starts, inside its admission's deadline, as ssh_transport.run_ssh bounds it; a read that cannot
+        finish inside that is refused at its dispatch revalidation, before it ran."""
+        admission, read = 47.0, 41.0
+        clock, deadlines = [5000.0], []
+
+        @contextmanager
+        def admitted(root, host, operation, *, deadline=None, requirements=None):
+            clock[0] += admission
+            if clock[0] > deadline:
+                raise transport._readiness.ReadinessBlocked("readiness_deadline", operation)
+            deadlines.append(deadline)
+            try:
+                yield
+            finally:
+                deadlines.pop()
+        run = FakeSsh.run.__get__(self.ssh)  # Never an earlier half's clock.
+
+        def reading(argv, **options):
+            if clock[0] + read > min(clock[0] + options["timeout"], *deadlines):
+                self.refused.append("read")
+                raise self.refusal()
+            clock[0] += read
+            return run(argv, **options)
+        self.ssh.run = reading
+        times = types.SimpleNamespace(monotonic=lambda: clock[0], time=lambda: 1_800_000_000.0, sleep=self.sleeps.append)
+        stack = ExitStack()
+        stack.enter_context(mock.patch.object(transport, "admitted_transport", admitted))
+        stack.enter_context(mock.patch.object(windows, "time", times))
+        return stack
+
+    def test_a_loaded_coordinator_reads_a_terminal_jobs_status_first_time_RED_refused_GREEN(self):
+        self.finished()
+        if self.red_required():
+            with self.loaded(), self.unfixed():
+                result = self.status()
+            # RED: the status read after a 47 s admission had 13 s of its 60 left and was refused before it ran.
+            self.assertEqual(("unknown", "observer_unavailable", ["read"]), (result["state"], result["reason"], self.refused))
+            self.refused.clear()
+        with self.loaded():
+            result = self.status()
+        self.assertEqual(("terminal", "complete"), (result["state"], result.get("collectionState")))
+        self.assertEqual(([], []), (self.refused, self.sleeps), "the job's status read and its collection ran first time")
+
+    def test_a_loaded_coordinator_collects_the_most_evidence_inside_one_collection_RED_refused_GREEN(self):
+        self.with_evidence(windows._MAX_EVIDENCE)
+        receipt, self.ssh.collect_reply = self.ssh.collect_reply, {"state": "unknown"}
+        self.assertEqual(("unknown", "collector_unavailable"), tuple(self.status()[key] for key in ("state", "collectionReason")))
+        self.ssh.collect_reply = receipt  # Terminal and journaled; only its collection is left, as for 49358925.
+        if self.red_required():
+            with self.loaded(), self.unfixed():
+                result = self.status()
+            # RED: one 60 s deadline for the admission and every read; the receipt read after the admission was refused.
+            self.assertEqual(("unknown", "collector_unavailable", ["read"], 0),
+                             (result["state"], result["collectionReason"], self.refused, self.ssh.pulls))
+            self.refused.clear()
+        with self.loaded():
+            result = self.status()
+        self.assertEqual(("terminal", "complete"), (result["state"], result.get("collectionState")))
+        self.assertEqual(([], []), (self.refused, self.sleeps), "the receipt read and every chunk ran first time")
+        self.assertEqual(windows._MAX_EVIDENCE // windows._EVIDENCE_CHUNK, self.ssh.pulls)
+
+    def test_a_pull_refused_before_it_ran_is_read_again_after_a_wait_RED_unavailable_GREEN(self):
+        self.with_evidence(windows._EVIDENCE_CHUNK + 17)
+        if self.red_required():
+            self.refuse("pull", times=1)
+            with self.unfixed():
+                result = self.status()
+            # RED: the passing refusal of a terminal job's read was collector_unavailable at once, with no reason kept.
+            self.assertEqual(("unknown", "collector_unavailable", ["pull"], []),
+                             (result["state"], result["collectionReason"], self.refused, self.sleeps))
+            self.assertEqual({"state", "reason", "rawJson"}, set(self.record()["collection"]))
+            self.refused.clear()
+        self.refuse("pull", times=1)
+        result = self.status()
+        self.assertEqual(("terminal", "complete"), (result["state"], result["collectionState"]))
+        self.assertEqual((["pull"], [30.0]), (self.refused, self.sleeps))
+        self.assertNotIn("collectionRefusal", result)
+        self.assertNotIn("refusal", self.record()["collection"])
+        directory = self.root.joinpath(*windows._EVIDENCE_PARENT, self.operation)
+        self.assertEqual(self.ssh.evidence, (directory / "evidence-1.zip").read_bytes())
+
+    def test_passing_refusals_stay_pending_with_their_reason_until_the_bound(self):
+        self.with_evidence(9)
+        self.refuse("collect", reason="readiness_observation_unavailable")
+        for attempts in (3, 6):
+            result = self.status()
+            self.assertEqual(("unknown", "terminal_collection_unverified", "terminal", "collector_pending"),
+                             (result["state"], result["reason"], result["executionState"], result["collectionReason"]))
+            self.assertEqual({"reason": "readiness_observation_unavailable", "attempts": attempts}, result["collectionRefusal"])
+            self.assertEqual("collecting", self.record()["collection"]["state"])
+        self.assertEqual([30.0, 90.0] * 2, self.sleeps)
+        result = self.status()
+        self.assertEqual("collector_unavailable", result["collectionReason"])
+        self.assertEqual({"reason": "readiness_observation_unavailable", "attempts": self.LIMIT}, result["collectionRefusal"])
+        self.assertEqual([30.0, 90.0] * 3, self.sleeps)
+        self.assertEqual(self.LIMIT, len(self.refused))
+        self.assertEqual("collector_unavailable", self.status()["collectionReason"])
+        self.assertEqual((self.LIMIT + 1, 6), (len(self.refused), len(self.sleeps)), "past the bound: one read a call")
+        self.ssh.run = FakeSsh.run.__get__(self.ssh)
+        result = self.status()
+        self.assertEqual(("terminal", "complete"), (result["state"], result["collectionState"]))
+        self.assertNotIn("collectionRefusal", result)
+        self.assertEqual(1, self.ssh.submits)
+        self.assertEqual(self.LIMIT, execution.COLLECTION_REFUSAL_LIMIT)
+
+    def test_a_refusal_that_does_not_pass_is_unavailable_at_once(self):
+        self.with_evidence(9)
+        for reason in ("trust_mismatch", "machine_identity_mismatch", "prepared_context_stale"):
+            with self.subTest(reason=reason):
+                self.refused.clear()
+                self.refuse("pull", reason=reason, times=1)
+                result = self.status()
+                self.assertEqual(("unknown", "collector_unavailable"), (result["state"], result["collectionReason"]))
+                self.assertNotIn("collectionRefusal", result)
+                self.assertEqual((["pull"], []), (self.refused, self.sleeps))
+
+    def test_a_refused_admission_of_a_collection_is_pending_too(self):
+        self.finished()
+        admissions = []
+
+        @contextmanager
+        def refused(root, host, operation, *, deadline=None, requirements=None):
+            admissions.append(deadline)
+            if len(admissions) > 1:  # The job's status read is admitted; each collection admission is refused.
+                raise transport._readiness.ReadinessBlocked("readiness_deadline", operation)
+            yield
+        with mock.patch.object(transport, "admitted_transport", refused):
+            result = self.status()
+        self.assertEqual(("collector_pending", {"reason": "readiness_deadline", "attempts": 3}),
+                         (result.get("collectionReason"), result.get("collectionRefusal")))
+        self.assertNotIn("collect", self.ssh.calls, "no admission, no read")
+        self.assertEqual(("terminal", "complete"), tuple(self.status()[key] for key in ("state", "collectionState")))
+
+    def test_a_journal_refusal_outside_its_bound_or_state_is_invalid(self):
+        self.finished()
+        self.refuse("collect")
+        self.status()
+        path = self.journal / (self.operation + ".json")
+        original = self.record()
+        for change in ({"refusal": {"reason": "readiness_deadline", "attempts": 0}},
+                       {"refusal": {"reason": "readiness_deadline", "attempts": self.LIMIT + 1}},
+                       {"refusal": {"reason": "not a token", "attempts": 1}},
+                       {"refusal": {"reason": "readiness_deadline", "attempts": 1, "extra": 1}},
+                       {"state": "unknown", "reason": "collector_unknown"}):
+            with self.subTest(change=change):
+                value = json.loads(json.dumps(original))
+                value["collection"].update(change)
+                path.write_text(json.dumps(value))
+                with self.assertRaises(execution.ScenarioExecutionError):
+                    self.status()
 
 
 class DelegateTests(DriverBase):

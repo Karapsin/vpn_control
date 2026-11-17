@@ -18,6 +18,7 @@ from pathlib import Path
 import re
 import stat
 import tempfile
+import time
 from typing import Any, Mapping, Protocol
 
 try:  # Windows has no fcntl/flock or POSIX mode-bit ownership model.
@@ -70,6 +71,27 @@ class SubmitNotSent(ValueError):
     read-only or cache-only calls before the one submitting call. Any failure that cannot prove it stays an ordinary
     exception, which the executor records as an ambiguous submit. Its text is a finite reason token.
     """
+
+
+class CollectionPending(Exception):
+    """A driver's collection of an already terminal, receipt-proven job that was refused before its read ran, for a
+    reason that passes (its host-readiness check ran out of time on a loaded coordinator).
+
+    Nothing was read and nothing changed. The executor keeps the collection pending and reads again after a backoff,
+    a bounded number of times (COLLECTION_REFUSAL_LIMIT), then records it unavailable. Its text is a finite reason token.
+    """
+
+    def __init__(self, reason: str):
+        if type(reason) is not str or _TOKEN.fullmatch(reason) is None:
+            raise ValueError("invalid_collection_pending_reason")
+        super().__init__(reason)
+        self.reason = reason
+
+
+# Consecutive passing refusals of one collection, across calls, before it is recorded unavailable; and the waits between
+# the attempts one call makes.
+COLLECTION_REFUSAL_LIMIT = 9
+COLLECTION_BACKOFF = (30.0, 90.0)
 
 
 class ExecutionState(str, Enum):
@@ -336,9 +358,14 @@ class ScenarioExecutor:
             collection = record.get("collection")
             if collection and collection["state"] == "complete":
                 return self._public(record)
+            # A passing refusal's count survives this reservation; any other outcome ends it.
+            refusal = collection.get("refusal") if collection else None
+            refused = refusal["attempts"] if refusal else 0
             # Reserve this read before leaving the lock. Concurrent observers
             # cannot duplicate collection or expose incomplete terminal success.
             record["collection"] = {"state": "collecting", "reason": "collector_pending", "rawJson": None}
+            if refusal:
+                record["collection"]["refusal"] = refusal
             self._write(record)
             identity = JobIdentity.from_mapping(record["identity"])
         lease_guard()
@@ -346,19 +373,34 @@ class ScenarioExecutor:
         reason = "collector_unavailable"
         try:
             collector = getattr(self.driver, "collect", None)
-            evidence = collector(plan, identity) if callable(collector) else None
-            if isinstance(evidence, Mapping):
-                raw = json.dumps(dict(evidence), sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
-                if len(raw.encode("utf-8")) <= _COLLECTION_LIMIT:
-                    payload = raw
-                    if self._collection_matches(plan, record["exitCode"], evidence):
-                        reason = "collected"
+            waits = iter(COLLECTION_BACKOFF)
+            while True:
+                try:
+                    evidence = collector(plan, identity) if callable(collector) else None
+                except CollectionPending as pending:
+                    # Refused before the read ran, for a passing reason: pending, read again after a wait, bounded.
+                    refused = min(refused + 1, COLLECTION_REFUSAL_LIMIT)
+                    refusal = {"reason": pending.reason, "attempts": refused}
+                    wait = next(waits, None) if refused < COLLECTION_REFUSAL_LIMIT else None
+                    if wait is None:
+                        reason = "collector_pending" if refused < COLLECTION_REFUSAL_LIMIT else "collector_unavailable"
+                        break
+                    time.sleep(wait)
+                    continue
+                refusal = None
+                if isinstance(evidence, Mapping):
+                    raw = json.dumps(dict(evidence), sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+                    if len(raw.encode("utf-8")) <= _COLLECTION_LIMIT:
+                        payload = raw
+                        if self._collection_matches(plan, record["exitCode"], evidence):
+                            reason = "collected"
+                        else:
+                            reason = "collector_unknown"
                     else:
-                        reason = "collector_unknown"
-                else:
-                    reason = "collector_output_limit"
+                        reason = "collector_output_limit"
+                break
         except Exception:
-            reason = "collector_unavailable"
+            reason, refusal = "collector_unavailable", None
         except BaseException:
             # An interrupted observer must not leave an authored collecting
             # state forever. The separate owned collection lease controls when
@@ -374,8 +416,10 @@ class ScenarioExecutor:
             current = self._require(correlation_id)
             if current["identity"] != identity.as_dict() or current["receipt"] != record["receipt"]:
                 return self._public(current)
-            current["collection"] = {"state": "complete" if reason == "collected" else "unknown",
+            current["collection"] = {"state": {"collected": "complete", "collector_pending": "collecting"}.get(reason, "unknown"),
                                      "reason": reason, "rawJson": payload}
+            if refusal is not None:
+                current["collection"]["refusal"] = refusal  # The passing refusal that left it pending, or unavailable.
             # Store the complete bounded actual collector payload privately
             # before computing the finite public projection.
             self._write(current)
@@ -527,7 +571,13 @@ class ScenarioExecutor:
             raise ScenarioExecutionError("Scenario collection lease pin is invalid.")
         collection = value.get("collection")
         if collection is not None:
-            if (not isinstance(collection, dict) or set(collection) != {"state", "reason", "rawJson"}
+            refusal = collection.get("refusal") if isinstance(collection, dict) else None
+            if (not isinstance(collection, dict) or set(collection) - {"refusal"} != {"state", "reason", "rawJson"}
+                    or ("refusal" in collection and (
+                        (collection.get("state"), collection.get("reason")) not in {("collecting", "collector_pending"), ("unknown", "collector_unavailable")}
+                        or not isinstance(refusal, dict) or set(refusal) != {"reason", "attempts"}
+                        or not isinstance(refusal["reason"], str) or _TOKEN.fullmatch(refusal["reason"]) is None
+                        or type(refusal["attempts"]) is not int or not 1 <= refusal["attempts"] <= COLLECTION_REFUSAL_LIMIT))
                     or collection["state"] not in {"collecting", "complete", "unknown"}
                     or collection["reason"] not in {"collector_pending", "collected", "collector_unavailable", "collector_unknown", "collector_output_limit", "collector_interrupted"}):
                 raise ScenarioExecutionError("Scenario collection journal is invalid.")
@@ -650,6 +700,8 @@ class ScenarioExecutor:
             result["collectionState"] = "complete" if complete else "unknown"
             if collection:
                 result["collectionReason"] = collection["reason"]
+                if collection.get("refusal"):  # A finite readiness reason token and a count.
+                    result["collectionRefusal"] = dict(collection["refusal"])
                 if collection["rawJson"]:
                     private = json.loads(collection["rawJson"])
                     if private.get("partial") is True:

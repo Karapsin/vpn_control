@@ -1,0 +1,23 @@
+def collect(self, plan: native_scenario_execution.ScenarioPlan, identity: native_scenario_execution.JobIdentity) -> Mapping[str, Any] | None:
+    retained = self._retained(plan)
+    if retained is None or identity.pid is None:
+        return None
+    data = retained["program"]["dataDirectory"]
+    try:
+        config = ssh_transport.load_config(self.configuration_root)
+        with self._admitted(config, plan, _OBSERVE_SECONDS):
+            reply = self._send(config, plan.host, _py(_COLLECT, data), seconds=_OBSERVE_SECONDS, plan=plan, label="collect")
+            if reply is None or reply.get("state") != "collected":
+                return None
+            self._retain_host_timing(plan, reply.get("timing"))
+            raw = base64.b64decode(reply["receipt"], validate=True)
+            summary = self._summary(plan, raw, reply.get("jobExit"))
+            if summary is not None and not self._decision_joined(config, plan, summary, json.loads(raw)):
+                # A deny row or a TUN grant passes, and a grant fails by its CANCELLED, only with its decision's own
+                # terminal; until then unknown.
+                return None
+            if summary is not None:
+                self._pull_evidence(config, plan, data, json.loads(raw).get("evidence"))
+    except (OSError, ValueError, KeyError, TypeError, ssh_transport.SshConfigError):
+        return None
+    return summary

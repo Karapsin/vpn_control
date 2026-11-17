@@ -1,0 +1,16 @@
+def _status(self, plan: native_scenario_execution.ScenarioPlan) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    retained = self._retained(plan)
+    if retained is None:
+        return None
+    program = retained["program"]["program"]
+    try:
+        config = ssh_transport.load_config(self.configuration_root)
+        with self._admitted(config, plan, _OBSERVE_SECONDS):
+            reply = self._send(config, plan.host, carrier.durable_command(plan.correlation_id, program, retained["packet"], mode="observe", wait_seconds=0),
+                               seconds=_OBSERVE_SECONDS, plan=plan, label="observe")
+    except (OSError, ValueError, ssh_transport.SshConfigError):
+        return None
+    if (reply is None or reply.get("schemaVersion") != 1 or reply.get("operationId") != plan.correlation_id
+            or not isinstance(reply.get("status"), Mapping) or reply["status"].get("operationId") != plan.correlation_id):
+        return None
+    return reply, retained["program"]
