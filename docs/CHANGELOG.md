@@ -9,6 +9,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows native runs accept a raced host cache copy, record a submit that provably never left the host as not_submitted, and keep the guest agent's own error for a lost file push.
 - Windows reboot rows read the Run key's owner, group and DACL only, without the SACL an ordinary user cannot read.
 - Windows update grant rows keep the host's status copy current through every SYSTEM collector program, so the install-helper prompt is reviewed before it expires.
+- Windows reboot rows plant the legacy HighestAvailable autostart task from the SYSTEM run before the owner starts, as the elevated legacy app created it, so a planting failure never holds a clone.
 
 ## 2.3.1 - 2026-11-17
 
