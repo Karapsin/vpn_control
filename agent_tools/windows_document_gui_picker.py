@@ -105,6 +105,11 @@ PROFILE["steps"]["export-menu"] = {"point": [316, 89], "anchor": [268, 62, 366, 
 # item inside the menu panel, and the point is on that item.
 PROFILE["steps"]["export-file"] = {"point": [310, 146], "anchor": [273, 122, 381, 166],
                                    "sha256": "e16e4dd9ca67c8f5931dcd70fee34a025f9826e6e3907d5334fe1a08b5825a2b"}
+# import-menu: reviewed by the coordinator from 384c84a3 frame 05 (pixels 1ff873fd..., origin 140,16; the same pixels as
+# the reviewed export-menu frame 01 of 5bb9629d). The Routing Rules screen after the export half, no menu or dialog
+# open; the anchor holds only the outlined Import button at the top left, and the point is its centre.
+PROFILE["steps"]["import-menu"] = {"point": [214, 89], "anchor": [166, 62, 264, 116],
+                                   "sha256": "5b8e0cd3f4d9030cd97bcd6298dc0da8ca96aed44956d11a64848785d6d131cd"}
 
 
 def need(value, code):
