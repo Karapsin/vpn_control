@@ -117,7 +117,8 @@ $BrokerProbe = Start-Process -FilePath (Join-Path $Launcher.DirectoryName "app/n
     -NoNewWindow -RedirectStandardOutput $BrokerOutput -RedirectStandardError $BrokerError -PassThru
 if (-not $BrokerProbe.WaitForExit(30000)) { throw "Extracted native broker argument rejection timed out; outcome is unknown" }
 $BrokerProbe.Refresh()
-if ($BrokerProbe.ExitCode -ne 1 -or (Get-Content $BrokerOutput -Raw) -or
+# Exit 10 is the broker step `arguments` (agent_docs/desktop-runtime-troubleshooting.md).
+if ($BrokerProbe.ExitCode -ne 10 -or (Get-Content $BrokerOutput -Raw) -or
     (Get-Content $BrokerError -Raw).Trim() -cne "INVALID_ARGUMENT") {
     throw "Extracted native broker did not reject missing arguments before admission"
 }
@@ -127,7 +128,8 @@ $BrokerDenied = Start-Process -FilePath (Join-Path $Launcher.DirectoryName "app/
     -NoNewWindow -RedirectStandardOutput $BrokerOutput -RedirectStandardError $BrokerError -PassThru
 if (-not $BrokerDenied.WaitForExit(30000)) { throw "Extracted native broker runtime-authority rejection timed out; outcome is unknown" }
 $BrokerDenied.Refresh()
-if ($BrokerDenied.ExitCode -ne 1 -or (Get-Content $BrokerOutput -Raw) -or
+# Exit 11 is the broker step `runtime-authority`.
+if ($BrokerDenied.ExitCode -ne 11 -or (Get-Content $BrokerOutput -Raw) -or
     (Get-Content $BrokerError -Raw).Trim() -cne "PERMISSION_DENIED") {
     throw "Extracted native broker did not reject an unapproved runtime before owner admission"
 }
