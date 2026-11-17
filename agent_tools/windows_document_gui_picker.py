@@ -110,6 +110,11 @@ PROFILE["steps"]["export-file"] = {"point": [310, 146], "anchor": [273, 122, 381
 # open; the anchor holds only the outlined Import button at the top left, and the point is its centre.
 PROFILE["steps"]["import-menu"] = {"point": [214, 89], "anchor": [166, 62, 264, 116],
                                    "sha256": "5b8e0cd3f4d9030cd97bcd6298dc0da8ca96aed44956d11a64848785d6d131cd"}
+# import-file: reviewed by the coordinator from a15c93cc frame 06 (pixels 4046ea8c..., origin 140,16). The Import dropdown
+# open under the Import button with File and Clipboard, no dialog yet; the anchor holds only the File item, the same
+# pixels as the reviewed export-file anchor 103 pixels to the left, and the point is on that item.
+PROFILE["steps"]["import-file"] = {"point": [207, 146], "anchor": [170, 122, 278, 166],
+                                   "sha256": "e16e4dd9ca67c8f5931dcd70fee34a025f9826e6e3907d5334fe1a08b5825a2b"}
 
 
 def need(value, code):
