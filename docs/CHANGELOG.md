@@ -9,6 +9,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Custom configurations: the injected direct-probe outbound resolves domains through the configuration's own default DNS server, so configs with two or more DNS servers (or SSH Routing) are no longer rejected by sing-box before the VPN or proxy starts.
 - Windows reboot rows resolve task account names to SIDs, plant the legacy task in its creator-owned any-user shape, and refuse before any public toggle when the ordinary user could not change it.
 - Windows autostart treats a logon trigger whose Enabled element Task Scheduler omitted as enabled, so enabled tasks are no longer reported as conflicts when autostart is turned on or off.
+- Windows protected-storage update rows settle the product's process-admission refusal of a squatted install root as a known failure, removing the counterfeit before any further CLI call.
 
 ## 2.3.2 - 2026-11-17
 
