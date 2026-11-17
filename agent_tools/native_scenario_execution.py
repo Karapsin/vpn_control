@@ -27,6 +27,7 @@ except ImportError:  # pragma: no cover - exercised by Windows import/discovery
 
 
 _TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+_REASON_CHARACTERS = re.compile(r"[^A-Za-z0-9_.:-]+")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _ARTIFACT_ID = re.compile(r"^sha256-[0-9a-f]{64}$")
 _JOURNAL_VERSION = 1
@@ -62,12 +63,24 @@ class ScenarioExecutionError(ValueError):
     """A scenario request or durable record is invalid."""
 
 
+class SubmitNotSent(ValueError):
+    """A driver's submit that provably ended before its effect-bearing request left the host.
+
+    Raise it only where the driver can prove that no request able to start the job was sent: a failure in preparatory,
+    read-only or cache-only calls before the one submitting call. Any failure that cannot prove it stays an ordinary
+    exception, which the executor records as an ambiguous submit. Its text is a finite reason token.
+    """
+
+
 class ExecutionState(str, Enum):
     INTENT = "intent"
     SUBMITTING = "submitting"
     SUBMITTED = "submitted"
     TERMINAL = "terminal"
     UNKNOWN = "unknown"
+    # Final: the driver proved nothing that could start the job was sent. Never observed, never submitted again;
+    # a new attempt is a new correlation.
+    NOT_SUBMITTED = "not_submitted"
 
 
 class ObservationStatus(str, Enum):
@@ -188,6 +201,16 @@ class ScenarioExecutor:
             # A detached remote wrapper may publish its job identity before the
             # child PID receipt exists; status discovers that generation later.
             self._validate_identity_for_record(identity, allow_pending=True)
+        except SubmitNotSent as error:
+            # Proven unsent: a definite outcome, not an ambiguous one. Nothing observes or resubmits it.
+            with self._journal_lock():
+                current = self._require(plan.correlation_id)
+                if current["state"] == ExecutionState.TERMINAL.value or current.get("identity") is not None:
+                    return self._public(current)
+                current["state"] = ExecutionState.NOT_SUBMITTED.value
+                current["lastReason"] = ("not_submitted:" + _REASON_CHARACTERS.sub("_", str(error)))[:256]
+                self._write(current)
+                return self._public(current)
         except Exception:
             # A driver exception after it has reached the remote side is ambiguous.
             # Never retry it here; later status/resume may discover by correlation.
@@ -218,12 +241,14 @@ class ScenarioExecutor:
         with self._journal_lock():
             record = self._require(correlation_id)
             initial_identity = record.get("identity")
-        if record["state"] != ExecutionState.TERMINAL.value:
+        # A proven-unsent start has nothing to observe: no driver call, no discovery that could turn it UNKNOWN.
+        if record["state"] not in (ExecutionState.TERMINAL.value, ExecutionState.NOT_SUBMITTED.value):
             observed = self._observe(record)
             with self._journal_lock():
                 current = self._require(correlation_id)
                 # A terminal fact or newer generation wins over stale reads.
-                if current["state"] != ExecutionState.TERMINAL.value and current.get("identity") == initial_identity:
+                if (current["state"] not in (ExecutionState.TERMINAL.value, ExecutionState.NOT_SUBMITTED.value)
+                        and current.get("identity") == initial_identity):
                     self._write(observed)
         return self._collect_terminal(correlation_id)
 
@@ -485,6 +510,8 @@ class ScenarioExecutor:
         excerpt = value.get("failureExcerpt")
         if excerpt is not None and (not isinstance(excerpt, str) or len(excerpt) > _FAILURE_EXCERPT_LIMIT or "\x00" in excerpt):
             raise ScenarioExecutionError("Scenario journal failure excerpt is invalid.")
+        if state == ExecutionState.NOT_SUBMITTED.value and (parsed is not None or not value["lastReason"].startswith("not_submitted:")):
+            raise ScenarioExecutionError("Scenario not-submitted journal names a job.")
         if state == ExecutionState.TERMINAL.value:
             if parsed is None or parsed.pid is None or not isinstance(value.get("exitCode"), int) or isinstance(value["exitCode"], bool):
                 raise ScenarioExecutionError("Scenario terminal journal is incomplete.")

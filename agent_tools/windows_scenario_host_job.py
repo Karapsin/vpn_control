@@ -269,6 +269,47 @@ def token(value, limit=120):
     return _TOKEN_CHARACTERS.sub("_", str(value))[:limit] or "unspecified"
 
 
+WIRE_EXCERPT_BYTES = 4096  # What one exchange's diagnosis reads back of each wire file, from its end.
+PUSH_TEXT_LIMIT = 160
+
+
+def escaped_bytes(raw, limit=PUSH_TEXT_LIMIT):
+    """Wire bytes as ASCII text, the last ``limit`` characters: a backslash doubled, every byte outside ASCII as \\xNN.
+
+    So a raw 0xFF on the wire reads \\xff and QGA's own JSON escape for U+FFFD reads \\\\ufffd: the two never look alike.
+    """
+    text = bytes(raw).replace(b"\\", b"\\\\").decode("ascii", "backslashreplace")
+    return text[-limit:]
+
+
+def qga_exchange_facts(received, lines):
+    """What one QGA exchange's own wire bytes say, for a push diagnosis only; it never decides an outcome.
+
+    ``received`` is every byte the canonical call() read on its connection (qga.partial-wire's growth): whatever
+    preceded its 0xFF sentinel, which it discarded as stale, then the sync reply and the command's reply. ``lines`` is
+    the parsed lines it kept (qga.wire's growth). The last error reply names QGA's class and text, such as
+    ``JSON parse error, stray '\\ufffd'``.
+    """
+    received, lines = bytes(received or b""), bytes(lines or b"")
+    head, sentinel, tail = received.partition(b"\xff")
+    facts = {"receivedBytes": len(received), "sentinels": received.count(b"\xff"),
+             "beforeSentinel": escaped_bytes(head) if sentinel else None,
+             "afterSentinel": escaped_bytes(tail) if sentinel else escaped_bytes(received),
+             "qgaClass": None, "qgaDesc": None}
+    for line in reversed(lines.split(b"\n")):
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        error = value.get("error") if type(value) is dict else None
+        if type(error) is dict:
+            facts["qgaClass"] = token(error.get("class"), 64)
+            desc = error.get("desc")
+            facts["qgaDesc"] = json.dumps(desc)[1:-1][:PUSH_TEXT_LIMIT] if type(desc) is str else None
+            break
+    return facts
+
+
 def collector_root_forms(sid):
     """Every security record collector_contract.root_policy takes for a collector root of this ordinary user."""
     return tuple({"ownerSid": "S-1-5-18", "sddl": "O:SYD:" + form + COLLECTOR_ROOT_ACES.format(sid=sid)} for form in COLLECTOR_ROOT_FORMS)
@@ -1616,6 +1657,8 @@ class Job:
         # A row its caller ran without a reset (plan cleanStart): how many jobs ended on this VM since its prior install,
         # all passed or refused, and what the clean-start census found. None when the plan asks for no proof.
         self.since_install = self.clean_start = None
+        # Why a guest file push was lost (push_file): None unless one was; the receipt's "push".
+        self.push_failure = None
         # How long each stage and guest program took, for timing.json beside the receipt. Never evidence, never decides.
         self.timing = {"schemaVersion": 1, "stages": [], "programs": []}
         self.started = rt.monotonic()
@@ -1732,26 +1775,97 @@ class Job:
         if total != source["bytes"] or digest.hexdigest() != source["sha256"]:
             raise ValueError("artifact_cache_changed")
 
+    def _wire_mark(self):
+        """Where the wire files end now (rt.wire_mark), or None; a diagnosis only, so it never raises."""
+        try:
+            mark = getattr(self.rt, "wire_mark", None)
+            return None if mark is None else mark()
+        except Exception:
+            return None
+
+    def _exchange_facts(self, mark):
+        """qga_exchange_facts of the wire bytes written since ``mark`` (rt.wire_since), or None; it never raises."""
+        try:
+            since = getattr(self.rt, "wire_since", None)
+            grown = None if since is None or mark is None else since(mark)
+            return None if grown is None else qga_exchange_facts(grown["received"], grown["lines"])
+        except Exception:
+            return None
+
+    def _push_lost(self, path, step, error, facts, chunks, total, part, close, close_facts):
+        """Record why a push was lost: the receipt's compact "push", the full record in push-failure.json beside it.
+
+        Nothing here changes the outcome, which is guest_file_push_lost whatever is or is not recorded.
+        """
+        qga = facts or {}
+        self.push_failure = {
+            "command": step, "errorClass": None if error is None else type(error).__name__,
+            "error": token(error, 64) if error is not None and str(error) else None,
+            "chunk": chunks, "offset": total, "acknowledgedBytes": total,
+            "chunkBytes": None if part is None else len(part),
+            "qgaClass": qga.get("qgaClass"), "qgaDesc": qga.get("qgaDesc"),
+            "receivedBytes": qga.get("receivedBytes"), "sentinels": qga.get("sentinels"), "close": close}
+        record = {"schemaVersion": 1, "operationId": self.op, "path": path, **self.push_failure,
+                  "exchange": facts, "closeExchange": close_facts}
+        try:
+            self._keep("push-failure.json", (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii"))
+        except Exception:
+            pass
+
     def push_file(self, path, source):
-        """QGA writes in 32,768-byte chunks through call(); one line in push.jsonl, no VM-root entry."""
+        """QGA writes in 32,768-byte chunks through call(); one line in push.jsonl, no VM-root entry.
+
+        A lost push is guest_file_push_lost, never written again. What went wrong is recorded, not swallowed
+        (_push_lost): the call that failed, its error class, QGA's own error reply, the chunk index and offset, the
+        bytes the guest acknowledged, and whether the handle closed. A close error never hides the original error.
+        """
         digest = hashlib.sha256()
         chunks = total = 0
+        step, part, handle, parts = "guest-file-open", None, None, None
+        mark = self._wire_mark()
+        failure = facts = None
         try:
-            handle = self.rt.rpc("guest-file-open", {"path": path, "mode": "wb"}, budget=20)
-            if type(handle) is not int or handle <= 0:
-                raise ValueError("guest_file_handle")
             try:
-                for part in self._chunks(source):
+                handle = self.rt.rpc("guest-file-open", {"path": path, "mode": "wb"}, budget=20)
+                if type(handle) is not int or handle <= 0:
+                    handle = None
+                    raise ValueError("guest_file_handle")
+                parts = self._chunks(source)
+                while True:
+                    step, part = "artifact-read", None
+                    part = next(parts, None)
+                    if part is None:
+                        break
+                    step, mark = "guest-file-write", self._wire_mark()
                     reply = self.rt.rpc("guest-file-write", {"handle": handle, "buf-b64": base64.b64encode(part).decode("ascii")}, budget=20)
                     if type(reply) is not dict or reply.get("count") != len(part):
                         raise ValueError("guest_file_short_write")
                     digest.update(part)
                     chunks += 1
                     total += len(part)
-            finally:
-                self.rt.rpc("guest-file-close", {"handle": handle}, budget=20)
-        except Exception:
+                step, part = "guest-file-close", None
+            except Exception as error:
+                failure, facts = error, self._exchange_facts(mark)
+        finally:
+            try:
+                getattr(parts, "close", lambda: None)()  # A staged package's descriptor closes now, not at collection.
+            except Exception:
+                pass
+            close, close_facts = "not-opened", None
+            if handle is not None:
+                close_mark = self._wire_mark()
+                try:
+                    self.rt.rpc("guest-file-close", {"handle": handle}, budget=20)
+                    close = "closed"
+                except Exception as error:
+                    close = "failed:" + type(error).__name__
+                    if failure is None:
+                        step, failure = "guest-file-close", error
+                close_facts = self._exchange_facts(close_mark)
+        if failure is not None:
             # No program runs here. The bytes are checked by "verify" and never written twice.
+            self._push_lost(path, step, failure, facts if step != "guest-file-close" else close_facts, chunks, total, part,
+                            close, close_facts)
             raise KnownFailure("guest_file_push_lost") from None
         with (self.data / "push.jsonl").open("a", encoding="utf-8") as stream:
             stream.write(json.dumps({"path": path, "bytes": total, "sha256": digest.hexdigest(), "chunks": chunks},
@@ -4026,6 +4140,8 @@ class Job:
                 if self.since_install:
                     # Run with no reset since its prior install: the jobs since then and what the census found of the start.
                     receipt["cleanStart"] = self.clean_start or {"after": self.since_install, "processes": None, "tasks": None}
+                if self.push_failure is not None:
+                    receipt["push"] = self.push_failure  # Why guest_file_push_lost; push-failure.json holds the wire excerpts.
                 if self.update:
                     prior = self.plan.get("prior") or {}
                     # The base install this row started from (installed above is what it found there before its task), the
@@ -4067,6 +4183,11 @@ class Job:
                     if self.tun_facts is not None:
                         receipt["tun"]["broker"] = self.tun_facts
                 raw = (json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
+                if len(raw) > RECEIPT_BYTES and "push" in receipt:
+                    # A diagnosis never costs the receipt: past the bound only its call and class stay (the rest is
+                    # in push-failure.json).
+                    receipt["push"] = {key: self.push_failure[key] for key in ("command", "errorClass", "qgaClass")}
+                    raw = (json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
                 if len(raw) > RECEIPT_BYTES:
                     raise ValueError("receipt_bound")
                 self._keep_timing()
@@ -4243,16 +4364,36 @@ def _host_main():
             finally:
                 os.close(descriptor)
 
+        wire_paths = []
+
         def open_wires(data):
             global wire, partial_wire
             flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_APPEND | os.O_NOFOLLOW
             wire = os.open(data / "qga.wire", flags, 0o600)
             partial_wire = os.open(data / "qga.partial-wire", flags, 0o600)
+            wire_paths[:] = [data / "qga.wire", data / "qga.partial-wire"]
 
         def after_read():
             for descriptor in (wire, partial_wire):
                 if descriptor != -1:
                     os.ftruncate(descriptor, 0)
+
+        def wire_mark():
+            # Where qga.wire and qga.partial-wire end now, for a push diagnosis (Job._exchange_facts).
+            return None if not wire_paths else (os.fstat(wire).st_size, os.fstat(partial_wire).st_size)
+
+        def wire_since(mark):
+            # What each wire file grew by since the mark, at most WIRE_EXCERPT_BYTES of its end; read-only.
+            grown = []
+            for path, start in zip(wire_paths, mark):
+                descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+                try:
+                    size = os.fstat(descriptor).st_size
+                    begin = max(start if start <= size else 0, size - WIRE_EXCERPT_BYTES)
+                    grown.append(os.pread(descriptor, size - begin, begin))
+                finally:
+                    os.close(descriptor)
+            return {"lines": grown[0], "received": grown[1]}
 
         def admission():
             lock = Path(plan["dataDirectory"]).parent / ".admission.lock"
@@ -4261,7 +4402,7 @@ def _host_main():
             return os.fdopen(descriptor, "rb")
         rt = types.SimpleNamespace(root=root, pid=os.getpid(), rpc=exchange, save=durable_save, sleep=time.sleep,
                                    monotonic=time.monotonic, emit=print, open_wires=open_wires, after_read=after_read,
-                                   admission=admission)
+                                   admission=admission, wire_mark=wire_mark, wire_since=wire_since)
         files = _staged_files()
     except Exception as error:  # Nothing reached the guest and no fence exists.
         return marker(EXIT_REFUSED, "host_setup:" + _setup_reason(error))

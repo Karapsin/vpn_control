@@ -824,6 +824,24 @@ refuses an existing cache folder that other users can open. The job plan names
 only digests and sizes, and the job pushes the bytes to the guest in 32,768-byte
 chunks.
 
+The cache is shared by every submit to the host, so another operator can stage
+the same digest between this submit's read and its write. The write then answers
+`present` instead of `staged`, and submit accepts either one. `present` is said
+only after the staging program has hashed the cached copy and found it regular,
+owned by the account, mode 0600, and of this size and digest. A copy that
+`differs` still refuses, and nothing is written over it.
+
+A guest push that fails is `guest_file_push_lost`, and its chunk is never written
+again. The receipt's `push` names the cause: the call (`guest-file-open`,
+`guest-file-write`, `guest-file-close` or `artifact-read`), the error class, the
+chunk index and offset, the bytes the guest acknowledged, QGA's own error class
+and text when it replied with an error, and whether the handle closed. A failing
+close never hides the error that came before it. `push-failure.json`, beside the
+receipt on the host, adds the wire bytes of the failing call and of its close.
+They are written as ASCII, with a raw non-ASCII byte as `\xNN` and a backslash
+doubled, so a raw 0xFF and QGA's escaped `�` look different. Past the
+receipt's bound, only the call and the two classes stay in the receipt.
+
 The job's own code is cached the same way. `render_job_body` is the host job with
 the canonical definitions and the frozen bundle: the same bytes for every row of
 one bundle, about 1.2 MB, kept beside the program record as `job-body.py`. The
@@ -843,10 +861,17 @@ The first contact of a submit is one read: the target's identity, exactly as
 and its packages), checked as staging checks a copy. Only an absent copy is
 written; a copy that differs, or a cache folder others can open, refuses before
 any preparation. One transport admission covers every call of a submit and is the
-sum of their budgets: 1,320 s for the body and none, 2,220 s with one package. A
-lost reply anywhere in submit, staging included, ends the start as
-`submit_response_unavailable`; status and resume only look for it by correlation,
-and nothing submits it again.
+sum of their budgets: 1,320 s for the body and none, 2,220 s with one package.
+Only the durable submit command can start the job. The target read, the staging
+and the carrier's preparation create no job and touch no guest. So a submit that
+fails before that command is sent, a lost reply included, ends as
+`not_submitted` with the reason `not_submitted:<refusal>`. That state is final.
+Status, resume and collect return it without a host read, a repeat start returns
+it as a duplicate, and a new attempt needs a new correlation. A failure at or
+after the submit command ends the start as `submit_response_unavailable`. Status
+and resume then only look for the job by correlation, and nothing submits it
+again. The Windows matrix classifies a `not_submitted` row as `refused`, so it
+makes no claim.
 
 The direct script holds one readiness admission for a whole row with
 `driver.row_admission(plan)`: submit, waits, status and collect then enter no

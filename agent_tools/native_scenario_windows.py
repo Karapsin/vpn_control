@@ -1460,7 +1460,10 @@ class NativeScenarioWindowsDriver:
         suffix = "" if role in ("package", "basePackage", "pythonInstaller", "targetPackage") else "-" + role
         staged = self._send(config, plan.host, _py(_STAGE, package["sha256"], str(package["bytes"]), "write"), seconds=_STAGE_SECONDS,
                             keep=directory / ("stage-write" + suffix), stdin_path=Path(package["localPath"]), plan=plan)
-        _need(staged is not None and staged.get("state") == "staged", "windows_scenario_stage_unavailable")
+        # "present": another submit on this host staged the same digest between the read and this write (bf9266d7, two
+        # operators sharing one host cache). _STAGE says so only after it hashed the cached copy, regular, the account's,
+        # 0600, of this size and digest, so it is the copy this submit needs; "differs" and anything else still refuse.
+        _need(staged is not None and staged.get("state") in ("staged", "present"), "windows_scenario_stage_unavailable")
 
     @staticmethod
     def _target_staged(reply: Any, copies: Mapping[str, Mapping[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -1491,25 +1494,36 @@ class NativeScenarioWindowsDriver:
         # The admission deadline clips every call under it, so it is the sum of their own budgets:
         # a slow but in-budget staging never shortens the prepare or submit into an unknown outcome.
         seconds = _OBSERVE_SECONDS + 2 * _SUBMIT_SECONDS + _STAGE_SECONDS * len(copies)
-        with self._admitted(config, plan, seconds):
-            # One read: who the target is, and which copies its cache already holds byte for byte.
-            found = self._send(config, plan.host, _py(_TARGET_STAGED, *sorted({copy["sha256"] + ":" + str(copy["bytes"]) for copy in copies.values()})),
-                               seconds=_OBSERVE_SECONDS, keep=directory / "target", plan=plan)
-            _need(found is not None, "windows_scenario_target_unavailable")
-            target, staged = self._target_staged(found, copies)
-            for role, copy in copies.items():
-                self._stage(config, plan, copy, directory, role, staged[copy["sha256"]])
-            source, data = render_loader(plan, binding, verified, target, body, stop_after=self.stop_after,
-                                         value=value, packages=packages, clean_start=self.clean_start)
-            program = {"language": "python3", "source": source, "args": [], "cwd": target["home"], "targetContext": target}
-            _create_private(directory / "program.json", json.dumps({"program": program, "dataDirectory": data}, sort_keys=True).encode())
-            packet = self._send(config, plan.host, carrier.prepare_command(plan.correlation_id, program, durable_remote_job.owner_source()),
-                                seconds=_SUBMIT_SECONDS, keep=directory / "prepare", plan=plan)
-            _need(packet is not None, "windows_scenario_preparation_unavailable")
-            carrier.durable_command(plan.correlation_id, program, packet, mode="observe")  # Validate with an inert render.
-            _create_private(directory / "admission.json", json.dumps(packet, sort_keys=True).encode())
-            reply = self._send(config, plan.host, carrier.durable_command(plan.correlation_id, program, packet, mode="submit", wait_seconds=2),
-                               seconds=_SUBMIT_SECONDS, keep=directory / "submit", plan=plan)
+        # Only the durable submit command below can start the job: the target read, staging into the artifact cache and
+        # the carrier's preparation create no job and touch no guest. A failure before that command is sent is therefore
+        # proven unsent (SubmitNotSent); one at or after it stays ambiguous, read back only by correlation.
+        sent = False
+        try:
+            with self._admitted(config, plan, seconds):
+                # One read: who the target is, and which copies its cache already holds byte for byte.
+                found = self._send(config, plan.host, _py(_TARGET_STAGED, *sorted({copy["sha256"] + ":" + str(copy["bytes"]) for copy in copies.values()})),
+                                   seconds=_OBSERVE_SECONDS, keep=directory / "target", plan=plan)
+                _need(found is not None, "windows_scenario_target_unavailable")
+                target, staged = self._target_staged(found, copies)
+                for role, copy in copies.items():
+                    self._stage(config, plan, copy, directory, role, staged[copy["sha256"]])
+                source, data = render_loader(plan, binding, verified, target, body, stop_after=self.stop_after,
+                                             value=value, packages=packages, clean_start=self.clean_start)
+                program = {"language": "python3", "source": source, "args": [], "cwd": target["home"], "targetContext": target}
+                _create_private(directory / "program.json", json.dumps({"program": program, "dataDirectory": data}, sort_keys=True).encode())
+                packet = self._send(config, plan.host, carrier.prepare_command(plan.correlation_id, program, durable_remote_job.owner_source()),
+                                    seconds=_SUBMIT_SECONDS, keep=directory / "prepare", plan=plan)
+                _need(packet is not None, "windows_scenario_preparation_unavailable")
+                submit = carrier.durable_command(plan.correlation_id, program, packet, mode="submit", wait_seconds=2)
+                carrier.durable_command(plan.correlation_id, program, packet, mode="observe")  # Validate with an inert render.
+                _create_private(directory / "admission.json", json.dumps(packet, sort_keys=True).encode())
+                sent = True  # From here on the job may exist.
+                reply = self._send(config, plan.host, submit, seconds=_SUBMIT_SECONDS, keep=directory / "submit", plan=plan)
+        except Exception as error:
+            if sent:
+                raise
+            reason = str(error) if isinstance(error, NativeScenarioWindowsError) else "unexpected:" + type(error).__name__
+            raise native_scenario_execution.SubmitNotSent(reason) from error
         _need(reply is not None, "windows_scenario_submit_unavailable")
         status = reply.get("status")
         _need(isinstance(status, Mapping) and status.get("operationId") == plan.correlation_id, "windows_scenario_submit_unavailable")
@@ -2211,6 +2225,8 @@ def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
             raise NativeScenarioWindowsError("windows_matrix_receipt_changed:" + correlation)
     elif record["state"] == native_scenario_execution.ExecutionState.TERMINAL.value and record["exitCode"] == host_job.EXIT_REFUSED:
         kind = "refused"  # Refused before any guest effect: no claim of any kind.
+    elif record["state"] == native_scenario_execution.ExecutionState.NOT_SUBMITTED.value:
+        kind = "refused"  # Proven never submitted: no job, no guest effect, no claim of any kind.
     elif (record["state"] == native_scenario_execution.ExecutionState.UNKNOWN.value
           and (record["lastReason"].startswith("job_exit_unknown:") or record["lastReason"] in _DURABLE_FINAL_UNKNOWN)
           or record["state"] == native_scenario_execution.ExecutionState.TERMINAL.value

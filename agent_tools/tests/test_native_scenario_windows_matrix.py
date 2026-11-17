@@ -86,6 +86,8 @@ class FakeDriver:
         return execution.JobIdentity("windows-" + plan.correlation_id, 4242, 987654, HOME + "/scenario-receipt.json")
 
     def submit(self, plan):
+        if self.outcomes[plan.correlation_id] == "not-submitted":  # Refused while staging, before the submit command.
+            raise execution.SubmitNotSent("windows_scenario_stage_unavailable")
         return self.identity(plan)
 
     def discover(self, plan):
@@ -320,6 +322,10 @@ class NeverCountsTests(MatrixBase):
 
     def test_a_refused_row_never_claims(self):
         self.assert_incomplete(self.row(SMK, "mcp", "refused"), "refused")
+
+    def test_a_row_proven_never_submitted_never_claims_and_never_unsettles(self):
+        """bf9266d7: a start refused before its submit command is settled, as a refusal is: no job, no claim."""
+        self.assert_incomplete(self.row(SMK, "mcp", "not-submitted"), "refused")
 
     def test_a_mixed_source_or_package_is_refused(self):
         mixed = self.row(SMK, "mcp", source=self.other_source)

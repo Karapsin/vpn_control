@@ -145,6 +145,9 @@ class FakeSsh:
             digest, size, mode = command[5], int(command[6]), command[7]
             if mode == "check":
                 return "stage-check", {"state": "present" if digest in self.staged else "absent"}
+            if digest in self.staged:  # As _STAGE: a copy already there is hashed and named, and nothing is written.
+                same = len(self.staged[digest]) == size and hashlib.sha256(self.staged[digest]).hexdigest() == digest
+                return "stage-write", {"state": "present" if same else "differs"}
             raw = self.stdin.read()
             if len(raw) == size and hashlib.sha256(raw).hexdigest() == digest:
                 self.staged[digest] = raw
@@ -715,8 +718,10 @@ class SubmitTests(DriverBase):
 
     def test_a_lost_preparation_reply_never_reaches_a_submit(self):
         self.ssh.lost = {"prepare"}
-        self.assertEqual("submit_response_unavailable", self.executor().start(self.request())["reason"])
-        self.assertEqual(("unknown", "job_not_discovered"), tuple(self.executor().resume(self.operation)[key] for key in ("state", "reason")))
+        # The preparation creates no job, and the submit command never went out: proven unsent, never UNKNOWN.
+        expected = ("not_submitted", "not_submitted:windows_scenario_preparation_unavailable")
+        self.assertEqual(expected, tuple(self.executor().start(self.request())[key] for key in ("state", "reason")))
+        self.assertEqual(expected, tuple(self.executor().resume(self.operation)[key] for key in ("state", "reason")))
         self.assertNotIn("submit", self.ssh.calls)
         self.assertEqual(0, self.ssh.submits)
 
@@ -1281,10 +1286,10 @@ class PackageSubmitTests(FamilyDriverBase):
     def test_a_lost_stage_reply_never_reaches_a_submit(self):
         self.ssh.lost = {"stage-write"}
         first = self.executor().start(self.family_request("windows-msi-base-reset"))
-        self.assertEqual(("submitting", "submit_response_unavailable"), (first["state"], first["reason"]))
+        self.assertEqual(("not_submitted", "not_submitted:windows_scenario_stage_unavailable"), (first["state"], first["reason"]))
         self.assertNotIn("prepare", self.ssh.calls)
         self.assertEqual(0, self.ssh.submits)
-        self.assertEqual("unknown", self.executor().resume(self.operation)["state"])
+        self.assertEqual("not_submitted", self.executor().resume(self.operation)["state"])
 
     def test_the_mcp_route_admits_through_the_ssh_adapter_before_any_journal(self):
         self.assertIsNone(ssh_driver.admit_start(self.root, self.family_request("windows-streaming-client-interrupt"), self.resolver))
@@ -2123,7 +2128,7 @@ class CachedBodyTests(DriverBase):
                 self.ssh.calls.clear()
                 self.ssh.cache_states = {digest: state}
                 started = self.executor().start(self.request())
-                self.assertEqual(("submitting", "submit_response_unavailable"), (started["state"], started["reason"]))
+                self.assertEqual(("not_submitted", "not_submitted:windows_scenario_stage_unavailable"), (started["state"], started["reason"]))
                 self.assertEqual(["target"], self.ssh.calls)
                 self.assertEqual(0, self.ssh.submits)
 
@@ -2172,6 +2177,138 @@ class CachedBodyTests(DriverBase):
                 self.assertEqual(2, done.returncode, done.stderr.decode("utf-8", "replace"))
                 self.assertEqual({"schemaVersion": 1, "operationId": self.operation, "scenarioExit": 2, "failure": failure},
                                  windows._exit_marker(done.stdout, self.operation), "refused before a byte of the body ran")
+
+
+class HostSubmitRaceTests(DriverBase):
+    """Windows VM operator B, 2026-11-17 (bf9266d7, NE2 different-admin).
+
+    The target read found the job body 7c0869fe absent from the host's artifact cache; before this submit's write,
+    another operator's submit staged the same content-addressed body, so _STAGE answered present. _stage accepted only
+    staged and raised, and the executor recorded a submit that never left the host as the ambiguous
+    submit_response_unavailable, then job_not_discovered UNKNOWN with no identity. Beforeimages:
+    fixtures/windows_host_submit (fd17037c).
+    """
+
+    def before(self, name):
+        fixture = Path(__file__).parent / "fixtures" / "windows_host_submit"
+        source = fixture / name
+        self.assertEqual(json.loads((fixture / "provenance.json").read_bytes())["files"][name]["sha256"],
+                         hashlib.sha256(source.read_bytes()).hexdigest())
+        return source
+
+    @contextmanager
+    def unfixed(self):
+        """The driver's _stage and submit and the executor's start exactly as they were at fd17037c."""
+        functions = {}
+        for name, module in (("stage.before.source", windows), ("submit.before.source", windows),
+                             ("executor_start.before.source", execution)):
+            namespace = dict(module.__dict__)
+            exec(compile(self.before(name).read_bytes(), name, "exec"), namespace)
+            functions[name] = namespace
+        with mock.patch.object(windows.NativeScenarioWindowsDriver, "_stage", functions["stage.before.source"]["_stage"]), \
+                mock.patch.object(windows.NativeScenarioWindowsDriver, "submit", functions["submit.before.source"]["submit"]), \
+                mock.patch.object(execution.ScenarioExecutor, "start", functions["executor_start.before.source"]["start"]):
+            yield
+
+    def race(self):
+        """The target read reports the body absent; another operator's copy of the same bytes is staged before the write."""
+        digest = hashlib.sha256(self.body).hexdigest()
+        self.ssh.staged[digest] = self.body
+        self.ssh.cache_states = {digest: "absent"}
+        return digest
+
+    def test_a_body_another_submit_staged_after_the_read_is_used_RED_refused_GREEN(self):
+        from agent_tools.tests import red_gate
+        digest = self.race()
+        if red_gate.red_required(self, *(self.before(name) for name in ("stage.before.source", "submit.before.source",
+                                                                        "executor_start.before.source"))):
+            with self.unfixed():
+                first = self.executor().start(self.request())
+                # RED: the present answer refused the submit, recorded as an ambiguous one that resume can never settle.
+                self.assertEqual(("submitting", "submit_response_unavailable"), (first["state"], first["reason"]))
+                self.assertEqual(["target", "stage-write"], self.ssh.calls)
+                self.assertEqual(("unknown", "job_not_discovered"),
+                                 tuple(self.executor().resume(self.operation)[key] for key in ("state", "reason")))
+            self.operation = str(uuid.uuid4())
+            self.ssh.calls.clear()
+        started = self.executor().start(self.request())
+        self.assertEqual(("submitted", "submitted"), (started["state"], started["reason"]))
+        self.assertEqual(["target", "stage-write", "prepare", "submit"], self.ssh.calls, "the present copy is the copy; nothing is resent")
+        self.assertEqual(1, self.ssh.submits)
+        self.assertEqual({digest: self.body}, self.ssh.staged, "the cached body is the other operator's, unchanged")
+
+    def test_a_different_copy_found_at_the_write_still_refuses_and_is_not_submitted(self):
+        digest = self.race()
+        self.ssh.staged[digest] = self.body[:-1] + b"#"  # Same name, other bytes: _STAGE hashes it and says differs.
+        started = self.executor().start(self.request())
+        self.assertEqual(("not_submitted", "not_submitted:windows_scenario_stage_unavailable"), (started["state"], started["reason"]))
+        self.assertEqual(["target", "stage-write"], self.ssh.calls)
+        self.assertEqual(0, self.ssh.submits)
+
+    def test_the_real_stage_program_answers_present_for_a_copy_staged_after_the_read(self):
+        """The fake above answers as _STAGE itself does: run it with a throwaway home, as the host runs it over SSH."""
+        home = self.work / "stage-home"
+        home.mkdir(mode=0o700)
+        body = b"job body " * 1000
+        digest = hashlib.sha256(body).hexdigest()
+
+        def write(raw):
+            done = subprocess.run([sys.executable, "-I", "-B", "-c", windows._STAGE, digest, str(len(body)), "write"], input=raw,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={**os.environ, "HOME": str(home)}, check=True)
+            return json.loads(done.stdout)["state"]
+        self.assertEqual("staged", write(body), "the first operator's write")
+        self.assertEqual("present", write(body), "the second operator's write, whose read found the body absent")
+        cached = home / ".cache/vpn-control-windows-scenarios/artifacts" / digest
+        self.assertEqual(body, cached.read_bytes())
+        cached.chmod(0o600)
+        cached.write_bytes(body[:-1] + b"#")
+        self.assertEqual("differs", write(body), "a copy that is not this digest's bytes is never taken")
+
+    def test_a_submit_that_fails_before_the_submit_command_is_not_submitted_RED_unknown_GREEN(self):
+        from agent_tools.tests import red_gate
+        cases = {"target": ("windows_scenario_target_unavailable", ["target"]),
+                 "stage-write": ("windows_scenario_stage_unavailable", ["target", "stage-write"]),
+                 "prepare": ("windows_scenario_preparation_unavailable", ["target", "stage-write", "prepare"])}
+        self.ssh.staged.clear()  # The body is staged by this submit, so a lost write reply is one of the cases.
+        if red_gate.red_required(self, *(self.before(name) for name in ("stage.before.source", "submit.before.source",
+                                                                        "executor_start.before.source"))):
+            with self.unfixed():
+                for lost in cases:
+                    with self.subTest(before=lost):
+                        self.operation = str(uuid.uuid4())
+                        self.ssh.calls.clear()
+                        self.ssh.staged.clear()
+                        self.ssh.lost = {lost}
+                        first = self.executor().start(self.request())
+                        # RED: nothing that could start the job was sent, yet the record is the ambiguous one, then UNKNOWN.
+                        self.assertEqual(("submitting", "submit_response_unavailable"), (first["state"], first["reason"]))
+                        self.assertEqual("unknown", self.executor().resume(self.operation)["state"])
+        for lost, (reason, calls) in cases.items():
+            with self.subTest(lost=lost):
+                self.operation = str(uuid.uuid4())
+                self.ssh.calls.clear()
+                self.ssh.staged.clear()
+                self.ssh.lost = {lost}
+                first = self.executor().start(self.request())
+                self.assertEqual(("not_submitted", "not_submitted:" + reason), (first["state"], first["reason"]))
+                self.assertNotIn("jobIdentity", first)
+                self.assertEqual(calls, self.ssh.calls)
+                for observe in (self.executor().status, self.executor().resume, self.executor().collect):
+                    self.assertEqual(("not_submitted", "not_submitted:" + reason),
+                                     tuple(observe(self.operation)[key] for key in ("state", "reason")))
+                again = self.executor().start(self.request())
+                self.assertEqual((True, "not_submitted"), (again["duplicate"], again["state"]))
+                self.assertEqual(calls, self.ssh.calls, "a proven-unsent start is never observed, discovered or submitted again")
+        self.assertEqual(0, self.ssh.submits)
+
+    def test_a_submit_whose_command_went_out_stays_ambiguous(self):
+        self.ssh.lost = {"submit"}
+        first = self.executor().start(self.request())
+        self.assertEqual(("submitting", "submit_response_unavailable"), (first["state"], first["reason"]))
+        self.assertEqual(1, self.ssh.submits)
+        self.assertEqual(("submitted", "original_owner_running"),
+                         tuple(self.executor().resume(self.operation)[key] for key in ("state", "reason")))
+        self.assertEqual(1, self.ssh.submits, "found by correlation, never submitted again")
 
 
 class CleanStartWiringTests(FamilyDriverBase):

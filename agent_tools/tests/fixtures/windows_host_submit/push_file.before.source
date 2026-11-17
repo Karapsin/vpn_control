@@ -1,0 +1,24 @@
+def push_file(self, path, source):
+    """QGA writes in 32,768-byte chunks through call(); one line in push.jsonl, no VM-root entry."""
+    digest = hashlib.sha256()
+    chunks = total = 0
+    try:
+        handle = self.rt.rpc("guest-file-open", {"path": path, "mode": "wb"}, budget=20)
+        if type(handle) is not int or handle <= 0:
+            raise ValueError("guest_file_handle")
+        try:
+            for part in self._chunks(source):
+                reply = self.rt.rpc("guest-file-write", {"handle": handle, "buf-b64": base64.b64encode(part).decode("ascii")}, budget=20)
+                if type(reply) is not dict or reply.get("count") != len(part):
+                    raise ValueError("guest_file_short_write")
+                digest.update(part)
+                chunks += 1
+                total += len(part)
+        finally:
+            self.rt.rpc("guest-file-close", {"handle": handle}, budget=20)
+    except Exception:
+        # No program runs here. The bytes are checked by "verify" and never written twice.
+        raise KnownFailure("guest_file_push_lost") from None
+    with (self.data / "push.jsonl").open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps({"path": path, "bytes": total, "sha256": digest.hexdigest(), "chunks": chunks},
+                                sort_keys=True, separators=(",", ":")) + "\n")

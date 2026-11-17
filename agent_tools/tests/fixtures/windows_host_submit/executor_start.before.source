@@ -1,0 +1,47 @@
+def start(self, request: Mapping[str, Any]) -> dict[str, Any]:
+    plan = ScenarioPlan.from_mapping(request)
+    self._require_private_journal_platform()
+    with self._journal_lock():
+        record = self._read(plan.correlation_id)
+        if record is not None:
+            if record["plan"] != plan.as_dict():
+                raise ScenarioExecutionError("Correlation ID already belongs to a different immutable scenario plan.")
+            return self._public(record, duplicate=True)
+        record = self._new_record(plan)
+        if not self._create_intent(record):
+            record = self._require(plan.correlation_id)
+            if record["plan"] != plan.as_dict():
+                raise ScenarioExecutionError("Correlation ID already belongs to a different immutable scenario plan.")
+            return self._public(record, duplicate=True)
+        # Intent is durable before any effect may be submitted.
+        record["state"] = ExecutionState.SUBMITTING.value
+        self._write(record)
+    try:
+        identity = self.driver.submit(plan)
+        # A detached remote wrapper may publish its job identity before the
+        # child PID receipt exists; status discovers that generation later.
+        self._validate_identity_for_record(identity, allow_pending=True)
+    except Exception:
+        # A driver exception after it has reached the remote side is ambiguous.
+        # Never retry it here; later status/resume may discover by correlation.
+        with self._journal_lock():
+            current = self._require(plan.correlation_id)
+            if current["state"] == ExecutionState.TERMINAL.value:
+                return self._public(current)
+            current["lastReason"] = "submit_response_unavailable"
+            self._write(current)
+            return self._public(current)
+    with self._journal_lock():
+        current = self._require(plan.correlation_id)
+        if current["state"] == ExecutionState.TERMINAL.value:
+            return self._public(current)
+        existing = JobIdentity.from_mapping(current["identity"], allow_pending=True) if current.get("identity") else None
+        if existing is not None and existing.pid is not None and existing != identity:
+            # An observation found a different generation while submit was in
+            # flight.  Do not replace a durable identity with a stale response.
+            return self._public(current)
+        current["identity"] = identity.as_dict()
+        current["state"] = ExecutionState.SUBMITTED.value
+        current["lastReason"] = "submitted"
+        self._write(current)
+        return self._public(current)

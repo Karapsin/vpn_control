@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import builtins
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -414,6 +415,107 @@ class NativeScenarioExecutionTest(unittest.TestCase):
             self.assertIsNone(module.fcntl)
         finally:
             sys.modules.pop(name, None)
+
+
+class CountingDriver:
+    """Records every call; submit raises what it is given."""
+
+    def __init__(self, error):
+        self.error, self.calls = error, []
+
+    def submit(self, plan):
+        self.calls.append("submit")
+        raise self.error
+
+    def discover(self, plan):
+        self.calls.append("discover")
+        return None
+
+    def observe(self, plan, identity):
+        self.calls.append("observe")
+        return execution.DriverObservation(execution.ObservationStatus.UNKNOWN, "observer_unavailable")
+
+
+@unittest.skipIf(os.name != "posix", "private journal requires POSIX ownership admission")
+class NotSubmittedTests(unittest.TestCase):
+    """A submit its driver proves unsent (bf9266d7: refused while staging, before any submit command) is final and definite."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.journal = Path(temporary.name) / "journal"
+
+    def request(self, correlation="run-unsent"):
+        return NativeScenarioExecutionTest.request(None, correlation)
+
+    def before_start(self):
+        fixture = Path(__file__).parent / "fixtures" / "windows_host_submit"
+        source = fixture / "executor_start.before.source"
+        self.assertEqual(json.loads((fixture / "provenance.json").read_bytes())["files"][source.name]["sha256"],
+                         hashlib.sha256(source.read_bytes()).hexdigest())
+        return source
+
+    def test_a_proven_unsent_submit_is_not_submitted_and_never_observed_RED_unknown_GREEN(self):
+        from agent_tools.tests import red_gate
+        source = self.before_start()
+        if red_gate.red_required(self, source):
+            namespace = dict(execution.__dict__)
+            exec(compile(source.read_bytes(), str(source), "exec"), namespace)
+            driver = CountingDriver(execution.SubmitNotSent("windows_scenario_stage_unavailable"))
+            with mock.patch.object(execution.ScenarioExecutor, "start", namespace["start"]):
+                executor = execution.ScenarioExecutor(self.journal, driver)
+                started = executor.start(self.request("run-red"))
+            # RED: recorded as an ambiguous submit, then UNKNOWN after a discovery that can never find it.
+            self.assertEqual(("submitting", "submit_response_unavailable"), (started["state"], started["reason"]))
+            self.assertEqual(("unknown", "job_not_discovered"), tuple(executor.resume("run-red")[key] for key in ("state", "reason")))
+        driver = CountingDriver(execution.SubmitNotSent("windows_scenario_stage_unavailable"))
+        executor = execution.ScenarioExecutor(self.journal, driver)
+        started = executor.start(self.request())
+        expected = ("not_submitted", "not_submitted:windows_scenario_stage_unavailable")
+        self.assertEqual(expected, (started["state"], started["reason"]))
+        self.assertNotIn("jobIdentity", started)
+        for observe in (executor.status, executor.resume, executor.collect):
+            self.assertEqual(expected, tuple(observe("run-unsent")[key] for key in ("state", "reason")))
+        again = executor.start(self.request())
+        self.assertEqual((True, "not_submitted"), (again["duplicate"], again["state"]))
+        self.assertEqual(["submit"], driver.calls, "never discovered, observed or submitted again")
+
+    def test_any_other_submit_error_stays_ambiguous(self):
+        driver = CountingDriver(ValueError("windows_scenario_submit_unavailable"))
+        executor = execution.ScenarioExecutor(self.journal, driver)
+        self.assertEqual(("submitting", "submit_response_unavailable"),
+                         tuple(executor.start(self.request())[key] for key in ("state", "reason")))
+        self.assertEqual("unknown", executor.status("run-unsent")["state"])
+        self.assertEqual(["submit", "discover"], driver.calls)
+
+    def test_a_reason_is_kept_as_a_token(self):
+        executor = execution.ScenarioExecutor(self.journal, CountingDriver(execution.SubmitNotSent("bad reason\x00/" + "x" * 400)))
+        reason = executor.start(self.request())["reason"]
+        self.assertTrue(reason.startswith("not_submitted:bad_reason_"))
+        self.assertLessEqual(len(reason), 256)
+
+    def test_a_not_submitted_journal_naming_a_job_is_refused(self):
+        executor = execution.ScenarioExecutor(self.journal, CountingDriver(execution.SubmitNotSent("refused")))
+        executor.start(self.request())
+        record = executor._read("run-unsent")
+        record["identity"] = {"jobId": "job-1", "pid": 7, "startTicks": 9, "receiptPath": "/r.json"}
+        with self.assertRaises(execution.ScenarioExecutionError):
+            executor._validate_record(record, "run-unsent")
+
+    def test_an_identity_an_observer_found_meanwhile_is_kept(self):
+        identity = execution.JobIdentity("job-1", 7, 9, "/r.json")
+        executor = execution.ScenarioExecutor(self.journal, None)
+
+        class Racing(CountingDriver):
+            def submit(inner, plan):
+                with executor._journal_lock():
+                    record = executor._require(plan.correlation_id)
+                    record.update(identity=identity.as_dict(), state="submitted", lastReason="discovered_by_correlation")
+                    executor._write(record)
+                raise execution.SubmitNotSent("refused")
+        executor.driver = Racing(None)
+        self.assertEqual(("submitted", "discovered_by_correlation"),
+                         tuple(executor.start(self.request())[key] for key in ("state", "reason")))
 
 
 if __name__ == "__main__":

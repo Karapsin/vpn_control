@@ -3665,6 +3665,47 @@ that the snapshot read gives `$null` rather than an exception. That second point
 and was not reproduced off Windows. `failing_msi_bootstrap_template.ps1` has the same line. No tool module renders it
 and the scenario bundle does not ship it, so it is left unchanged.
 
+### Host submit race and lost guest pushes (operator B, NE2 74e99864, 2026-11-17)
+
+`windows-public-update.different-admin` bf9266d7 was never submitted. Its target read found the job body 7c0869fe
+`absent` from the host's artifact cache. Before this submit's write, operator A's submit on the same host staged the
+same bundle's body, so `_STAGE` answered `{"state": "present"}`. `_stage` accepted only `staged` and raised inside
+submit. The executor recorded that as the ambiguous `submit_response_unavailable`, then `job_not_discovered`
+UNKNOWN with no identity, although no submit command had left the host. Separately, NE2 ended eleven resets and
+rows `guest_file_push_lost` (027f7a17, 88363f62, 7acd82e3, ac1d0c7d, cea93442, 1ab69393, f1faa360, cde0b0b6 and
+others) at random points 30 to 100 s into a push. Each time, the host's `qga.partial-wire` showed QGA answering a
+`guest-file-write` with `{"error":{"class":"GenericError","desc":"JSON parse error, stray '�'"}}`. Other
+clones on the same host pushed the same bytes without error. The receipts said only `guest_file_push_lost`, because
+`push_file` swallowed the exception, and its close in a `finally` could replace it. Evidence:
+`.runtime/windows-parity-20261107/evidence/fix-host-submit/` (bf9266d7 records and journal, the push-lost journals
+and CONTINUATION excerpts). Beforeimages: `agent_tools/tests/fixtures/windows_host_submit` (fd17037c).
+
+The tool does not produce the stray byte. The canonical `call()` sends one 0xFF before its sync request and nothing
+else outside ASCII. `json.dumps` escapes every non-ASCII character, and each chunk is base64-encoded on its own, so a
+chunk boundary cannot split a UTF-8 sequence on the wire. Replies are parsed from bytes, never decoded with
+`errors="replace"`. Each exchange is one connection under the `intent.json` flock, and a QEMU socket chardev serves
+one connection at a time. QGA's `stray '�'` is its own JSON escape for an invalid byte it lexed, so a raw 0xFF
+or 0xFE, or a lone byte from 0x80 up, reached the agent's parser after the sync reply. With the fixed receipt, channel
+corruption would show as `push.afterSentinel` holding this exchange's own sync reply and then the error. The close
+exchange's `beforeSentinel` holding the late `{"return":{"count":32768,...}}` of the lost write would also show it,
+because the agent then ran the write after reporting the stray byte. So would a guest file longer than
+`acknowledgedBytes`, or the guest's own qemu-ga log. A tool cause would instead show a non-ASCII byte in what the host
+sent, which `CanonicalCallBytesTests` rules out for every byte value and every split.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A stage write that found the same digest already cached (`present`) refused the submit (TOOL, shared host cache race) | `test_native_scenario_windows.HostSubmitRaceTests.test_a_body_another_submit_staged_after_the_read_is_used_RED_refused_GREEN`; `test_a_different_copy_found_at_the_write_still_refuses_and_is_not_submitted`; `test_the_real_stage_program_answers_present_for_a_copy_staged_after_the_read` | The in-test RED runs the fd17037c `_stage`, `submit` and executor `start`. `present` is accepted only as `_STAGE` says it: after hashing a regular, private, account-owned copy of this size and digest. `differs` still refuses. The fake stage write now answers `present` for a cached digest, as `_STAGE` does, and the real program holds that. |
+| A submit that failed before its submit command was recorded as ambiguous, then UNKNOWN (TOOL) | `test_native_scenario_execution.NotSubmittedTests`; `HostSubmitRaceTests.test_a_submit_that_fails_before_the_submit_command_is_not_submitted_RED_unknown_GREEN`, `test_a_submit_whose_command_went_out_stays_ambiguous`; `test_native_scenario_windows_matrix.NeverCountsTests.test_a_row_proven_never_submitted_never_claims_and_never_unsettles` | The driver raises `SubmitNotSent` only before the durable submit command is sent: target read, staging and the carrier's preparation create no job. The executor records the final state `not_submitted` (`not_submitted:<refusal>`). It is never observed, discovered or submitted again; a repeat start is a duplicate. A failure at or after the submit command keeps `submit_response_unavailable`. The matrix classifies a `not_submitted` row as `refused`. Three existing tests (a lost preparation reply, a lost stage reply, a cached copy that differs) now expect `not_submitted`. |
+| `guest_file_push_lost` named no cause, and a failing close could replace the write's error (TOOL observability) | `test_windows_scenario_host_job.PushFailureTests`; `ProductionBindingTests.test_a_push_lost_to_a_qga_error_reply_names_it_in_the_receipt_RED_swallowed_GREEN`; `QgaExchangeFactsTests` | The in-test RED runs the fd17037c `push_file`. The receipt's `push` names the call, error class, chunk index and offset, acknowledged bytes, QGA's class and text, received bytes and sentinels, and the close outcome. `push-failure.json` keeps the escaped wire bytes of the failing call and of its close. The production binding reads them back through `rt.wire_mark` and `rt.wire_since`. Past `RECEIPT_BYTES`, only the call and the classes stay. The desktop-test job writes `push-failure.json` but keeps its own receipt shape. |
+| Could the tool send a stray byte? (investigation) | `CanonicalCallBytesTests` | The real canonical `call()` runs against a recording socket peer. Its only non-ASCII byte is the leading sentinel, for chunks of every byte value and split UTF-8 sequences. Its NE2 error reply raises, and the diagnosis reads that reply's class and text from the bytes it wrote. |
+
+RED ran in a worktree of fd17037c that held only the changed test modules and the fixture, on Python 3.14 and 3.12:
+31 tests, failures=11 and errors=15 on each version. Five pass on both, because they guard behaviour that did not
+change: the canonical call's bytes, the real `_STAGE` answers, and a submit whose command went out. Logs:
+`evidence/fix-host-submit/logs/red-fd17037c-py314.log`, `red-fd17037c-py312.log` and the `green-*` logs. Only a
+native run can confirm two things: a raced stage now submits, and the next NE2-style push loss names its QGA reply.
+Whether that loss is corruption of the virtio-serial channel or of the guest agent needs the evidence named above.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

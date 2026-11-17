@@ -1,0 +1,45 @@
+def submit(self, plan: native_scenario_execution.ScenarioPlan) -> native_scenario_execution.JobIdentity:
+    row, _, value, packages = _admit(self.root, plan.as_dict(), self.bundle_resolver)
+    bundle, verified = verified_bundle(self.root, plan, self.bundle_resolver)
+    binding = _binding(self.root, plan)
+    directory = self._local(plan)
+    _private_directory(directory.parent)
+    try:
+        os.mkdir(directory, 0o700)  # Create-only: a second submit of this correlation stops here.
+    except FileExistsError:
+        raise NativeScenarioWindowsError("windows_scenario_job_already_exists") from None
+    # Which public route started this job; the matrix needs a direct and an MCP twin of every row.
+    _create_private(directory / ROUTE_NAME, json.dumps({"schemaVersion": 1, "correlationId": plan.correlation_id,
+                                                        "route": self.route}, sort_keys=True).encode())
+    config = ssh_transport.load_config(self.configuration_root)
+    # The job body every row of this bundle runs, kept here as the exact bytes the host's cached copy must be.
+    body = render_job_body(bundle, verified)
+    _create_private(directory / "job-body.py", body)
+    copies = {"jobBody": {"sha256": hashlib.sha256(body).hexdigest(), "bytes": len(body), "localPath": str(directory / "job-body.py")},
+              **{role: packages[role] for role in staged_roles(row)}}
+    # The admission deadline clips every call under it, so it is the sum of their own budgets:
+    # a slow but in-budget staging never shortens the prepare or submit into an unknown outcome.
+    seconds = _OBSERVE_SECONDS + 2 * _SUBMIT_SECONDS + _STAGE_SECONDS * len(copies)
+    with self._admitted(config, plan, seconds):
+        # One read: who the target is, and which copies its cache already holds byte for byte.
+        found = self._send(config, plan.host, _py(_TARGET_STAGED, *sorted({copy["sha256"] + ":" + str(copy["bytes"]) for copy in copies.values()})),
+                           seconds=_OBSERVE_SECONDS, keep=directory / "target", plan=plan)
+        _need(found is not None, "windows_scenario_target_unavailable")
+        target, staged = self._target_staged(found, copies)
+        for role, copy in copies.items():
+            self._stage(config, plan, copy, directory, role, staged[copy["sha256"]])
+        source, data = render_loader(plan, binding, verified, target, body, stop_after=self.stop_after,
+                                     value=value, packages=packages, clean_start=self.clean_start)
+        program = {"language": "python3", "source": source, "args": [], "cwd": target["home"], "targetContext": target}
+        _create_private(directory / "program.json", json.dumps({"program": program, "dataDirectory": data}, sort_keys=True).encode())
+        packet = self._send(config, plan.host, carrier.prepare_command(plan.correlation_id, program, durable_remote_job.owner_source()),
+                            seconds=_SUBMIT_SECONDS, keep=directory / "prepare", plan=plan)
+        _need(packet is not None, "windows_scenario_preparation_unavailable")
+        carrier.durable_command(plan.correlation_id, program, packet, mode="observe")  # Validate with an inert render.
+        _create_private(directory / "admission.json", json.dumps(packet, sort_keys=True).encode())
+        reply = self._send(config, plan.host, carrier.durable_command(plan.correlation_id, program, packet, mode="submit", wait_seconds=2),
+                           seconds=_SUBMIT_SECONDS, keep=directory / "submit", plan=plan)
+    _need(reply is not None, "windows_scenario_submit_unavailable")
+    status = reply.get("status")
+    _need(isinstance(status, Mapping) and status.get("operationId") == plan.correlation_id, "windows_scenario_submit_unavailable")
+    return self._identity(plan, {"dataDirectory": data}, status.get("owner"))

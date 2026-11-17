@@ -1250,6 +1250,235 @@ class ChunkTests(Base):
                          [json.loads(line) for line in lines])
 
 
+# QGA's reply to a stray byte, as NE2's qga.partial-wire held it (2026-11-17, 11 times): its JSON escapes U+FFFD.
+STRAY_REPLY = b'{"error":{"class":"GenericError","desc":"JSON parse error, stray \'\\ufffd\'"}}'
+
+
+def push_before(case, name):
+    fixture = Path(__file__).parent / "fixtures" / "windows_host_submit"
+    source = fixture / name
+    case.assertEqual(json.loads((fixture / "provenance.json").read_bytes())["files"][name]["sha256"],
+                     hashlib.sha256(source.read_bytes()).hexdigest())
+    return source
+
+
+class PushFailureTests(Base):
+    """NE2 74e99864 (operator B, 2026-11-17): eleven guest_file_push_lost receipts named no cause. push_file swallowed
+    the exception, and its close in a finally could replace it. Beforeimage: fixtures/windows_host_submit (fd17037c)."""
+
+    PATH = "C:\\ProgramData\\target.bin"
+
+    def instance(self):
+        plan = self.plan()
+        instance = job.Job(self.rt, plan, self.files)
+        instance.data.mkdir(parents=True, mode=0o700)
+        return instance
+
+    def push(self, instance, raw):
+        with self.assertRaises(job.KnownFailure) as caught:
+            instance.push_file(self.PATH, raw)
+        self.assertEqual("guest_file_push_lost", str(caught.exception))
+        return instance.push_failure
+
+    def unfixed(self):
+        source = push_before(self, "push_file.before.source")
+        namespace = dict(job.__dict__)
+        exec(compile(source.read_bytes(), str(source), "exec"), namespace)
+        return source, mock.patch.object(job.Job, "push_file", namespace["push_file"])
+
+    def test_a_lost_write_names_its_call_chunk_offset_and_acknowledged_bytes_RED_swallowed_GREEN(self):
+        from agent_tools.tests import red_gate
+        raw = random.Random(11).randbytes(32768 * 4 + 5)
+        self.qga.lose = lambda command, kind, ordinal: ValueError() if command == "guest-file-write" and ordinal == 3 else None
+        source, unfixed = self.unfixed()
+        if red_gate.red_required(self, source):
+            with unfixed:
+                instance = self.instance()
+                # RED: the same KnownFailure, and not one word of why.
+                self.assertIsNone(self.push(instance, raw))
+                self.assertFalse((instance.data / "push-failure.json").exists())
+            self.qga.calls.clear()
+        instance = self.instance()
+        failure = self.push(instance, raw)
+        self.assertEqual({"command": "guest-file-write", "errorClass": "ValueError", "error": None, "chunk": 2, "offset": 65536,
+                          "acknowledgedBytes": 65536, "chunkBytes": 32768, "qgaClass": None, "qgaDesc": None,
+                          "receivedBytes": None, "sentinels": None, "close": "closed"}, failure)
+        record = json.loads((instance.data / "push-failure.json").read_bytes())
+        self.assertEqual((self.PATH, instance.op, None), (record["path"], record["operationId"], record["exchange"]))
+        self.assertEqual(3, self.qga.count("guest-file-write"), "a lost chunk is never written twice")
+        self.assertEqual(1, self.qga.count("guest-file-close"))
+        self.assertFalse((instance.data / "push.jsonl").exists())
+
+    def test_a_failing_close_never_hides_the_write_error_RED_replaced_GREEN(self):
+        from agent_tools.tests import red_gate
+        raw = random.Random(12).randbytes(32768 * 2)
+        losses = {"guest-file-write": ValueError("guest_reply"), "guest-file-close": TimeoutError("collection-deadline")}
+        self.qga.lose = lambda command, kind, ordinal: losses.get(command) if command != "guest-file-write" or ordinal == 2 else None
+        source, unfixed = self.unfixed()
+        if red_gate.red_required(self, source):
+            with unfixed:
+                # RED: the close's TimeoutError replaced the write's error, and neither was kept.
+                self.assertIsNone(self.push(self.instance(), raw))
+            self.qga.calls.clear()
+        failure = self.push(self.instance(), raw)
+        self.assertEqual(("guest-file-write", "ValueError", "guest_reply", 1, 32768, "failed:TimeoutError"),
+                         tuple(failure[key] for key in ("command", "errorClass", "error", "chunk", "acknowledgedBytes", "close")))
+
+    def test_a_close_alone_that_fails_is_the_push_failure(self):
+        self.qga.lose = lambda command, kind, ordinal: TimeoutError() if command == "guest-file-close" else None
+        failure = self.push(self.instance(), b"x" * 40000)
+        self.assertEqual(("guest-file-close", "TimeoutError", 2, 40000, None, "failed:TimeoutError"),
+                         tuple(failure[key] for key in ("command", "errorClass", "chunk", "acknowledgedBytes", "chunkBytes", "close")))
+
+    def test_an_invalid_handle_is_never_closed_or_written(self):
+        original = self.qga._guest_file_open
+        self.qga._guest_file_open = lambda arguments: (original(arguments), 0)[1]
+        failure = self.push(self.instance(), b"x")
+        self.assertEqual(("guest-file-open", "ValueError", "guest_file_handle", "not-opened"),
+                         tuple(failure[key] for key in ("command", "errorClass", "error", "close")))
+        self.assertEqual(0, self.qga.count("guest-file-write") + self.qga.count("guest-file-close"))
+
+    def test_a_staged_package_that_changed_is_named_as_the_artifact_read(self):
+        instance = self.instance()
+        raw = b"package " * 9000
+        directory = self.work / "artifacts"
+        directory.mkdir(mode=0o700)
+        package = {"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+        (directory / package["sha256"]).write_bytes(raw[:-1] + b"#")
+        (directory / package["sha256"]).chmod(0o600)
+        instance.plan = {**instance.plan, "artifactDirectory": str(directory)}
+        with self.assertRaises(job.KnownFailure):
+            instance.push_file(self.PATH, package)
+        self.assertEqual(("artifact-read", "ValueError", "artifact_cache_changed", "closed"),
+                         tuple(instance.push_failure[key] for key in ("command", "errorClass", "error", "close")))
+
+    def test_a_receipt_past_its_bound_keeps_only_the_push_call_and_class(self):
+        instance = self.instance()
+        instance.push_failure = {"command": "guest-file-write", "errorClass": "ValueError", "error": None, "chunk": 0, "offset": 0,
+                                 "acknowledgedBytes": 0, "chunkBytes": 1, "qgaClass": "GenericError", "qgaDesc": "d" * 160,
+                                 "receivedBytes": 1, "sentinels": 1, "close": "closed"}
+        probe = self.instance()
+        probe.owns_data, probe.evidence = True, {"padding": ""}
+        self.assertEqual(1, probe._finish(1, "guest_file_push_lost"))
+        base = len((probe.data / "scenario-receipt.json").read_bytes())
+        compact = {"command": "guest-file-write", "errorClass": "ValueError", "qgaClass": "GenericError"}
+        room = len(',"push":' + json.dumps(compact, sort_keys=True, separators=(",", ":")))
+        instance.owns_data = True
+        instance.evidence = {"padding": "p" * (job.RECEIPT_BYTES - base - room)}  # The compact push fits, the full one does not.
+        self.assertEqual(1, instance._finish(1, "guest_file_push_lost"))
+        raw = (instance.data / "scenario-receipt.json").read_bytes()
+        self.assertEqual(compact, json.loads(raw)["push"])
+        self.assertLessEqual(len(raw), job.RECEIPT_BYTES)
+
+
+class QgaExchangeFactsTests(unittest.TestCase):
+    """A push diagnosis reads the wire bytes of its own exchange; a raw byte and QGA's JSON escape never look alike."""
+
+    def test_the_ne2_reply_reads_as_the_error_after_the_sync_reply(self):
+        received = b'\xff{"return":7}\n' + STRAY_REPLY + b"\n"
+        facts = job.qga_exchange_facts(received, b'{"return":7}\n' + STRAY_REPLY + b"\n")
+        self.assertEqual(("GenericError", "JSON parse error, stray '\\ufffd'", 1, ""),
+                         (facts["qgaClass"], facts["qgaDesc"], facts["sentinels"], facts["beforeSentinel"]))
+
+    def test_raw_bytes_and_escapes_stay_distinct(self):
+        self.assertEqual("\\xff", job.escaped_bytes(b"\xff"))
+        self.assertEqual("\\\\ufffd", job.escaped_bytes(b"\\ufffd"))
+        self.assertEqual("\\xef\\xbf\\xbd", job.escaped_bytes("\ufffd".encode()))
+        self.assertEqual(job.PUSH_TEXT_LIMIT, len(job.escaped_bytes(b"a" * 1000)))
+
+    def test_bytes_before_the_sentinel_are_kept_apart(self):
+        facts = job.qga_exchange_facts(b'{"return":{"count":32768}}\n\xff{"return":9}\n{"return":{}}\n', b'{"return":9}\n{"return":{}}\n')
+        self.assertEqual(('{"return":{"count":32768}}\n', None, 1), (facts["beforeSentinel"], facts["qgaClass"], facts["sentinels"]))
+
+    def test_unparsable_or_empty_wires_name_nothing(self):
+        self.assertEqual({"receivedBytes": 0, "sentinels": 0, "beforeSentinel": None, "afterSentinel": "", "qgaClass": None, "qgaDesc": None},
+                         job.qga_exchange_facts(b"", b""))
+        self.assertIsNone(job.qga_exchange_facts(b"\xfe\xfe", b"\xfe{\n")["qgaClass"])
+
+
+@unittest.skipUnless(os.name == "posix", "a Unix socket peer, as the VM host's qga.sock is")
+class CanonicalCallBytesTests(unittest.TestCase):
+    """Could the tool itself send QGA a stray byte? The canonical call() (windows_guest_input._REMOTE_RUNTIME, which
+    guest_rpc_definitions renders into the job) against a socket peer that records every byte: each request is ASCII
+    after its one leading 0xFF, whatever the chunk holds and wherever a chunk splits a UTF-8 sequence."""
+
+    def setUp(self):
+        from agent_tools import windows_guest_input
+        source = windows_guest_input._REMOTE_RUNTIME
+        tree = ast.parse(source)
+        node = next(item for item in tree.body if isinstance(item, ast.FunctionDef) and item.name == "call")
+        self.namespace = {"verify_peer": lambda client, sock: None}  # The peer-credential check is Linux SO_PEERCRED.
+        exec("import base64,hashlib,json,os,re,secrets,socket,stat,sys,tempfile,gzip,time,select,struct\n"
+             + ast.get_source_segment(source, node), self.namespace)
+        directory = tempfile.mkdtemp(prefix="qga-", dir="/tmp")
+        self.addCleanup(shutil.rmtree, directory, True)
+        self.sock = os.path.join(directory, "s")
+        self.wire = os.path.join(directory, "wire")
+        self.partial = os.path.join(directory, "partial")
+        for name, path in (("wire", self.wire), ("partial_wire", self.partial)):
+            self.namespace[name] = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            self.addCleanup(os.close, self.namespace[name])
+
+    def serve(self, reply):
+        """One connection: answer the sync, then the command with ``reply`` (bytes) or its own count."""
+        import socket
+        import threading
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server.bind(self.sock)
+        server.listen(1)
+        seen = bytearray()
+
+        def run():
+            connection, _ = server.accept()
+            with connection:
+                def line():
+                    raw = bytearray()
+                    while not raw.endswith(b"\n"):
+                        part = connection.recv(65536)
+                        if not part:
+                            break
+                        raw.extend(part)
+                    seen.extend(raw)
+                    return bytes(raw)
+                sync = json.loads(line()[1:])
+                connection.sendall(b"\xff" + json.dumps({"return": sync["arguments"]["id"]}).encode() + b"\n")
+                request = json.loads(line())
+                count = len(base64.b64decode(request["arguments"].get("buf-b64", "")))
+                connection.sendall(reply if reply is not None else json.dumps({"return": {"count": count, "eof": False}}).encode() + b"\n")
+            server.close()
+        thread = threading.Thread(target=run)
+        thread.start()
+        self.addCleanup(thread.join, 5)
+        return seen, thread
+
+    def test_every_request_byte_is_ascii_after_its_one_sentinel(self):
+        chunks = [bytes(range(256)) * 128, "é€😀".encode()[:-1], "😀".encode()[1:] + b"\xff\xfe\x00", b"\xef\xbf\xbd" * 3]
+        for chunk in chunks:
+            with self.subTest(chunk=chunk[:8]):
+                if os.path.exists(self.sock):
+                    os.unlink(self.sock)
+                seen, thread = self.serve(None)
+                value = self.namespace["call"](self.sock, "guest-file-write", {"handle": 7, "buf-b64": base64.b64encode(chunk).decode("ascii")})
+                thread.join(5)
+                self.assertEqual({"count": len(chunk), "eof": False}, value)
+                self.assertEqual(1, seen.count(b"\xff"))
+                self.assertTrue(seen.startswith(b"\xff"))
+                self.assertTrue(all(byte < 0x80 for byte in seen[1:]), "nothing but ASCII follows the sentinel")
+
+    def test_the_ne2_reply_raises_and_its_bytes_are_what_the_diagnosis_reads(self):
+        seen, thread = self.serve(STRAY_REPLY + b"\n")
+        with self.assertRaises(ValueError):
+            self.namespace["call"](self.sock, "guest-file-write", {"handle": 7, "buf-b64": base64.b64encode(b"x" * 32768).decode("ascii")})
+        thread.join(5)
+        with open(self.partial, "rb") as stream:
+            received = stream.read()
+        with open(self.wire, "rb") as stream:
+            lines = stream.read()
+        facts = job.qga_exchange_facts(received, lines)
+        self.assertEqual(("GenericError", "JSON parse error, stray '\\ufffd'", 1), (facts["qgaClass"], facts["qgaDesc"], facts["sentinels"]))
+        self.assertTrue(received.endswith(STRAY_REPLY + b"\n"))
+
+
 class DecodeTests(unittest.TestCase):
     @staticmethod
     def terminal(stdout):
@@ -5416,7 +5645,9 @@ STUB_DEFINITIONS = r"""
 class ProductionBindingTests(Base):
     """The real _host_main over stub canonical definitions and the fake agent's call()."""
 
-    def run_program(self, *, hostboot="boot-a", qemu_sockets=True):
+    def run_program(self, *, hostboot="boot-a", qemu_sockets=True, exchange=None, prepare=None):
+        """``exchange(command, arguments, namespace)``, when given, is the call() of every exchange instead of the plain one;
+        ``prepare(namespace)`` sees the rendered program's names before it runs."""
         import io
         import sys
         from contextlib import redirect_stdout
@@ -5446,11 +5677,15 @@ class ProductionBindingTests(Base):
                     lock_states.append("held")
             finally:
                 os.close(probe)
+            if exchange is not None:
+                return exchange(command, arguments, namespace)
             os.write(namespace["wire"], b"line\n")
             os.write(namespace["partial_wire"], b"line\n")
             return self.qga.rpc(command, arguments)
         namespace.update(SPEC=spec, SETUP={}, CONTEXT={"hostBootId": "boot-a"}, PLAN=plan, FILES_GZ=base64.b64encode(payload).decode(), EVENTS=events, call=call,
                          wire=-1, partial_wire=-1, QGA_PEER_PID=None, QGA_GUARD=None, _host_boot=lambda: hostboot)
+        if prepare is not None:
+            prepare(namespace)
         stream = io.StringIO()
         with redirect_stdout(stream):
             code = namespace["_host_main"]()
@@ -5497,6 +5732,58 @@ class ProductionBindingTests(Base):
         self.assertEqual("ValueError", job._setup_reason(ValueError("Expecting value: line 1 column 1 (char 0)")))
         self.assertEqual("FileNotFoundError", job._setup_reason(FileNotFoundError(2, "No such file", "/home/private/qga.sock")))
         self.assertEqual("JSONDecodeError", job._setup_reason(json.JSONDecodeError("instance", "x", 0)))
+
+    def test_a_push_lost_to_a_qga_error_reply_names_it_in_the_receipt_RED_swallowed_GREEN(self):
+        """NE2 74e99864, 2026-11-17: QGA answered a guest-file-write with a stray-byte parse error; receipts said only
+        guest_file_push_lost. The exchange below writes what the canonical call() writes for that reply, then raises
+        as it does on a reply without "return"."""
+        failing = {"ordinal": 2}
+        writes = []
+
+        def exchange(command, arguments, namespace):
+            if command == "guest-file-write":
+                writes.append(arguments)
+                if len(writes) == failing["ordinal"]:
+                    os.write(namespace["wire"], b'{"return":4711}\n' + STRAY_REPLY + b"\n")
+                    os.write(namespace["partial_wire"], b'\xff{"return":4711}\n' + STRAY_REPLY + b"\n")
+                    raise ValueError()
+            os.write(namespace["wire"], b"line\n")
+            os.write(namespace["partial_wire"], b"line\n")
+            return self.qga.rpc(command, arguments)
+        from agent_tools.tests import red_gate
+        source = push_before(self, "push_file.before.source")
+        if red_gate.red_required(self, source):
+            def unfixed(program):  # The rendered program's own Job runs the fd17037c push_file.
+                namespace = dict(program)
+                exec(compile(source.read_bytes(), str(source), "exec"), namespace)
+                program["Job"].push_file = namespace["push_file"]
+            plan, code, marker, _, _ = self.run_program(exchange=exchange, prepare=unfixed)
+            receipt = json.loads((Path(plan["dataDirectory"]) / "scenario-receipt.json").read_bytes())
+            # RED: the receipt names no call, error, chunk or QGA reply, and nothing beside it does either.
+            self.assertEqual((1, "guest_file_push_lost"), (code, receipt["failure"]))
+            self.assertNotIn("push", receipt)
+            self.assertFalse((Path(plan["dataDirectory"]) / "push-failure.json").exists())
+            writes.clear()
+            self.setUp()  # A fresh VM root and agent for the fixed run.
+        plan, code, marker, _, _ = self.run_program(exchange=exchange)
+        data = Path(plan["dataDirectory"])
+        receipt = json.loads((data / "scenario-receipt.json").read_bytes())
+        self.assertEqual((1, 1, "guest_file_push_lost"), (code, marker["scenarioExit"], marker["failure"]))
+        earlier = [base64.b64decode(item["buf-b64"]) for item in writes[:-1] if item["handle"] == writes[-1]["handle"]]
+        self.assertEqual({"command": "guest-file-write", "errorClass": "ValueError", "error": None, "chunk": len(earlier),
+                          "offset": sum(map(len, earlier)), "acknowledgedBytes": sum(map(len, earlier)),
+                          "chunkBytes": len(base64.b64decode(writes[-1]["buf-b64"])),
+                          "qgaClass": "GenericError", "qgaDesc": "JSON parse error, stray '\\ufffd'",
+                          "receivedBytes": len(b'\xff{"return":4711}\n' + STRAY_REPLY + b"\n"), "sentinels": 1, "close": "closed"},
+                         receipt["push"])
+        record = json.loads((data / "push-failure.json").read_bytes())
+        after = record["exchange"]["afterSentinel"]
+        self.assertTrue(after.startswith('{"return":4711}\n{"error"'), "the sync reply, then an error where the write's reply belonged")
+        self.assertIn("stray '\\\\ufffd'", after, "QGA's own JSON escape, read as text")
+        self.assertNotIn("\\xff", after, "no raw 0xFF after the sentinel")
+        self.assertEqual("", record["exchange"]["beforeSentinel"])
+        self.assertEqual({"receivedBytes": 5, "sentinels": 0}, {key: record["closeExchange"][key] for key in ("receivedBytes", "sentinels")})
+        self.assertEqual(failing["ordinal"], len(writes), "the lost chunk is never written again")
 
     def test_a_changed_host_boot_refuses_before_anything_is_touched(self):
         plan, code, marker, _, _ = self.run_program(hostboot="boot-b")

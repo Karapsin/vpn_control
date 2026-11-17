@@ -1,0 +1,14 @@
+def _stage(self, config: Any, plan: native_scenario_execution.ScenarioPlan, package: Mapping[str, Any], directory: Path,
+           role: str, state: Any) -> None:
+    """A copy reaches the host's artifact cache before the job exists; a matching copy is kept, never resent.
+
+    ``state`` is what the target read found for this digest: present, absent, or anything else, which refuses.
+    """
+    _need(state in ("present", "absent"), "windows_scenario_stage_unavailable")
+    if state == "present":
+        return
+    # The first role keeps the names a single package always had.
+    suffix = "" if role in ("package", "basePackage", "pythonInstaller", "targetPackage") else "-" + role
+    staged = self._send(config, plan.host, _py(_STAGE, package["sha256"], str(package["bytes"]), "write"), seconds=_STAGE_SECONDS,
+                        keep=directory / ("stage-write" + suffix), stdin_path=Path(package["localPath"]), plan=plan)
+    _need(staged is not None and staged.get("state") == "staged", "windows_scenario_stage_unavailable")
