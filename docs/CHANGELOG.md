@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows reboot rows read the Run key's owner, group and DACL only, without the SACL an ordinary user cannot read.
 - Windows update grant rows keep the host's status copy current through every SYSTEM collector program, so the install-helper prompt is reviewed before it expires.
 - Windows reboot rows plant the legacy HighestAvailable autostart task from the SYSTEM run before the owner starts, as the elevated legacy app created it, so a planting failure never holds a clone.
+- Windows TUN collector release accepts its own published file's protected form, reports a park at once, takes its deadline from measured work, and the row's evidence is zipped before the release starts.
 
 ## 2.3.1 - 2026-11-17
 
