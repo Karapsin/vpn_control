@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows TUN collector release accepts its own published file's protected form, reports a park at once, takes its deadline from measured work, and the row's evidence is zipped before the release starts.
 - Windows failing-MSI collector chain takes the native protected forms and reads its worker's session while it runs.
 - Windows native collection gives collect, the decision read and the evidence pull separate transport budgets, and collects a refused-before-input approval on TUN and update grants as approval-unanswered with its evidence.
+- Windows scenario admission archives the closed journals of ended jobs out of the VM root, so a long-lived clone no longer hits the VM-root entry bound.
 
 ## 2.3.1 - 2026-11-17
 
