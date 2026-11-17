@@ -490,6 +490,20 @@ RECOVERY_POLICY_BYTE_FIXTURES = (
      '653a9b5fa410e79684cf5033f12516ac2e5f40254d58aa7800f1baedef3d10d5', None),
 )
 
+# ci/2bf326354d21: Windows release hygiene rejected these CRLF-converted beforeimages
+# ("Preserved Windows workflow changed"). The complete policy of that SHA is retained.
+CI_GATE_ATTRIBUTES_BEFORE = "agent_tools/tests/fixtures/ci_gate_checkout_bytes/attributes.before"
+CI_GATE_BYTE_FIXTURES = (
+    ('scripts/tests/fixtures/windows_desktop_ci_split/windows-desktop.yml.before.source',
+     '542b0faab1fdb9adf32dcfdd51afa79d5843c7157216afe62df4f99bf86fadfe', 27020),
+    ('scripts/tests/fixtures/package_release_hygiene/package_arch_desktop_update.sh.before.source',
+     'bebaffd8c2aeee6beb80a79b69b9752c2d233f8ea4d4936b90e5e487619dd594', 1607),
+    ('scripts/tests/fixtures/package_release_hygiene/package_linux_desktop.sh.before.source',
+     '9b9317f0cb5cac1eb05c46c6f9ab37d92bfe0dc10225a3a3eb04d1faf1fac18a', 2166),
+    ('scripts/tests/fixtures/package_release_hygiene/package_macos_desktop.sh.before.source',
+     '8a0d3eba78802806cc69b79d9194c2715c0bca6836e8a9685eb6e7fc5e60ac67', 2203),
+)
+
 
 # Mutable public review inputs use their current bytes as the Git roundtrip
 # oracle. This tests conversion only; it grants no source or native authority.
@@ -581,9 +595,10 @@ class HistoricalFixtureCheckoutBytesTest(unittest.TestCase):
                                                                          list(WINDOWS_ACL_CREATION_BYTE_FIXTURES) + list(SSH_PROXY_DESCRIPTOR_BYTE_FIXTURES) +
                                                                          list(TART_RENDERER_BYTE_FIXTURES) + list(TART_PROVIDER_SHAPE_BYTE_FIXTURES) +
                                                                          list(ANDROID_RECOVERY_BYTE_FIXTURES) + list(ANDROID_PERSISTED_BYTE_FIXTURES) +
-                                                                         list(CURRENT_REVIEW_INPUT_BYTE_FIXTURES) + list(RECOVERY_POLICY_BYTE_FIXTURES)),
+                                                                         list(CURRENT_REVIEW_INPUT_BYTE_FIXTURES) + list(RECOVERY_POLICY_BYTE_FIXTURES) +
+                                                                         list(CI_GATE_BYTE_FIXTURES)),
                               required_unset={name for name, _, _ in
-                                              PUBLIC_FRAME_BYTE_FIXTURES + SOURCE_DEPENDENCY_BYTE_FIXTURES + LEASE_POLICY_BYTE_FIXTURES + AUDITED_RAW_BYTE_FIXTURES + ARCHIVE_NESTED_BYTE_FIXTURES + VISUAL_AVAILABILITY_BYTE_FIXTURES + WINDOWS_ACL_CREATION_BYTE_FIXTURES + SSH_PROXY_DESCRIPTOR_BYTE_FIXTURES + TART_RENDERER_BYTE_FIXTURES + TART_PROVIDER_SHAPE_BYTE_FIXTURES + ANDROID_RECOVERY_BYTE_FIXTURES + ANDROID_PERSISTED_BYTE_FIXTURES + CURRENT_REVIEW_INPUT_BYTE_FIXTURES + RECOVERY_POLICY_BYTE_FIXTURES},
+                                              PUBLIC_FRAME_BYTE_FIXTURES + SOURCE_DEPENDENCY_BYTE_FIXTURES + LEASE_POLICY_BYTE_FIXTURES + AUDITED_RAW_BYTE_FIXTURES + ARCHIVE_NESTED_BYTE_FIXTURES + VISUAL_AVAILABILITY_BYTE_FIXTURES + WINDOWS_ACL_CREATION_BYTE_FIXTURES + SSH_PROXY_DESCRIPTOR_BYTE_FIXTURES + TART_RENDERER_BYTE_FIXTURES + TART_PROVIDER_SHAPE_BYTE_FIXTURES + ANDROID_RECOVERY_BYTE_FIXTURES + ANDROID_PERSISTED_BYTE_FIXTURES + CURRENT_REVIEW_INPUT_BYTE_FIXTURES + RECOVERY_POLICY_BYTE_FIXTURES + CI_GATE_BYTE_FIXTURES},
                               required_unspecified=PARSE_ONLY_MANIFESTS)
 
     def test_original_policy_converts_recovery_policy_provenance(self):
@@ -758,4 +773,13 @@ class HistoricalFixtureCheckoutBytesTest(unittest.TestCase):
         self.assertEqual(3, len(corrupted))
         self._verify_checkout(SSH_PROXY_DESCRIPTOR_ATTRIBUTES_BEFORE, corrupted=corrupted,
                               extra_files=SSH_PROXY_DESCRIPTOR_BYTE_FIXTURES,
+                              required_unspecified=corrupted)
+
+    def test_complete_before_ci_gate_attributes_corrupt_hashed_hygiene_beforeimages(self):
+        before = (ROOT / CI_GATE_ATTRIBUTES_BEFORE).read_bytes()
+        self.assertEqual('281c32b0bb70230b25388a0708a7350c306ef7c5c1a89bf861b93187acb7c7cf',
+                         hashlib.sha256(before).hexdigest())
+        corrupted = {name for name, _, _ in CI_GATE_BYTE_FIXTURES}
+        self.assertEqual(4, len(corrupted))
+        self._verify_checkout(before, corrupted=corrupted, extra_files=CI_GATE_BYTE_FIXTURES,
                               required_unspecified=corrupted)

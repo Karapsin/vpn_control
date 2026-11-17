@@ -280,3 +280,8 @@ scripts/capture_visual_windows_qemu.py -text
 /scripts/windows_broker_fixture_observer.py -text
 /scripts/integration/socks_http_fixture.py -text
 /scripts/integration/https_subscription_relay_fixture.py -text
+
+# ci/2bf326354d21: Windows release hygiene hashes these preserved beforeimages byte for byte.
+/scripts/tests/fixtures/windows_desktop_ci_split/*.source -text
+/scripts/tests/fixtures/package_release_hygiene/*.source -text
+/agent_tools/tests/fixtures/ci_gate_checkout_bytes/attributes.before -text

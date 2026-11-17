@@ -33,6 +33,19 @@ def before(name):
     return raw
 
 
+def bash_reads_lists():
+    """The Linux packager reads file lists with mapfile (bash 4+); hosted macOS runs `bash` 3.2."""
+    try:
+        return subprocess.run(["bash", "-c", "mapfile -t lines < /dev/null"], capture_output=True,
+                              timeout=30, check=False).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+LINUX_PACKAGER_SHELL = os.name != "nt" and bash_reads_lists()
+NO_LINUX_PACKAGER_SHELL = "the Linux packager needs bash 4 (mapfile); this host's bash is older"
+
+
 def executable(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -80,6 +93,7 @@ class PackageReleaseHygieneTests(unittest.TestCase):
         count = len(marker.read_text().splitlines()) if marker.exists() else 0
         return result, count
 
+    @unittest.skipUnless(LINUX_PACKAGER_SHELL, NO_LINUX_PACKAGER_SHELL)
     def test_linux_package_runs_hygiene_once_locally_and_never_with_the_ci_flag(self):
         result, count = self.runs("package_linux_desktop.sh", "--skip-tests", "--skip-package-regression-tests")
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
@@ -110,6 +124,7 @@ class PackageReleaseHygieneTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertEqual(0, count)
 
+    @unittest.skipUnless(LINUX_PACKAGER_SHELL, NO_LINUX_PACKAGER_SHELL)
     def test_a34e07cb_scripts_ran_linux_hygiene_twice_and_had_no_ci_flag(self):
         # RED on the whole preserved scripts: the same positives fail. GREEN above.
         records = {}
