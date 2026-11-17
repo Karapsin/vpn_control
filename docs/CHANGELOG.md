@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Windows GUI picker: a failed pointer park now names each failed check with observed values and keeps a diagnostic frame.
+
 ## 2.3.0 - 2026-11-17
 
 - Desktop transfers refuse a sealed document whose bytes changed after it was sealed, checking its size and digest before anything is parsed.
