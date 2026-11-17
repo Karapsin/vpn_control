@@ -102,9 +102,12 @@ ROUTE_STEPS = 6
 ROUTE_STEP_SECONDS = 10
 # How close above or below the field a final profile's focus crop lies: the box's focused border, not its text.
 _FOCUS_REACH = 8
+# How far above the field a routed profile's account crop ends: the selected credential's name over its own password
+# box, not a tile name elsewhere in the expanded list.
+_ACCOUNT_REACH = 96
 _ROUTE_FIELDS = frozenset({"route", "focus"})
-_STEP_FIELDS = frozenset({"schemaVersion", "deploymentId", "prompt", "approver", "step", "after", "width", "height", "crops", "key",
-                          "reviewedFrameSha256"})
+_STEP_FIELDS = frozenset({"schemaVersion", "deploymentId", "prompt", "approver", "step", "after", "width", "height", "crops", "field",
+                          "key", "reviewedFrameSha256"})
 _ROUTE_REASON = "instance_uac_route_unrecognized"
 _ATTEMPT_INTENT = re.compile(r"attempt-([0-9]{4})\.intent\.json\Z")
 _ROOT_FORM = r"C:\\Users\\[A-Za-z0-9_.-]{1,64}\\AppData\\Local\\VpnControlOrdinary-"
@@ -244,6 +247,10 @@ def _profile_name(prompt, approver):
 
 def _step_name(prompt, approver, number):
     return prompt + "." + approver + ".step-%02d.json" % number
+
+
+def _step_frame_name(prompt, approver, number):
+    return prompt + "." + approver + ".step-%02d.frame.ppm" % number
 
 
 def census_source(row, context, administrator):
@@ -515,31 +522,36 @@ def _uac_park(monitor,absolute):
     for _ in range(16):
         monitor('input-send-event',{'events':[{'type':'rel','data':{'axis':'x','value':120}},{'type':'rel','data':{'axis':'y','value':-120}}]});time.sleep(.03)
 
+def _uac_shows(raw,screen):
+    """True when the frame shows the screen at exactly one offset, False when at none, None when at two or more: an
+    ambiguous frame is proof of nothing, neither that a step is shown nor that it is gone."""
+    try:return _uac_find(raw,screen)is not None
+    except ValueError:return None
+
 def _uac_route(route,shot,monitor,guard,seconds):
     """A reviewed keyboard route: each step's one closed key, sent only into a frame that shows that step's reviewed crops
-    at one offset, and the next step looked for only once those crops changed, so a key that did nothing visible, or
-    landed before the prompt drew its step, stops the route. Never a pointer, a button or a character.
+    at one offset and the step before it at none, and the next step looked for only once those crops are gone at every
+    offset, so a key that did nothing visible, or landed before the prompt drew its step, stops the route. An ambiguous
+    frame never counts as either. Never a pointer, a button or a character.
 
     (step, sent, frame): step is len(route) when every key went, else the index of the step that never appeared or never
     changed, with the keys sent and the last frame read. Each wait is bounded by seconds.
     """
     import time
-    def shows(raw,step):
-        try:return _uac_find(raw,step)is not None
-        except ValueError:return False
     sent=0
     for index,step in enumerate(route):
+        before=route[index-1]if index else None
         limit=time.monotonic()+seconds
         while True:
             raw=shot()
-            if shows(raw,step):break
+            if _uac_shows(raw,step)is True and(before is None or _uac_shows(raw,before)is False):break
             if time.monotonic()>=limit:return index,sent,raw
             guard();time.sleep(.25)
         guard();monitor('send-key',{'keys':[{'type':'qcode','data':code}for code in UAC_ROUTE_KEYS[step['key']]],'hold-time':80});sent+=1
         limit=time.monotonic()+seconds
         while True:
             guard();time.sleep(.25);raw=shot()
-            if not shows(raw,step):break
+            if _uac_shows(raw,step)is False:break
             if time.monotonic()>=limit:return index,sent,raw
     return len(route),sent,None
 
@@ -652,7 +664,7 @@ def _uac_gate(owner,root,monitor,guard,script,fresh):
     first,_=census();recognized()
     second,read=census();need((second['pid'],second['birth'])==(first['pid'],first['birth']),'instance_uac_consent_changed')
     raw=recognized();_uac_prior_open(root,second)
-    return {'consent':second,'frameSha256':hashlib.sha256(raw).hexdigest(),'censusStarted':read,'shot':shot}
+    return {'consent':second,'frameSha256':hashlib.sha256(raw).hexdigest(),'censusStarted':read,'shot':shot,'census':census}
 
 def _uac_navigate(owner,root,durable,monitor,guard,admitted):
     """The reviewed route to the approver's own credential, after the burn, the journal and the fence and before any secret.
@@ -674,18 +686,29 @@ def _uac_navigate(owner,root,durable,monitor,guard,admitted):
                                                             'inputAttempted':False,'routeStep':step,'keysSent':sent,'replayAllowed':False,**shown})
         _uac_close_fence(root,durable,OPERATION,os.getpid(),0)
         raise ValueError(reason)
-    shot=admitted['shot'];consent=admitted['consent']
+    shot=admitted['shot'];consent=admitted['consent'];last=len(UAC_ROUTE)+1
+    def answer(raw):
+        """The whole answer screen at one offset with an empty field, and the route's last step at none."""
+        try:found=_uac_locate(raw)
+        except ValueError:return False
+        return found is not None and _uac_field_dark(raw,found)<=UAC_FIELD['maxDarkPixels']and _uac_shows(raw,UAC_ROUTE[-1])is False
     step,sent,raw=_uac_route(UAC_ROUTE,shot,monitor,guard,UAC_ROUTE_SECONDS)
     if step<len(UAC_ROUTE):stop('instance_uac_route_unrecognized',step+1,sent,raw,UAC_ROUTE[step])
     limit=time.monotonic()+UAC_ROUTE_SECONDS
     while True:
         raw=shot()
-        try:found=_uac_locate(raw)
-        except ValueError:found=None
-        if found is not None and _uac_field_dark(raw,found)<=UAC_FIELD['maxDarkPixels']:break
-        if time.monotonic()>=limit:stop('instance_uac_route_unrecognized',len(UAC_ROUTE)+1,sent,raw,UAC_SCREEN)
+        if answer(raw):break
+        if time.monotonic()>=limit:stop('instance_uac_route_unrecognized',last,sent,raw,UAC_SCREEN)
         guard();time.sleep(.25)
-    if consent['ageSeconds']+time.monotonic()-admitted['censusStarted']>=UAC_PROMPT_AGE:stop('instance_uac_prompt_age',len(UAC_ROUTE)+1,sent,None,None)
+    # The keys could have answered or closed the prompt: the same consent process must still be up, and the age counts
+    # from this census. Then the answer screen is read once more, and only then is the secret typed.
+    try:found,started=admitted['census']()
+    except ValueError as error:
+        stop(str(error)if str(error)in ('instance_uac_prompt_age','instance_uac_consent_changed')else'instance_uac_route_census_failed',last,sent,None,None)
+    if (found['pid'],found['birth'])!=(consent['pid'],consent['birth']):stop('instance_uac_consent_changed',last,sent,None,None)
+    raw=shot()
+    if not answer(raw):stop('instance_uac_route_unrecognized',last,sent,raw,UAC_SCREEN)
+    if found['ageSeconds']+time.monotonic()-started>=UAC_PROMPT_AGE:stop('instance_uac_prompt_age',last,sent,None,None)
 
 def _uac_flow(owner,root,save,monitor,guard,script,fresh):
     """Proof, then the burn, the journal and the fence, then one answer. A lost owner's input stays unknown."""
@@ -961,13 +984,13 @@ def _uac_review_status_open(root,review):
 
 _DECIDE_SOURCES = (PrivateInputUnknown, private_keys, enter_private, ppm, _uac_load, _uac_create, _uac_birth, _uac_exit_source,
                    _uac_close_fence, _UacOwner, _uac_census, _uac_offsets, _uac_crop_sha, _uac_find, _uac_locate, _uac_field_dark,
-                   _uac_frame_facts, _uac_park, _uac_route, _uac_publish, _uac_attempt_frame, _uac_prior_open, _uac_gate, _uac_navigate, _uac_flow)
+                   _uac_frame_facts, _uac_park, _uac_shows, _uac_route, _uac_publish, _uac_attempt_frame, _uac_prior_open, _uac_gate, _uac_navigate, _uac_flow)
 _STATUS_SOURCES = (_uac_load, _uac_create, _uac_birth, _uac_exit_source, _uac_close_fence, _uac_attempt_frame, _uac_receipts, _uac_status_open)
 # The review embeds no input code: no key encoder, no secret, no owner fork and no stdin. Only a review with reviewed route
 # steps also embeds the route (_REVIEW_ROUTE_SOURCES), whose one key path sends those steps' closed navigation keys.
 _REVIEW_SOURCES = (ppm, _uac_load, _uac_create, _uac_directory, _uac_publish, _uac_review_frame, _UacReview, _uac_census, _uac_prior_open,
                    _uac_park, _uac_review_flow)
-_REVIEW_ROUTE_SOURCES = (_uac_crop_sha, _uac_find, _uac_route)
+_REVIEW_ROUTE_SOURCES = (_uac_crop_sha, _uac_find, _uac_shows, _uac_route)
 _REVIEW_STATUS_SOURCES = (_uac_load, _uac_create, _uac_review_frame, _uac_review_receipts, _uac_review_status_open)
 
 
@@ -1208,13 +1231,17 @@ def validate_profile(profile, deployment, prompt, approver="administrator", *, a
         if not (focus[0] < box[2] and box[0] < focus[2]
                 and (box[3] <= focus[1] <= box[3] + _FOCUS_REACH or box[1] - _FOCUS_REACH <= focus[3] <= box[1])):
             raise ValueError("windows_uac_profile_focus")
+        # The account crop is the selected credential's name: columns shared with the field, ending just above it.
+        account = profile["account"]["rect"]
+        if not (account[0] < box[2] and box[0] < account[2] and account[3] <= box[1] <= account[3] + _ACCOUNT_REACH):
+            raise ValueError("windows_uac_profile_account")
     return profile
 
 
 def validate_step(step, deployment, prompt, approver, number, after):
     """One reviewed route step: the frame a review kept after the steps before it (after, their digests in order), its
-    exact crops, and the one closed key the reviewer chose for it. Only a second administrator's install-helper prompt
-    has a route."""
+    exact crops clear of the state's password box (field), and the one closed key the reviewer chose for it. Only a
+    second administrator's install-helper prompt has a route."""
     if (type(step) is not dict or set(step) != _STEP_FIELDS or approver != "second-administrator" or prompt != "install-helper"
             or type(number) is not int or not 1 <= number <= ROUTE_STEPS or type(step["step"]) is not int or step["step"] != number
             or type(step["schemaVersion"]) is not int or step["schemaVersion"] != 1 or step["deploymentId"] != deployment
@@ -1225,7 +1252,8 @@ def validate_step(step, deployment, prompt, approver, number, after):
             or type(step["crops"]) is not list or not 1 <= len(step["crops"]) <= 8
             or type(step["reviewedFrameSha256"]) is not str or re.fullmatch("[0-9a-f]{64}", step["reviewedFrameSha256"]) is None):
         raise ValueError("windows_uac_profile")
-    _clear_regions(step["crops"], step["width"], step["height"])
+    # field is the state's password box, where a caret may blink: no step crop may cover it.
+    _clear_regions(step["crops"], step["width"], step["height"], _rect(step["field"], step["width"], step["height"]))
     return step
 
 
@@ -1317,8 +1345,35 @@ def _profiles(root, deployment):
     return directory
 
 
-def reviewed_uac_profile(root, deployment, prompt, frame, crops, field, max_dark_pixels, *, direct=False, approver="administrator", account=None,
-                         focus=None, route=None):
+def _shown_somewhere(pixels, width, height, rows):
+    """Whether every reviewed crop of rows matches this frame at some one vertical offset: the decision's search."""
+    rects = [row["rect"] for row in rows]
+    for dy in range(-min(rect[1] for rect in rects), height - max(rect[3] for rect in rects) + 1):
+        if all(hashlib.sha256(_region(pixels, width, row["rect"], dy)).hexdigest() == row["sha256"] for row in rows):
+            return True
+    return False
+
+
+def _make_profile(deployment, prompt, frame, crops, field, max_dark_pixels, approver, account, focus=None, route=()):
+    """A validated profile of one frame, with its regions at one offset only and an empty field, and that frame's pixels."""
+    width, height, pixels = _frame_pixels(frame)
+    rows = [{"rect": list(rect), "sha256": hashlib.sha256(_region(pixels, width, rect)).hexdigest()} for rect in crops]
+    profile = {"schemaVersion": 1, "deploymentId": deployment, "prompt": prompt, "width": width, "height": height, "crops": rows,
+               "field": {"rect": list(field), "maxDarkPixels": max_dark_pixels}, "reviewedFrameSha256": hashlib.sha256(frame).hexdigest()}
+    if account is not None:
+        profile.update(approver=approver, account={"rect": list(account), "sha256": hashlib.sha256(_region(pixels, width, account)).hexdigest()})
+    if route:
+        profile.update(route=list(route), focus={"rect": list(focus), "sha256": hashlib.sha256(_region(pixels, width, focus)).hexdigest()})
+    validate_profile(profile, deployment, prompt, approver, account_required=account is not None)
+    _only_offset(pixels, width, height, [row["rect"] for row in rows] + [profile[name]["rect"] for name in ("account", "focus") if name in profile],
+                 [list(field)])
+    inside = _region(pixels, width, field)
+    if sum(max(inside[at:at + 3]) < DARK_LEVEL for at in range(0, len(inside), 3)) > max_dark_pixels:
+        raise ValueError("windows_uac_profile_field_not_empty")
+    return profile, (width, height, pixels)
+
+
+def reviewed_uac_profile(root, deployment, prompt, frame, crops, field, max_dark_pixels, *, direct=False, approver="administrator", account=None):
     """Hash the reviewed regions of a frame the reviewer opened, with the prompt up and unanswered.
 
     Direct setup only, with no MCP route. The frame shows public pixels and an empty field, and
@@ -1327,66 +1382,112 @@ def reviewed_uac_profile(root, deployment, prompt, frame, crops, field, max_dark
 
     account is the region of the account name the prompt shows selected, which must be approver's: needed for the
     second administrator (an install-helper prompt of APPROVERS) and for any approve profile on a clone that has one.
-
-    route is the retained review's record["route"], the step digests its keys followed. A non-empty one makes the
-    second administrator's routed profile: every reviewed step must be exactly that route, and focus is the region of
-    the password box's focused border just above or below the field, so the secret goes only into a focused box.
+    A second administrator reached by a route has its own maker, reviewed_uac_route_profile.
     """
-    route = list(route or [])
     if (type(deployment) is not str or not _canonical(deployment) or prompt not in (*PROMPTS, *(("qualification",) if direct else ()))
-            or approver not in APPROVER_ROLES or approver != "administrator" and (account is None or prompt != "install-helper")
-            or (focus is None) is not (route == []) or not _digests(route) or route and approver != "second-administrator"):
+            or approver not in APPROVER_ROLES or approver != "administrator" and (account is None or prompt != "install-helper")):
         raise ValueError("windows_uac_profile")
-    if route and _load_route(root, deployment, prompt, approver)[1] != route:
-        raise ValueError("windows_uac_profile_route")
-    width, height, pixels = _frame_pixels(frame)
-    rows = [{"rect": list(rect), "sha256": hashlib.sha256(_region(pixels, width, rect)).hexdigest()} for rect in crops]
-    profile = {"schemaVersion": 1, "deploymentId": deployment, "prompt": prompt, "width": width, "height": height, "crops": rows,
-               "field": {"rect": list(field), "maxDarkPixels": max_dark_pixels}, "reviewedFrameSha256": hashlib.sha256(frame).hexdigest()}
-    if account is not None:
-        profile.update(approver=approver, account={"rect": list(account), "sha256": hashlib.sha256(_region(pixels, width, account)).hexdigest()})
-    if route:
-        profile.update(route=route, focus={"rect": list(focus), "sha256": hashlib.sha256(_region(pixels, width, focus)).hexdigest()})
-    validate_profile(profile, deployment, prompt, approver, account_required=account is not None)
-    _only_offset(pixels, width, height, [row["rect"] for row in rows] + [profile[name]["rect"] for name in ("account", "focus") if name in profile],
-                 [list(field)])
-    inside = _region(pixels, width, field)
-    if sum(max(inside[at:at + 3]) < DARK_LEVEL for at in range(0, len(inside), 3)) > max_dark_pixels:
-        raise ValueError("windows_uac_profile_field_not_empty")
+    profile, _ = _make_profile(deployment, prompt, frame, crops, field, max_dark_pixels, approver, account)
     login._retain_local(_profiles(root, deployment), _profile_name(prompt, approver), profile)
     return profile
 
 
-def reviewed_uac_step(root, deployment, prompt, frame, crops, key, *, route, approver="second-administrator"):
-    """The next step of the second administrator's keyboard route, from a frame a review kept and the reviewer opened.
+def _route_review(root, correlation_id):
+    """The second administrator's retained review frame and its record, bound to each other: the frame's digest is the
+    one the record names, and the review was of a row whose approver is the second administrator, on install-helper."""
+    frame, record = retained_review_frame(root, correlation_id)
+    if (hashlib.sha256(frame).hexdigest() != record["frameSha256"] or approver_of(record.get("scenarioId")) != "second-administrator"
+            or record["prompt"] != "install-helper" or not _canonical(record["environment"]) or not _digests(record["route"])):
+        raise ValueError("windows_uac_profile")
+    return frame, record
 
-    Direct setup only, with no MCP route, and create-only. route is that review's record["route"]: the steps its keys
-    followed, which must be every step reviewed so far, so this frame is the one after them. crops show this state,
-    including where the focus is, which key must visibly move (the route waits for them to change after the key).
-    key is one closed name of ROUTE_KEYS. Once the routed profile exists its route is closed.
+
+def _step_frames(root, deployment, prompt, approver, steps):
+    """Each step's privately kept reviewed frame, checked against the digest its step names."""
+    directory = Path(root) / ".runtime/windows-uac-profiles" / deployment
+    frames = []
+    for number, step in enumerate(steps, 1):
+        raw = _read_private(directory / _step_frame_name(prompt, approver, number), REVIEW_FRAME_BYTES)
+        if hashlib.sha256(raw).hexdigest() != step["reviewedFrameSha256"]:
+            raise ValueError("windows_uac_profile_route")
+        frames.append(raw)
+    return frames
+
+
+def _keep_once(directory, name, raw):
+    """Create-only, and a retry that finds the same bytes already kept goes on."""
+    try:
+        login._retain_local(directory, name, raw)
+    except FileExistsError:
+        if _read_private(directory / name, REVIEW_FRAME_BYTES) != raw:
+            raise ValueError("windows_uac_profile_route") from None
+
+
+def reviewed_uac_route_profile(root, correlation_id, crops, field, max_dark_pixels, account, focus):
+    """The second administrator's routed profile, from the frame the review of correlation_id kept after the whole route.
+
+    Direct setup only, with no MCP route, and create-only. The frame must show the second administrator selected with its
+    empty password box focused: account is that name just above the field's columns, focus the box's focused border
+    just above or below the field. The route the review followed must be every reviewed step, which the profile then pins
+    and closes. Its regions together must show none of the steps' kept frames, so they prove the selection and the
+    focus, not only a visible name, and the frame must not still show the last step.
     """
-    route = list(route) if type(route) is list else None
-    if (type(deployment) is not str or not _canonical(deployment) or approver != "second-administrator" or prompt != "install-helper"
-            or route is None or not _digests(route) or len(route) >= ROUTE_STEPS or key not in ROUTE_KEYS):
+    frame, record = _route_review(root, correlation_id)
+    deployment, prompt, approver, route = record["environment"], "install-helper", "second-administrator", record["route"]
+    steps, digests = _load_route(root, deployment, prompt, approver)
+    if not route or digests != route:
+        raise ValueError("windows_uac_profile_route")
+    profile, (width, height, pixels) = _make_profile(deployment, prompt, frame, crops, field, max_dark_pixels, approver, account, focus, route)
+    if _shown_somewhere(pixels, width, height, steps[-1]["crops"]):
+        raise ValueError("windows_uac_profile_step_unchanged")
+    regions = profile["crops"] + [profile["account"], profile["focus"]]
+    for raw in _step_frames(root, deployment, prompt, approver, steps):
+        shown = _frame_pixels(raw)
+        if shown[:2] == (width, height) and _shown_somewhere(shown[2], width, height, regions):
+            raise ValueError("windows_uac_profile_step_frame")
+    login._retain_local(_profiles(root, deployment), _profile_name(prompt, approver), profile)
+    return profile
+
+
+def reviewed_uac_step(root, correlation_id, crops, key, field):
+    """The next step of the second administrator's keyboard route, from the frame the review of correlation_id kept.
+
+    Direct setup only, with no MCP route, and create-only. That review's route must be every step reviewed so far, so
+    the frame is the one after them, and the frame must no longer show the last step's crops at any offset. crops show
+    this state, including where the focus is, which key must visibly move (the route waits for them to change after
+    the key); field is this state's password box, where a caret may blink, which no crop may cover. key is one closed
+    name of ROUTE_KEYS. The frame is kept privately beside the step. Once the routed profile exists its route is closed.
+    """
+    frame, record = _route_review(root, correlation_id)
+    deployment, prompt, approver, route = record["environment"], "install-helper", "second-administrator", record["route"]
+    if len(route) >= ROUTE_STEPS or key not in ROUTE_KEYS:
         raise ValueError("windows_uac_profile")
     if os.path.lexists(Path(root).resolve(strict=True) / ".runtime/windows-uac-profiles" / deployment / _profile_name(prompt, approver)):
         raise ValueError("windows_uac_profile_route_closed")
-    if _load_route(root, deployment, prompt, approver)[1] != route:
+    steps, digests = _load_route(root, deployment, prompt, approver)
+    if digests != route:
         raise ValueError("windows_uac_profile_route")
     width, height, pixels = _frame_pixels(frame)
     rows = [{"rect": list(rect), "sha256": hashlib.sha256(_region(pixels, width, rect)).hexdigest()} for rect in crops]
     step = {"schemaVersion": 1, "deploymentId": deployment, "prompt": prompt, "approver": approver, "step": len(route) + 1, "after": route,
-            "width": width, "height": height, "crops": rows, "key": key, "reviewedFrameSha256": hashlib.sha256(frame).hexdigest()}
+            "width": width, "height": height, "crops": rows, "field": list(field), "key": key,
+            "reviewedFrameSha256": hashlib.sha256(frame).hexdigest()}
     validate_step(step, deployment, prompt, approver, len(route) + 1, route)
     _only_offset(pixels, width, height, [row["rect"] for row in rows])
-    login._retain_local(_profiles(root, deployment), _step_name(prompt, approver, len(route) + 1), step)
+    if steps and _shown_somewhere(pixels, width, height, steps[-1]["crops"]):
+        raise ValueError("windows_uac_profile_step_unchanged")
+    directory = _profiles(root, deployment)
+    _keep_once(directory, _step_frame_name(prompt, approver, len(route) + 1), frame)
+    login._retain_local(directory, _step_name(prompt, approver, len(route) + 1), step)
     return step
 
 
 def discard_uac_route(root, deployment, prompt, first, *, approver="second-administrator"):
-    """Remove the reviewed steps from first on, after a review showed a step's key led elsewhere; the earlier steps stay.
+    """Set aside the reviewed steps from first on, after a review showed a step's key led elsewhere; the earlier steps stay.
 
-    Direct setup only. A route a routed profile pins is closed and never changes. Returns the names removed.
+    Direct setup only. Nothing is deleted: the steps and their frames move whole into a new dated folder under
+    discarded/, as evidence of the key that led elsewhere. A route a routed profile pins is closed and never changes.
+    Returns the names moved.
     """
     if (type(deployment) is not str or not _canonical(deployment) or approver != "second-administrator" or prompt != "install-helper"
             or type(first) is not int or not 1 <= first <= ROUTE_STEPS):
@@ -1394,13 +1495,20 @@ def discard_uac_route(root, deployment, prompt, first, *, approver="second-admin
     directory = Path(root).resolve(strict=True) / ".runtime/windows-uac-profiles" / deployment
     if os.path.lexists(directory / _profile_name(prompt, approver)):
         raise ValueError("windows_uac_profile_route_closed")
-    removed = []
-    for number in range(ROUTE_STEPS, first - 1, -1):
-        path = directory / _step_name(prompt, approver, number)
-        if os.path.lexists(path):
-            path.unlink()
-            removed.append(path.name)
-    return sorted(removed)
+    names = [name for number in range(first, ROUTE_STEPS + 1)
+             for name in (_step_name(prompt, approver, number), _step_frame_name(prompt, approver, number)) if os.path.lexists(directory / name)]
+    if not names:
+        return []
+    kept = directory / "discarded"
+    kept.mkdir(mode=0o700, exist_ok=True)
+    target = kept / (time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + os.urandom(4).hex())
+    target.mkdir(mode=0o700)
+    for path in (kept, target):
+        os.chmod(path, 0o700)
+    # Later steps first, so a move cut short never leaves a later step after a gap.
+    for name in sorted(names, reverse=True):
+        os.rename(directory / name, target / name)
+    return sorted(names)
 
 
 def _read_private(path, limit=65536):
@@ -1455,7 +1563,7 @@ def retained_review_frame(root, correlation_id):
             raise ValueError("windows_uac_review_frame_unavailable")
         return raw, {"environment": intended["environment"], "prompt": intended["prompt"], "frameSha256": known["frameSha256"],
                      "width": known["width"], "height": known["height"], "pointerMoved": known["pointerMoved"],
-                     "wakeMilliseconds": known["wakeMilliseconds"], "route": list(known.get("route", []))}
+                     "wakeMilliseconds": known["wakeMilliseconds"], "route": list(known.get("route", [])), "scenarioId": intended["scenarioId"]}
     except (OSError, ValueError, KeyError):
         raise ValueError("windows_uac_review_frame_unavailable") from None
 
@@ -1771,7 +1879,7 @@ def _project(value, decision, inputs, *, submitted):
         # A route that stopped after the burn sent navigation keys and no secret: which step, and how many keys.
         step, sent = value.get("routeStep"), value.get("keysSent")
         routed = (type(step) is int and type(sent) is int and 1 <= step <= ROUTE_STEPS + 1 and 0 <= sent <= ROUTE_STEPS
-                  and reason in (_ROUTE_REASON, "instance_uac_prompt_age"))
+                  and reason in (_ROUTE_REASON, "instance_uac_prompt_age", "instance_uac_consent_changed", "instance_uac_route_census_failed"))
         return {"state": "refused", "reason": reason, "attempt": value["attempt"], **public, **({"frame": facts} if facts else {}),
                 **({"routeStep": step, "keysSent": sent} if routed else {})}
     if state == "blocked" and type(reason) is str and _PUBLIC_REASON.fullmatch(reason) is not None:

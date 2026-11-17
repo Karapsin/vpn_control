@@ -2500,20 +2500,29 @@ the route is keys only, from the closed set `ROUTE_KEYS` (`tab`, `shift-tab`,
 `ret`, `spc`, `down`, `up`), at most `ROUTE_STEPS` (6) steps. Each step is a
 private, create-only file
 `install-helper.second-administrator.step-NN.json`: the exact crops of one
-reviewed frame, the one key the reviewer chose for it, and the digests of the
-steps before it (`after`). The second administrator's profile then pins the
-whole route by those digests (`route`) and adds a `focus` crop, the password
-box's focused border within 8 rows above or below the field, with at most six
-other crops beside `account` and `focus`. After the burn, the input journal and
-the fence, the decision sends each step's key only into a frame that shows that
-step at one vertical offset (each state is searched alone, since a dialog that
-grows is centred again), and looks for the next step only once that step's crops
-changed, so a key with no visible effect stops the route before the next key.
+reviewed frame, clear of that state's password box (`field`, where a caret may
+blink), the one key the reviewer chose for it, and the digests of the steps
+before it (`after`). Its reviewed frame is kept beside it as
+`step-NN.frame.ppm`. The second administrator's profile then pins the whole
+route by those digests (`route`) and adds a `focus` crop, the password box's
+focused border within 8 rows above or below the field, with at most six other
+crops beside `account` and `focus`; its `account` crop must share the field's
+columns and end at most 96 rows above it, the selected credential's own name.
+After the burn, the input journal and the fence, the decision sends each step's
+key only into a frame that shows that step at exactly one vertical offset and
+the step before it at none (each state is searched alone, since a dialog that
+grows is centred again), and looks for the next step only once that step's
+crops are gone at every offset; a frame that matches at two offsets proves
+neither, so a key with no visible effect stops the route before the next key.
 The secret is typed only into a frame that then shows the whole profile (the
-approver's account, the focused box, an empty field) and only while the prompt
-is younger than 90 s. A route that stops sent navigation keys and no secret: it
-is a known input `input-refused` with `instance_uac_route_unrecognized` (or
-`instance_uac_prompt_age`), `routeStep` (1-based; one past the route for the
+approver's account, the focused box, an empty field) and the last step at no
+offset. Before it, a fresh census must find the same consent process (pid and
+birth), the prompt's age counts from that census and must stay under 90 s, and
+the answer screen is read once more. A route that stops sent navigation keys
+and no secret: it is a known input `input-refused` with
+`instance_uac_route_unrecognized` (or `instance_uac_prompt_age`,
+`instance_uac_consent_changed`, `instance_uac_route_census_failed`),
+`routeStep` (1-based; one past the route for the
 answer screen) and `keysSent`, it publishes its last frame with frame facts
 against the screen it waited for, it closes the fence, and it is final. Status
 closes that fence too if its close was lost. Every other row has no route, and a
@@ -2632,23 +2641,30 @@ operator, nothing else on the clone in between:
 1. Review the prompt of a run (steps 1 to 3 above). With no step reviewed the
    review sends nothing and its frame is the prompt as offered: the fixture
    administrator, the focused password box and "More choices".
-2. `frame, record = retained_review_frame(root, correlationId)` and open the
-   frame. Choose the key that moves the focus one place towards the second
-   administrator's password box, and crops that show this state, including where
-   the focus is now: the key must visibly change them, since the route waits for
-   that change. Then `reviewed_uac_step(root, record["environment"],
-   record["prompt"], frame, crops, key, route=record["route"])` writes step N.
-   `record["route"]` must be every step reviewed so far.
+2. Open the frame `retained_review_frame(root, correlationId)` returns. Choose
+   the key that moves the focus one place towards the second administrator's
+   password box, crops that show this state, including where the focus is now
+   (the key must visibly change them, since the route waits for that change),
+   and `field`, this state's password box, which no crop may cover. Then
+   `reviewed_uac_step(root, correlationId, crops, key, field)` writes step N
+   from that review's own kept frame, which must match its record's digest, be
+   of a `different-admin` review, follow every step reviewed so far
+   (`record["route"]`) and no longer show the last step's crops at any offset.
 3. Review the next run's prompt: the review sends the steps' keys and keeps the
    frame after the last one. If it shows something else, `discard_uac_route(root,
-   deployment, "install-helper", N)` removes step N and later ones, and step 2
-   is repeated with another key. Otherwise go on with step 2 for the next step.
+   deployment, "install-helper", N)` moves step N and later ones, with their
+   frames, into a new dated folder `discarded/<UTC time>-<random>/` beside the
+   profiles (nothing is deleted), and step 2 is repeated with another key.
+   Otherwise go on with step 2 for the next step.
 4. When a kept frame shows the second administrator selected with its empty
-   password box focused, make the profile from it:
-   `reviewed_uac_profile(..., approver="second-administrator", account=...,
-   focus=..., route=record["route"])`. `focus` is the box's focused border just
-   above or below the field. The profile pins the route, which is then closed:
-   no step is added or removed.
+   password box focused, make the profile from that review:
+   `reviewed_uac_route_profile(root, correlationId, crops, field,
+   max_dark_pixels, account, focus)`. `account` is the selected credential's
+   name just above the field, `focus` the box's focused border just above or
+   below the field. Its regions together must show none of the steps' kept
+   frames (so they prove the selection and the focus, not a name visible in a
+   tile), and the frame must not still show the last step. The profile pins the
+   route, which is then closed: no step is added or removed.
 5. Answer a later run's prompt with `windows-uac-decision`.
 
 Each review run burns its prompt, so that run never passes. The expected route

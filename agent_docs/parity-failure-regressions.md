@@ -3982,7 +3982,7 @@ PS/2 mouse), so clicking "More choices" is not a reviewed input either.
 
 | Failure type | Regression | Notes |
 | --- | --- | --- |
-| The decision could not reach the second administrator's credential when the prompt offered the fixture administrator first (TOOL) | `test_windows_uac_decision`: `SecondAdministratorRouteFlowTests` (10 tests), `SecondAdministratorRouteExecuteTests` (7 tests) | A reviewed keyboard route: closed keys (`ROUTE_KEYS`), each step a create-only private file with exact crops, its key and the digests of the steps before it, made one review run at a time (`reviewed_uac_step`, `discard_uac_route`); the routed second-administrator profile pins those digests and adds a `focus` crop at the password box. After the burn, journal and fence, each key goes only into a frame that shows its step at one offset, the next step counts only after that step's crops changed, and the secret goes only into the full answer screen with an empty field and a prompt under 90 s. A stop is a known `input-refused` (`routeStep`, `keysSent`, its public frame), closes the fence and is final. A review with reviewed steps burns its prompt, sends those keys and keeps the frame after them, naming the steps' digests. RED: see below. |
+| The decision could not reach the second administrator's credential when the prompt offered the fixture administrator first (TOOL) | `test_windows_uac_decision`: `SecondAdministratorRouteFlowTests`, `SecondAdministratorRouteExecuteTests` | A reviewed keyboard route: closed keys (`ROUTE_KEYS`), each step a create-only private file with exact crops, its key and the digests of the steps before it, made one review run at a time (`reviewed_uac_step`, `discard_uac_route`); the routed second-administrator profile pins those digests and adds a `focus` crop at the password box. After the burn, journal and fence, each key goes only into a frame that shows its step at one offset, the next step counts only after that step's crops changed, and the secret goes only into the full answer screen with an empty field and a prompt under 90 s. A stop is a known `input-refused` (`routeStep`, `keysSent`, its public frame), closes the fence and is final. A review with reviewed steps burns its prompt, sends those keys and keeps the frame after them, naming the steps' digests. RED: see below. |
 
 RED ran in a detached worktree of the unfixed `3a081133` holding only the final test module, the
 two new classes alone, on Python 3.14 and 3.12 with identical results: `FAILED (failures=17)` over 17
@@ -4002,6 +4002,28 @@ retained), then each review run's frame after the steps so far, and last the fra
 run burns its prompt. A route stop leaves the collector's decision read (`_READ_DECISION`)
 unjoined, since the input journal exists, so that run's collection stays unknown, as for any input
 after a burn.
+
+### The second administrator's route, after its security review (2026-11-17)
+
+An independent review of `f74daea8` found five weaknesses in the route before it ran natively; none
+had been reached on a clone.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A step change could be faked: step crops could cover the caret's box, a kept frame could still show the step before it, a frame matching at two offsets counted as "changed", and the next step counted in a frame that still showed the last one (TOOL) | `SecondAdministratorRouteFlowTests.test_an_ambiguous_frame_after_a_key_is_not_a_change`, `test_the_next_step_never_counts_in_a_frame_that_still_shows_the_step_before_it`; `SecondAdministratorRouteExecuteTests.test_a_step_crop_never_covers_its_states_password_box`, `test_a_step_frame_that_still_shows_the_step_before_it_is_refused` | Each step names its state's `field`, which `_clear_regions` keeps every crop off. `reviewed_uac_step` refuses a frame that shows the last step's crops at any offset (`windows_uac_profile_step_unchanged`). At run time `_uac_shows` is three-valued: a step counts only when shown at exactly one offset with the step before it at none, and it is gone only when shown at none, so an ambiguous frame is neither. |
+| A routed profile proved a visible name, not the selected credential with a focused box (TOOL) | `test_each_step_keeps_its_reviewed_frame_privately`, `test_a_routed_profile_proves_the_selection_and_the_focus_not_only_a_name` | Each step keeps its reviewed frame privately (`step-NN.frame.ppm`, checked against its digest). `reviewed_uac_route_profile` refuses regions that together match any step's frame (`windows_uac_profile_step_frame`) or a frame still showing the last step, and `validate_profile` requires a routed `account` crop sharing the field's columns and ending at most 96 rows above it (`windows_uac_profile_account`). |
+| After the route only the frame and the gate's old census were checked before the secret (TOOL) | `test_the_same_consent_must_still_be_up_before_the_secret_and_its_age_counts_from_then`, `test_the_answer_screen_is_read_again_after_the_census` | `_uac_navigate` runs the census again, requires the same pid and birth, counts the age from that census, and reads the answer screen once more; each failure is a known final stop with no secret (`instance_uac_consent_changed`, `instance_uac_prompt_age`, `instance_uac_route_census_failed`). |
+| A step or profile took a frame and a route separately, so they could come from two reviews (TOOL) | `test_a_route_frame_comes_only_from_the_second_administrators_own_review` | `reviewed_uac_step(root, correlationId, crops, key, field)` and `reviewed_uac_route_profile(root, correlationId, ...)` read both through `retained_review_frame`, check the frame's digest against the record and require a review of the second administrator's install-helper row. `reviewed_uac_profile` no longer takes a route. |
+| A discarded step was deleted, losing the evidence of the key that led elsewhere (TOOL) | `test_a_discarded_step_is_kept_as_evidence` | `discard_uac_route` moves the steps and their frames whole into `discarded/<UTC time>-<random>/`, 0700. |
+
+RED ran in a detached worktree of `f74daea8` holding only the final test module, the two route classes,
+on Python 3.14 and 3.12 alike: `FAILED (failures=23)` over 26 tests, every one an assertion. The causal
+ones: the ambiguous frame counted as a change (the route stopped at step 2, not 1), the next key went
+into the frame with the stale last step (`keysSent` 2), the secret was typed after a census showing
+another consent or an aged prompt and after the answer screen changed during the census (only two
+censuses ran), and the step and profile makers took no review, kept no frame, deleted on discard and
+accepted crops over the caret, an unchanged step frame, a tile's name and a focus-less region set. The
+ten route flow tests the review did not touch pass there as controls. GREEN: the whole module on both.
 
 ## Historical coverage rule
 

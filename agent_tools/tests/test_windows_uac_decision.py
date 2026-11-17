@@ -2517,31 +2517,41 @@ class SecondAdministratorExecuteTests(ExecuteBase):
 # The second administrator's keyboard route. Native NE3 (clone 320f9e23, run 62eec3c9, review frame 10aa91a6): the
 # Windows 11 credential prompt of different-admin preselects the fixture administrator (fixtureadmin, Password, a
 # "More choices" link), so the reviewed second-administrator profile never matched and the row could not be answered.
-# The synthetic prompt below has the same shape: a title, the selected account's name, the "More choices" link, a tile
-# list that "More choices" opens, and the password box's focused border under the field. Its fake monitor moves between
-# those states only on the keys a real prompt would take.
+# The synthetic prompt below has the same shape: a title, the "More choices" link, a tile list that "More choices"
+# opens, the selected credential's name just above its password box, and the box's focused border under the field.
+# Its fake monitor moves between those states only on the keys a real prompt would take.
 LINK = [0, 40, 100, 50]
 TILE = [0, 60, 100, 70]
+NAME = [10, 250, 110, 260]
 FOCUS = [10, 321, 210, 324]
 ROUTE_STATES = {
-    "admin": {tuple(CROP): 200, tuple(ACCOUNT): 60, tuple(LINK): 120, tuple(FOCUS): 30},  # fixtureadmin, the box focused
-    "link": {tuple(CROP): 200, tuple(ACCOUNT): 60, tuple(LINK): 140},  # "More choices" focused
-    "tiles": {tuple(CROP): 200, tuple(ACCOUNT): 60, tuple(LINK): 140, tuple(TILE): 170},  # the account tiles shown
-    "approver": {tuple(CROP): 200, tuple(ACCOUNT): 90, tuple(LINK): 140, tuple(TILE): 180},  # fixtureapprover's tile selected
-    "focused": {tuple(CROP): 200, tuple(ACCOUNT): 90, tuple(LINK): 140, tuple(TILE): 180, tuple(FOCUS): 30},  # its box focused
-    "elsewhere": {tuple(CROP): 200, tuple(ACCOUNT): 60, tuple(LINK): 150},  # a key that led somewhere else
-    "unfocused": {tuple(CROP): 200, tuple(ACCOUNT): 90, tuple(LINK): 140, tuple(TILE): 160},  # the approver, the box not focused
+    "admin": {tuple(CROP): 200, tuple(NAME): 60, tuple(LINK): 120, tuple(FOCUS): 30},  # fixtureadmin, the box focused
+    "link": {tuple(CROP): 200, tuple(NAME): 60, tuple(LINK): 140},  # "More choices" focused
+    "tiles": {tuple(CROP): 200, tuple(NAME): 60, tuple(LINK): 140, tuple(TILE): 170},  # the account tiles shown
+    "approver": {tuple(CROP): 200, tuple(NAME): 90, tuple(LINK): 140, tuple(TILE): 180},  # fixtureapprover's tile selected
+    "focused": {tuple(CROP): 200, tuple(NAME): 90, tuple(LINK): 140, tuple(TILE): 180, tuple(FOCUS): 30},  # its box focused
+    "elsewhere": {tuple(CROP): 200, tuple(NAME): 60, tuple(LINK): 150},  # a key that led somewhere else
+    "unfocused": {tuple(CROP): 200, tuple(NAME): 90, tuple(LINK): 140, tuple(TILE): 160},  # the approver, the box not focused
+    "blank": {tuple(CROP): 200},  # a dialog mid-redraw: no step's crops shown
 }
+# Frames with a second copy of a state's upper regions 100 rows lower, as a half-redrawn or stale dialog would show.
+GHOSTS = {"double": ("admin", "admin"), "ghost": ("link", "admin")}
+GHOST_SHIFT = 100
 TRANSITIONS = {("admin", "tab"): "link", ("link", "ret"): "tiles", ("tiles", "down"): "approver", ("approver", "tab"): "focused"}
 # Each step: the state it is reviewed in, its crops (where the focus is, which its key visibly moves) and its key.
-ROUTE_PLAN = (("admin", [CROP, ACCOUNT, LINK], "tab"), ("link", [CROP, LINK, TILE], "ret"), ("tiles", [TILE, ACCOUNT], "down"),
-              ("approver", [ACCOUNT, TILE, FOCUS], "tab"))
+ROUTE_PLAN = (("admin", [CROP, NAME, LINK], "tab"), ("link", [CROP, LINK, TILE], "ret"), ("tiles", [TILE, NAME], "down"),
+              ("approver", [NAME, TILE, FOCUS], "tab"))
 
 
 def route_frame(state, *, shift=0, dots=0):
     pixels = bytearray(bytes((200, 200, 200)) * (WIDTH * HEIGHT))
-    for rect, fill in ROUTE_STATES[state].items():
+    base, ghost = GHOSTS.get(state, (state, None))
+    for rect, fill in ROUTE_STATES[base].items():
         paint(pixels, list(rect), fill, shift)
+    if ghost is not None:
+        for rect, fill in ROUTE_STATES[ghost].items():
+            if rect in (tuple(CROP), tuple(NAME), tuple(LINK)):
+                paint(pixels, list(rect), fill, shift + GHOST_SHIFT)
     for at in range(dots):
         offset = ((FIELD[1] + shift) * WIDTH + FIELD[0] + at) * 3
         pixels[offset:offset + 3] = b"\x10\x10\x10"
@@ -2559,8 +2569,8 @@ def route_screens(plan=ROUTE_PLAN):
 
 
 def answer_screen():
-    """The routed profile's answer screen: the dialog, the approver's account and the focused box."""
-    return {"width": WIDTH, "height": HEIGHT, "crops": [route_crop("focused", CROP), route_crop("focused", ACCOUNT), route_crop("focused", FOCUS)]}
+    """The routed profile's answer screen: the dialog, the approver's name over its box and the focused box."""
+    return {"width": WIDTH, "height": HEIGHT, "crops": [route_crop("focused", CROP), route_crop("focused", NAME), route_crop("focused", FOCUS)]}
 
 
 DIFFERENT_EVENTS = [{"name": "event-000009-update-uac-action-pending.json", "operationId": CORRELATION, "value": "approve-current-prompt",
@@ -2579,6 +2589,7 @@ class SecondAdministratorRouteFlowTests(FlowBase):
         super().setUp()
         self.state = "admin"
         self.transitions = dict(TRANSITIONS)
+        self.redraws = {}  # A state that becomes another after it was read once.
         self.shifts = {}
         self.secret_from = None
 
@@ -2586,6 +2597,7 @@ class SecondAdministratorRouteFlowTests(FlowBase):
         if command == "screendump":
             self.monitor_calls.append((command, arguments))
             Path(arguments["filename"]).write_bytes(route_frame(self.state, shift=self.shifts.get(self.state, 0)))
+            self.state = self.redraws.get(self.state, self.state)
             return {}
         result = super().monitor(command, arguments)
         if command == "send-key" and self.secret_from is None:
@@ -2609,6 +2621,11 @@ class SecondAdministratorRouteFlowTests(FlowBase):
     def navigation(self):
         return [[key["data"] for key in arguments["keys"]] for arguments in self.keys[:self.secret_from]]
 
+    def reset(self):
+        self.clear()
+        self.state, self.secret_from, self.clock[0] = "admin", None, 100.0
+        self.transitions, self.redraws = dict(TRANSITIONS), {}
+
     def test_the_route_reaches_the_second_administrator_and_types_its_secret_only_there(self):
         terminal = self.run_routed()
         self.assertEqual(("input-ack-only", "focused"), (terminal["state"], self.state), terminal)
@@ -2622,6 +2639,8 @@ class SecondAdministratorRouteFlowTests(FlowBase):
         first_secret = [index for index, command in enumerate(calls) if command == "send-key"][self.secret_from]
         self.assertNotIn("screendump", calls[first_secret:], "no frame from the first character of the secret")
         self.assertEqual(0, sum(command == "input-send-event" for command in calls), "no pointer and no button")
+        labels = [label for label, _ in self.scripts if not label.startswith("login-after")]
+        self.assertEqual(3, len(labels), "the gate's two censuses and one more after the route, before the secret")
 
     def test_a_key_that_leads_elsewhere_stops_the_route_known_with_no_secret(self):
         self.transitions[("link", "ret")] = "elsewhere"
@@ -2643,13 +2662,28 @@ class SecondAdministratorRouteFlowTests(FlowBase):
         self.assertEqual([["tab"]], self.navigation(), "Enter is never sent into a frame that still shows the step before it")
         self.assertLessEqual(self.clock[0] - 100.0, decision.GATE_SECONDS + 2 * decision.ROUTE_STEP_SECONDS)
 
+    def test_an_ambiguous_frame_after_a_key_is_not_a_change(self):
+        """Security review of f74daea8: a frame that shows the step at two offsets counted as the step gone."""
+        self.transitions[("admin", "tab")] = "double"
+        terminal = self.run_routed()
+        self.assertEqual(("instance_uac_route_unrecognized", 1, 1), (terminal.get("reason"), terminal.get("routeStep"), terminal.get("keysSent")))
+        self.assertEqual([["tab"]], self.navigation())
+
+    def test_the_next_step_never_counts_in_a_frame_that_still_shows_the_step_before_it(self):
+        """Security review of f74daea8: a redraw that passed through no step, then a frame with the next step and a stale
+        copy of the last one, was enough to send the next key."""
+        self.transitions[("admin", "tab")] = "blank"
+        self.redraws["blank"] = "ghost"
+        terminal = self.run_routed()
+        self.assertEqual(("instance_uac_route_unrecognized", 2, 1), (terminal.get("reason"), terminal.get("routeStep"), terminal.get("keysSent")))
+        self.assertEqual([["tab"]], self.navigation(), "Enter never goes into a frame that still shows fixtureadmin's step")
+
     def test_the_secret_goes_only_into_the_approvers_focused_empty_box(self):
         for change, reason in (({("approver", "tab"): "unfocused"}, "the approver selected, its box not focused"),
                                ({("tiles", "down"): "approver", ("approver", "tab"): "approver"}, "a key that never moved the focus")):
             with self.subTest(reason=reason):
-                self.clear()
-                self.state, self.secret_from, self.clock[0] = "admin", None, 100.0
-                self.transitions = {**TRANSITIONS, **change}
+                self.reset()
+                self.transitions.update(change)
                 terminal = self.run_routed()
                 self.assertEqual("instance_uac_route_unrecognized", terminal.get("reason"), reason)
                 self.assertIsNone(self.secret_from, reason)
@@ -2673,12 +2707,34 @@ class SecondAdministratorRouteFlowTests(FlowBase):
         self.assertEqual("input-ack-only", terminal["state"], terminal)
         self.assertEqual([["tab"], ["ret"], ["down"], ["tab"]], self.navigation())
 
-    def test_the_age_rule_holds_again_before_the_secret(self):
-        terminal = self.run_routed(censuses=[census(events=DIFFERENT_EVENTS, consents=[consent(ageSeconds=89)])])
-        self.assertEqual(("input-refused", "instance_uac_prompt_age", 5, 4),
-                         (terminal["state"], terminal.get("reason"), terminal.get("routeStep"), terminal.get("keysSent")), terminal)
+    def test_the_same_consent_must_still_be_up_before_the_secret_and_its_age_counts_from_then(self):
+        """Security review of f74daea8: after the route only the frame and the gate's old census were checked."""
+        gate = [census(events=DIFFERENT_EVENTS), census(events=DIFFERENT_EVENTS)]
+        for after, reason in ((census(events=DIFFERENT_EVENTS, consents=[consent(ageSeconds=90)]), "instance_uac_prompt_age"),
+                              (census(events=DIFFERENT_EVENTS, consents=[consent(pid=4243)]), "instance_uac_consent_changed"),
+                              (census(events=DIFFERENT_EVENTS, consents=[consent(birth="134368653100000001")]), "instance_uac_consent_changed"),
+                              (census(events=DIFFERENT_EVENTS, consents=[consent(), consent(pid=4243)]), "instance_uac_route_census_failed")):
+            with self.subTest(reason=reason, after=after["consents"]):
+                self.reset()
+                terminal = self.run_routed(censuses=gate + [after])
+                self.assertEqual(("input-refused", reason, 5, 4), (terminal["state"], terminal.get("reason"), terminal.get("routeStep"),
+                                                                    terminal.get("keysSent")), terminal)
+                self.assertIsNone(self.secret_from)
+                self.assertEqual((1, []), self.classified())
+
+    def test_the_answer_screen_is_read_again_after_the_census(self):
+        # The prompt changed while the census ran: the frame read before it no longer counts.
+        real = self.script
+
+        def script(label, source):
+            value = real(label, source)
+            if len(self.scripts) == 3:
+                self.state = "unfocused"
+            return value
+        with mock.patch.object(self, "script", script):
+            terminal = self.run_routed()
+        self.assertEqual(("instance_uac_route_unrecognized", 5, 4), (terminal.get("reason"), terminal.get("routeStep"), terminal.get("keysSent")))
         self.assertIsNone(self.secret_from)
-        self.assertEqual((1, []), self.classified())
 
     def test_a_prompt_that_shows_another_first_step_is_never_navigated(self):
         self.state = "link"
@@ -2712,8 +2768,7 @@ class SecondAdministratorRouteFlowTests(FlowBase):
         reply = self.run_route_review(2)
         self.assertEqual(("review-refused", "instance_uac_route_unrecognized"), (reply.get("state"), reply.get("reason")))
         self.assertEqual([["tab"]], self.navigation())
-        self.clear()
-        self.state = "admin"
+        self.reset()
         reply = self.run_route_review(0)
         self.assertEqual(("review-frame-retained", []), (reply["state"], reply["route"]))
         self.assertEqual(([], route_frame("admin")), (self.keys, zlib.decompress(base64.b64decode(reply["frame"]))))
@@ -2722,7 +2777,8 @@ class SecondAdministratorRouteFlowTests(FlowBase):
 
 @unittest.skipUnless(POSIX, "private journals and the credential custody are POSIX")
 class SecondAdministratorRouteExecuteTests(ExecuteBase):
-    """The reviewed route's local custody: steps made one review at a time, pinned by the routed profile, and its packets."""
+    """The reviewed route's local custody: steps made one review at a time from the review's own kept frame, pinned by the
+    routed profile, and its packets."""
 
     def setUp(self):
         super().setUp()
@@ -2739,30 +2795,45 @@ class SecondAdministratorRouteExecuteTests(ExecuteBase):
         except AttributeError:
             self.fail("no reviewed route: " + name)
 
+    def retain(self, raw, route=None, scenario=DIFFERENT, prompt="install-helper"):
+        """A review of its own scenario run, retained as windows-uac-review keeps one: its intent, result and frame."""
+        correlation = str(uuid.uuid4())
+        route = self.digests() if route is None else route
+        review, made = decision.review_id(correlation), decision.decision_id(correlation)
+        directory = self.root / ".runtime/windows-uac-reviews" / review
+        directory.mkdir(parents=True, mode=0o700)
+        directory.parent.chmod(0o700)
+        login._retain_local(directory, "intent.json", {"reviewId": review, "decisionId": made, "correlationId": correlation, "host": "fixture",
+                                                       "environment": MACHINE, "scenarioId": scenario, "prompt": prompt, "decision": "approve",
+                                                       "route": route, "replayAllowed": False})
+        login._retain_local(directory, "attempt-0001.intent.json", {"reviewId": review, "attempt": 1, "sourceSha256": "a" * 64, "replayAllowed": False})
+        login._retain_local(directory, "frame.ppm", raw)
+        login._retain_local(directory, "attempt-0001.result.json", {
+            "state": "review-frame-retained", "attempt": 1, "frameSha256": hashlib.sha256(raw).hexdigest(), "frameBytes": len(raw), "width": WIDTH,
+            "height": HEIGHT, "pointerMoved": False, "wakeMilliseconds": 0, "consentAgeSeconds": 5, "route": route, "promptAnswered": False,
+            "reviewId": review, "decisionId": made, "correlationId": correlation, "prompt": prompt, "decision": "approve", "replayAllowed": False})
+        return correlation
+
+    def step(self, state, crops, key, **retained):
+        try:
+            return self.api("reviewed_uac_step")(self.root, self.retain(route_frame(state), **retained), crops, key, FIELD)
+        except TypeError as error:
+            self.fail("no reviewed route: " + str(error))
+
     def review_steps(self, count=len(ROUTE_PLAN)):
-        made = []
-        for state, crops, key in ROUTE_PLAN[:count]:
-            try:
-                made.append(self.api("reviewed_uac_step")(self.root, MACHINE, "install-helper", route_frame(state), crops, key,
-                                                          route=[hashlib.sha256(path.read_bytes()).hexdigest() for path in self.step_paths()]))
-            except TypeError as error:
-                self.fail("no reviewed route: " + str(error))
-        return made
+        return [self.step(state, crops, key) for state, crops, key in ROUTE_PLAN[:count]]
 
     def step_paths(self):
-        return sorted(self.profiles.glob("install-helper.second-administrator.step-*.json")) if self.profiles.exists() else []
+        return sorted(self.profiles.glob("install-helper.second-administrator.step-??.json")) if self.profiles.exists() else []
 
     def digests(self):
         return [hashlib.sha256(path.read_bytes()).hexdigest() for path in self.step_paths()]
 
-    def routed_profile(self, **changes):
-        options = dict(crops=[CROP], field=FIELD, max_dark_pixels=4, approver="second-administrator", account=ACCOUNT, focus=FOCUS,
-                       route=self.digests())
+    def routed_profile(self, state="focused", **changes):
+        options = dict(crops=[CROP], field=FIELD, max_dark_pixels=4, account=NAME, focus=FOCUS)
         options.update(changes)
-        try:
-            return decision.reviewed_uac_profile(self.root, MACHINE, "install-helper", route_frame("focused"), **options)
-        except TypeError as error:
-            self.fail("no routed profile: " + str(error))
+        correlation = self.retain(route_frame(state))
+        return self.api("reviewed_uac_route_profile")(self.root, correlation, **options)
 
     def test_a_routed_profile_admits_the_decision_and_its_packet_carries_the_route(self):
         self.review_steps()
@@ -2779,36 +2850,99 @@ class SecondAdministratorRouteExecuteTests(ExecuteBase):
         self.assertLessEqual(sum(len(part.encode()) + 1 for part in decision._command(source)), decision.INLINE_CARRIER_BYTES,
                              "a routed packet still goes inline in one SSH child")
 
+    def test_each_step_keeps_its_reviewed_frame_privately(self):
+        self.review_steps(2)
+        for number, (state, _, _) in enumerate(ROUTE_PLAN[:2], 1):
+            kept = self.profiles / ("install-helper.second-administrator.step-%02d.frame.ppm" % number)
+            self.assertEqual((route_frame(state), 0o600), (kept.read_bytes(), kept.stat().st_mode & 0o777))
+            self.assertEqual(hashlib.sha256(kept.read_bytes()).hexdigest(), json.loads(self.step_paths()[number - 1].read_text())["reviewedFrameSha256"])
+
     def test_a_step_follows_every_step_reviewed_so_far_and_a_pinned_route_is_closed(self):
-        step = self.api("reviewed_uac_step")
         self.review_steps(2)
         with self.assertRaisesRegex(ValueError, "^windows_uac_profile_route$"):
-            step(self.root, MACHINE, "install-helper", route_frame("tiles"), [TILE, ACCOUNT], "down", route=self.digests()[:1])
-        for bad in ({"key": "esc"}, {"key": "a"}, {"prompt": "vpn-broker"}):
-            options = {"prompt": "install-helper", "key": "down", **bad}
-            with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, "^windows_uac_profile$"):
-                step(self.root, MACHINE, options["prompt"], route_frame("tiles"), [TILE, ACCOUNT], options["key"], route=self.digests())
+            self.step("tiles", [TILE, NAME], "down", route=self.digests()[:1])
+        for key in ("esc", "a"):
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, "^windows_uac_profile$"):
+                self.step("tiles", [TILE, NAME], key)
         with self.assertRaisesRegex(ValueError, "^windows_uac_profile_ambiguous$"):
-            step(self.root, MACHINE, "install-helper", route_frame("tiles"), [[0, 200, 100, 210]], "down", route=self.digests())
-        self.assertEqual(["install-helper.second-administrator.step-02.json"],
+            self.step("tiles", [[0, 200, 100, 210]], "down")
+        self.assertEqual(["install-helper.second-administrator.step-02.frame.ppm", "install-helper.second-administrator.step-02.json"],
                          self.api("discard_uac_route")(self.root, MACHINE, "install-helper", 2), "a step that led elsewhere goes, the ones before stay")
         self.assertEqual(1, len(self.step_paths()))
         for state, crops, key in ROUTE_PLAN[1:]:
-            step(self.root, MACHINE, "install-helper", route_frame(state), crops, key, route=self.digests())
+            self.step(state, crops, key)
         with self.assertRaisesRegex(ValueError, "^windows_uac_profile_route$"):
-            self.routed_profile(route=self.digests()[:3])
+            self.api("reviewed_uac_route_profile")(self.root, self.retain(route_frame("focused"), route=self.digests()[:3]), [CROP], FIELD, 4, NAME, FOCUS)
         self.routed_profile()
         with self.assertRaisesRegex(ValueError, "^windows_uac_profile_route_closed$"):
-            step(self.root, MACHINE, "install-helper", route_frame("focused"), [CROP], "tab", route=self.digests())
+            self.step("focused", [CROP], "tab")
         with self.assertRaisesRegex(ValueError, "^windows_uac_profile_route_closed$"):
             self.api("discard_uac_route")(self.root, MACHINE, "install-helper", 1)
 
+    def test_a_discarded_step_is_kept_as_evidence(self):
+        self.review_steps(3)
+        moved = self.api("discard_uac_route")(self.root, MACHINE, "install-helper", 2)
+        self.assertEqual(4, len(moved))
+        folders = list((self.profiles / "discarded").iterdir())
+        self.assertEqual(1, len(folders))
+        self.assertRegex(folders[0].name, r"\A[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}\Z")
+        self.assertEqual(sorted(moved), sorted(path.name for path in folders[0].iterdir()), "moved whole, nothing deleted")
+        self.assertEqual(route_frame("tiles"), (folders[0] / "install-helper.second-administrator.step-03.frame.ppm").read_bytes())
+        self.assertEqual(0o700, folders[0].stat().st_mode & 0o777)
+        self.assertEqual(1, len(self.step_paths()))
+        self.assertEqual([], self.api("discard_uac_route")(self.root, MACHINE, "install-helper", 2), "nothing more to set aside")
+
+    def test_a_step_crop_never_covers_its_states_password_box(self):
+        """Security review of f74daea8: step crops were checked without the field, so they could cover the blinking caret."""
+        with self.assertRaisesRegex(ValueError, "^windows_uac_profile_caret$"):
+            self.step("admin", [CROP, NAME, LINK, [10, 305, 100, 315]], "tab")
+        self.assertEqual([], self.step_paths())
+
+    def test_a_step_frame_that_still_shows_the_step_before_it_is_refused(self):
+        """Security review of f74daea8: a review whose key was dropped kept the same state, and it could become the next step."""
+        self.review_steps(1)
+        with self.assertRaisesRegex(ValueError, "^windows_uac_profile_step_unchanged$"):
+            self.step("admin", [CROP, LINK, NAME], "ret")
+        with self.assertRaisesRegex(ValueError, "^windows_uac_profile_step_unchanged$"):
+            self.step("ghost", [CROP, LINK, TILE], "ret")
+        self.assertEqual(1, len(self.step_paths()))
+
+    def test_a_routed_profile_proves_the_selection_and_the_focus_not_only_a_name(self):
+        """Security review of f74daea8: a routed profile's regions could match a step's frame, in which the name shows but
+        the account is not the selected credential or its box has no focus."""
+        self.review_steps()
+        # Rows 326-328 are plain in every frame, so this "focus" proves nothing: the approver step's frame shows it all.
+        with self.assertRaisesRegex(ValueError, "^windows_uac_profile_step_frame$"):
+            self.routed_profile(focus=[10, 326, 210, 328])
+        with self.assertRaisesRegex(ValueError, "^windows_uac_profile_step_unchanged$"):
+            self.routed_profile(state="approver", crops=[CROP, LINK])
+        for account, reason in (([10, 60, 100, 70], "windows_uac_profile_account"),  # A tile, far above the box.
+                                ([300, 250, 400, 260], "windows_uac_profile_account"),  # Beside the box's columns.
+                                ([10, 290, 110, 310], "windows_uac_profile_caret")):  # Over the field.
+            with self.subTest(account=account), self.assertRaisesRegex(ValueError, "^" + reason + "$"):
+                self.routed_profile(account=account)
+        self.assertFalse((self.profiles / "install-helper.second-administrator.json").exists())
+        self.routed_profile()
+
+    def test_a_route_frame_comes_only_from_the_second_administrators_own_review(self):
+        """Security review of f74daea8: the frame and the route were passed separately, so they could come from two reviews."""
+        for options in ({"scenario": "windows-public-update.success-off"}, {"prompt": "vpn-broker"}):
+            with self.subTest(options=options), self.assertRaisesRegex(ValueError, "^windows_uac_profile$"):
+                self.step("admin", [CROP, NAME, LINK], "tab", **options)
+        correlation = self.retain(route_frame("admin"))
+        frame = self.root / ".runtime/windows-uac-reviews" / decision.review_id(correlation) / "frame.ppm"
+        frame.write_bytes(route_frame("link"))
+        with self.assertRaisesRegex(ValueError, "^windows_uac_review_frame_unavailable$"):
+            try:
+                self.api("reviewed_uac_step")(self.root, correlation, [CROP, NAME, LINK], "tab", FIELD)
+            except TypeError as error:
+                self.fail("the step does not read its review: " + str(error))
+        self.assertEqual([], self.step_paths())
+
     def test_a_routed_profile_needs_its_focus_at_the_box_and_exactly_its_steps(self):
         self.review_steps()
-        for changes, reason in (({"focus": [10, 340, 210, 343]}, "windows_uac_profile_focus"),  # Below the box's reach.
-                                ({"focus": None}, "windows_uac_profile"), ({"approver": "administrator"}, "windows_uac_profile")):
-            with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, "^" + reason + "$"):
-                self.routed_profile(**changes)
+        with self.assertRaisesRegex(ValueError, "^windows_uac_profile_focus$"):
+            self.routed_profile(focus=[10, 340, 210, 343])  # Below the box's reach.
         self.routed_profile()
         self.replies = [self.ack(prompt="install-helper")]
         third = self.step_paths()[2]
@@ -2828,16 +2962,16 @@ class SecondAdministratorRouteExecuteTests(ExecuteBase):
         self.assertEqual(route_screens(ROUTE_PLAN[:1]), packet_binding(source, "UAC_ROUTE"))
         self.assertIn(b"def _uac_route(", source)
         retained, record = decision.retained_review_frame(self.root, CORRELATION)
-        self.assertEqual((route_frame("link"), self.digests()), (retained, record["route"]))
+        self.assertEqual((route_frame("link"), self.digests(), DIFFERENT), (retained, record["route"], record["scenarioId"]))
         state, crops, key = ROUTE_PLAN[1]
-        self.api("reviewed_uac_step")(self.root, record["environment"], record["prompt"], retained, crops, key, route=record["route"])
+        self.api("reviewed_uac_step")(self.root, CORRELATION, crops, key, FIELD)
         self.assertEqual(2, len(self.step_paths()))
 
     def test_a_review_reply_must_name_the_steps_its_packet_carried(self):
         self.review_steps(1)
         for route in ([], ["0" * 64], self.digests() * 2):
             with self.subTest(route=route):
-                shutil.rmtree(self.root / ".runtime/windows-uac-reviews", ignore_errors=True)
+                shutil.rmtree(self.root / ".runtime/windows-uac-reviews" / decision.review_id(CORRELATION), ignore_errors=True)
                 self.replies = [review_terminal(route_frame("link"), prompt="install-helper", route=route)]
                 result = decision.review(self.root, self.inputs(prompt="install-helper"))
                 self.assertEqual(("unknown", "uac_reply_rejected"), (result["state"], result["reason"]))
@@ -2847,7 +2981,7 @@ class SecondAdministratorRouteExecuteTests(ExecuteBase):
         self.routed_profile()
         raw = route_frame("elsewhere")
         stopped = {**self.refused("instance_uac_route_unrecognized"), "routeStep": 3, "keysSent": 2,
-                   "frame": {"cropsMatched": [True, False, False], "fieldDarkPixels": 0, "offsetY": 0},
+                   "frame": {"cropsMatched": [False, True], "fieldDarkPixels": 0, "offsetY": 0},
                    "frameSha256": hashlib.sha256(raw).hexdigest(), "frameBytes": len(raw), "frameData": base64.b64encode(zlib.compress(raw)).decode()}
         self.replies = [stopped]
         result = self.execute(prompt="install-helper")
