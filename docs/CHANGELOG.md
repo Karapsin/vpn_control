@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.3.1 - 2026-11-17
 
 - Windows GUI picker: a failed pointer park now names each failed check with observed values and keeps a diagnostic frame.
 - Windows native rows: the collector root accepts the protected owner-only ACL Windows actually reads back, and the reserved-stage squat reads its own operation status while it waits for the product journal.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows reboot rows report an absent startup task as absent instead of failing the autostart snapshot.
 - Windows VPN starts approved by another administrator work: the scoped broker opens the standard user's app with a thread-scoped debug privilege only after a plain open is denied, and a failed broker start names its step in the runtime log and diagnostics.
 - Build: trust the Gradle Plugin Portal's generated marker POMs for the Kotlin plugins, which name the same single plugin dependency as Maven Central's.
+- Windows scoped-TUN diagnostics read the product's report as a raw stdout export, without the JSON envelope the CLI refuses for it.
 
 ## 2.3.0 - 2026-11-17
 
