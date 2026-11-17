@@ -111,6 +111,24 @@ class RunnerRecordingTests(unittest.TestCase):
         self.assertEqual(('agent_tools.tests.test_reader',),
                          selector.select_from_sources(sources, {added}, footprints=merged, structural=frozenset({added})).modules)
 
+    def test_nested_runs_never_inherit_the_destination_and_a_missing_one_is_created(self):
+        # ci/2bf326354d21: every shard's footprint directory was missing (FileNotFoundError, nothing
+        # retained), and fixture runners launched by tests inherited the destination, so partial
+        # runner copies without agent_test_footprints.py failed with ModuleNotFoundError.
+        (self.root / 'agent_tools/tests/test_nested.py').write_text(
+            "import os, subprocess, sys, unittest\n"
+            "class Case(unittest.TestCase):\n"
+            " def test_destination_is_private(self):\n"
+            "  self.assertNotIn('AGENT_TEST_FOOTPRINT_DIR', os.environ)\n"
+            "  child = subprocess.run([sys.executable, '-c', \"import os; print(os.environ.get('AGENT_TEST_FOOTPRINT_DIR', ''))\"],"
+            " capture_output=True, text=True, check=True)\n"
+            "  self.assertEqual('', child.stdout.strip())\n")
+        self.output.rmdir()
+        self.output = self.root / 'footprint-output' / 'shard-0'
+        value = footprints.validate(self.run_workers(['agent_tools.tests.test_nested']))
+        self.assertEqual('b' * 40, value['sourceCommit'])
+        self.assertEqual(['footprint'], sorted({path.name.split('-')[0] for path in self.output.iterdir()}))
+
     def test_unset_environment_records_nothing(self):
         runs = self.root / '.rag_index' / 'agent-test-runs'
         runs.mkdir(parents=True, mode=0o700)

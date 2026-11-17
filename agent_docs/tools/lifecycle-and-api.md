@@ -1014,7 +1014,10 @@ no agent tests. Its graph joins precise static edges (imports, literal module
 loads, literal repository paths in tests and fixtures, and declared scopes) with
 the per-test footprints CI records: each managed CI worker run with
 `AGENT_TEST_FOOTPRINT_DIR` writes which repository files every test module and
-every imported module opened, compiled, listed or launched.
+every imported module opened, compiled, listed or launched. The worker creates
+that directory and removes the variable from its own environment before any test
+runs (serial mode removes it too), so fixture runners a test launches never
+inherit it.
 `python3 agent_tools/agent_test_footprints.py fetch` merges the footprints of the
 newest successful Fast Checks run that uploaded `agent-test-footprints-*` and whose
 head is an ancestor of HEAD (normally a `ci/*` gate run: a `dev` run that reused

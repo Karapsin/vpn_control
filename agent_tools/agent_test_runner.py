@@ -478,8 +478,13 @@ def load_suite(names: list[str], *, exact=False):
 
 
 def _footprint_recorder(isolation):
-    """CI opt-in: record what each test module reads (agent_test_footprints)."""
-    target = os.environ.get("AGENT_TEST_FOOTPRINT_DIR")
+    """CI opt-in: record what each test module reads (agent_test_footprints).
+
+    The worker takes the destination out of its own environment first, so the
+    tests it runs, and the fixture runners they launch (often partial copies of
+    this tool), never inherit it: only this worker records into it.
+    """
+    target = os.environ.pop("AGENT_TEST_FOOTPRINT_DIR", None)
     if not target or isolation is not None:
         return None, None
     if __package__:
@@ -487,7 +492,13 @@ def _footprint_recorder(isolation):
     else:
         import agent_test_footprints
     recorder = agent_test_footprints.Recorder(Path.cwd(), exclude={RUNNER_SELF_PATH}).install()
-    return recorder, lambda: agent_test_footprints.write_worker(Path(target), recorder, os.environ.get("GITHUB_SHA"))
+
+    def save(directory: Path) -> None:
+        agent_test_footprints.write_worker(Path(target), recorder, os.environ.get("GITHUB_SHA"))
+        proofs = directory / "red-proofs.jsonl"
+        if proofs.is_file():
+            shutil.copyfile(proofs, Path(target) / ("red-proofs-" + directory.name + "-" + str(os.getpid()) + ".jsonl"))
+    return recorder, save
 
 
 def _red_gate_environment(plan: dict, directory: Path) -> None:
@@ -522,10 +533,7 @@ def worker(plan: dict, directory: Path, *, isolation=None) -> int:
         result = runner.run(suite)
         if save_footprints is not None:
             try:
-                save_footprints()
-                proofs = directory / "red-proofs.jsonl"
-                if proofs.is_file():
-                    shutil.copyfile(proofs, Path(os.environ["AGENT_TEST_FOOTPRINT_DIR"]) / ("red-proofs-" + directory.name + "-" + str(os.getpid()) + ".jsonl"))
+                save_footprints(directory)
             except OSError as error:
                 # Footprints only narrow local selection; never a test outcome.
                 print("Agent test footprint not retained: " + type(error).__name__, file=sys.stderr)
@@ -837,6 +845,8 @@ def serial_stdout(names: list[str], fingerprint: str, *, timing_stream=None, dia
         raise ValueError("Invalid serial test selection")
     timing_stream = sys.stdout if timing_stream is None else timing_stream
     diagnostic_stream = sys.stderr if diagnostic_stream is None else diagnostic_stream
+    # Serial mode never records footprints, and its tests' fixture runners never inherit a destination.
+    os.environ.pop("AGENT_TEST_FOOTPRINT_DIR", None)
     sys.path.insert(0, str(Path.cwd()))
     journal = PublicTimingJournal(timing_stream)
     test_runner = unittest.TextTestRunner(stream=diagnostic_stream, verbosity=1)

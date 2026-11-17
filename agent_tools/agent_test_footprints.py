@@ -157,7 +157,8 @@ class Recorder:
 
 
 def write_worker(directory, recorder, commit=None):
-    """Create-only worker output under an explicit footprint directory."""
+    """Create-only worker output under an explicit footprint directory, created on first use."""
+    Path(directory).mkdir(mode=0o700, parents=True, exist_ok=True)
     path = Path(directory) / ("footprint-" + str(uuid.uuid4()) + ".json")
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as stream:
