@@ -27,8 +27,6 @@ public static class VpnRuntimeBroker {
   public long user,kernel,periodUser,periodKernel; public uint faults,total,active,terminated;
  }
  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
- [DllImport("kernel32.dll",SetLastError=true)] static extern IntPtr OpenProcess(uint access,bool inherit,uint pid);
- [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
  [DllImport("kernel32.dll")] static extern bool GetProcessTimes(IntPtr p,out long create,out long exit,out long kernel,out long user);
  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
  [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h,uint time);
@@ -426,7 +424,8 @@ public static class VpnRuntimeBroker {
   }
  }
  public static void Run(string pipeName,uint ownerPid,long ownerStart,string ownerSid,string expectedHash) {
-  IntPtr owner=OpenProcess(0x101040,false,ownerPid); Need(owner!=IntPtr.Zero);
+  // SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_DUP_HANDLE, also when another administrator approved.
+  int ownerError; IntPtr owner=VpnBrokerOwnerProcess.Open(ownerPid,0x101040,out ownerError); Need(owner!=IntPtr.Zero);
   IntPtr job=IntPtr.Zero,attributes=IntPtr.Zero,jobSlot=IntPtr.Zero,handles=IntPtr.Zero; bool jobAdmitted=false; PI child=new PI();
   var pins=new System.Collections.Generic.List<SafeFileHandle>(); string stage=null; SafeFileHandle stagePin=null;
   var resourceFiles=new System.Collections.Generic.List<string>();
@@ -566,6 +565,93 @@ public static class VpnRuntimeBroker {
    if(originalUser!=null) { try { originalUser.Dispose(); } catch { } }
    for(int i=pins.Count-1;i>=0;i--) pins[i].Dispose();
    if(watchdogExited) CloseHandle(owner); // Do not close a native handle while another thread waits on it.
+  }
+ }
+}
+
+/** How the elevated broker opens its ordinary owner process, by the PID on its own argv.
+ *
+ * A standard user approves UAC with another administrator's credentials (over-the-shoulder elevation), so the
+ * broker runs as that administrator, not as the owner's user. The owner's process DACL comes from the
+ * standard user's default DACL: GENERIC_ALL for the user and SYSTEM, at most read and execute for the logon
+ * SID. It never grants another account PROCESS_DUP_HANDLE, which the broker needs to duplicate the owner's
+ * job, so the plain open is denied. Only then the broker retries once with SeDebugPrivilege, which every
+ * elevated administrator token holds disabled, enabled on a thread impersonation token of its own identity,
+ * and reverts before returning: the process token, and so the runtime child, never carries it enabled.
+ * A same-user elevation succeeds on the first open and never uses the privilege. This adds no authority the
+ * approving administrator lacks, and it is not authentication: every caller still verifies the opened
+ * process's creation time and token user, and the pipe client's PID, exactly as before. */
+public static class VpnBrokerOwnerProcess {
+ internal interface Native {
+  /** OpenProcess(access, false, pid); the error is GetLastError when the handle is zero. */
+  IntPtr Open(uint access,uint pid,out int error);
+  /** SeDebugPrivilege enabled on a thread impersonation token; null when the token does not hold it.
+   * Dispose reverts the thread to the process token and throws if it cannot. */
+  IDisposable DebugPrivilegeOnThisThread();
+ }
+ const int AccessDenied=5;
+ /** Zero with the Win32 error when the owner cannot be opened with exactly [access]. */
+ public static IntPtr Open(uint pid,uint access,out int error) { return Open(pid,access,new FixedNative(),out error); }
+ internal static IntPtr Open(uint pid,uint access,Native native,out int error) {
+  IntPtr handle=native.Open(access,pid,out error);
+  if(handle!=IntPtr.Zero) { error=0;return handle; }
+  // Only a DACL refusal is an identity question. A gone or invalid PID is never retried.
+  if(error!=AccessDenied) return IntPtr.Zero;
+  using(var privilege=native.DebugPrivilegeOnThisThread()) {
+   if(privilege==null) { error=AccessDenied;return IntPtr.Zero; }
+   handle=native.Open(access,pid,out error);
+  }
+  if(handle!=IntPtr.Zero) error=0;
+  return handle;
+ }
+
+ sealed class FixedNative : Native {
+  [StructLayout(LayoutKind.Sequential)] struct LUID { public uint low; public int high; }
+  [StructLayout(LayoutKind.Sequential)] struct PRIVILEGES { public int count; public LUID luid; public uint attributes; }
+  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+  [DllImport("kernel32.dll",SetLastError=true)] static extern IntPtr OpenProcess(uint access,bool inherit,uint pid);
+  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+  [DllImport("kernel32.dll")] static extern IntPtr GetCurrentThread();
+  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+  [DllImport("advapi32.dll",SetLastError=true)] static extern bool ImpersonateSelf(int level);
+  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+  [DllImport("advapi32.dll",SetLastError=true)] static extern bool RevertToSelf();
+  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+  [DllImport("advapi32.dll",SetLastError=true)] static extern bool OpenThreadToken(IntPtr thread,uint access,bool openAsSelf,out IntPtr token);
+  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+  [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool LookupPrivilegeValue(string system,string name,out LUID luid);
+  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+  [DllImport("advapi32.dll",SetLastError=true)] static extern bool AdjustTokenPrivileges(IntPtr token,bool disableAll,ref PRIVILEGES state,int length,IntPtr previous,IntPtr returned);
+  public IntPtr Open(uint access,uint pid,out int error) {
+   IntPtr handle=OpenProcess(access,false,pid);error=handle==IntPtr.Zero?Marshal.GetLastWin32Error():0;return handle;
+  }
+  sealed class Reverting : IDisposable {
+   bool reverted;
+   public void Dispose() {
+    if(reverted) return;
+    if(!RevertToSelf()) throw new IOException("UNAVAILABLE");
+    reverted=true;
+   }
+  }
+  public IDisposable DebugPrivilegeOnThisThread() {
+   // SecurityImpersonation of this process's own token: the same identity, with privileges private to this thread.
+   if(!ImpersonateSelf(2)) return null;
+   var scope=new Reverting();bool enabled=false;
+   try {
+    IntPtr token;
+    // TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY on the thread token only. The process token is never adjusted.
+    if(!OpenThreadToken(GetCurrentThread(),0x28,true,out token)) return null;
+    try {
+     var state=new PRIVILEGES();state.count=1;state.attributes=2; // SE_PRIVILEGE_ENABLED
+     if(!LookupPrivilegeValue(null,"SeDebugPrivilege",out state.luid)) return null;
+     // Success with ERROR_NOT_ALL_ASSIGNED (1300) means the token does not hold the privilege.
+     enabled=AdjustTokenPrivileges(token,false,ref state,Marshal.SizeOf<PRIVILEGES>(),IntPtr.Zero,IntPtr.Zero)&&
+      Marshal.GetLastWin32Error()==0;
+     return enabled?scope:null;
+    } finally { CloseHandle(token); }
+   } finally { if(!enabled) scope.Dispose(); }
   }
  }
 }

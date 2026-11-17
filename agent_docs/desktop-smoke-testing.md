@@ -114,6 +114,7 @@ These scripts run extracted package smoke checks unless `--skip-package-regressi
    - With traffic active, close the GUI to a confirmed tray, use the installed CLI to query the owner, then reopen the GUI. Confirm the same controller and runtime remain active and traffic continues through both GUI detach and reattach.
    - From the standard-user GUI, stage VPN mode, explicitly restart (or start if disconnected), and deny UAC. Confirm the GUI and CLI remain usable without elevation, the prior runtime state and reconnect intent are preserved, and an active proxy-only connection continues if one was running.
    - Repeat the explicit VPN start/restart with UAC approved. Confirm only the scoped broker is elevated, VPN traffic works, and the GUI/CLI remain attached to the ordinary-user owner.
+     A standard user approves with another administrator's credentials (over-the-shoulder elevation), so the broker runs as that administrator. It opens the ordinary owner with that administrator's SeDebugPrivilege on one thread, only after the owner's DACL refuses it, and still verifies the owner's creation time, token user and pipe client PID.
 
 10. Autostart and reconnect
 

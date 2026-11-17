@@ -184,8 +184,6 @@ public static class VpnPackagedBrokerAdmission {
   sealed class Process : Handle { internal IntPtr Value;internal Process(IntPtr value) { Value=value; } }
   readonly List<IntPtr> tokens=new List<IntPtr>();
   [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-  [DllImport("kernel32.dll",SetLastError=true)] static extern IntPtr OpenProcess(uint access,bool inherit,uint pid);
-  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
   [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
   [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
   [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetProcessTimes(IntPtr process,out long created,out long exited,out long kernel,out long user);
@@ -206,7 +204,9 @@ public static class VpnPackagedBrokerAdmission {
   static void Checked(bool value) { if(!value) throw new Win32Exception(Marshal.GetLastWin32Error()); }
 
   public Handle OpenOwner(uint pid) {
-   IntPtr handle=OpenProcess(0x00101000,false,pid);Checked(handle!=IntPtr.Zero);return new Process(handle);
+   // The same owner open as the runtime broker's, which another approving administrator also passes.
+   int error;IntPtr handle=VpnBrokerOwnerProcess.Open(pid,0x00101000,out error);
+   if(handle==IntPtr.Zero) throw new Win32Exception(error);return new Process(handle);
   }
   public Owner ObserveOwner(Handle owner) {
    IntPtr process=((Process)owner).Value;Need(process!=IntPtr.Zero,"UNAVAILABLE");
