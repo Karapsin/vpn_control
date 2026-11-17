@@ -3592,6 +3592,18 @@ Routine suite: the modules above, with `test_windows_tun_reserved`, `test_window
 3.12. Only a native run confirms the watch's Toolhelp and ProgramData reads as the ordinary user, the shared read of
 the launch config, and the product's actual reach.
 
+### The GUI picker's Save dialog file name box (native S_D4, 2.2.19, 2026-11-17)
+
+`windows-document-cold.gui-picker` 3bcb164e matched and clicked routing-nav, export-menu and export-file, and the
+GUI's own Save dialog opened. The tool then refused it as `document-gui-picker-dialog-controls:save` and cancelled
+the dialog without typing. Event 56 lists the dialog's controls: the file name box is ComboBoxEx32 1148 > ComboBox
+1148 > Edit 1148, with no 1001. The table expected 1001 for a Save dialog. The fake dialog in the tests derived its
+Edit id from the same table, so no test could disagree with it.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The Save dialog's file name Edit is 1148 (cmb13), not 1001, so the picker refused the GUI's own dialog before typing (TOOL) | `test_windows_document_gui_picker.DialogTests.test_the_native_save_dialog_controls_of_3bcb164e_are_typed_into_RED_refused_GREEN`; the `legacy-save-id` and `hidden` cases of `test_a_dialog_without_exactly_one_file_name_edit_is_a_known_failure_with_its_controls` | RED on `653c8584` (both Pythons): `document-gui-picker-dialog-controls:save` on the native control list. Both kinds now take the one visible, enabled Edit 1148. A dialog with only a 1001 Edit, or a hidden 1148, is still a known failure with its control list. Only the next native run confirms the WM_SETTEXT read-back and IDOK in the Save dialog. |
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

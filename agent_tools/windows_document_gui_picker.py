@@ -25,7 +25,7 @@ input is one of the closed steps below, at a reviewed point, into a window of th
   reviewer opens to add the step to PROFILE (review_step). Clicks are one SendInput of a left press and release at
   the pointer's own position; a partial insertion parks.
 - The common file dialog is driven by handle only, never by a click: its one visible file name Edit (control ID
-  1001 in a Save dialog, 1148 in an Open dialog) gets the path by WM_SETTEXT and is read back, and the dialog gets
+  1148, cmb13's Edit, in both the Save and the Open dialog) gets the path by WM_SETTEXT and is read back, and the dialog gets
   one posted WM_COMMAND IDOK, which is what Enter sends. Its region is captured before and after the text.
 
 What the cold module compares (CLI-002, PRODUCT-004): the GUI's export through its picker against the CLI export of
@@ -65,7 +65,9 @@ DESKTOP_WINDOW_CLASS = "#32769"
 DIALOG_CLASS = "#32770"
 MAIN_CLASS = "SunAwtFrame"
 MAIN_WIDTH, MAIN_HEIGHT = 500, 300
-FILENAME_EDIT = {"save": 1001, "open": 1148}
+# The Explorer-style common dialog's file name box is the Edit inside ComboBox cmb13 (1148) in both kinds. The native
+# Save dialog of the GUI's picker (3bcb164e, event 56) showed ComboBoxEx32 1148 > ComboBox 1148 > Edit 1148 and no 1001.
+FILENAME_EDIT = {"save": 1148, "open": 1148}
 IDOK, IDCANCEL = 1, 2
 WINDOW_SECONDS = 90
 STABLE_ATTEMPTS, STABLE_INTERVAL = 20, 0.25  # REGION_STABLE_MAX_ATTEMPTS and REGION_STABLE_INTERVAL_MILLIS.

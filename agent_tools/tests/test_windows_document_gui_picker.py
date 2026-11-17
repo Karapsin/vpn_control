@@ -509,7 +509,8 @@ class DialogTests(SessionBase):
     def test_a_dialog_without_exactly_one_file_name_edit_is_a_known_failure_with_its_controls(self):
         for name, edits in (("none", []), ("two", [{"hwnd": EDIT, "class": "Edit", "id": 1001, "visible": True, "enabled": True},
                                                     {"hwnd": EDIT + 9, "class": "Edit", "id": 1001, "visible": True, "enabled": True}]),
-                            ("open-id", [{"hwnd": EDIT, "class": "Edit", "id": 1148, "visible": True, "enabled": True}])):
+                            ("legacy-save-id", [{"hwnd": EDIT, "class": "Edit", "id": 1001, "visible": True, "enabled": True}]),
+                            ("hidden", [{"hwnd": EDIT, "class": "Edit", "id": 1148, "visible": False, "enabled": True}])):
             with self.subTest(edits=name):
                 session = self.to_dialog()
                 self.native.edits = edits
@@ -517,6 +518,21 @@ class DialogTests(SessionBase):
                     session.choose("save", str(self.root / "gui.json"))
                 self.assertEqual(([], []), (self.native.texts, self.native.commands))
                 self.assertIn("document-gui-picker-dialog-controls", self.owner.kinds())
+
+    def test_the_native_save_dialog_controls_of_3bcb164e_are_typed_into_RED_refused_GREEN(self):
+        # Event 56 of 3bcb164e: the GUI's own Save dialog. Its file name box is ComboBoxEx32 1148 > ComboBox 1148 >
+        # Edit 1148, with no 1001; the old table expected 1001 for a Save dialog and refused before typing.
+        session = self.to_dialog()
+        native = [{"hwnd": EDIT + 1, "class": "ComboBox", "id": 1137, "visible": True, "enabled": True},
+                  {"hwnd": EDIT + 2, "class": "ComboBoxEx32", "id": 1148, "visible": True, "enabled": True},
+                  {"hwnd": EDIT + 3, "class": "ComboBox", "id": 1148, "visible": True, "enabled": True},
+                  {"hwnd": EDIT, "class": "Edit", "id": 1148, "visible": True, "enabled": True},
+                  {"hwnd": EDIT + 4, "class": "ComboBox", "id": 1136, "visible": True, "enabled": True}]
+        self.native.edits = native
+        target = str(self.root / "gui.json")
+        session.choose("save", target)
+        self.assertEqual([(EDIT, target)], self.native.texts)
+        self.assertEqual(1, len(self.native.commands))
 
     def test_a_file_name_that_does_not_read_back_is_never_confirmed(self):
         session = self.to_dialog()

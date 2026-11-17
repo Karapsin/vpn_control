@@ -1858,8 +1858,9 @@ clicked: the reviewer opens that frame and records the step with `review_step`. 
 frame whose anchor differs ends `document-gui-picker-anchor-mismatch:<step>`, so a
 redrawn control is never clicked unreviewed. No step is reviewed yet, so the first
 native runs stop, one step further each, as the profile grows. The common file
-dialog takes no click. Its one visible file name Edit (control ID 1001 in a Save
-dialog, 1148 in an Open dialog) gets the path by `WM_SETTEXT` and must read it
+dialog takes no click. Its one visible file name Edit (control ID 1148, the Edit of
+ComboBox cmb13, in both the Save and the Open dialog; the native Save dialog of
+3bcb164e had no 1001) gets the path by `WM_SETTEXT` and must read it
 back, and the dialog gets one posted `WM_COMMAND IDOK`, as Enter sends it. Its
 region is kept before and after the text. A dialog without exactly one such Edit
 and an `IDOK` button ends `document-gui-picker-dialog-controls:<kind>` with the
