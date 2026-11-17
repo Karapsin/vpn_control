@@ -93,6 +93,11 @@ PROFILE = {"schemaVersion": 1, "display": list(DISPLAY), "placement": list(PLACE
 # is its centre.
 PROFILE["steps"]["routing-nav"] = {"point": [1029, 704], "anchor": [1004, 686, 1054, 720],
                                    "sha256": "dcc69d9fe0201b78f108378e086dced14f4683136d7bc73e9e0691c4d538f344"}
+# export-menu: reviewed by the coordinator from 5bb9629d frame 01 (pixels 1ff873fd..., origin 140,16). The Routing Rules
+# screen after the routing-nav click, no menu or dialog open; the anchor holds only the outlined Export button at the top
+# left, and the point is its centre.
+PROFILE["steps"]["export-menu"] = {"point": [316, 89], "anchor": [268, 62, 366, 116],
+                                   "sha256": "6adc3b072ef29f1e79c80178bb421639390f86156bb4033859191c7080b5b6b4"}
 
 
 def need(value, code):
