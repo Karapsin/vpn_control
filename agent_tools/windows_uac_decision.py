@@ -43,7 +43,7 @@ from . import readiness_windows_login as login
 from . import readiness_windows_remote as packets
 from . import ssh_transport as transport
 from .private_credential_file import SecretFile
-from .readiness_windows_login import PrivateInputUnknown, enter_private, ppm, private_keys, screen_gate
+from .readiness_windows_login import PrivateInputUnknown, enter_private, ppm, private_keys
 
 _EXECUTING_CODE = inspect.currentframe().f_code
 
@@ -57,6 +57,8 @@ OWNER_WAIT_SECONDS = 70
 SUBMIT_SECONDS = 100
 ATTEMPT_LIMIT = 16
 DARK_LEVEL = 110
+# The rightmost columns the parked arrow may cover (_uac_park): no reviewed region reaches them.
+_PARK_COLUMNS = 32
 _HELPER_IMAGE = {"install-helper": "vpn-control-install-helper.exe", "vpn-broker": "vpn-control-vpn-broker.exe",
                  "qualification": "whoami.exe"}
 _DECISION_NAMESPACE = "windows-uac-decision"
@@ -294,7 +296,7 @@ def _uac_close_fence(root,save,decision,pid,code):
 class _UacOwner:
     """One detached memory-only owner; no SSH descriptor or private stream survives the fork."""
     def __init__(self,root,decision,attempt):
-        self.root=root;self.decision=decision;self.attempt=attempt;self.child=False;self.burned=False;self.frame=None
+        self.root=root;self.decision=decision;self.attempt=attempt;self.child=False;self.burned=False;self.frame=None;self.raw=None
         self.parent=root/'windows-uac';self.directory=self.parent/decision;self.prefix='attempt-%04d'%attempt
     def _directory(self,path):
         import os,stat
@@ -377,11 +379,20 @@ class _UacOwner:
     def fail(self,reason):
         """Nothing burned means no key was possible. After the burn the input stays unknown until status reads it.
 
-        A refusal at the frame bound also names what its last frame showed (_uac_frame_facts): public, since no key was sent."""
+        A refusal at the frame bound also names what its last frame showed (_uac_frame_facts) and publishes that frame beside
+        its terminal, which a reply carries (_uac_attempt_frame): public, since no key was sent. A frame that cannot be
+        published leaves the refusal without it."""
         import os
         if os.path.lexists(self.directory/'input.terminal.json'):return self.finish(_uac_load(self.directory/'input.terminal.json'))
-        self.finish({'state':'input-owner-unknown'if self.burned else'input-refused','operationId':self.decision,'attempt':self.attempt,'reason':reason,'inputAttempted':self.burned,'replayAllowed':False,
-                     **({'frame':self.frame}if self.frame is not None and not self.burned else{})})
+        shown={}
+        if self.frame is not None and not self.burned:
+            shown['frame']=self.frame
+            if self.raw is not None:
+                try:
+                    _uac_publish(self.directory/(self.prefix+'.frame.ppm'),self.raw)
+                    shown.update(frameSha256=hashlib.sha256(self.raw).hexdigest(),frameBytes=len(self.raw))
+                except (OSError,ValueError):pass
+        self.finish({'state':'input-owner-unknown'if self.burned else'input-refused','operationId':self.decision,'attempt':self.attempt,'reason':reason,'inputAttempted':self.burned,'replayAllowed':False,**shown})
 
 def _uac_census(value,fresh):
     """One census against the closed row. None means the prompt has not appeared yet."""
@@ -415,32 +426,83 @@ def _uac_census(value,fresh):
     need(0<=row['ageSeconds']<UAC_PROMPT_AGE,'instance_uac_prompt_age')
     return {'pid':row['pid'],'birth':row['birth'],'sessionId':row['sessionId'],'ageSeconds':row['ageSeconds'],'event':events[0]['name']}
 
-def _uac_field_dark(raw):
-    """Dark pixels in the password box, or 0 for a frame the box does not fit."""
+def _uac_offsets(h,rects,field):
+    """The vertical offsets at which every reviewed rectangle and the field stay inside a frame of this height."""
+    every=list(rects)+[field]
+    return range(-min(rect[1]for rect in every),h-max(rect[3]for rect in every)+1)
+
+def _uac_crop_sha(pixels,w,rect,dy):
+    x0,y0,x1,y1=rect
+    return hashlib.sha256(b''.join(pixels[((y+dy)*w+x0)*3:((y+dy)*w+x1)*3]for y in range(y0,y1))).hexdigest()
+
+def _uac_locate(raw):
+    """The one vertical offset at which every reviewed crop matches exactly, or None; two such offsets refuse.
+
+    The secure desktop draws the same prompt at another height on another clone or run (S_D4: NG's review frame 63 rows
+    below ND's, every reviewed pixel the same). Only the height is searched, within the frame; x, size and every crop's
+    bytes stay the review's.
+    """
+    w,h,pixels=ppm(raw)
+    if (w,h)!=(UAC_SCREEN['width'],UAC_SCREEN['height']):return None
+    crops=UAC_SCREEN['crops'];found=[]
+    for dy in _uac_offsets(h,[row['rect']for row in crops],UAC_FIELD['rect']):
+        if all(_uac_crop_sha(pixels,w,row['rect'],dy)==row['sha256']for row in crops):
+            found.append(dy)
+            if len(found)>1:raise ValueError('instance_uac_frame_ambiguous')
+    return found[0]if found else None
+
+def _uac_field_dark(raw,dy=0):
+    """Dark pixels in the password box at that offset, or 0 for a frame the box does not fit."""
     w,h,pixels=ppm(raw);x0,y0,x1,y1=UAC_FIELD['rect'];dark=0
-    if not(x1<=w and y1<=h):return 0
-    for y in range(y0,y1):
+    if not(x1<=w and 0<=y0+dy and y1+dy<=h):return 0
+    for y in range(y0+dy,y1+dy):
         row=pixels[(y*w+x0)*3:(y*w+x1)*3]
         dark+=sum(max(row[at:at+3])<UAC_DARK_LEVEL for at in range(0,len(row),3))
     return dark
 
-def _uac_field_empty(raw):
-    """Dark pixels in the password box: an entered character would add more than the review allowed."""
-    return _uac_field_dark(raw)<=UAC_FIELD['maxDarkPixels']
-
 def _uac_frame_facts(raw):
-    """What a refused frame showed, and nothing else: per reviewed crop in UAC_SCREEN's order whether the frame showed it
-    exactly, and the field's dark pixels.
+    """What a refused frame showed, and nothing else: the offset nearest the review at which most crops matched, whether
+    each crop in UAC_SCREEN's order matched there, and the field's dark pixels there.
 
-    screen_gate stops at the first crop it does not find, so its refusal cannot tell a prompt that is not on the screen at
-    all (a prompt waiting in the taskbar shows no crop) from an arrow or a hovered button over one region (the rest shown).
+    A refusal alone cannot tell a prompt that is not on the screen at all (a prompt waiting in the taskbar shows no crop)
+    from an arrow or a hovered button over one region (the rest shown) or a prompt drawn elsewhere.
     """
-    w,h,pixels=ppm(raw);shown=[]
-    for row in UAC_SCREEN['crops']:
-        x0,y0,x1,y1=row['rect']
-        shown.append((w,h)==(UAC_SCREEN['width'],UAC_SCREEN['height'])and x1<=w and y1<=h
-                     and hashlib.sha256(b''.join(pixels[(y*w+x0)*3:(y*w+x1)*3]for y in range(y0,y1))).hexdigest()==row['sha256'])
-    return {'cropsMatched':shown,'fieldDarkPixels':_uac_field_dark(raw)}
+    w,h,pixels=ppm(raw);crops=UAC_SCREEN['crops']
+    if (w,h)!=(UAC_SCREEN['width'],UAC_SCREEN['height']):return {'cropsMatched':[False]*len(crops),'fieldDarkPixels':0,'offsetY':0}
+    best=None
+    for dy in _uac_offsets(h,[row['rect']for row in crops],UAC_FIELD['rect']):
+        shown=[_uac_crop_sha(pixels,w,row['rect'],dy)==row['sha256']for row in crops]
+        key=(-sum(shown),abs(dy),dy)
+        if best is None or key<best[0]:best=(key,dy,shown)
+    return {'cropsMatched':best[2],'fieldDarkPixels':_uac_field_dark(raw,best[1]),'offsetY':best[1]}
+
+def _uac_park(monitor,absolute):
+    """The one journaled pointer move, with no button: the top right corner, which no searched offset of the dialog
+    reaches, and a display wake. A relative mouse takes a bounded run of steps toward it."""
+    import time
+    if absolute:
+        monitor('input-send-event',{'events':[{'type':'abs','data':{'axis':'x','value':32767}},{'type':'abs','data':{'axis':'y','value':0}}]});return
+    for _ in range(16):
+        monitor('input-send-event',{'events':[{'type':'rel','data':{'axis':'x','value':120}},{'type':'rel','data':{'axis':'y','value':-120}}]});time.sleep(.03)
+
+def _uac_attempt_frame(directory,terminal):
+    """A refused attempt's terminal as a reply carries it: with its published frame's exact bytes, read back and checked.
+    Any other terminal, or a frame that cannot be read back as named, is the terminal as it is."""
+    import base64,os,stat,zlib
+    if type(terminal)is not dict or terminal.get('state')!='input-refused'or type(terminal.get('frameSha256'))is not str:return terminal
+    try:
+        descriptor=os.open(directory/('attempt-%04d.frame.ppm'%terminal['attempt']),os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            info=os.fstat(descriptor);raw=bytearray()
+            if not stat.S_ISREG(info.st_mode)or info.st_uid!=os.geteuid()or info.st_size!=terminal.get('frameBytes')or not 0<info.st_size<=16*1024**2:return terminal
+            while len(raw)<info.st_size:
+                chunk=os.read(descriptor,min(1048576,info.st_size-len(raw)))
+                if not chunk:return terminal
+                raw+=chunk
+        finally:os.close(descriptor)
+    except (OSError,KeyError,TypeError):return terminal
+    if hashlib.sha256(raw).hexdigest()!=terminal['frameSha256']:return terminal
+    return {**terminal,'frameData':base64.b64encode(zlib.compress(bytes(raw),6)).decode()}
 
 def _uac_prior_open(root,consent):
     """A new decision never types into a prompt whose earlier input stays unknown."""
@@ -496,32 +558,35 @@ def _uac_gate(owner,root,monitor,guard,script,fresh):
         kept.append(path)
         if len(kept)>2:os.unlink(kept.pop(0))
         guard();return raw
+    moved=directory/'pointer.intent.json'
+    def park():
+        """The decision's one journaled pointer move, shared with its review: never a second, never a button."""
+        mice=monitor('query-mice',None);selected=[x for x in mice if type(x)is dict and x.get('current')is True]
+        need(len(selected)==1 and type(selected[0].get('absolute'))is bool,'instance_uac_mouse_unrecognized')
+        guard();_uac_create(moved,{'operationId':OPERATION,'replayAllowed':False});_uac_park(monitor,selected[0]['absolute']);guard()
     def recognized():
-        """The reviewed prompt with an empty field, or a refusal. A black display gets one journaled pointer move and no click.
+        """The reviewed prompt, at its one offset, with an empty field there, or a refusal.
 
-        The field is where the caret blinks, so a dark field is read again like an unrecognized frame; typed
-        characters stay, and only they refuse at the bound.
+        A black display gets the one journaled park and a second to wake; so does the first lit frame that is not the
+        prompt, since an arrow left over a crop would hide it for the whole gate. The field is where the caret blinks, so
+        a dark field is read again like an unrecognized frame; typed characters stay, and only they refuse at the bound.
         """
         while True:
             raw=shot()
             if not any(ppm(raw)[2]):
-                moved=directory/'pointer.intent.json'
                 need(not os.path.lexists(moved),'instance_uac_display_black')
-                mice=monitor('query-mice',None);selected=[x for x in mice if type(x)is dict and x.get('current')is True]
-                need(len(selected)==1 and type(selected[0].get('absolute'))is bool,'instance_uac_mouse_unrecognized')
-                events=([{'type':'abs','data':{'axis':'x','value':16384}},{'type':'abs','data':{'axis':'y','value':16384}}]if selected[0]['absolute']else[{'type':'rel','data':{'axis':'x','value':1}}])
-                guard();_uac_create(moved,{'operationId':OPERATION,'replayAllowed':False});monitor('input-send-event',{'events':events});guard()
-                time.sleep(1);continue
+                park();time.sleep(1);continue
             try:
-                screen_gate(raw,UAC_SCREEN)
-                if _uac_field_empty(raw):return raw
-                failed='instance_uac_field_not_empty'
+                found=_uac_locate(raw)
+                if found is not None and _uac_field_dark(raw,found)<=UAC_FIELD['maxDarkPixels']:return raw
+                failed='instance_uac_frame_unrecognized'if found is None else'instance_uac_field_not_empty'
             except ValueError as error:
-                if str(error)!='instance_login_screen_unrecognized':raise
-                failed='instance_uac_frame_unrecognized'
+                if str(error)!='instance_uac_frame_ambiguous':raise
+                failed='instance_uac_frame_ambiguous'
             if time.monotonic()>=limit:
-                # The refusal names what its last frame showed; the frames themselves stay in this folder of the VM root.
-                owner.frame=_uac_frame_facts(raw);raise ValueError(failed)
+                # The refusal names what its last frame showed and publishes that frame (_UacOwner.fail).
+                owner.frame=_uac_frame_facts(raw);owner.raw=raw;raise ValueError(failed)
+            if failed=='instance_uac_frame_unrecognized'and not os.path.lexists(moved):park()
             guard();time.sleep(.25)
     first,_=census();recognized()
     second,read=census();need((second['pid'],second['birth'])==(first['pid'],first['birth']),'instance_uac_consent_changed')
@@ -743,9 +808,8 @@ def _uac_review_flow(review,root,monitor,guard,script,fresh):
         need(not os.path.lexists(review.pointer),'instance_uac_display_black')
         mice=monitor('query-mice',None);selected=[x for x in mice if type(x)is dict and x.get('current')is True]
         need(len(selected)==1 and type(selected[0].get('absolute'))is bool,'instance_uac_mouse_unrecognized')
-        events=([{'type':'abs','data':{'axis':'x','value':16384}},{'type':'abs','data':{'axis':'y','value':16384}}]if selected[0]['absolute']else[{'type':'rel','data':{'axis':'x','value':1}}])
         guard();_uac_create(review.pointer,{'operationId':OPERATION,'decisionId':UAC_DECISION_ID,'mode':'uac-review','replayAllowed':False});review.moved=True
-        monitor('input-send-event',{'events':events});guard()
+        _uac_park(monitor,selected[0]['absolute']);guard()
         sent=time.monotonic();settle=min(limit,sent+UAC_REVIEW_SETTLE)
         while True:
             time.sleep(.5);raw=shot()
@@ -785,13 +849,13 @@ def _uac_review_status_open(root,review):
     return terminal
 
 
-_DECIDE_SOURCES = (PrivateInputUnknown, private_keys, enter_private, ppm, screen_gate, _uac_load, _uac_create, _uac_birth, _uac_exit_source,
-                   _uac_close_fence, _UacOwner, _uac_census, _uac_field_dark, _uac_field_empty, _uac_frame_facts, _uac_prior_open, _uac_gate,
-                   _uac_flow)
-_STATUS_SOURCES = (_uac_load, _uac_create, _uac_birth, _uac_exit_source, _uac_close_fence, _uac_receipts, _uac_status_open)
+_DECIDE_SOURCES = (PrivateInputUnknown, private_keys, enter_private, ppm, _uac_load, _uac_create, _uac_birth, _uac_exit_source,
+                   _uac_close_fence, _UacOwner, _uac_census, _uac_offsets, _uac_crop_sha, _uac_locate, _uac_field_dark, _uac_frame_facts,
+                   _uac_park, _uac_publish, _uac_attempt_frame, _uac_prior_open, _uac_gate, _uac_flow)
+_STATUS_SOURCES = (_uac_load, _uac_create, _uac_birth, _uac_exit_source, _uac_close_fence, _uac_attempt_frame, _uac_receipts, _uac_status_open)
 # The review embeds no input code: no key encoder, no secret, no owner fork and no stdin.
 _REVIEW_SOURCES = (ppm, _uac_load, _uac_create, _uac_directory, _uac_publish, _uac_review_frame, _UacReview, _uac_census, _uac_prior_open,
-                   _uac_review_flow)
+                   _uac_park, _uac_review_flow)
 _REVIEW_STATUS_SOURCES = (_uac_load, _uac_create, _uac_review_frame, _uac_review_receipts, _uac_review_status_open)
 
 
@@ -859,7 +923,7 @@ def program(binding, mode, decision, *, attempt=None, answer=None, prompt=None, 
         source = _replace_once(source, "        epoch();chain()",
                                "        epoch();chain()\n"
                                "        uac_known=_uac_receipts(root,OPERATION)\n"
-                               "        if uac_known is not None:print(json.dumps(uac_known));return")
+                               "        if uac_known is not None:print(json.dumps(_uac_attempt_frame(root/'windows-uac'/OPERATION,uac_known)));return")
         source = _replace_once(source, marker,
                                "        elif MODE=='uac-status':\n"
                                "            require(state=='running','instance_guest_not_ready')\n"
@@ -886,7 +950,7 @@ def program(binding, mode, decision, *, attempt=None, answer=None, prompt=None, 
         # The owner forks after the root lock and before opening provider connections or wire files.
         source = _replace_once(source, "        if PROVIDER=='libvirt-windows':\n            import libvirt,libvirt_qemu",
                                "        launched=uac_owner.start(lock,held,sys.stdin.buffer,wait_seconds=" + repr(OWNER_WAIT_SECONDS) + ")\n"
-                               "        if type(launched)is dict:print(json.dumps(launched));return\n"
+                               "        if type(launched)is dict:print(json.dumps(_uac_attempt_frame(uac_owner.directory,launched)));return\n"
                                "        globals()['UAC_SECRET']=launched;launched=None\n"
                                "        if PROVIDER=='libvirt-windows':\n            import libvirt,libvirt_qemu")
         source = _replace_once(source, marker,
@@ -974,7 +1038,7 @@ def validate_profile(profile, deployment, prompt, approver="administrator", *, a
             or type(profile["schemaVersion"]) is not int or profile["schemaVersion"] != 1 or profile["deploymentId"] != deployment
             or profile["prompt"] != prompt or type(profile["width"]) is not int or type(profile["height"]) is not int
             or not 320 <= profile["width"] <= 4096 or not 200 <= profile["height"] <= 2160
-            or type(profile["crops"]) is not list or not 1 <= len(profile["crops"]) <= (7 if named else 8)  # screen_gate reads at most eight
+            or type(profile["crops"]) is not list or not 1 <= len(profile["crops"]) <= (7 if named else 8)  # at most eight regions, the account's among them
             or type(profile["reviewedFrameSha256"]) is not str or re.fullmatch("[0-9a-f]{64}", profile["reviewedFrameSha256"]) is None):
         raise ValueError("windows_uac_profile")
     width, height = profile["width"], profile["height"]
@@ -982,15 +1046,18 @@ def validate_profile(profile, deployment, prompt, approver="administrator", *, a
     if (type(field) is not dict or set(field) != {"rect", "maxDarkPixels"} or type(field["maxDarkPixels"]) is not int or field["maxDarkPixels"] < 0):
         raise ValueError("windows_uac_profile")
     box = rect(field["rect"], width, height)
-    # A pointer move for a black display parks the arrow here: abs 16384 of 32767 is the centre of the frame.
+    # Profiles reviewed before the park moved kept the centre, where an earlier pointer move left the arrow. The park
+    # (_uac_park) puts it in the top right corner: only the height is searched, so a region left of the corner's
+    # columns never meets the arrow at any offset.
     pointer = [width // 2 - 4, height // 2 - 4, width // 2 + 24, height // 2 + 40]
-    if overlaps(box, pointer):
+    corner = [width - _PARK_COLUMNS, 0, width, height]
+    if overlaps(box, pointer) or overlaps(box, corner):
         raise ValueError("windows_uac_profile_pointer_gap")
     for row in profile["crops"] + ([profile["account"]] if named else []):
         if type(row) is not dict or set(row) != {"rect", "sha256"} or type(row["sha256"]) is not str or re.fullmatch("[0-9a-f]{64}", row["sha256"]) is None:
             raise ValueError("windows_uac_profile")
         crop = rect(row["rect"], width, height)
-        if overlaps(crop, pointer):
+        if overlaps(crop, pointer) or overlaps(crop, corner):
             raise ValueError("windows_uac_profile_pointer_gap")
         if overlaps(crop, box):
             raise ValueError("windows_uac_profile_caret")
@@ -1076,6 +1143,16 @@ def reviewed_uac_profile(root, deployment, prompt, frame, crops, field, max_dark
     if account is not None:
         profile.update(approver=approver, account={"rect": list(account), "sha256": hashlib.sha256(region(account)).hexdigest()})
     validate_profile(profile, deployment, prompt, approver, account_required=account is not None)
+    # The gate searches the height (_uac_locate): the reviewed regions must show the prompt at one offset only.
+    regions = [row["rect"] for row in rows] + ([profile["account"]["rect"]] if account is not None else [])
+    every = regions + [list(field)]
+    offsets = range(-min(rect[1] for rect in every), height - max(rect[3] for rect in every) + 1)
+
+    def shifted(rect, dy):
+        return b"".join(pixels[((y + dy) * width + rect[0]) * 3:((y + dy) * width + rect[2]) * 3] for y in range(rect[1], rect[3]))
+    reviewed = [region(rect) for rect in regions]
+    if [dy for dy in offsets if all(shifted(rect, dy) == bytes(body) for rect, body in zip(regions, reviewed))] != [0]:
+        raise ValueError("windows_uac_profile_ambiguous")
     inside = region(field)
     if sum(max(inside[at:at + 3]) < DARK_LEVEL for at in range(0, len(inside), 3)) > max_dark_pixels:
         raise ValueError("windows_uac_profile_field_not_empty")
@@ -1340,7 +1417,8 @@ def _reply(result, private):
     """A finite parse of the reply. Bytes from a private path are scanned and never retained, hashed or measured."""
     if private and (private in result.stdout or private in result.stderr):
         return None
-    if result.returncode or result.stderr or len(result.stdout) > 262144:
+    # A refusal at the frame bound carries its frame (_uac_attempt_frame), so a reply is bounded as a review's is.
+    if result.returncode or result.stderr or len(result.stdout) > REVIEW_REPLY_BYTES:
         return None
     try:
         value = json.loads(result.stdout, object_pairs_hook=transport._reject_duplicate_keys)
@@ -1351,18 +1429,56 @@ def _reply(result, private):
 
 _ACK_FIELDS = frozenset({"state", "operationId", "attempt", "decision", "prompt", "promptClosed", "approvalSucceeded", "productOutcomeProved", "replayAllowed"})
 # The refusals at the frame bound, whose terminal names what the last frame showed (_uac_frame_facts).
-_FRAME_REASONS = frozenset({"instance_uac_frame_unrecognized", "instance_uac_field_not_empty"})
+_FRAME_REASONS = frozenset({"instance_uac_frame_unrecognized", "instance_uac_field_not_empty", "instance_uac_frame_ambiguous"})
 
 
 def _frame_facts(value):
     """A frame refusal's facts as they may cross, or None: a malformed fact is dropped and never hides the refusal."""
     facts = value.get("frame")
-    if (value.get("reason") not in _FRAME_REASONS or type(facts) is not dict or set(facts) != {"cropsMatched", "fieldDarkPixels"}
+    if (value.get("reason") not in _FRAME_REASONS or type(facts) is not dict or set(facts) != {"cropsMatched", "fieldDarkPixels", "offsetY"}
             or type(facts["cropsMatched"]) is not list or not 1 <= len(facts["cropsMatched"]) <= 8
             or any(type(item) is not bool for item in facts["cropsMatched"])
-            or type(facts["fieldDarkPixels"]) is not int or not 0 <= facts["fieldDarkPixels"] <= 4096 * 2160):
+            or type(facts["fieldDarkPixels"]) is not int or not 0 <= facts["fieldDarkPixels"] <= 4096 * 2160
+            or type(facts["offsetY"]) is not int or not -2160 <= facts["offsetY"] <= 2160):
         return None
-    return {"cropsMatched": list(facts["cropsMatched"]), "fieldDarkPixels": facts["fieldDarkPixels"]}
+    return {"cropsMatched": list(facts["cropsMatched"]), "fieldDarkPixels": facts["fieldDarkPixels"], "offsetY": facts["offsetY"]}
+
+
+def _refusal_frame(value):
+    """The exact frame a frame refusal's reply carries, inflated within its bound, or None."""
+    if type(value) is not dict or value.get("state") != "input-refused" or _frame_facts(value) is None:
+        return None
+    digest, size, payload = value.get("frameSha256"), value.get("frameBytes"), value.get("frameData")
+    if (type(digest) is not str or re.fullmatch("[0-9a-f]{64}", digest) is None or type(size) is not int
+            or not 0 < size <= REVIEW_FRAME_BYTES or type(payload) is not str):
+        return None
+    try:
+        inflater = zlib.decompressobj()
+        raw = inflater.decompress(base64.b64decode(payload, validate=True), REVIEW_FRAME_BYTES + 1)
+        if not inflater.eof or inflater.unconsumed_tail or inflater.unused_data or len(raw) != size:
+            return None
+        ppm(raw)
+    except (ValueError, TypeError, zlib.error):
+        return None
+    return raw if hashlib.sha256(raw).hexdigest() == digest else None
+
+
+def _keep_refusal_frame(directory, attempt, projected, value):
+    """A refused attempt's carried frame, kept beside its result before the result: the next refusal can be opened.
+    A frame that cannot be kept as named leaves the refusal without it."""
+    raw = _refusal_frame(value)
+    if raw is None or projected.get("state") != "refused" or projected.get("attempt") != attempt or type(attempt) is not int:
+        return projected
+    names = ("attempt-%04d.frame.ppm" % attempt, "attempt-%04d.frame.png" % attempt)
+    for name, body in zip(names, (raw, _png(raw))):
+        try:
+            login._retain_local(directory, name, body)
+        except FileExistsError:
+            if _read_private(directory / name, 2 * REVIEW_FRAME_BYTES) != body:
+                return projected
+        except (OSError, ValueError):
+            return projected
+    return {**projected, "frameSha256": value["frameSha256"], "framePath": str(directory / names[0]), "pngPath": str(directory / names[1])}
 
 
 def _project(value, decision, inputs, *, submitted):
@@ -1414,7 +1530,8 @@ def _status(root, binding, decision, inputs, directory, attempt, deadline):
         result = _send(root, inputs["host"], decision, source, None, deadline)
     except Exception:  # A status read proves nothing by failing, and it is only ever read again.
         return {**_refused("uac_status_unavailable", decision, inputs), "state": "unknown"}
-    value = _project(_reply(result, None), decision, inputs, submitted=False)
+    reply = _reply(result, None)
+    value = _keep_refusal_frame(directory, attempt, _project(reply, decision, inputs, submitted=False), reply)
     # Status may name another attempt only if this client lost that reply; the journal says which one is open.
     _retain_result(directory, attempt if value.get("attempt") == attempt else None, value)
     return value
@@ -1567,7 +1684,7 @@ def execute(root, inputs, *, deadline=None, direct=False):
         value = _reply(result, private)
         if secret is not None:
             secret.guard()
-        projected = _project(value, decision, inputs, submitted=True)
+        projected = _keep_refusal_frame(directory, attempt, _project(value, decision, inputs, submitted=True), value)
         _retain_result(directory, attempt, projected)
         return projected
     finally:

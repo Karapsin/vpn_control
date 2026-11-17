@@ -3517,7 +3517,8 @@ deny review frame of `9cf1d139` (S_D3), and the same bytes passed the deny gate 
 the deny packets differ only in the decision, the row, the context and the operation: `UAC_SCREEN`, `UAC_FIELD` and
 `UAC_PROFILE_SHA` are byte-equal, and the gate's code path before the first key is the same for both answers, so the
 decision tool reads an approve's prompt exactly as a deny's. The cause is on the screen, and the two kept frames stay
-in `windows-uac/4bd56d3e-.../` of the VM root, which no closed action reads. Evidence, the unfixed sources and the
+in `windows-uac/4bd56d3e-.../` of the VM root, which no closed action reads (a final refusal is answered from the local
+journal, so not even a status packet reaches them). Evidence, the unfixed sources and the
 RED/GREEN logs: `.runtime/windows-parity-20261107/evidence/fix-uac-approve/` of the recovery checkout.
 
 | Failure type | Regression | Notes |
@@ -3530,17 +3531,41 @@ RED on `d0148a49` sources with the final tests, Python 3.14 and 3.12 alike: `Ran
 errors=6)`; the seven controls held. GREEN: OK on both. Routine suite: the affected selection of
 `windows_uac_decision.py` and `native_scenario_windows.py`.
 
-Leading hypotheses for the frames, and what each shows: (1) the prompt waiting as a taskbar button, not on the secure
-desktop, because its requester did not hold the foreground (the visual route already refuses this case,
-`instance_uac_visual_prompt_not_shown`); 2.2.19 changed `DesktopTray.kt` and `Main.kt` window state since 2.2.18: an
-undimmed desktop with no dialog, every crop missed. (2) The arrow or a hovered `Yes`/`No` over a crop: the dialog with
-one or two crops missed, most likely the button row `[437,634,844,670]`. (3) Another dialog state or layout (another
-default button, a focus ring, a taller dialog): the dialog shown, its crops missed by position. (4) A lock screen or
-another surface after a wake: no dialog, every crop missed, and a pointer journal in the decision's folder. The next
-refusal's `frame` facts tell (1) and (4) from (2) and (3) without the frames.
+The S_D4 review frame of clone NG (`371066d7`, deny `9bdb0613`, 1280x800) then showed the same prompt 63 rows lower than
+ND's reviewed frame `5cb384ac`: header rows 171..310 against 108..247, footer 675..754 against 612..691, the same x
+range and size. Searched over every vertical offset that keeps the profile inside the frame, with dx 0, each of the ND
+profile's eight crops matches ND's frame at offset 0 only and NG's frame at +63 only, except the computer-name crop
+`[430,578,700,604]` (`DESKTOP-F9MDBBL` against `DESKTOP-G615U4N`), which is per clone. Outside the dialog both frames
+are pixel-identical apart from the arrow: no taskbar, the same wallpaper and watermark, the same text rendering. So
+the dialog's height on the screen varies by clone or run, and nothing else does: not DPI, wrapping, dialog size,
+resolution or a taskbar. What sets it is not in the frames. ND's arrow sat at the centre after an absolute move and
+its dialog was centred; NG's arrow sat in the bottom left corner after its move (a relative mouse moves one pixel) and
+its dialog was lower. The pointer's place when the prompt opened, or the requesting window's place, are the leading
+candidates; a census of `GetCursorPos` and the requester's window rectangle at the prompt would tell. 4bd56d3e's
+frames, on ND, were most likely the prompt at another height; they stay in the VM root unread. Scripts and outputs:
+`evidence/fix-uac-approve/ng-frame/` (`compare.py`, `locate_real_frames.py`).
 
-Native only: which hypothesis holds; the facts on a real frame; that collect reads a real refused decision on the VM
-host; and the approval's first typed answer through a reviewed profile.
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The reviewed prompt at another height was never recognized (TOOL) | `test_windows_uac_decision.OffsetSearchTests` (found at its one offset and answered; the field moves with it; crops at different offsets, a horizontal shift and two matching offsets refused; the search stays inside the frame), `ProfileTests.test_a_frame_whose_crops_match_at_two_offsets_is_not_reviewable` | `_uac_locate` searches the vertical offset only, within the frame: every crop must match its reviewed bytes at one and the same offset, two offsets refuse `instance_uac_frame_ambiguous`, and the field is read at that offset. The review refuses crops that show the prompt at more than one offset. On the real frames, ND's profile finds ND at 0 and, without its per-clone computer-name crop, NG at +63, in 6 to 46 ms. |
+| A centred arrow would sit inside a shifted crop, and an arrow left over a crop hid the prompt for the whole gate (TOOL) | `test_windows_uac_decision.PointerParkTests`, `ReviewFlowTests.test_the_wake_parks_the_arrow_where_the_decision_parks_it`, `ProfileTests.test_crops_leave_the_corner_the_arrow_is_parked_in` | The one journaled move, shared by the review and the decision, parks the arrow in the top right corner (absolute jump; 16 relative steps), which no searched offset reaches; profiles keep the 32 rightmost columns free. The decision also makes that one move for the first lit frame that is not the prompt. Never a second move or a button. |
+| A refused decision's frames could not be read (TOOL) | `test_windows_uac_decision.RefusedFrameKeptTests`, `ExecuteInputTests.test_a_refused_frame_is_kept_in_the_decision_journal`, `test_a_frame_that_is_not_the_one_named_is_never_kept`, `test_a_refusal_learned_by_status_keeps_its_frame_too` | A refusal at the frame bound publishes its last frame beside its terminal; the decide and status replies carry its exact bytes (`_uac_attempt_frame`), bounded as a review's reply; the client keeps `attempt-NNNN.frame.ppm` and `.frame.png` in the local decision journal. A frame that does not match its name is dropped, never the refusal. The facts gain `offsetY`. |
+
+The gap rule holds at every accepted offset because the park no longer depends on the dialog: the arrow goes to the top
+right corner, the search never moves a crop sideways, and `validate_profile` keeps every crop and the field out of the 32
+rightmost columns, so no crop holds the parked arrow at any dy. The old centre gap stays a review rule, so the NG profile
+(`cb846f1b`, its publisher crop split around `[636,396,664,440]`) and ND's (`06f09788`) both still load; each finds its own
+clone's frame at dy 0 and the other clone's prompt at +63 or -63 with only the hostname crop missed
+(`ng-frame/profiles_under_new_rules.txt`).
+
+RED on `19bede7e` with the final tests, Python 3.14 and 3.12 alike: `Ran 63 tests`, `FAILED (failures=21, errors=6)`; the
+other 36 held, among them the existing gate tests over the patterned synthetic prompt. GREEN: OK on both.
+
+Native only: what sets the dialog's height, and whether a clone's offset is stable across boots and runs. The frames
+cannot tell: ND's 06f09788 matched at offset 0 in review `9cf1d139` and deny `63c2290f`, both restored from one
+snapshot boot, and NG's profile in two deny runs; 4bd56d3e on ND may have been another offset. Then: that the park reaches the corner on both mouse kinds and wakes the display;
+that a frame refusal's reply carries its 3 MB frame through the transport; each clone's own profile (NG needs one: its
+computer name differs); and the approval's first typed answer through a reviewed profile.
 
 ## Historical coverage rule
 

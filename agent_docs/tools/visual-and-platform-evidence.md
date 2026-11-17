@@ -2347,16 +2347,32 @@ same public `CANCELLED` as Esc. `windows-scoped-tun.restart-deny` and
 Proof comes before any key: reviewed pixel crops of a QMP frame and a SYSTEM
 census of `consent.exe` (one, System32, signed by Microsoft Windows, parent
 Appinfo, younger than 90 s), the owner's pending event and the UAC policy. The
-90 s rule holds at the burn, counting frames read after the census, and a dark
-field is read again within the gate, since the caret blinks there. A refusal at
-that bound (`instance_uac_frame_unrecognized` or `instance_uac_field_not_empty`)
-also says what its last frame showed, in a `frame` field of the refusal and its
-journaled result: `cropsMatched`, per reviewed crop in the profile's order (the
-`account` crop last), and `fieldDarkPixels`. Every crop false is a screen without
+secure desktop draws the same prompt at another height on another clone or run
+(S_D4: NG's review frame 63 rows below ND's, every reviewed pixel the same), so
+the gate searches the vertical offset only (`_uac_locate`): within the frame,
+every crop must match its reviewed bytes exactly at one and the same offset, two
+such offsets refuse `instance_uac_frame_ambiguous`, and the field is read at that
+offset. x, size and bytes stay the review's. The 90 s rule holds at the burn,
+counting frames read after the census, and a dark field is read again within the
+gate, since the caret blinks there. The decision's one journaled pointer move,
+shared with its review, parks the arrow in the top right corner (an absolute
+mouse jumps there, a relative one takes 16 steps toward it), which no searched
+offset of the dialog reaches; it is made for a black display, which it wakes,
+and for the first lit frame that is not the prompt, since an arrow left over a
+crop would hide the prompt for the whole gate. Never a second move, never a
+button. A refusal at the bound (`instance_uac_frame_unrecognized`,
+`instance_uac_field_not_empty` or `instance_uac_frame_ambiguous`) also says what
+its last frame showed, in a `frame` field of the refusal and its journaled
+result: `offsetY`, the offset nearest the review at which most crops matched,
+`cropsMatched` there, per reviewed crop in the profile's order (the `account`
+crop last), and `fieldDarkPixels` there. Every crop false is a screen without
 the reviewed prompt, such as one waiting as a taskbar button; one false crop is
-something over that region, such as the arrow or a hovered button. The facts never
-admit a frame: the gate still needs every crop. The two kept frames stay in the
-decision's folder of the VM root, which no closed action reads. Deny is
+something over that region or a per-clone difference. The refusal also publishes
+that frame beside its terminal in the VM root, the reply carries its exact bytes,
+and the client keeps them as `attempt-NNNN.frame.ppm` and `.frame.png` in the
+local decision journal, named by `framePath` and `pngPath`; a frame that cannot
+be kept as named leaves the refusal without it. The facts and the frame never
+admit anything: the gate still needs every crop. Deny is
 one Esc and opens no credential. Approve reads the approving account's secret through
 `SecretFile` and passes it on SSH stdin to a detached child: `final-administrator.secret`,
 or for the one row of the closed table `APPROVERS`, `different-admin`, the clone's
@@ -2388,7 +2404,7 @@ its first reviewed frame. It takes the same five fields, route, transport
 admission and closure, and needs no profile. It runs the decision's admission:
 the scenario journal and that row's pending event, the SYSTEM census of
 `consent.exe` and the UAC policy. A black frame gets the decision's own single
-journaled pointer move: the journal is the decision's `pointer.intent.json`, so a
+journaled pointer move, the park in the top right corner: the journal is the decision's `pointer.intent.json`, so a
 review and the decision of one scenario move the pointer once between them, and
 a later packet that still sees black refuses `instance_uac_display_black` instead
 of moving again. Frames are then read for up to 10 s until the display shows
@@ -2454,12 +2470,15 @@ A profile for a clone, by one operator, with no other guest action in between:
    poll only after a "not yet" refusal or `instance_uac_display_black`; the prompt
    then expires unanswered.
 3. Open `pngPath` and check it: the prompt up and the password box empty. After a
-   move an absolute pointer is at the centre of the frame, and a relative one is
-   a pixel to the right of where it was.
+   move the arrow is in the top right corner (frames reviewed before the park
+   moved show it at the centre).
 4. Choose one to eight crops of fixed dialog pixels and the field, the part of the
-   password box where characters appear. None may meet the pointer's parking place
-   `[w/2-4, h/2-4, w/2+24, h/2+40]`, no crop may meet the field, and a crop holds
-   no pointer. `max_dark_pixels` admits the caret if the frame shows it.
+   password box where characters appear. None may meet the old parking place
+   `[w/2-4, h/2-4, w/2+24, h/2+40]` or the 32 rightmost columns, no crop may meet
+   the field, and a crop holds no pointer. Choose text, not plain fill: the
+   review refuses `windows_uac_profile_ambiguous` unless the crops show the prompt
+   at one vertical offset only. `max_dark_pixels` admits the caret if the frame
+   shows it. The computer name is per clone: each clone needs its own profile.
 5. `frame, record = retained_review_frame(root, correlationId)`, then
    `reviewed_uac_profile(root, record["environment"], record["prompt"], frame,
    crops, field, max_dark_pixels)` writes the create-only profile under

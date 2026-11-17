@@ -64,17 +64,30 @@ SETUP = {"imageName": "Windows 11 Pro", "locale": "en-US", "user": "recovery", "
 POSIX = os.name == "posix"
 
 
-def frame(fill=200, *, dots=0):
-    """One synthetic prompt; dark dots in the password box are what entered characters would add."""
+def paint(pixels, rect, fill, dy=0, dx=0):
+    """The reviewed region's pattern, drawn dy rows lower and dx columns right: like text, it is found at one offset only."""
+    for y in range(rect[1], rect[3]):
+        for x in range(rect[0], rect[2]):
+            value = fill ^ ((x + y) & 7)
+            at = ((y + dy) * WIDTH + x + dx) * 3
+            pixels[at:at + 3] = bytes((value, value, value))
+
+
+def frame(fill=200, *, dots=0, shift=0):
+    """One synthetic prompt, shift rows lower than reviewed; dark dots in the password box are what entered characters
+    would add. A black frame stays all zero."""
     pixels = bytearray(bytes((fill, fill, fill)) * (WIDTH * HEIGHT))
+    if fill:
+        paint(pixels, CROP, fill, shift)
     for at in range(dots):
-        offset = (FIELD[1] * WIDTH + FIELD[0] + at) * 3
+        offset = ((FIELD[1] + shift) * WIDTH + FIELD[0] + at) * 3
         pixels[offset:offset + 3] = b"\x10\x10\x10"
     return b"P6\n%d %d\n255\n" % (WIDTH, HEIGHT) + bytes(pixels)
 
 
-def crop_hash(fill=200):
-    return hashlib.sha256(bytes((fill, fill, fill)) * ((CROP[2] - CROP[0]) * (CROP[3] - CROP[1]))).hexdigest()
+def crop_hash(fill=200, rect=CROP):
+    pixels = login.ppm(frame(fill))[2]
+    return hashlib.sha256(b"".join(pixels[(y * WIDTH + rect[0]) * 3:(y * WIDTH + rect[2]) * 3] for y in range(rect[1], rect[3]))).hexdigest()
 
 
 def png(raw_ppm, *, filters=(0, 1, 2, 3, 4)):
@@ -313,7 +326,7 @@ class ProofBeforeKeyTests(FlowBase):
         self.assertLessEqual(self.clock[0] - 100.0, decision.GATE_SECONDS + 1)
         dumps = [call for call in self.monitor_calls if call[0] == "screendump"]
         self.assertGreater(len(dumps), 2, "only reads were retried")
-        frames = [name for name in self.tree() if name.endswith(".ppm")]
+        frames = [name for name in self.tree() if re.fullmatch(r"windows-uac/[0-9a-f-]{36}/frame-[0-9]{4}-[0-9]{2,}\.ppm", name)]
         self.assertEqual(2, len(frames), "the last two frames are kept and the wait does not fill the disk")
 
     def test_entered_characters_in_the_field_refuse_with_no_key(self):
@@ -388,27 +401,27 @@ class RefusedFrameFactsTests(FlowBase):
 
     def values(self, *args, **kwargs):
         values = super().values(*args, **kwargs)
-        crops = values["UAC_SCREEN"]["crops"] + [{"rect": list(self.SECOND), "sha256": crop_hash()}]
+        crops = values["UAC_SCREEN"]["crops"] + [{"rect": list(self.SECOND), "sha256": crop_hash(rect=self.SECOND)}]
         return {**values, "UAC_SCREEN": {**values["UAC_SCREEN"], "crops": crops}}
 
     def test_an_unrecognized_frame_names_the_reviewed_crops_it_showed(self):
         terminal = self.run_owner(frames=[with_arrow(frame(), 5, 24)])
         self.assert_refused_no_key(terminal, "instance_uac_frame_unrecognized")
-        self.assertEqual({"cropsMatched": [True, False], "fieldDarkPixels": 0}, terminal["frame"])
+        self.assertEqual({"cropsMatched": [True, False], "fieldDarkPixels": 0, "offsetY": 0}, terminal["frame"])
 
     def test_a_screen_without_the_prompt_shows_no_crop(self):
         terminal = self.run_owner(frames=[frame(fill=199)])
         self.assert_refused_no_key(terminal, "instance_uac_frame_unrecognized")
-        self.assertEqual({"cropsMatched": [False, False], "fieldDarkPixels": 0}, terminal["frame"])
+        self.assertEqual({"cropsMatched": [False, False], "fieldDarkPixels": 0, "offsetY": 0}, terminal["frame"])
 
     def test_the_facts_are_those_of_the_last_frame_read(self):
         terminal = self.run_owner(frames=[frame(fill=199)] * 3 + [with_arrow(frame(), 5, 4)])
-        self.assertEqual({"cropsMatched": [False, True], "fieldDarkPixels": 0}, terminal["frame"])
+        self.assertEqual({"cropsMatched": [False, True], "fieldDarkPixels": 0, "offsetY": 0}, terminal["frame"])
 
     def test_a_field_with_characters_names_every_crop_shown_and_its_dark_pixels(self):
         terminal = self.run_owner(frames=[frame(dots=5)])
         self.assert_refused_no_key(terminal, "instance_uac_field_not_empty")
-        self.assertEqual({"cropsMatched": [True, True], "fieldDarkPixels": 5}, terminal["frame"])
+        self.assertEqual({"cropsMatched": [True, True], "fieldDarkPixels": 5, "offsetY": 0}, terminal["frame"])
 
     def test_no_other_refusal_and_no_answer_carries_frame_facts(self):
         self.assert_refused_no_key(self.run_owner(censuses=[census(events=[])]), "instance_uac_event_not_pending")
@@ -420,6 +433,137 @@ class RefusedFrameFactsTests(FlowBase):
         terminal = self.run_owner()
         self.assertEqual("input-ack-only", terminal["state"])
         self.assertEqual(decision._ACK_FIELDS, set(terminal))
+
+
+class OffsetSearchTests(FlowBase):
+    """The reviewed prompt drawn at another height: S_D4's NG review frame (371066d7) shows the dialog 63 rows lower than
+    ND's reviewed frame (5cb384ac), x, size and every reviewed pixel the same. The gate searches the vertical offset only,
+    within the frame, and admits exactly one offset at which every crop matches; the field is read at that offset."""
+
+    def test_a_prompt_drawn_lower_is_found_at_its_one_offset_and_answered(self):
+        terminal = self.run_owner(frames=[frame(shift=63)])
+        self.assertEqual("input-ack-only", terminal["state"])
+        self.assertEqual(len(SECRET) + 1, len(self.keys))
+
+    def test_the_field_moves_with_the_prompt(self):
+        terminal = self.run_owner(frames=[frame(shift=63, dots=5)])
+        self.assert_refused_no_key(terminal, "instance_uac_field_not_empty")
+        self.assertEqual({"cropsMatched": [True], "fieldDarkPixels": 5, "offsetY": 63}, terminal["frame"])
+
+    def test_crops_found_at_different_offsets_are_never_admitted(self):
+        second = [0, 40, 100, 50]
+        pixels = bytearray(login.ppm(frame())[2])
+        paint(pixels, second, 200, 7)
+        raw = b"P6\n%d %d\n255\n" % (WIDTH, HEIGHT) + bytes(pixels)
+        screen = {"width": WIDTH, "height": HEIGHT, "crops": [{"rect": list(CROP), "sha256": crop_hash()},
+                                                              {"rect": second, "sha256": hashlib.sha256(b"".join(
+                                                                  login.ppm(raw)[2][((y + 7) * WIDTH) * 3:((y + 7) * WIDTH + 100) * 3]
+                                                                  for y in range(40, 50))).hexdigest()}]}
+        self.screen = screen
+        self.assert_refused_no_key(self.run_owner(frames=[raw]), "instance_uac_frame_unrecognized")
+        # Each crop alone is on the screen, at 0 and 7 rows: the facts name the offset nearest the review that shows most.
+        facts = self.owner.terminal()["frame"]
+        self.assertEqual(([True, False], 0), (facts["cropsMatched"], facts["offsetY"]))
+
+    def values(self, *args, **kwargs):
+        values = super().values(*args, **kwargs)
+        return {**values, "UAC_SCREEN": getattr(self, "screen", values["UAC_SCREEN"])}
+
+    def test_only_the_vertical_offset_is_searched(self):
+        pixels = bytearray(bytes((200, 200, 200)) * (WIDTH * HEIGHT))
+        paint(pixels, CROP, 200, 5, 3)
+        raw = b"P6\n%d %d\n255\n" % (WIDTH, HEIGHT) + bytes(pixels)
+        self.assert_refused_no_key(self.run_owner(frames=[raw]), "instance_uac_frame_unrecognized")
+
+    def test_two_offsets_that_both_match_refuse_with_no_key(self):
+        pixels = bytearray(login.ppm(frame())[2])
+        paint(pixels, CROP, 200, 40)
+        raw = b"P6\n%d %d\n255\n" % (WIDTH, HEIGHT) + bytes(pixels)
+        self.assert_refused_no_key(self.run_owner(frames=[raw]), "instance_uac_frame_ambiguous")
+
+    def test_the_search_stays_inside_the_frame(self):
+        # FIELD ends on row 320 of 400: an offset of more than 80 rows would read past the frame, so it is never tried.
+        self.assertEqual(range(0, 81), decision._uac_offsets(HEIGHT, [CROP], FIELD))
+        self.assertEqual(range(-290, 61), decision._uac_offsets(HEIGHT, [[0, 290, 100, 300]], [10, 330, 210, 340]))
+
+
+class PointerParkTests(FlowBase):
+    """The decision's one journaled pointer move parks the arrow in the top right corner, out of every searched offset of
+    the dialog, and is also made for the first lit frame that is not the prompt: an arrow left over a crop then moves."""
+
+    def moves(self):
+        return [arguments["events"] for command, arguments in self.monitor_calls if command == "input-send-event"]
+
+    def test_a_black_display_is_woken_by_the_park(self):
+        self.assertEqual("input-ack-only", self.run_owner(frames=[frame(fill=0), frame()])["state"])
+        self.assertEqual([[{"type": "abs", "data": {"axis": "x", "value": 32767}}, {"type": "abs", "data": {"axis": "y", "value": 0}}]], self.moves())
+
+    def test_an_arrow_over_a_crop_is_parked_once_and_the_prompt_answered(self):
+        arrow = with_arrow(frame(), 5, 4)
+        terminal = self.run_owner(frames=[arrow, arrow, frame()])
+        self.assertEqual("input-ack-only", terminal["state"])
+        self.assertEqual(1, len(self.moves()))
+        self.assertTrue((self.root / "windows-uac" / self.decision / "pointer.intent.json").exists())
+
+    def test_never_a_second_move(self):
+        self.assert_refused_no_key(self.run_owner(frames=[frame(fill=199)]), "instance_uac_frame_unrecognized")
+        self.assertEqual(1, len(self.moves()), "however many frames the gate reads")
+
+    def test_a_relative_mouse_takes_bounded_steps_toward_the_corner(self):
+        real = self.monitor
+
+        def monitor(command, arguments=None):
+            if command == "query-mice":
+                self.monitor_calls.append((command, arguments))
+                return [{"current": True, "absolute": False}]
+            return real(command, arguments)
+        self.monitor = monitor
+        self.assertEqual("input-ack-only", self.run_owner(frames=[frame(fill=0), frame()])["state"])
+        self.assertEqual([[{"type": "rel", "data": {"axis": "x", "value": 120}}, {"type": "rel", "data": {"axis": "y", "value": -120}}]] * 16,
+                         self.moves())
+
+    def test_a_recognized_frame_moves_nothing(self):
+        self.run_owner()
+        self.assertEqual([], self.moves())
+
+
+class RefusedFrameKeptTests(FlowBase):
+    """A refusal at the frame bound publishes its last frame beside its terminal, and the reply carries its exact bytes.
+
+    The two read frames of 4bd56d3e stayed in the VM root, which no closed action reads."""
+
+    def test_the_last_frame_is_published_and_named_by_the_terminal(self):
+        last = with_arrow(frame(fill=199), 50, 100)
+        terminal = self.run_owner(frames=[frame(fill=199), last])
+        self.assert_refused_no_key(terminal, "instance_uac_frame_unrecognized")
+        path = self.root / "windows-uac" / self.decision / "attempt-0001.frame.ppm"
+        self.assertEqual(last, path.read_bytes())
+        self.assertEqual((hashlib.sha256(last).hexdigest(), len(last)), (terminal["frameSha256"], terminal["frameBytes"]))
+        with mock.patch.dict(decision.__dict__, {"OPERATION": self.decision}):
+            carried_reply = decision._uac_attempt_frame(path.parent, terminal)
+        self.assertEqual(last, zlib.decompress(base64.b64decode(carried_reply["frameData"])))
+
+    def test_a_frame_that_changed_is_never_carried(self):
+        terminal = self.run_owner(frames=[frame(fill=199)])
+        path = self.root / "windows-uac" / self.decision / "attempt-0001.frame.ppm"
+        path.chmod(0o600)
+        path.write_bytes(frame(fill=198))
+        self.assertNotIn("frameData", decision._uac_attempt_frame(path.parent, terminal))
+
+    def test_no_other_end_publishes_a_frame(self):
+        self.assert_refused_no_key(self.run_owner(censuses=[census(events=[])]), "instance_uac_event_not_pending")
+        self.run_owner(attempt=2)
+        self.assertEqual([], [name for name in self.tree() if name.endswith(".frame.ppm")])
+        self.assertNotIn("frameSha256", json.loads((self.root / "windows-uac" / self.decision / "attempt-0001.terminal.json").read_text()))
+
+    def test_the_decide_and_status_packets_carry_it(self):
+        for mode, call in (("uac-decide", "print(json.dumps(_uac_attempt_frame(uac_owner.directory,launched)))"),
+                           ("uac-status", "print(json.dumps(_uac_attempt_frame(root/'windows-uac'/OPERATION,uac_known)))")):
+            with self.subTest(mode=mode):
+                options = {} if mode == "uac-status" else dict(attempt=1, answer="approve", prompt="vpn-broker", row=decision.ROWS[SCENARIO], context=CONTEXT,
+                                                                profile=profile_value(), profile_sha="a" * 64, scenario_operation=CORRELATION)
+                source = decision.program(binding(), mode, self.decision, **options).decode()
+                self.assertIn(call, source)
 
 
 @unittest.skipUnless(POSIX, "the VM host is Linux")
@@ -880,7 +1024,7 @@ class PacketTests(unittest.TestCase):
                                      scenario_operation=CORRELATION)
         self.assertEqual(decision.program(binding(), "uac-status", decision.decision_id(CORRELATION)).split(b"\nSPEC=")[0], status.split(b"\nSPEC=")[0])
         self.assertIn(b"class _UacOwner", decide)
-        self.assertIn(b"def screen_gate(", decide)
+        self.assertIn(b"def _uac_locate(", decide)
 
     def test_census_source_follows_the_script_contract(self):
         source = decision.census_source(decision.ROWS[SCENARIO], CONTEXT, "recoveryadmin")
@@ -994,7 +1138,9 @@ class ProfileTests(unittest.TestCase):
         raw = bytearray(frame())
         at = len(raw) - WIDTH * HEIGHT * 3
         for offset in range(0, len(raw) - at, 3):
-            raw[at + offset:at + offset + 3] = bytes((offset * 7 & 127 | 128, offset * 3 & 127 | 128, offset & 127 | 128))
+            # Each row its own, as a prompt's are: rows that repeat would show the reviewed crop at more than one height.
+            row = offset // (WIDTH * 3)
+            raw[at + offset:at + offset + 3] = bytes(((offset * 7 + row * 5) & 127 | 128, offset * 3 & 127 | 128, offset & 127 | 128))
         raw = bytes(raw)
         width, height, pixels = decision._png_pixels(png(raw))
         self.assertEqual((WIDTH, HEIGHT, login.ppm(raw)[2]), (width, height, pixels))
@@ -1019,6 +1165,21 @@ class ProfileTests(unittest.TestCase):
                                 ({"max_dark_pixels": -1}, "windows_uac_profile")):
             with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, "^" + reason + "$"):
                 self.review(**changes)
+        self.assertFalse((self.root / ".runtime/windows-uac-profiles").exists())
+
+    def test_crops_leave_the_corner_the_arrow_is_parked_in(self):
+        # The park puts the arrow at the top right corner; with only the vertical offset searched, a crop or field that
+        # stays left of its columns never meets it at any offset.
+        for changes in ({"crops": [[WIDTH - 20, 300, WIDTH, 310]]}, {"crops": [CROP, [WIDTH - 40, 50, WIDTH - 10, 60]]},
+                        {"field": [WIDTH - 200, 300, WIDTH - 10, 320]}):
+            with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, "^windows_uac_profile_pointer_gap$"):
+                self.review(**changes)
+
+    def test_a_frame_whose_crops_match_at_two_offsets_is_not_reviewable(self):
+        pixels = bytearray(login.ppm(frame())[2])
+        paint(pixels, CROP, 200, 40)
+        with self.assertRaisesRegex(ValueError, "^windows_uac_profile_ambiguous$"):
+            self.review(b"P6\n%d %d\n255\n" % (WIDTH, HEIGHT) + bytes(pixels))
         self.assertFalse((self.root / ".runtime/windows-uac-profiles").exists())
 
     def test_a_frame_with_characters_is_not_reviewable(self):
@@ -1312,7 +1473,7 @@ class ExecuteInputTests(ExecuteBase):
         self.assertEqual(["uac-decide", "uac-status"], [packet["mode"] for packet in self.packets])
 
     def test_a_frame_refusal_brings_its_frame_facts_into_the_reply_and_the_journal(self):
-        facts = {"cropsMatched": [True, False, True], "fieldDarkPixels": 0}
+        facts = {"cropsMatched": [True, False, True], "fieldDarkPixels": 0, "offsetY": 63}
         self.replies = [{**self.refused("instance_uac_frame_unrecognized"), "frame": facts}]
         first = self.execute()
         self.assertEqual(("refused", "instance_uac_frame_unrecognized", facts), (first["state"], first["reason"], first.get("frame")))
@@ -1322,15 +1483,18 @@ class ExecuteInputTests(ExecuteBase):
         self.assertEqual(["uac-decide"], [packet["mode"] for packet in self.packets])
 
     def test_frame_facts_cross_only_closed_and_only_with_a_frame_refusal(self):
-        good = {"cropsMatched": [True], "fieldDarkPixels": 3}
+        good = {"cropsMatched": [True], "fieldDarkPixels": 3, "offsetY": -2}
         for reason, facts, crossed in (("instance_uac_field_not_empty", good, True),
                                        ("instance_uac_event_mismatch", good, False),
                                        ("instance_uac_frame_unrecognized", {**good, "extra": 1}, False),
-                                       ("instance_uac_frame_unrecognized", {"cropsMatched": [], "fieldDarkPixels": 0}, False),
-                                       ("instance_uac_frame_unrecognized", {"cropsMatched": [True] * 9, "fieldDarkPixels": 0}, False),
-                                       ("instance_uac_frame_unrecognized", {"cropsMatched": [1], "fieldDarkPixels": 0}, False),
-                                       ("instance_uac_frame_unrecognized", {"cropsMatched": [True], "fieldDarkPixels": -1}, False),
-                                       ("instance_uac_frame_unrecognized", {"cropsMatched": [True], "fieldDarkPixels": True}, False),
+                                       ("instance_uac_frame_unrecognized", {**good, "cropsMatched": []}, False),
+                                       ("instance_uac_frame_unrecognized", {**good, "offsetY": 1.5}, False),
+                                       ("instance_uac_frame_unrecognized", {**good, "offsetY": 2161}, False),
+                                       ("instance_uac_frame_unrecognized", {"cropsMatched": [True], "fieldDarkPixels": 3}, False),
+                                       ("instance_uac_frame_unrecognized", {**good, "cropsMatched": [True] * 9}, False),
+                                       ("instance_uac_frame_unrecognized", {**good, "cropsMatched": [1]}, False),
+                                       ("instance_uac_frame_unrecognized", {**good, "fieldDarkPixels": -1}, False),
+                                       ("instance_uac_frame_unrecognized", {**good, "fieldDarkPixels": True}, False),
                                        ("instance_uac_frame_unrecognized", "facts", False)):
             with self.subTest(reason=reason, facts=facts):
                 shutil.rmtree(self.root / ".runtime/windows-uac-decisions", ignore_errors=True)
@@ -1338,6 +1502,46 @@ class ExecuteInputTests(ExecuteBase):
                 result = self.execute()
                 self.assertEqual(("refused", reason), (result["state"], result["reason"]), "a malformed fact never hides the refusal")
                 self.assertEqual(facts if crossed else None, result.get("frame"))
+
+    def framed_refusal(self, raw, **changes):
+        value = {**self.refused("instance_uac_frame_unrecognized"), "frame": {"cropsMatched": [False], "fieldDarkPixels": 0, "offsetY": 0},
+                 "frameSha256": hashlib.sha256(raw).hexdigest(), "frameBytes": len(raw),
+                 "frameData": base64.b64encode(zlib.compress(raw)).decode(), **changes}
+        return value
+
+    def test_a_refused_frame_is_kept_in_the_decision_journal(self):
+        raw = frame(fill=199)
+        self.replies = [self.framed_refusal(raw)]
+        result = self.execute()
+        directory = self.root / ".runtime/windows-uac-decisions" / self.decision
+        self.assertEqual(("refused", hashlib.sha256(raw).hexdigest()), (result["state"], result.get("frameSha256")))
+        self.assertEqual((str(directory / "attempt-0001.frame.ppm"), str(directory / "attempt-0001.frame.png")), (result["framePath"], result["pngPath"]))
+        self.assertEqual(raw, (directory / "attempt-0001.frame.ppm").read_bytes())
+        self.assertEqual(login.ppm(raw)[2], decision._png_pixels((directory / "attempt-0001.frame.png").read_bytes())[2])
+        self.assertEqual(0o600, (directory / "attempt-0001.frame.ppm").stat().st_mode & 0o777)
+        self.assertNotIn("frameData", json.loads((directory / "attempt-0001.result.json").read_text()))
+        self.assertEqual(result, self.execute(), "the final refusal names its kept frame again, with no packet")
+
+    def test_a_frame_that_is_not_the_one_named_is_never_kept(self):
+        raw = frame(fill=199)
+        for changes in ({"frameSha256": "0" * 64}, {"frameBytes": len(raw) + 1}, {"frameData": "not base64"},
+                        {"frameData": base64.b64encode(zlib.compress(b"P6\n1 1\n255\n" + b"\0" * 3)).decode()},
+                        {"frame": None}, {"reason": "instance_uac_event_mismatch"}):
+            with self.subTest(changes=sorted(changes)):
+                shutil.rmtree(self.root / ".runtime/windows-uac-decisions", ignore_errors=True)
+                self.replies = [self.framed_refusal(raw, **changes)]
+                result = self.execute()
+                self.assertEqual("refused", result["state"], "a frame that cannot be kept never hides the refusal")
+                self.assertNotIn("framePath", result)
+                self.assertEqual([], [name for name in self.journal_files() if ".frame." in name])
+
+    def test_a_refusal_learned_by_status_keeps_its_frame_too(self):
+        raw = frame(fill=199)
+        self.replies = [subprocess.TimeoutExpired("ssh", 1), self.framed_refusal(raw)]
+        self.assertEqual("unknown", self.execute()["state"])
+        learned = self.execute()
+        self.assertEqual(("refused", str(self.root / ".runtime/windows-uac-decisions" / self.decision / "attempt-0001.frame.ppm")),
+                         (learned["state"], learned.get("framePath")))
 
     def test_a_late_prompt_is_not_yet_for_a_bounded_number_of_gates(self):
         """Find Best validates its candidates before it prepares the broker, so its prompt may come after a whole gate.
@@ -1809,6 +2013,12 @@ class ReviewFlowTests(FlowBase):
         self.assertIn("windows-uac/" + self.decision + "/pointer.intent.json", self.tree(), "the decision's own pointer journal")
         self.assertEqual("no-input-recorded", decision._uac_receipts(self.root, self.decision)["state"])
 
+    def test_the_wake_parks_the_arrow_where_the_decision_parks_it(self):
+        # The review's frame then shows the arrow where every later decision frame of that clone shows it: out of the dialog.
+        self.run_review("deny", scenario=DENY_ROW, frames=[frame(fill=0), frame(), frame()], censuses=[census(events=DENY_EVENTS)])
+        self.assertEqual([[{"type": "abs", "data": {"axis": "x", "value": 32767}}, {"type": "abs", "data": {"axis": "y", "value": 0}}]],
+                         [move["events"] for move in self.moves()])
+
     def test_an_awake_display_is_kept_as_it_is_with_no_pointer_move(self):
         reply = self.run_review(frames=[frame()])
         self.assertEqual(("review-frame-retained", False, 0), (reply["state"], reply["pointerMoved"], reply["wakeMilliseconds"]))
@@ -1921,9 +2131,14 @@ class ReviewPacketTests(unittest.TestCase):
                      "final-administrator", "UAC_SCREEN", "UAC_FIELD", "UAC_PROFILE_SHA"):
             self.assertNotIn(word, text, word)
         self.assertIn("MODE='uac-review'", text)
-        # The observe producer's own wake_display branch is in every packet; the review adds exactly one move of its own.
+        # The observe producer's own wake_display branch is in every packet; the review adds exactly one move of its own,
+        # the decision's park (_uac_park: an absolute jump or a relative run of steps, never a button).
         helpers = text.split("\nSPEC=")[0]
-        self.assertEqual(1, helpers.count("monitor('input-send-event'"), "one pointer move, the decision's")
+        park = inspect.getsource(decision._uac_park)
+        self.assertEqual(1, helpers.count(park), "the park is embedded once")
+        self.assertEqual(0, helpers.replace(park, "").count("monitor('input-send-event'"), "no move but the park")
+        self.assertEqual(1, helpers.count("_uac_park(monitor,selected"), "one pointer move, the decision's")
+        self.assertNotIn("btn", park)
         self.assertIn("UAC_DECISION_ID=" + repr(decision.decision_id(CORRELATION)), helpers)
         status = decision.program(binding(), "uac-review-status", decision.review_id(CORRELATION)).decode()
         compile(status, "whole review status packet", "exec")
