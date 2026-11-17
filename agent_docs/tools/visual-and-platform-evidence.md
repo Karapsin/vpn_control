@@ -2490,7 +2490,34 @@ credential prompt offers both, so every approve profile there also names its
 `approver` and an `account` crop, the account name the prompt shows selected, with
 at most seven other crops: the decision types a secret only into a frame that shows
 its own account selected, and refuses `uac_profile_unreviewed` for a profile
-without one. Guest files stay under the
+without one.
+
+The Windows 11 credential prompt offers the fixture administrator first even
+when the second one joined Administrators first (native NE3, run `62eec3c9`), and
+the second is reached only through "More choices". `different-admin` therefore
+answers through a reviewed keyboard route. The clone has no absolute pointer, so
+the route is keys only, from the closed set `ROUTE_KEYS` (`tab`, `shift-tab`,
+`ret`, `spc`, `down`, `up`), at most `ROUTE_STEPS` (6) steps. Each step is a
+private, create-only file
+`install-helper.second-administrator.step-NN.json`: the exact crops of one
+reviewed frame, the one key the reviewer chose for it, and the digests of the
+steps before it (`after`). The second administrator's profile then pins the
+whole route by those digests (`route`) and adds a `focus` crop, the password
+box's focused border within 8 rows above or below the field, with at most six
+other crops beside `account` and `focus`. After the burn, the input journal and
+the fence, the decision sends each step's key only into a frame that shows that
+step at one vertical offset (each state is searched alone, since a dialog that
+grows is centred again), and looks for the next step only once that step's crops
+changed, so a key with no visible effect stops the route before the next key.
+The secret is typed only into a frame that then shows the whole profile (the
+approver's account, the focused box, an empty field) and only while the prompt
+is younger than 90 s. A route that stops sent navigation keys and no secret: it
+is a known input `input-refused` with `instance_uac_route_unrecognized` (or
+`instance_uac_prompt_age`), `routeStep` (1-based; one past the route for the
+answer screen) and `keysSent`, it publishes its last frame with frame facts
+against the screen it waited for, it closes the fence, and it is final. Status
+closes that fence too if its close was lost. Every other row has no route, and a
+route is refused for any approver but the second administrator. Guest files stay under the
 VM-root subdirectory `windows-uac/`, published whole, and the fence is a flat
 `direct-guest-*` journal, so `readiness-reboot` refuses while input is open and
 sign-in history never sees them. A known input closes the fence, and status
@@ -2500,7 +2527,14 @@ the fence, so reboots and new jobs on that clone refuse until the original is
 read. No sign-in source pin moves, and the module is not alias-pinned.
 
 `vm_workflow windows-uac-review` is the sibling closed action that gives a clone
-its first reviewed frame. It takes the same five fields, route, transport
+its first reviewed frame. For `different-admin` it also gives each next route step
+its frame: once steps are reviewed, the review burns the prompt (create-only, as
+the decision does), sends those steps' keys under the decision's own route gates,
+waits a second, checks the same consent process is still up and keeps the frame
+after the last key. Its reply names the steps' digests (`route`), which must be
+the ones its packet carried, and it never types a secret, writes an input journal
+or a fence, or opens a credential; no decision answers that prompt. Only such a
+packet embeds the route's key path. Without steps it is unchanged. It takes the same five fields, route, transport
 admission and closure, and needs no profile. It runs the decision's admission:
 the scenario journal and that row's pending event, the SYSTEM census of
 `consent.exe` and the UAC policy. A black frame gets the decision's own single
@@ -2587,8 +2621,42 @@ A profile for a clone, by one operator, with no other guest action in between:
    checking the frame shows that account selected: `approver="second-administrator"`
    from a `different-admin` run, `approver="administrator"` from any other approve
    row. A frame that shows the other account selected makes no profile: the
-   decision types only into the account the prompt offers first.
+   decision types only into the account the frame shows selected. For
+   `different-admin`, whose prompt offers the fixture administrator first, build
+   the route first (below).
 6. Answer the prompt of a later run with `windows-uac-decision`.
+
+The second administrator's route, one `different-admin` run per step, one
+operator, nothing else on the clone in between:
+
+1. Review the prompt of a run (steps 1 to 3 above). With no step reviewed the
+   review sends nothing and its frame is the prompt as offered: the fixture
+   administrator, the focused password box and "More choices".
+2. `frame, record = retained_review_frame(root, correlationId)` and open the
+   frame. Choose the key that moves the focus one place towards the second
+   administrator's password box, and crops that show this state, including where
+   the focus is now: the key must visibly change them, since the route waits for
+   that change. Then `reviewed_uac_step(root, record["environment"],
+   record["prompt"], frame, crops, key, route=record["route"])` writes step N.
+   `record["route"]` must be every step reviewed so far.
+3. Review the next run's prompt: the review sends the steps' keys and keeps the
+   frame after the last one. If it shows something else, `discard_uac_route(root,
+   deployment, "install-helper", N)` removes step N and later ones, and step 2
+   is repeated with another key. Otherwise go on with step 2 for the next step.
+4. When a kept frame shows the second administrator selected with its empty
+   password box focused, make the profile from it:
+   `reviewed_uac_profile(..., approver="second-administrator", account=...,
+   focus=..., route=record["route"])`. `focus` is the box's focused border just
+   above or below the field. The profile pins the route, which is then closed:
+   no step is added or removed.
+5. Answer a later run's prompt with `windows-uac-decision`.
+
+Each review run burns its prompt, so that run never passes. The expected route
+on Windows 11 is `tab` (to "More choices"), `ret` (opens the account tiles), a
+`down` or `tab` to the second administrator's tile, and a `tab` back to its
+password box, but only the reviewed frames decide. The other way, the clone policy
+`EnumerateAdministrators` 0, makes every credential prompt ask for a user name
+and would change every approve profile on the clone; the route changes none.
 
 The decision and the review need a running scenario of the ordinary user. A
 `windowsUacVisual` clone has none: its console is its filtered administrator, and

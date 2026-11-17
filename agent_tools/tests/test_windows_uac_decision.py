@@ -232,7 +232,9 @@ class FlowBase(unittest.TestCase):
                 "UAC_SCREEN": {"width": WIDTH, "height": HEIGHT, "crops": [{"rect": list(CROP), "sha256": crop_hash()}]},
                 "UAC_FIELD": {"rect": list(FIELD), "maxDarkPixels": 4}, "UAC_PROFILE_SHA": "a" * 64, "UAC_SCENARIO_OPERATION": CORRELATION,
                 "UAC_CENSUS_SCRIPT": "fixed census", "UAC_GATE_SECONDS": decision.GATE_SECONDS, "UAC_PROMPT_AGE": decision.PROMPT_AGE_SECONDS,
-                "UAC_CLOSE_WAIT": decision.CLOSE_WAIT_MILLISECONDS, "UAC_DARK_LEVEL": decision.DARK_LEVEL, "UAC_SECRET": secret}
+                "UAC_CLOSE_WAIT": decision.CLOSE_WAIT_MILLISECONDS, "UAC_DARK_LEVEL": decision.DARK_LEVEL, "UAC_SECRET": secret,
+                "UAC_ROUTE": [], "UAC_ROUTE_KEYS": {key: list(codes) for key, codes in getattr(decision, "ROUTE_KEYS", {}).items()},
+                "UAC_ROUTE_SECONDS": getattr(decision, "ROUTE_STEP_SECONDS", 10)}
 
     def run_owner(self, answer="approve", *, scenario=SCENARIO, operation=None, attempt=1, fresh=FRESH, frames=None, censuses=None):
         """The packet's child, with _main's own failure mapping and the real owner, over a fake clock."""
@@ -1975,7 +1977,8 @@ def review_terminal(raw=None, *, attempt=1, answer="approve", **changes):
     return {"state": "review-frame-retained", "operationId": decision.review_id(CORRELATION), "attempt": attempt, "decision": answer,
             "prompt": "vpn-broker", "consent": {"pid": 4242, "birth": "134368653100000000", "sessionId": 2, "ageSeconds": 5},
             "frameSha256": hashlib.sha256(raw).hexdigest(), "frameBytes": len(raw), "width": WIDTH, "height": HEIGHT, "pointerMoved": True,
-            "wakeMilliseconds": 1000, "promptAnswered": False, "replayAllowed": False, "frame": base64.b64encode(zlib.compress(raw)).decode(), **changes}
+            "wakeMilliseconds": 1000, "route": [], "promptAnswered": False, "replayAllowed": False, "frame": base64.b64encode(zlib.compress(raw)).decode(),
+            **changes}
 
 
 class ReviewFlowTests(FlowBase):
@@ -1986,7 +1989,9 @@ class ReviewFlowTests(FlowBase):
         return {"SPEC": {"deploymentId": MACHINE}, "OPERATION": review, "UAC_DECISION": answer, "UAC_PROMPT": row["prompt"], "UAC_ROW": row,
                 "UAC_CONTEXT": CONTEXT, "UAC_ATTEMPT": attempt, "UAC_SCENARIO_OPERATION": CORRELATION, "UAC_DECISION_ID": self.decision,
                 "UAC_CENSUS_SCRIPT": "fixed census", "UAC_GATE_SECONDS": decision.GATE_SECONDS, "UAC_PROMPT_AGE": decision.PROMPT_AGE_SECONDS,
-                "UAC_REVIEW_SETTLE": decision.REVIEW_SETTLE_SECONDS}
+                "UAC_REVIEW_SETTLE": decision.REVIEW_SETTLE_SECONDS, "UAC_ROUTE": [], "UAC_ROUTE_SHAS": [],
+                "UAC_ROUTE_KEYS": {key: list(codes) for key, codes in getattr(decision, "ROUTE_KEYS", {}).items()},
+                "UAC_ROUTE_SECONDS": getattr(decision, "ROUTE_STEP_SECONDS", 10)}
 
     def run_review(self, answer="approve", *, scenario=SCENARIO, attempt=1, fresh=FRESH, frames=None, censuses=None):
         """As the packet runs it: the flow, then the producer's failure path for any refusal."""
@@ -2507,6 +2512,362 @@ class SecondAdministratorExecuteTests(ExecuteBase):
         self.assertTrue((self.root / ".runtime/windows-uac-profiles" / MACHINE / "install-helper.second-administrator.json").exists())
         self.replies = [self.ack(prompt="install-helper")]
         self.assertEqual("input-ack-only", self.approve().get("state"), "the reviewed profile admits the decision on a later prompt")
+
+
+# The second administrator's keyboard route. Native NE3 (clone 320f9e23, run 62eec3c9, review frame 10aa91a6): the
+# Windows 11 credential prompt of different-admin preselects the fixture administrator (fixtureadmin, Password, a
+# "More choices" link), so the reviewed second-administrator profile never matched and the row could not be answered.
+# The synthetic prompt below has the same shape: a title, the selected account's name, the "More choices" link, a tile
+# list that "More choices" opens, and the password box's focused border under the field. Its fake monitor moves between
+# those states only on the keys a real prompt would take.
+LINK = [0, 40, 100, 50]
+TILE = [0, 60, 100, 70]
+FOCUS = [10, 321, 210, 324]
+ROUTE_STATES = {
+    "admin": {tuple(CROP): 200, tuple(ACCOUNT): 60, tuple(LINK): 120, tuple(FOCUS): 30},  # fixtureadmin, the box focused
+    "link": {tuple(CROP): 200, tuple(ACCOUNT): 60, tuple(LINK): 140},  # "More choices" focused
+    "tiles": {tuple(CROP): 200, tuple(ACCOUNT): 60, tuple(LINK): 140, tuple(TILE): 170},  # the account tiles shown
+    "approver": {tuple(CROP): 200, tuple(ACCOUNT): 90, tuple(LINK): 140, tuple(TILE): 180},  # fixtureapprover's tile selected
+    "focused": {tuple(CROP): 200, tuple(ACCOUNT): 90, tuple(LINK): 140, tuple(TILE): 180, tuple(FOCUS): 30},  # its box focused
+    "elsewhere": {tuple(CROP): 200, tuple(ACCOUNT): 60, tuple(LINK): 150},  # a key that led somewhere else
+    "unfocused": {tuple(CROP): 200, tuple(ACCOUNT): 90, tuple(LINK): 140, tuple(TILE): 160},  # the approver, the box not focused
+}
+TRANSITIONS = {("admin", "tab"): "link", ("link", "ret"): "tiles", ("tiles", "down"): "approver", ("approver", "tab"): "focused"}
+# Each step: the state it is reviewed in, its crops (where the focus is, which its key visibly moves) and its key.
+ROUTE_PLAN = (("admin", [CROP, ACCOUNT, LINK], "tab"), ("link", [CROP, LINK, TILE], "ret"), ("tiles", [TILE, ACCOUNT], "down"),
+              ("approver", [ACCOUNT, TILE, FOCUS], "tab"))
+
+
+def route_frame(state, *, shift=0, dots=0):
+    pixels = bytearray(bytes((200, 200, 200)) * (WIDTH * HEIGHT))
+    for rect, fill in ROUTE_STATES[state].items():
+        paint(pixels, list(rect), fill, shift)
+    for at in range(dots):
+        offset = ((FIELD[1] + shift) * WIDTH + FIELD[0] + at) * 3
+        pixels[offset:offset + 3] = b"\x10\x10\x10"
+    return b"P6\n%d %d\n255\n" % (WIDTH, HEIGHT) + bytes(pixels)
+
+
+def route_crop(state, rect):
+    pixels = login.ppm(route_frame(state))[2]
+    return {"rect": list(rect), "sha256": hashlib.sha256(b"".join(pixels[(y * WIDTH + rect[0]) * 3:(y * WIDTH + rect[2]) * 3]
+                                                                 for y in range(rect[1], rect[3]))).hexdigest()}
+
+
+def route_screens(plan=ROUTE_PLAN):
+    return [{"width": WIDTH, "height": HEIGHT, "crops": [route_crop(state, rect) for rect in crops], "key": key} for state, crops, key in plan]
+
+
+def answer_screen():
+    """The routed profile's answer screen: the dialog, the approver's account and the focused box."""
+    return {"width": WIDTH, "height": HEIGHT, "crops": [route_crop("focused", CROP), route_crop("focused", ACCOUNT), route_crop("focused", FOCUS)]}
+
+
+DIFFERENT_EVENTS = [{"name": "event-000009-update-uac-action-pending.json", "operationId": CORRELATION, "value": "approve-current-prompt",
+                     "variant": "different-admin"}]
+NAVIGATION = {codes: name for name, codes in {"tab": ("tab",), "shift-tab": ("shift", "tab"), "ret": ("ret",), "spc": ("spc",),
+                                              "down": ("down",), "up": ("up",)}.items()}
+
+
+class SecondAdministratorRouteFlowTests(FlowBase):
+    """The route on the VM host, as the decide and review packets run it, over a fake prompt that changes state per key."""
+    review_values = ReviewFlowTests.review_values
+    run_review = ReviewFlowTests.run_review
+    clear = ReviewFlowTests.clear
+
+    def setUp(self):
+        super().setUp()
+        self.state = "admin"
+        self.transitions = dict(TRANSITIONS)
+        self.shifts = {}
+        self.secret_from = None
+
+    def monitor(self, command, arguments=None):
+        if command == "screendump":
+            self.monitor_calls.append((command, arguments))
+            Path(arguments["filename"]).write_bytes(route_frame(self.state, shift=self.shifts.get(self.state, 0)))
+            return {}
+        result = super().monitor(command, arguments)
+        if command == "send-key" and self.secret_from is None:
+            name = NAVIGATION.get(tuple(key["data"] for key in arguments["keys"]))
+            if self.state == "focused":
+                self.secret_from = len(self.keys) - 1  # Every key from here on is the secret's.
+            else:
+                self.state = self.transitions.get((self.state, name), self.state)
+        return result
+
+    def routed(self, answer, scenario, operation, attempt=1, secret=SECRET):
+        values = FlowBase.values(self, answer, scenario, operation, attempt, secret)
+        values.update(UAC_SCREEN=answer_screen(), UAC_ROUTE=route_screens())
+        return values
+
+    def run_routed(self, **options):
+        options.setdefault("censuses", [census(events=DIFFERENT_EVENTS)])
+        with mock.patch.object(self, "values", self.routed):
+            return self.run_owner(scenario=DIFFERENT, **options)
+
+    def navigation(self):
+        return [[key["data"] for key in arguments["keys"]] for arguments in self.keys[:self.secret_from]]
+
+    def test_the_route_reaches_the_second_administrator_and_types_its_secret_only_there(self):
+        terminal = self.run_routed()
+        self.assertEqual(("input-ack-only", "focused"), (terminal["state"], self.state), terminal)
+        self.assertEqual([["tab"], ["ret"], ["down"], ["tab"]], self.navigation(), "the reviewed keys, in order, and nothing else")
+        self.assertEqual(4, self.secret_from)
+        self.assertEqual(len(SECRET) + 1, len(self.keys) - self.secret_from, "the secret and its Enter, typed only into the approver's box")
+        for name in ("windows-uac/" + self.decision + "/input.intent.json", "direct-guest-" + self.decision + ".intent.json"):
+            self.assertIn(name, self.first_key_files, "the burn, the input journal and the fence precede the first navigation key")
+        self.assertTrue(any(name.startswith("windows-uac/once-") for name in self.first_key_files))
+        calls = [command for command, _ in self.monitor_calls]
+        first_secret = [index for index, command in enumerate(calls) if command == "send-key"][self.secret_from]
+        self.assertNotIn("screendump", calls[first_secret:], "no frame from the first character of the secret")
+        self.assertEqual(0, sum(command == "input-send-event" for command in calls), "no pointer and no button")
+
+    def test_a_key_that_leads_elsewhere_stops_the_route_known_with_no_secret(self):
+        self.transitions[("link", "ret")] = "elsewhere"
+        terminal = self.run_routed()
+        self.assertEqual(("input-refused", "instance_uac_route_unrecognized", False, 3, 2),
+                         (terminal["state"], terminal.get("reason"), terminal.get("inputAttempted"), terminal.get("routeStep"), terminal.get("keysSent")))
+        self.assertEqual([["tab"], ["ret"]], self.navigation())
+        self.assertIsNone(self.secret_from, "not one character of the secret")
+        self.assertEqual(terminal, decision._uac_receipts(self.root, self.decision), "a known input: navigation keys only")
+        self.assertEqual((1, []), self.classified(), "the fence is closed: no reboot or new job waits on it")
+        published = self.root / "windows-uac" / self.decision / "attempt-0001.frame.ppm"
+        self.assertEqual(route_frame("elsewhere"), published.read_bytes(), "the frame it stopped at is public: no secret was typed")
+        self.assertEqual([False, True], terminal["frame"]["cropsMatched"], "the tiles step it waited for, crop by crop: no tiles")
+
+    def test_a_key_with_no_visible_effect_stops_before_the_next_key(self):
+        del self.transitions[("admin", "tab")]
+        terminal = self.run_routed()
+        self.assertEqual(("instance_uac_route_unrecognized", 1, 1), (terminal.get("reason"), terminal.get("routeStep"), terminal.get("keysSent")))
+        self.assertEqual([["tab"]], self.navigation(), "Enter is never sent into a frame that still shows the step before it")
+        self.assertLessEqual(self.clock[0] - 100.0, decision.GATE_SECONDS + 2 * decision.ROUTE_STEP_SECONDS)
+
+    def test_the_secret_goes_only_into_the_approvers_focused_empty_box(self):
+        for change, reason in (({("approver", "tab"): "unfocused"}, "the approver selected, its box not focused"),
+                               ({("tiles", "down"): "approver", ("approver", "tab"): "approver"}, "a key that never moved the focus")):
+            with self.subTest(reason=reason):
+                self.clear()
+                self.state, self.secret_from, self.clock[0] = "admin", None, 100.0
+                self.transitions = {**TRANSITIONS, **change}
+                terminal = self.run_routed()
+                self.assertEqual("instance_uac_route_unrecognized", terminal.get("reason"), reason)
+                self.assertIsNone(self.secret_from, reason)
+
+    def test_characters_in_the_approvers_box_stop_the_route(self):
+        original = route_frame
+
+        def typed(state, *, shift=0, dots=0):
+            return original(state, shift=shift, dots=5 if state == "focused" else dots)
+        with mock.patch(__name__ + ".route_frame", typed):
+            terminal = self.run_routed()
+        self.assertEqual(("instance_uac_route_unrecognized", 5, 4), (terminal.get("reason"), terminal.get("routeStep"), terminal.get("keysSent")))
+        self.assertIsNone(self.secret_from)
+        self.assertGreater(terminal["frame"]["fieldDarkPixels"], 4)
+
+    def test_a_dialog_drawn_at_another_height_per_step_is_found_at_each_steps_own_offset(self):
+        # "More choices" makes the dialog taller and Windows centres it again: each state is located on its own. (Lower
+        # here: this synthetic dialog's title is at row 0, and the search stays inside the frame.)
+        self.shifts = {"tiles": 12, "approver": 12, "focused": 12}
+        terminal = self.run_routed()
+        self.assertEqual("input-ack-only", terminal["state"], terminal)
+        self.assertEqual([["tab"], ["ret"], ["down"], ["tab"]], self.navigation())
+
+    def test_the_age_rule_holds_again_before_the_secret(self):
+        terminal = self.run_routed(censuses=[census(events=DIFFERENT_EVENTS, consents=[consent(ageSeconds=89)])])
+        self.assertEqual(("input-refused", "instance_uac_prompt_age", 5, 4),
+                         (terminal["state"], terminal.get("reason"), terminal.get("routeStep"), terminal.get("keysSent")), terminal)
+        self.assertIsNone(self.secret_from)
+        self.assertEqual((1, []), self.classified())
+
+    def test_a_prompt_that_shows_another_first_step_is_never_navigated(self):
+        self.state = "link"
+        terminal = self.run_routed()
+        self.assertEqual(("input-refused", "instance_uac_frame_unrecognized", False), (terminal["state"], terminal["reason"], terminal["inputAttempted"]))
+        self.assertEqual([], self.keys)
+        self.assertEqual([], [name for name in self.tree() if "once-" in name or "/input." in name], "nothing burned")
+
+    def run_route_review(self, steps):
+        def values(answer, scenario, review, attempt):
+            found = ReviewFlowTests.review_values(self, answer, scenario, review, attempt)
+            found.update(UAC_ROUTE=route_screens(ROUTE_PLAN[:steps]), UAC_ROUTE_SHAS=[("%x" % number) * 64 for number in range(1, steps + 1)])
+            return found
+        with mock.patch.object(self, "review_values", values):
+            return self.run_review(scenario=DIFFERENT, censuses=[census(events=DIFFERENT_EVENTS)])
+
+    def test_a_review_sends_the_reviewed_steps_and_keeps_the_frame_after_them(self):
+        reply = self.run_route_review(2)
+        self.assertEqual(("review-frame-retained", False), (reply["state"], reply["promptAnswered"]), reply)
+        self.assertEqual([["tab"], ["ret"]], self.navigation(), "only the reviewed steps' keys")
+        self.assertEqual(route_frame("tiles"), zlib.decompress(base64.b64decode(reply["frame"])), "the next step's frame")
+        self.assertEqual(["1" * 64, "2" * 64], reply["route"])
+        self.assertTrue(any("once-" in name for name in self.tree()), "its keys make the prompt the review's: it is burned")
+        self.assertEqual([], [name for name in self.tree() if "/input." in name or name.startswith("direct-guest")], "no input journal or fence")
+        self.state = "admin"  # Even a prompt that showed the route's first step again.
+        self.assertEqual("instance_uac_prompt_burned", self.run_routed()["reason"], "no decision ever answers a prompt a review navigated")
+        self.assertIsNone(self.secret_from)
+
+    def test_a_review_whose_step_does_not_appear_refuses_and_a_review_with_no_steps_sends_nothing(self):
+        self.transitions[("admin", "tab")] = "elsewhere"
+        reply = self.run_route_review(2)
+        self.assertEqual(("review-refused", "instance_uac_route_unrecognized"), (reply.get("state"), reply.get("reason")))
+        self.assertEqual([["tab"]], self.navigation())
+        self.clear()
+        self.state = "admin"
+        reply = self.run_route_review(0)
+        self.assertEqual(("review-frame-retained", []), (reply["state"], reply["route"]))
+        self.assertEqual(([], route_frame("admin")), (self.keys, zlib.decompress(base64.b64decode(reply["frame"]))))
+        self.assertEqual([], [name for name in self.tree() if "once-" in name])
+
+
+@unittest.skipUnless(POSIX, "private journals and the credential custody are POSIX")
+class SecondAdministratorRouteExecuteTests(ExecuteBase):
+    """The reviewed route's local custody: steps made one review at a time, pinned by the routed profile, and its packets."""
+
+    def setUp(self):
+        super().setUp()
+        SecondAdministratorExecuteTests.clone(self, SECOND_SETUP)
+        self.second = self.root / ".runtime/windows-vm-credentials" / MACHINE / "second-administrator.secret"
+        self.second.write_bytes(SECOND_SECRET + b"\n")
+        self.second.chmod(0o600)
+        self.journal(DIFFERENT)
+        self.profiles = self.root / ".runtime/windows-uac-profiles" / MACHINE
+
+    def api(self, name):
+        try:
+            return getattr(decision, name)
+        except AttributeError:
+            self.fail("no reviewed route: " + name)
+
+    def review_steps(self, count=len(ROUTE_PLAN)):
+        made = []
+        for state, crops, key in ROUTE_PLAN[:count]:
+            try:
+                made.append(self.api("reviewed_uac_step")(self.root, MACHINE, "install-helper", route_frame(state), crops, key,
+                                                          route=[hashlib.sha256(path.read_bytes()).hexdigest() for path in self.step_paths()]))
+            except TypeError as error:
+                self.fail("no reviewed route: " + str(error))
+        return made
+
+    def step_paths(self):
+        return sorted(self.profiles.glob("install-helper.second-administrator.step-*.json")) if self.profiles.exists() else []
+
+    def digests(self):
+        return [hashlib.sha256(path.read_bytes()).hexdigest() for path in self.step_paths()]
+
+    def routed_profile(self, **changes):
+        options = dict(crops=[CROP], field=FIELD, max_dark_pixels=4, approver="second-administrator", account=ACCOUNT, focus=FOCUS,
+                       route=self.digests())
+        options.update(changes)
+        try:
+            return decision.reviewed_uac_profile(self.root, MACHINE, "install-helper", route_frame("focused"), **options)
+        except TypeError as error:
+            self.fail("no routed profile: " + str(error))
+
+    def test_a_routed_profile_admits_the_decision_and_its_packet_carries_the_route(self):
+        self.review_steps()
+        profile = self.routed_profile()
+        self.assertEqual((self.digests(), route_crop("focused", FOCUS)), (profile["route"], profile["focus"]))
+        self.replies = [self.ack(prompt="install-helper")]
+        result = self.execute(prompt="install-helper")
+        self.assertEqual("input-ack-only", result.get("state"), result)
+        source = self.packets[0]["source"]
+        self.assertEqual(route_screens(), packet_binding(source, "UAC_ROUTE"), "every reviewed step, in order, with its key")
+        self.assertEqual(answer_screen()["crops"], packet_binding(source, "UAC_SCREEN")["crops"], "the answer screen: account and focus too")
+        self.assertEqual(len(SECOND_SECRET).to_bytes(4, "big") + SECOND_SECRET, self.packets[0]["options"]["input"])
+        compile(source, "routed decide packet", "exec")
+        self.assertLessEqual(sum(len(part.encode()) + 1 for part in decision._command(source)), decision.INLINE_CARRIER_BYTES,
+                             "a routed packet still goes inline in one SSH child")
+
+    def test_a_step_follows_every_step_reviewed_so_far_and_a_pinned_route_is_closed(self):
+        step = self.api("reviewed_uac_step")
+        self.review_steps(2)
+        with self.assertRaisesRegex(ValueError, "^windows_uac_profile_route$"):
+            step(self.root, MACHINE, "install-helper", route_frame("tiles"), [TILE, ACCOUNT], "down", route=self.digests()[:1])
+        for bad in ({"key": "esc"}, {"key": "a"}, {"prompt": "vpn-broker"}):
+            options = {"prompt": "install-helper", "key": "down", **bad}
+            with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, "^windows_uac_profile$"):
+                step(self.root, MACHINE, options["prompt"], route_frame("tiles"), [TILE, ACCOUNT], options["key"], route=self.digests())
+        with self.assertRaisesRegex(ValueError, "^windows_uac_profile_ambiguous$"):
+            step(self.root, MACHINE, "install-helper", route_frame("tiles"), [[0, 200, 100, 210]], "down", route=self.digests())
+        self.assertEqual(["install-helper.second-administrator.step-02.json"],
+                         self.api("discard_uac_route")(self.root, MACHINE, "install-helper", 2), "a step that led elsewhere goes, the ones before stay")
+        self.assertEqual(1, len(self.step_paths()))
+        for state, crops, key in ROUTE_PLAN[1:]:
+            step(self.root, MACHINE, "install-helper", route_frame(state), crops, key, route=self.digests())
+        with self.assertRaisesRegex(ValueError, "^windows_uac_profile_route$"):
+            self.routed_profile(route=self.digests()[:3])
+        self.routed_profile()
+        with self.assertRaisesRegex(ValueError, "^windows_uac_profile_route_closed$"):
+            step(self.root, MACHINE, "install-helper", route_frame("focused"), [CROP], "tab", route=self.digests())
+        with self.assertRaisesRegex(ValueError, "^windows_uac_profile_route_closed$"):
+            self.api("discard_uac_route")(self.root, MACHINE, "install-helper", 1)
+
+    def test_a_routed_profile_needs_its_focus_at_the_box_and_exactly_its_steps(self):
+        self.review_steps()
+        for changes, reason in (({"focus": [10, 340, 210, 343]}, "windows_uac_profile_focus"),  # Below the box's reach.
+                                ({"focus": None}, "windows_uac_profile"), ({"approver": "administrator"}, "windows_uac_profile")):
+            with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, "^" + reason + "$"):
+                self.routed_profile(**changes)
+        self.routed_profile()
+        self.replies = [self.ack(prompt="install-helper")]
+        third = self.step_paths()[2]
+        kept = third.read_bytes()
+        third.write_text(json.dumps({**json.loads(kept), "key": "up"}))
+        self.assertEqual(("refused", "uac_profile_unreviewed"), (lambda r: (r["state"], r.get("reason")))(self.execute(prompt="install-helper")),
+                         "a step that changed after the profile pinned it")
+        third.write_bytes(kept)
+        self.assertEqual("input-ack-only", self.execute(prompt="install-helper").get("state"))
+
+    def test_a_review_sends_the_steps_reviewed_so_far_and_names_them(self):
+        self.review_steps(1)
+        self.replies = [review_terminal(route_frame("link"), prompt="install-helper", route=self.digests())]
+        result = decision.review(self.root, self.inputs(prompt="install-helper"))
+        self.assertEqual(("review-frame-retained", self.digests()), (result.get("state"), result.get("route")), result)
+        source = self.packets[0]["source"]
+        self.assertEqual(route_screens(ROUTE_PLAN[:1]), packet_binding(source, "UAC_ROUTE"))
+        self.assertIn(b"def _uac_route(", source)
+        retained, record = decision.retained_review_frame(self.root, CORRELATION)
+        self.assertEqual((route_frame("link"), self.digests()), (retained, record["route"]))
+        state, crops, key = ROUTE_PLAN[1]
+        self.api("reviewed_uac_step")(self.root, record["environment"], record["prompt"], retained, crops, key, route=record["route"])
+        self.assertEqual(2, len(self.step_paths()))
+
+    def test_a_review_reply_must_name_the_steps_its_packet_carried(self):
+        self.review_steps(1)
+        for route in ([], ["0" * 64], self.digests() * 2):
+            with self.subTest(route=route):
+                shutil.rmtree(self.root / ".runtime/windows-uac-reviews", ignore_errors=True)
+                self.replies = [review_terminal(route_frame("link"), prompt="install-helper", route=route)]
+                result = decision.review(self.root, self.inputs(prompt="install-helper"))
+                self.assertEqual(("unknown", "uac_reply_rejected"), (result["state"], result["reason"]))
+
+    def test_a_route_stop_crosses_as_a_final_known_refusal_with_its_step(self):
+        self.review_steps()
+        self.routed_profile()
+        raw = route_frame("elsewhere")
+        stopped = {**self.refused("instance_uac_route_unrecognized"), "routeStep": 3, "keysSent": 2,
+                   "frame": {"cropsMatched": [True, False, False], "fieldDarkPixels": 0, "offsetY": 0},
+                   "frameSha256": hashlib.sha256(raw).hexdigest(), "frameBytes": len(raw), "frameData": base64.b64encode(zlib.compress(raw)).decode()}
+        self.replies = [stopped]
+        result = self.execute(prompt="install-helper")
+        self.assertEqual(("refused", "instance_uac_route_unrecognized", 3, 2), (result["state"], result["reason"], result.get("routeStep"), result.get("keysSent")))
+        self.assertEqual(raw, Path(result["framePath"]).read_bytes())
+        self.assertEqual(result, self.execute(prompt="install-helper"), "final: the prompt is burned, no second packet")
+        self.assertEqual(1, len(self.packets))
+
+    def test_no_other_approver_or_row_has_a_route(self):
+        self.review_steps()
+        self.journal("windows-public-update.success-off")
+        SecondAdministratorExecuteTests.write_approver_profile(self, "administrator")
+        self.replies = [self.ack(prompt="install-helper")]
+        self.assertEqual("input-ack-only", self.execute(prompt="install-helper").get("state"))
+        self.assertEqual([], packet_binding(self.packets[0]["source"], "UAC_ROUTE"), "the fixture administrator is the account offered first")
+        with self.assertRaises(ValueError):
+            decision.program(binding() | {"setup": dict(SECOND_SETUP)}, "uac-decide", self.decision, attempt=1, answer="approve", prompt="install-helper",
+                             row=decision.ROWS["windows-public-update.success-off"], context=dict(CONTEXT),
+                             profile=profile_value("install-helper", approver="administrator", account=account_crop()), profile_sha="a" * 64,
+                             scenario_operation=CORRELATION, route=route_screens(), route_shas=self.digests())
 
 
 class RouteAdmissionTests(ExecuteBase):

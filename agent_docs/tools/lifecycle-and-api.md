@@ -304,9 +304,11 @@ administrator of `windows-public-update.different-admin`: its setup adds
 `secondAdministrator`, a name distinct from `user` and `administrator`, and no
 `purpose`. `start` makes its own `second-administrator.secret` beside the other
 credential files and sends it with them only on stdin. The clone's answer file
-creates it in Administrators before the fixture administrator, so a credential
-prompt that lists the members in the order they joined offers it first, and it
-never signs in. A setup without it keeps its exact answer file, credentials and
+creates it in Administrators before the fixture administrator, and it never
+signs in. The Windows 11 credential prompt still offers the fixture
+administrator first (native NE3, run `62eec3c9`), so `windows-uac-decision`
+reaches the second one through its reviewed keyboard route
+(`visual-and-platform-evidence.md`, Windows UAC decision). A setup without it keeps its exact answer file, credentials and
 scripts. A
 blank install refuses it (`deployment_second_administrator_clone_only`), because a
 blank install becomes the next image template, and `generalize` of such a clone

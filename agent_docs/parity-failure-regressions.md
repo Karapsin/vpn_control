@@ -2703,7 +2703,9 @@ Native only:
   Administrators members in the order they joined; the review frame shows it. If the prompt
   offers the fixture administrator first, the decision refuses `instance_uac_frame_unrecognized`
   and types nothing: a selection step, or the clone policy that makes the prompt ask for a user
-  name (`EnumerateAdministrators` 0), would be a new reviewed input rule.
+  name (`EnumerateAdministrators` 0), would be a new reviewed input rule. Answered natively on
+  2026-11-17 (NE3, run `62eec3c9`): the fixture administrator is offered first. The selection is
+  the reviewed keyboard route below ("The second administrator was offered second").
 - That the second administrator's secret is accepted, and the coordinator then runs elevated
   under its SID while the worker runs as the original user.
 - Every grant stage on that clone.
@@ -3964,6 +3966,42 @@ complete unfixed modules in an isolated clone: `FAILED (failures=6)` on Python 3
 on both. `readiness.py` is unchanged, because mutating admissions keep their refusals. Only a native collection on a
 loaded coordinator can confirm the budgets, for example re-settling `49358925` and `6b6eca56` without replaying either
 job.
+### The second administrator was offered second (native NE3, 2026-11-17)
+
+Clone NE3 (`320f9e23`, two administrators), `windows-public-update.different-admin` review run
+`62eec3c9` (reset `1aa2e877`): the review kept the install-helper credential prompt (frame
+`10aa91a6`, kept as `family/uac-frames/ne3-install-helper-different-admin-62eec3c9-*.png`) with the
+fixture administrator `fixtureadmin` preselected, its password box focused and a "More choices"
+link, 63 rows higher than the `success-off` frame `8130f673`. The row's pending event names the
+second administrator `fixtureapprover` (`approvingAdminSid` `...-1004`), and the matrix counts the
+row only with a coordinator elevated under that SID (`_approval_facts`), so the row really needs
+that account. The answer file's order did not make the prompt offer it first, and the decision
+could only type into the account a frame showed selected: its second-administrator profile could
+never match, so the row could not be answered at all. The clone has no absolute pointer (raw QEMU,
+PS/2 mouse), so clicking "More choices" is not a reviewed input either.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The decision could not reach the second administrator's credential when the prompt offered the fixture administrator first (TOOL) | `test_windows_uac_decision`: `SecondAdministratorRouteFlowTests` (10 tests), `SecondAdministratorRouteExecuteTests` (7 tests) | A reviewed keyboard route: closed keys (`ROUTE_KEYS`), each step a create-only private file with exact crops, its key and the digests of the steps before it, made one review run at a time (`reviewed_uac_step`, `discard_uac_route`); the routed second-administrator profile pins those digests and adds a `focus` crop at the password box. After the burn, journal and fence, each key goes only into a frame that shows its step at one offset, the next step counts only after that step's crops changed, and the secret goes only into the full answer screen with an empty field and a prompt under 90 s. A stop is a known `input-refused` (`routeStep`, `keysSent`, its public frame), closes the fence and is final. A review with reviewed steps burns its prompt, sends those keys and keeps the frame after them, naming the steps' digests. RED: see below. |
+
+RED ran in a detached worktree of the unfixed `3a081133` holding only the final test module, the
+two new classes alone, on Python 3.14 and 3.12 with identical results: `FAILED (failures=17)` over 17
+tests, every one an assertion. The unfixed decision refused `instance_uac_frame_unrecognized` with no
+key wherever a route was expected, its review sent no key, its profile loader refused a routed
+profile (`uac_profile_unreviewed`), its packet had no `UAC_ROUTE`, and it has no `reviewed_uac_step`
+or `discard_uac_route`. The control `test_a_prompt_that_shows_another_first_step_is_never_navigated`
+(no key into a prompt whose first step does not show) passes on both. GREEN: the whole module OK on
+both. Logs are under the builder clone's `.runtime/second-admin-route/`.
+
+Native only: the real tab order and states of the Windows 11 credential prompt, whether
+each key's effect is visible within the reviewed crops, the expanded dialog's height, and that
+`fixtureapprover`'s secret then elevates the coordinator under `...-1004`. The coordinator reviews,
+in order, one frame per `different-admin` run on NE3: the kept frame of `62eec3c9` (step 1, already
+retained), then each review run's frame after the steps so far, and last the frame that shows
+`fixtureapprover` selected with its box focused, from which the routed profile is made. Each review
+run burns its prompt. A route stop leaves the collector's decision read (`_READ_DECISION`)
+unjoined, since the input journal exists, so that run's collection stays unknown, as for any input
+after a burn.
 
 ## Historical coverage rule
 
