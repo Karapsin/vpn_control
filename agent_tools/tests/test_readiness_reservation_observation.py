@@ -144,8 +144,24 @@ class ReservationObservationTests(unittest.TestCase):
                     self.assert_visible()
                     original = target['executableGeneration'][index]
                     target['executableGeneration'][index] = original+1
-                    try:self.assert_refused()
+                    # nlink and ctime change when an upgrade unlinks the running file; the inode is the same.
+                    try:self.assert_visible() if name in ('nlink','ctimeNs') else self.assert_refused()
                     finally:target['executableGeneration'][index] = original
+
+    def test_native_replaced_executable_before_red_fixed_green(self):
+        """2026-11-17: a QEMU upgrade unlinked the running file; the census sees nlink 0 and a new ctime."""
+        from agent_tools.tests import red_gate
+        folder = Path(__file__).parent/'fixtures/reservation_executable_replaced'
+        body = (folder/'observer.before.source').read_bytes()
+        self.assertEqual(json.loads((folder/'provenance.json').read_bytes())['fragmentSha256'],hashlib.sha256(body).hexdigest())
+        census = self.census['vms'][0]['executableGeneration']
+        self.assertEqual([1,1790008459287925436],[census[8],census[7]])
+        census[8],census[7] = 0,1794928875234735109
+        if red_gate.red_required(self,folder/'observer.before.source'):
+            module,_ = self.owned_observer(body)
+            proof,_ = self.traced_observe(module)
+            with proof:self.assertFalse(proof.visibility_complete)
+        self.assert_visible()
 
     def test_equal_raw_lists_do_not_guess_a_producer_schema(self):
         self.assert_visible()

@@ -32,10 +32,10 @@ def _need(value):
 
 
 def _executable_generation(value, fields):
-    """Name each field using its authenticated producer's fixed schema."""
+    """Name each field using its producer's schema; nlink and ctime of a path an upgrade replaced are not identity."""
     _need(type(value) is list and len(value) == 9
           and all(type(item) is int and item >= 0 for item in value))
-    return dict(zip(fields, value))
+    return {name: item for name, item in zip(fields, value) if name not in ('nlink', 'ctimeNs')}
 
 
 def _pairs(rows):

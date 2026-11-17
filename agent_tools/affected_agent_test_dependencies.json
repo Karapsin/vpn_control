@@ -7303,7 +7303,9 @@
         "agent_tools/native_vm_spec.py",
         "agent_tools/tests/fixtures/windows_reservation_executable_schema/observer.before.source",
         "agent_tools/tests/fixtures/windows_reservation_executable_schema/native-schema.json",
-        "agent_tools/tests/fixtures/windows_reservation_executable_schema/provenance.json"
+        "agent_tools/tests/fixtures/windows_reservation_executable_schema/provenance.json",
+        "agent_tools/tests/fixtures/reservation_executable_replaced/observer.before.source",
+        "agent_tools/tests/fixtures/reservation_executable_replaced/provenance.json"
       ]
     },
     "agent_tools/tests/test_readiness_submission.py": {

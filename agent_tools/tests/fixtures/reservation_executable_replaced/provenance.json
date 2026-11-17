@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "sourcePath": "agent_tools/readiness_reservation_observation.py",
+  "sourceCommit": "3d349640327acb227118db81b927619c0f0f95b5",
+  "fragmentSha256": "736709e18b1ba52f5b6ad1e2958d1d23df39bf0e21160613029576ee790565d5",
+  "fullSourceSha256": "736709e18b1ba52f5b6ad1e2958d1d23df39bf0e21160613029576ee790565d5",
+  "failure": "The reservation proof joined the fresh host census executable stat to the start record over all nine fields. After a package upgrade unlinked the running QEMU (nlink 1 -> 0, new ctime; same device, inode, mode, owner, size, mtime) every original fixture lost reservation visibility.",
+  "nativeEvidence": "evidence/fix-instance-exe/native: resources-7.json (census before the upgrade) and resources-8.json (after) show the same pid/startTicks with only nlink and ctime changed."
+}
