@@ -11,6 +11,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows test clones: the guest agent installs only after a real user has signed in past first-boot setup, and qualification names a clone stuck in first-boot setup within about 15 minutes so it is replaced instead of watched.
 - Development process: faster CI with parallel Windows jobs, agent test shards balanced by measured duration and release hygiene once per OS; a ci/* branch gate that runs every required workflow before dev moves and deletes its branch afterwards; precise local agent test selection; self-attesting source pins retired in favour of computed closures and committed-source checks; native evidence scoped to the inputs a scenario runs; MCP twins only for representative routes; faster native Windows rows; and heavy local checks escaping macOS background priority.
 - Development process review fixes: the ci/* gate's own red or pending runs always decide, failed ci/* branches stay for re-runs, release builds never reuse the dev Gradle cache, native dispatch runs only from a clean published tool tree, native evidence links end when any tool a scenario ran changes, and heavy local checks run as one-shot launchd jobs with the caller's limits.
+- CI: the Gradle restore-policy step is named as setup, footprint recording stays in the shard worker and creates its folder, and Windows and macOS hygiene fixtures keep their bytes and bash compatibility.
 
 ## 2.2.19 - 2026-11-16
 
