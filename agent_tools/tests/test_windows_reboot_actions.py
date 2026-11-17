@@ -1274,5 +1274,84 @@ $out['deniedRecord'] = Test-TaskAbsent ([Management.Automation.ErrorRecord]::new
         self.assertEqual({"recorded": "threw"}, self.run_powershell("", body))
 
 
+RUN_KEY = Path(__file__).parent / "fixtures/windows_autostart_run_key_sacl"
+# System.Security.AccessControl.AccessControlSections, not the Win32 SECURITY_INFORMATION bits a COM call takes.
+SECTIONS = {"None": 0, "Audit": 1, "Access": 2, "Owner": 4, "Group": 8, "All": 15}
+SECTION_CAST = re.compile(r"\[(?:System\.)?Security\.AccessControl\.AccessControlSections\]\s*('[^']*'|\d+)")
+
+
+def sections_value(literal):
+    """The flags a cast literal names: a number, or PowerShell's comma-separated enum names."""
+    if literal.isdigit():
+        return int(literal)
+    value = 0
+    for name in literal.strip("'").split(","):
+        value |= SECTIONS[name.strip()]
+    return value
+
+
+class RunKeySecurityTests(unittest.TestCase):
+    """Past the absent-task lookup, every reboot .pre on NF failed reading the HKCU Run key's security: .NET's
+    AccessControlSections 7 is Audit|Access|Owner, and reading the SACL needs SeSecurityPrivilege, which the
+    ordinary token lacks. The key is the user's own; owner, group and DACL need only READ_CONTROL, which KEY_READ holds."""
+
+    def setUp(self):
+        self.record = json.loads((RUN_KEY / "native-snapshot-children.json").read_text())
+
+    def test_the_recorded_native_children_are_the_run_key_sacl_read_refused(self):
+        before = (RUN_KEY / self.record["beforeSource"]["path"]).read_bytes()
+        self.assertEqual(self.record["beforeSource"]["sha256"], hashlib.sha256(before).hexdigest())
+        line = before.decode().split("\n")[72]
+        self.assertIn("$key.GetAccessControl([Security.AccessControl.AccessControlSections]7)", line)
+        self.assertEqual(3, len(self.record["runs"]))
+        for operation, run in self.record["runs"].items():
+            raw = base64.b64decode(run["stderrBase64"])
+            self.assertEqual(run["stderrSha256"], hashlib.sha256(raw).hexdigest())
+            stderr = raw.decode("utf-8")
+            self.assertEqual(("autostart-read-only", 1), (run["label"], run["exitCode"]))
+            self.assertIn('Exception calling "GetAccessControl" with "1" argument(s): "Attempted to perform an unauthorized operation."', stderr)
+            self.assertIn("windows_autostart_snapshot.ps1:73 char:3", stderr)
+            self.assertIn("FullyQualifiedErrorId : UnauthorizedAccessException", stderr)
+
+    def test_no_autostart_script_reads_a_sacl_and_the_run_key_reads_owner_group_and_dacl(self):
+        found = []
+        for relative in AUTOSTART_SCRIPTS:
+            text = (ROOT / relative).read_text()
+            for literal in SECTION_CAST.findall(text):
+                with self.subTest(script=relative, sections=literal):
+                    self.assertFalse(sections_value(literal) & SECTIONS["Audit"], "a SACL needs SeSecurityPrivilege")
+                    self.assertEqual(SECTIONS["Access"] | SECTIONS["Owner"] | SECTIONS["Group"], sections_value(literal))
+                found.append(literal)
+            # No security read takes a number or a variable cast elsewhere: every one names its sections.
+            self.assertEqual(len(re.findall(r"\.GetAccessControl\(", text)), len(re.findall(r"\.GetAccessControl\(\$sections\)", text)))
+        self.assertEqual(["'Access, Owner, Group'"], found)
+        # The task's COM call takes SECURITY_INFORMATION, where 7 is OWNER|GROUP|DACL and the SACL is 8.
+        snapshot = (ROOT / "agent_tools/windows_autostart_snapshot.ps1").read_text()
+        self.assertEqual(["7"], re.findall(r"\.GetSecurityDescriptor\((\d+)\)", snapshot))
+
+    @unittest.skipUnless(POWERSHELL, "a PowerShell interpreter is required")
+    def test_powershell_reads_each_cast_as_the_sections_named(self):
+        literals = sorted({literal for relative in AUTOSTART_SCRIPTS for literal in SECTION_CAST.findall((ROOT / relative).read_text())}
+                          | set(SECTION_CAST.findall((RUN_KEY / self.record["beforeSource"]["path"]).read_text())))
+        body = ("$out = [ordered]@{}\n" + "".join(
+            "$v = [Security.AccessControl.AccessControlSections]" + literal + "; $out['k" + str(index) + "'] = @([int]$v, [string]$v)\n"
+            for index, literal in enumerate(literals)) + "[Console]::Out.Write(($out | ConvertTo-Json -Compress))\n")
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "sections.ps1"
+            script.write_text("$ErrorActionPreference = 'Stop'\nSet-StrictMode -Version Latest\n" + body, encoding="utf-8")
+            result = subprocess.run([POWERSHELL, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(script)],
+                                    capture_output=True, text=True, timeout=120, env=dict(os.environ, POWERSHELL_TELEMETRY_OPTOUT="1"))
+        self.assertEqual((0, ""), (result.returncode, result.stderr), result.stdout)
+        reply = json.loads(result.stdout)
+        observed = {literal: reply["k" + str(index)] for index, literal in enumerate(literals)}
+        self.assertEqual(["7", "Audit, Access, Owner"], [str(value) for value in observed["7"]], "the unfixed cast asked for the SACL")
+        for literal, (number, names) in observed.items():
+            self.assertEqual(sections_value(literal), number, "the Python table is .NET's")
+        for relative in AUTOSTART_SCRIPTS:
+            for literal in SECTION_CAST.findall((ROOT / relative).read_text()):
+                self.assertNotIn("Audit", observed[literal][1].split(", "), relative + ": .NET reads this cast as asking for the SACL")
+        self.assertEqual([14, "Access, Owner, Group"], observed["'Access, Owner, Group'"])
+
+
 if __name__ == "__main__":
     unittest.main()

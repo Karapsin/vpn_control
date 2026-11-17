@@ -51,6 +51,8 @@ try {
  $task = Get-StartupTask $folder
  if ($null -ne $task) {
   $xml = [string]$task.Xml
+  # SECURITY_INFORMATION OWNER|GROUP|DACL, never the SACL: READ_CONTROL on the user's own task, which the product's
+  # schtasks /Change and /Delete as this same user already need.
   $sddl = [string]$task.GetSecurityDescriptor(7)
   if ($xml.Length -gt 65536 -or $sddl.Length -gt 32768) { throw 'TASK_BEFOREIMAGE_BOUND' }
   $instances = $task.GetInstances(0)
@@ -70,7 +72,10 @@ try {
  $run = @{state='absent'; keyState='absent'}
  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Run',$false)
  if ($null -ne $key) {
-  $acl = $key.GetAccessControl([Security.AccessControl.AccessControlSections]7).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]7)
+  # Owner, group and DACL, as the task's GetSecurityDescriptor(7) reads them (SECURITY_INFORMATION 1|2|4). In .NET's
+  # AccessControlSections 7 is Audit|Access|Owner: the SACL needs SeSecurityPrivilege, which no ordinary token holds.
+  $sections = [Security.AccessControl.AccessControlSections]'Access, Owner, Group'
+  $acl = $key.GetAccessControl($sections).GetSecurityDescriptorSddlForm($sections)
   $run = @{state='absent'; keyState='present'; keySddl=$acl}
   $names = $key.GetValueNames()
   if ($names.Length -gt 4096) { throw 'RUN_VALUE_NAME_BOUND' }

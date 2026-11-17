@@ -3639,6 +3639,48 @@ The PowerShell tests skip without `pwsh` or `powershell`, or run with `VPN_CONTR
 PowerShell 7.4.20; hosted Linux CI has `pwsh`. Native only: the next `.pre` of each reboot row on a fresh clone must
 show child 17 reporting `task.state` `absent`, and the migration row's highest fixture must register its task.
 
+### The reboot `.pre` snapshot asked for the Run key's SACL (native, `1ee81e41` 2026-11-17)
+
+With the absent-task fix, NF runs `1ee81e41` (`windows-autostart-migration.pre`), `e6632c44`
+(`windows-reboot-explicit-off.pre`) and `469b98e2` (`windows-reboot-reconnect.pre`) on S_D4 with tools `09f1b712`
+got past `GetTask`. They then ended `task_exit_code` at the next step. Child 17 (`windows_autostart_snapshot.ps1`,
+sha256 `018f3cb9…`) exited 1 at line 73 with `Exception calling "GetAccessControl" with "1" argument(s): "Attempted
+to perform an unauthorized operation."` (`UnauthorizedAccessException`). Evidence is in
+`.runtime/windows-parity-20261107/evidence/fix-autostart-snapshot/round2/`.
+
+Cause (TOOL, known). The object read is `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, which belongs to the
+user. It was opened read-only, and KEY_READ includes READ_CONTROL, so it is neither a Task Scheduler folder nor
+owned by SYSTEM. The call asked for `[AccessControlSections]7`. In .NET's `AccessControlSections`, 7 is
+`Audit, Access, Owner`, as PowerShell itself prints it. Reading the SACL (Audit) needs ACCESS_SYSTEM_SECURITY, which
+needs SeSecurityPrivilege, and the ordinary token (not an administrator, elevation type default) never holds it. The
+7 was probably copied from the task's `GetSecurityDescriptor(7)`, whose Win32 SECURITY_INFORMATION bits mean
+OWNER|GROUP|DACL.
+
+Fix. The Run key read now names its sections: `'Access, Owner, Group'` (owner, group and DACL). That is the same
+descriptor the task read takes, needs only READ_CONTROL, and is still compared before and after the ordinary query in
+`migration` (`unchanged["run"] == before["run"]`). The proof keeps owner and DACL, and gains the group. It loses only a
+SACL that an ordinary token can never read, and so never proved anything natively. Neither the SYSTEM collector nor the
+task XML is needed. The rest of both scripts was reviewed for ordinary-token reads:
+- the task's `GetSecurityDescriptor(7)` (OWNER|GROUP|DACL, READ_CONTROL on the user's own task, which the product's
+  `schtasks /Change` and `/Delete` as the same user already need);
+- `GetInstances` and the task properties;
+- the Run key's values;
+- `HKLM\SOFTWARE\Microsoft\Cryptography` `MachineGuid` (readable by Users);
+- `NtQuerySystemInformation(90)`;
+- the process's own token and job.
+
+None asks for a privilege. The highest fixture's `RegisterTaskDefinition` (TASK_CREATE, an interactive token for the
+same SID, RunLevel HighestAvailable) is what the pre-migration product did with `schtasks /RL HIGHEST` as this user,
+but no native run has reached it yet. The `snapshotScript` role digest names the new bytes.
+
+| Failure type | Regression | RED on `14453613` / GREEN |
+| --- | --- | --- |
+| A security read asked an ordinary token for a SACL (TOOL) | `test_windows_reboot_actions.RunKeySecurityTests`: `test_no_autostart_script_reads_a_sacl_and_the_run_key_reads_owner_group_and_dacl`, `test_powershell_reads_each_cast_as_the_sections_named`; control `test_the_recorded_native_children_are_the_run_key_sacl_read_refused` | Fixture `fixtures/windows_autostart_run_key_sacl/`: the three native stderr records (hashes as recorded) and the unfixed snapshot. Each `AccessControlSections` cast in the autostart scripts is read with .NET's values, and PowerShell confirms them (7 is `Audit, Access, Owner`, 14 is `Access, Owner, Group`). No cast may include Audit, and every `GetAccessControl` takes the named sections. RED with the tests over `14453613`: 4 failures on Python 3.14.3 and 3.12.13, including PowerShell reading the old cast as `Audit, Access, Owner`. Mutants: `'Access, Owner, Audit'` fails; the fix without a repin fails `test_the_owner_role_pins_name_the_current_reboot_sources`. |
+
+Native only: the next `.pre` of each reboot row must show child 17 reporting `run.keyState` `present` with a
+`keySddl`, then the migration row's highest fixture registering its task and the snapshot reading that task's
+descriptor.
+
 ### The SYSTEM collector's worker session, read after the worker exited (native NE2, S_Q, 2026-11-17)
 
 Update grant row `72c2fa02` (success-off review, clone NE2, fixture set S_Q, tools with the collector-root fix) ended

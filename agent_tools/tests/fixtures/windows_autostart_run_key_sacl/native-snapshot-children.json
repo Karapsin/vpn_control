@@ -1,0 +1,37 @@
+{
+ "beforeSource": {
+  "commit": "14453613",
+  "path": "snapshot.before.source",
+  "sha256": "018f3cb9453190d7fba6dac79dad1302079ce5b2375bdd8e63e532e7e2d12f65"
+ },
+ "description": "The autostart-read-only child of every Windows reboot .pre row on NF (tools 09f1b712, package S_D4), byte for byte from evidence-1.zip of each operation: past the absent-task lookup, windows_autostart_snapshot.ps1 exited 1 reading the HKCU Run key's security with AccessControlSections 7. The stderr hashes are the ones each child-terminal event recorded.",
+ "rows": {
+  "1ee81e41-ba62-40d9-a4cd-bb3139299541": "windows-autostart-migration.pre",
+  "469b98e2-9a0c-4d6d-9c84-a430701d8b51": "windows-reboot-reconnect.pre",
+  "e6632c44-9cb7-4406-87fb-8cb07107dfd9": "windows-reboot-explicit-off.pre"
+ },
+ "runs": {
+  "1ee81e41-ba62-40d9-a4cd-bb3139299541": {
+   "child": 17,
+   "exitCode": 1,
+   "label": "autostart-read-only",
+   "stderrBase64": "RXhjZXB0aW9uIGNhbGxpbmcgIkdldEFjY2Vzc0NvbnRyb2wiIHdpdGggIjEiIGFyZ3VtZW50KHMpOiAiQXR0ZW1wdGVkIHRvIHBlcmZvcm0gYW4gdW5hdXRob3JpemVkIG9wZXJhdGlvbi4iDQpBdCBDOlxQcm9ncmFtRGF0YVxWcG5Db250cm9sT3JkaW5hcnlUYXNrLTFlZTgxZTQxLWJhNjItNDBkOS1hNGNkLWJiMzEzOTI5OTU0MVx3aW5kb3dzX2F1dG9zdGFydF9zbmFwc2hvdC5wczE6NzMgY2hhcjozDQorICAgJGFjbCA9ICRrZXkuR2V0QWNjZXNzQ29udHJvbChbU2VjdXJpdHkuQWNjZXNzQ29udHJvbC5BY2Nlc3NDb250cm9sUyAuLi4NCisgICB+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+DQogICAgKyBDYXRlZ29yeUluZm8gICAgICAgICAgOiBOb3RTcGVjaWZpZWQ6ICg6KSBbXSwgUGFyZW50Q29udGFpbnNFcnJvclJlY29yZEV4Y2VwdGlvbg0KICAgICsgRnVsbHlRdWFsaWZpZWRFcnJvcklkIDogVW5hdXRob3JpemVkQWNjZXNzRXhjZXB0aW9uDQogDQo=",
+   "stderrSha256": "b23a6147ac1113d6cd0611e8d42730539899ee881c7c40456b7298d0f10af771"
+  },
+  "469b98e2-9a0c-4d6d-9c84-a430701d8b51": {
+   "child": 17,
+   "exitCode": 1,
+   "label": "autostart-read-only",
+   "stderrBase64": "RXhjZXB0aW9uIGNhbGxpbmcgIkdldEFjY2Vzc0NvbnRyb2wiIHdpdGggIjEiIGFyZ3VtZW50KHMpOiAiQXR0ZW1wdGVkIHRvIHBlcmZvcm0gYW4gdW5hdXRob3JpemVkIG9wZXJhdGlvbi4iDQpBdCBDOlxQcm9ncmFtRGF0YVxWcG5Db250cm9sT3JkaW5hcnlUYXNrLTQ2OWI5OGUyLTlhMGMtNGQ2ZC05Yzg0LWE0MzA3MDFkOGI1MVx3aW5kb3dzX2F1dG9zdGFydF9zbmFwc2hvdC5wczE6NzMgY2hhcjozDQorICAgJGFjbCA9ICRrZXkuR2V0QWNjZXNzQ29udHJvbChbU2VjdXJpdHkuQWNjZXNzQ29udHJvbC5BY2Nlc3NDb250cm9sUyAuLi4NCisgICB+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+DQogICAgKyBDYXRlZ29yeUluZm8gICAgICAgICAgOiBOb3RTcGVjaWZpZWQ6ICg6KSBbXSwgUGFyZW50Q29udGFpbnNFcnJvclJlY29yZEV4Y2VwdGlvbg0KICAgICsgRnVsbHlRdWFsaWZpZWRFcnJvcklkIDogVW5hdXRob3JpemVkQWNjZXNzRXhjZXB0aW9uDQogDQo=",
+   "stderrSha256": "475cfd3abbf1a6ac0e2809d27526af8eb5aad1374605603db12d15dad5d42465"
+  },
+  "e6632c44-9cb7-4406-87fb-8cb07107dfd9": {
+   "child": 17,
+   "exitCode": 1,
+   "label": "autostart-read-only",
+   "stderrBase64": "RXhjZXB0aW9uIGNhbGxpbmcgIkdldEFjY2Vzc0NvbnRyb2wiIHdpdGggIjEiIGFyZ3VtZW50KHMpOiAiQXR0ZW1wdGVkIHRvIHBlcmZvcm0gYW4gdW5hdXRob3JpemVkIG9wZXJhdGlvbi4iDQpBdCBDOlxQcm9ncmFtRGF0YVxWcG5Db250cm9sT3JkaW5hcnlUYXNrLWU2NjMyYzQ0LTljYjctNDQwNi04N2ZiLThjYjA3MTA3ZGZkOVx3aW5kb3dzX2F1dG9zdGFydF9zbmFwc2hvdC5wczE6NzMgY2hhcjozDQorICAgJGFjbCA9ICRrZXkuR2V0QWNjZXNzQ29udHJvbChbU2VjdXJpdHkuQWNjZXNzQ29udHJvbC5BY2Nlc3NDb250cm9sUyAuLi4NCisgICB+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+DQogICAgKyBDYXRlZ29yeUluZm8gICAgICAgICAgOiBOb3RTcGVjaWZpZWQ6ICg6KSBbXSwgUGFyZW50Q29udGFpbnNFcnJvclJlY29yZEV4Y2VwdGlvbg0KICAgICsgRnVsbHlRdWFsaWZpZWRFcnJvcklkIDogVW5hdXRob3JpemVkQWNjZXNzRXhjZXB0aW9uDQogDQo=",
+   "stderrSha256": "149a2f6e4aeeba97e3a510b980ede541ff6f095c532b9fc90b4d3f7e0f626c23"
+  }
+ },
+ "schemaVersion": 1
+}
