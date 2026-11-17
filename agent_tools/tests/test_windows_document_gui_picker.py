@@ -68,6 +68,11 @@ def reviewed_profile():
     return {**picker.PROFILE, "steps": steps}
 
 
+def unreviewed_profile():
+    """The tracked profile's shape with no step reviewed: a run stops at the first step with its frame."""
+    return {**picker.PROFILE, "steps": {step: None for step in picker.STEPS}}
+
+
 class FakeLease:
     def __init__(self):
         self.name, self.switched, self.trace = "VcParityNoTray-0123", False, []
@@ -244,10 +249,13 @@ class SessionBase(unittest.TestCase):
 
 
 class ProfileAndFrameTests(SessionBase):
-    def test_the_tracked_profile_is_well_formed_and_reviews_no_step_yet(self):
+    def test_the_tracked_profile_is_well_formed_and_reviews_a_prefix_of_the_steps(self):
         picker.validate_profile(picker.PROFILE)
         self.assertEqual(picker.STEPS, tuple(picker.PROFILE["steps"]))
-        self.assertEqual({None}, set(picker.PROFILE["steps"].values()), "a step is reviewed only from a native frame")
+        reviewed = [step for step in picker.STEPS if picker.PROFILE["steps"][step] is not None]
+        # Steps are reviewed one native frame at a time, in order: a run never reaches a later step's frame first.
+        self.assertEqual(list(picker.STEPS[:len(reviewed)]), reviewed)
+        self.assertEqual(["routing-nav"], reviewed[:1])
 
     def test_a_kept_frame_reads_back_and_its_reviewed_anchor_is_the_digest_of_those_pixels(self):
         placement = picker._placement_rect()
@@ -367,7 +375,7 @@ class ReviewedStepTests(SessionBase):
         self.assertNotIn("document-gui-picker-unreviewed", kinds)
 
     def test_a_step_with_no_review_keeps_its_frame_and_clicks_nothing(self):
-        session = self.attached(profile=picker.PROFILE)
+        session = self.attached(profile=unreviewed_profile())
         with self.assertRaisesRegex(RuntimeError, r"\Adocument-gui-picker-frame-unreviewed:routing-nav\Z"):
             session.export_file(str(self.root / "gui.json"))
         self.assertEqual(([], []), (self.native.clicks, self.native.texts))
@@ -652,7 +660,7 @@ class ParkTests(SessionBase):
                     mock.patch.object(picker.Session, "step", namespace["step"]):
                 with self.assertRaisesRegex(RuntimeError, r"\Adocument-gui-picker-park\Z"):
                     session.step("routing-nav")
-        session = self.attached(profile=picker.PROFILE)
+        session = self.attached(profile=unreviewed_profile())
         change(self.native)
         with self.assertRaisesRegex(RuntimeError, r"\Adocument-gui-picker-frame-unreviewed:routing-nav\Z"):
             session.step("routing-nav")
@@ -926,7 +934,7 @@ class PickerFlowTests(unittest.TestCase):
         self.assertEqual(compared["gui"]["exportSemanticSha256"], compared["cli"]["exportSemanticSha256"])
 
     def test_an_unreviewed_profile_ends_known_at_the_first_step_with_its_frame_and_no_click(self):
-        guest, code = self.run_picker(profile=picker.PROFILE)
+        guest, code = self.run_picker(profile=unreviewed_profile())
         self.assertEqual((1, [], "document-gui-picker-frame-unreviewed:routing-nav"), (code, guest.parks, guest.finished[0][2]))
         self.assertEqual(([], []), (self.native.clicks, self.native.texts))
         self.assertEqual(["document-gui-picker-frame-00-routing-nav.png"],

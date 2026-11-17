@@ -88,6 +88,11 @@ _SHA = re.compile(r"[0-9a-f]{64}\Z")
 # change that moves or redraws a control is therefore never clicked blind: it needs a new review.
 PROFILE = {"schemaVersion": 1, "display": list(DISPLAY), "placement": list(PLACEMENT),
            "steps": {step: None for step in STEPS}}
+# routing-nav: reviewed by the coordinator from 24e932f6 frame 00 (pixels 9c93cf3c..., origin 140,16). The Home screen
+# with no dialog; the anchor holds only the bottom navigation's Rules (Tune, sliders) icon, the fifth tab, and the point
+# is its centre.
+PROFILE["steps"]["routing-nav"] = {"point": [1029, 704], "anchor": [1004, 686, 1054, 720],
+                                   "sha256": "dcc69d9fe0201b78f108378e086dced14f4683136d7bc73e9e0691c4d538f344"}
 
 
 def need(value, code):
