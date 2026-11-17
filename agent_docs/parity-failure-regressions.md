@@ -3906,6 +3906,37 @@ subtests; the other 22 held. GREEN: OK on both. No-replay: nothing is submitted 
 typed stays unsettled for a TUN grant and is collected as before for an update grant.
 
 Native only: the times on a loaded host; that an update grant's expired prompt ends in the owner's failure as modelled.
+### Settled rows filled the VM root and every later job refused (native ND2 `961e9684`, S_D5, 2026-11-17)
+
+Clone ND2 (deployment `961e9684`, host root `/home/kardinal/vc-rw-961e9684`) had run about forty native rows when
+its S_D5 reset `041be0c4` was refused before any guest effect with `vm_root_entry_bound` (driver exit 2). Every
+later job on the clone refused the same way, and ND2 was stopped with its disk kept. The cause was tool bookkeeping,
+not the product: `windows_scenario_host_job._admit` refuses when the VM root holds more than
+`VM_ROOT_ENTRY_LIMIT` (3,500) entries, a margin under the 4,096 at which
+`readiness_windows_lifecycle._prior_start_fence` refuses a VM start. Each job leaves three flat files in the root
+for its fence and for each guest program (`direct-guest-<uuid>.{intent,ack,terminal}.json`), about 90 per row, and
+nothing ever removed them.
+
+Admission now archives them. Only after every prior exit was found known and every intent in the root closed,
+under the admission lock and the VM root's own lock, it moves each closed family that its names bind to an ended
+job of the clone into `scenario-journal-archive/<operation>/` in the same root. The job's fence is
+`direct-guest-<operation>` with label `scenario-fence`, and each guest program is `direct-guest-uuid5(operation,
+label)`. Files keep their names and bytes, and each moves by one rename that never overwrites. The intent moves
+first, and the next admission finishes a family a crash split. The root count is checked after the move, so only
+live entries count. `prior_job_fence_missing` reads the fence in either place. A UNKNOWN or parked job, an open
+fence, a UAC decision's fence, readiness and lifecycle journals, legacy or unknown families and links never move.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| Closed journals of settled rows piled up in the VM root until admission refused every job (TOOL) | `test_windows_scenario_host_job`: `VmRootArchiveTests.test_settled_rows_beyond_the_bound_are_archived_and_the_next_job_runs` | Forty settled rows (3,600 entries) are admitted, and every journal is archived unchanged, once. RED on the unfixed source: `(2, 'vm_root_entry_bound') != (0, None)`. |
+| Archive safety (guards, not causal) | `test_archiving_takes_each_ended_job_once_and_the_fence_check_reads_the_archive`, `test_only_closed_journals_bound_to_an_ended_job_move`, `test_nothing_moves_while_a_prior_exit_is_unknown`, `test_nothing_moves_while_any_fence_is_open`, `test_a_crash_between_renames_loses_nothing_and_the_next_admission_finishes`, `test_an_archived_name_is_never_written_over`, `test_live_entries_alone_count_against_the_bound` | The readiness idle census (`Receipts`) still finds nothing unresolved after an archive or a split one. |
+
+ND2's existing root needs no separate action. Its entries are journals of settled rows, under 4,096 unless
+readiness journals grew past that. Start ND2 as usual, then submit the S_D5 reset again as a new operation; its
+admission archives the closed journals of the earlier rows. If the start itself refuses
+`instance_lifecycle_prior_start_unreconciled` (more than 4,096 entries), nothing started, and the clone needs a
+host-side archive action that this change does not provide. Only a native row on a long-lived clone confirms the
+move under the real lock.
 
 ## Historical coverage rule
 

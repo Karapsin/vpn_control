@@ -788,6 +788,19 @@ known failure and 2 when refused before any guest effect. Anything else, includi
 exit 3, is UNKNOWN: its fence stays open, no terminal is written, and new jobs and
 reboots on that clone refuse. Recover by reading the original, never by resubmitting.
 
+Each admission keeps the root bounded. It acts only once every prior exit is known and
+every intent in the root is closed, holding the admission lock and the VM root's lock.
+It then moves the closed journals of those ended jobs into
+`scenario-journal-archive/<operation>/` in the same root: the fence
+`direct-guest-<operation>` and each program `direct-guest-uuid5(operation, label)`.
+Files keep their names and bytes. Each moves by one rename that never overwrites, intent
+first, and the next admission finishes a family a crash split. Only the live entries
+then count against the 3,500-entry bound (`vm_root_entry_bound`), which stays under the
+4,096 at which a VM start refuses. A UNKNOWN or parked job, an open fence, a UAC
+decision's fence, readiness and lifecycle journals and any family the job's names do
+not bind stay in place. A failed move refuses the job before any guest effect with
+`vm_root_archive_failed`.
+
 A row that was refused before it started has no receipt, so its collection stays
 `unknown` with `executionExitCode` 2 and a closed `executionFailure` token. A setup
 or component row never claims installed-package evidence.

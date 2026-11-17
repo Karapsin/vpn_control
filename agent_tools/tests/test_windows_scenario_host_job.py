@@ -573,6 +573,15 @@ class FakeRuntime:
     def admission(self):
         return nullcontext()
 
+    def exclusive(self, perform):
+        """The VM root's lock: what runs under it is counted, so a test sees the archive move only inside it."""
+        self.exclusive_calls = getattr(self, "exclusive_calls", 0) + 1
+        self.locked = True
+        try:
+            return perform()
+        finally:
+            self.locked = False
+
 
 def bundle_files():
     files = {}
@@ -1205,6 +1214,185 @@ class AdmissionTests(Base):
         for number in range(3500):
             (self.vm / ("filler-" + str(number))).touch()
         self.assertEqual(0, self.run_job()[1])
+
+
+class VmRootArchiveTests(Base):
+    """Clone ND2 (deployment 961e9684): its S_D5 reset 041be0c4 was refused vm_root_entry_bound before any guest effect.
+
+    About forty rows had each left their closed direct-guest journals in the VM root, and every later job on the clone
+    refused the same way. Admission now moves the closed journals of ended jobs into the root's archive folder."""
+    prior = AdmissionTests.prior
+    assert_refused = AdmissionTests.assert_refused
+
+    def settled(self, *, programs=29, exit_code=0):
+        """An ended job as the host job leaves it: its exit, its closed fence and closed guest programs named by uuid5."""
+        operation = str(uuid.uuid4())
+        data = self.machine_data / operation
+        data.mkdir(parents=True, mode=0o700)
+        (data / "job-exit.json").write_text(json.dumps({"schemaVersion": 1, "operationId": operation, "exitCode": exit_code,
+                                                        "fenceAnchored": True}))
+        fence = "direct-guest-" + operation
+        self.rt.save(fence + ".intent.json", {"operationId": operation, "label": "scenario-fence",
+                                              "scenarioId": "windows-msi-base-reset", "replayAllowed": False})
+        self.rt.save(fence + ".ack.json", {"operationId": operation, "ack": {"pid": 5}, "replayAllowed": False})
+        for number in range(programs):
+            label = "program-" + str(number)
+            prefix = "direct-guest-" + str(uuid.uuid5(uuid.UUID(operation), label))
+            self.rt.save(prefix + ".intent.json", {"operationId": operation, "label": label, "sourceSha256": "0" * 64,
+                                                   "replayAllowed": False})
+            self.rt.save(prefix + ".ack.json", {"operationId": operation, "label": label, "ack": {"pid": 100 + number},
+                                                "replayAllowed": False})
+            self.rt.save(prefix + ".terminal.json", {"exited": True, "exitcode": 0})
+        self.rt.save(fence + ".terminal.json", {"exited": True, "exitcode": exit_code})
+        return operation
+
+    def snapshot(self):
+        return {path.name: path.read_bytes() for path in self.vm.iterdir() if path.is_file()}
+
+    def archived(self):
+        archive = self.vm / job.VM_ROOT_ARCHIVE
+        rows = [(path.name, path.read_bytes()) for folder in archive.iterdir() for path in folder.iterdir()] if archive.exists() else []
+        names = [name for name, _ in rows]
+        self.assertEqual(len(names), len(set(names)), "no journal is archived twice")
+        return dict(rows)
+
+    def test_settled_rows_beyond_the_bound_are_archived_and_the_next_job_runs(self):
+        operations = [self.settled() for _ in range(40)]
+        before = self.snapshot()
+        self.assertGreater(len(before), job.VM_ROOT_ENTRY_LIMIT)
+        plan, code, receipt = self.run_job()
+        self.assertEqual((0, None), (code, receipt["failure"]), "the unfixed admission refused vm_root_entry_bound")
+        self.assertEqual(before, self.archived(), "every closed journal moved unchanged: none lost, none left twice")
+        archive = self.vm / job.VM_ROOT_ARCHIVE
+        self.assertEqual(set(operations), {path.name for path in archive.iterdir()}, "one folder per ended job")
+        for operation in operations:
+            self.assertEqual(90, len(list((archive / operation).iterdir())))
+            self.assertTrue((archive / operation / ("direct-guest-" + operation + ".intent.json")).exists())
+        live = {path.name for path in self.vm.iterdir()}
+        self.assertFalse(live & set(before))
+        self.assertEqual(31, len(live), "this job's own thirty journals and the archive folder")
+        self.assertEqual([], self.classify()["unresolved"])
+        self.assertEqual(1, self.rt.exclusive_calls)
+
+    def test_archiving_takes_each_ended_job_once_and_the_fence_check_reads_the_archive(self):
+        first, code, _ = self.run_job()
+        self.assertEqual(0, code)
+        first_names = self.snapshot()
+        second, code, _ = self.run_job()
+        self.assertEqual(0, code)
+        self.assertEqual(first_names, self.archived())
+        self.assertEqual({first["operationId"]}, {path.name for path in (self.vm / job.VM_ROOT_ARCHIVE).iterdir()})
+        second_names = self.snapshot()
+        # The first job's fence is only in the archive now; prior_job_fence_missing reads it there.
+        self.assertFalse(self.fence(first, ".intent.json").exists())
+        third, code, receipt = self.run_job()
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        self.assertEqual({**first_names, **second_names}, self.archived())
+        self.assertEqual([], self.classify()["unresolved"])
+        # A fence in neither place still refuses.
+        (self.vm / job.VM_ROOT_ARCHIVE / first["operationId"] / ("direct-guest-" + first["operationId"] + ".intent.json")).unlink()
+        names, sent = set(os.listdir(self.vm)), self.qga.count("guest-exec")
+        plan, code, receipt = self.run_job()
+        self.assertEqual((2, "prior_job_fence_missing"), (code, receipt["failure"]))
+        self.assertEqual((names, sent), (set(os.listdir(self.vm)), self.qga.count("guest-exec")))
+
+    def test_only_closed_journals_bound_to_an_ended_job_move(self):
+        operation = self.settled(programs=2)
+        legacy = self.prior(exit_code=0, fence={"exited": True, "exitcode": 0})  # An intent without a label stays.
+        decision = job.decision_id(operation)
+        self.rt.save("direct-guest-" + decision + ".intent.json", {"operationId": decision, "label": "uac-decision", "replayAllowed": False})
+        self.rt.save("direct-guest-" + decision + ".ack.json", {"operationId": decision, "ack": {"pid": 9}, "replayAllowed": False})
+        self.rt.save("direct-guest-" + decision + ".terminal.json", {"exited": True, "exitcode": 0})
+        stranger = str(uuid.uuid4())  # No job of this clone: no data directory.
+        alien = "direct-guest-" + str(uuid.uuid5(uuid.UUID(stranger), "context"))
+        self.rt.save(alien + ".intent.json", {"operationId": stranger, "label": "context", "replayAllowed": False})
+        self.rt.save(alien + ".terminal.json", {"exited": True, "exitcode": 0})
+        misnamed = "direct-guest-" + str(uuid.uuid4())  # Claims the job, but its name is no uuid5 of the job and label.
+        self.rt.save(misnamed + ".intent.json", {"operationId": operation, "label": "context", "replayAllowed": False})
+        self.rt.save(misnamed + ".terminal.json", {"exited": True, "exitcode": 0})
+        extra = "direct-guest-" + str(uuid.uuid5(uuid.UUID(operation), "extra"))  # A file this archive does not know.
+        self.rt.save(extra + ".intent.json", {"operationId": operation, "label": "extra", "replayAllowed": False})
+        self.rt.save(extra + ".terminal.json", {"exited": True, "exitcode": 0})
+        self.rt.save(extra + ".observed-terminal.json", {"exited": True, "exitcode": 0})
+        linked = "direct-guest-" + str(uuid.uuid5(uuid.UUID(operation), "linked"))  # A link is never moved.
+        self.rt.save(linked + ".intent.json", {"operationId": operation, "label": "linked", "replayAllowed": False})
+        (self.vm / "elsewhere.json").write_text(json.dumps({"exited": True, "exitcode": 0}))
+        os.symlink(self.vm / "elsewhere.json", self.vm / (linked + ".terminal.json"))
+        self.rt.save("readiness-" + stranger + "-session.intent.json", {"operationId": stranger})
+        expected = {name for name in self.snapshot() if name.startswith("direct-guest-" + operation)
+                    or any(name.startswith("direct-guest-" + str(uuid.uuid5(uuid.UUID(operation), "program-" + str(n)))) for n in range(2))}
+        stays = set(os.listdir(self.vm)) - expected
+        self.assertEqual(9, len(expected))
+        plan, code, _ = self.run_job()
+        self.assertEqual(0, code)
+        self.assertEqual(expected, set(self.archived()))
+        self.assertTrue(stays <= set(os.listdir(self.vm)), "everything else stays live")
+        self.assertIn("direct-guest-" + legacy + ".intent.json", stays)
+        self.assertEqual([operation], [path.name for path in (self.vm / job.VM_ROOT_ARCHIVE).iterdir()])
+
+    def test_nothing_moves_while_a_prior_exit_is_unknown(self):
+        self.settled()
+        self.prior(exit_code=3, fence={"exited": True, "exitcode": 3})
+        self.assert_refused("prior_job_exit_unknown")
+        self.assertFalse((self.vm / job.VM_ROOT_ARCHIVE).exists())
+
+    def test_nothing_moves_while_any_fence_is_open(self):
+        self.settled()
+        self.prior(exit_code=0)  # Its fence never closed.
+        self.assert_refused("prior_fence_open")
+        self.assertFalse((self.vm / job.VM_ROOT_ARCHIVE).exists())
+
+    def test_a_crash_between_renames_loses_nothing_and_the_next_admission_finishes(self):
+        operations = [self.settled(programs=3) for _ in range(2)]
+        before = self.snapshot()
+        rename, calls = os.rename, []
+
+        def crash(source, destination):
+            self.assertTrue(self.rt.locked, "the archive moves only under the VM root's lock")
+            calls.append(Path(source).name)
+            if len(calls) == 5:  # The second family's ack: its intent moved, its ack and terminal not yet.
+                raise OSError("crash")
+            rename(source, destination)
+        with mock.patch.object(job.os, "rename", crash):
+            plan, code, receipt = self.run_job()
+        self.assertEqual((2, "vm_root_archive_failed"), (code, receipt["failure"]))
+        self.assertEqual(0, self.qga.count("guest-exec"))
+        live = self.snapshot()
+        kept = self.archived()
+        self.assertFalse(set(live) & set(kept), "every file is in exactly one place")
+        self.assertEqual(before, {**{name: raw for name, raw in live.items() if name in before}, **kept})
+        split = calls[3][:-len(".intent.json")]
+        self.assertEqual((True, True, True), (split + ".intent.json" in kept, split + ".ack.json" in live, split + ".terminal.json" in live),
+                         "the crash split one family: its intent archived, its ack and terminal still live")
+        self.assertEqual([], self.classify()["unresolved"], "no intent is left without its terminal")
+        plan, code, receipt = self.run_job()
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        self.assertEqual(before, self.archived())
+        self.assertEqual(set(operations), {path.name for path in (self.vm / job.VM_ROOT_ARCHIVE).iterdir()})
+
+    def test_an_archived_name_is_never_written_over(self):
+        operation = self.settled(programs=1)
+        fence = "direct-guest-" + operation + ".intent.json"
+        folder = self.vm / job.VM_ROOT_ARCHIVE / operation
+        folder.mkdir(parents=True, mode=0o700)
+        (folder / fence).write_bytes(b"older")
+        original = (self.vm / fence).read_bytes()
+        plan, code, _ = self.run_job()
+        self.assertEqual(0, code)
+        self.assertEqual(b"older", (folder / fence).read_bytes())
+        self.assertEqual(original, (self.vm / fence).read_bytes(), "the fence stays live with its ack and terminal")
+        self.assertTrue((self.vm / ("direct-guest-" + operation + ".terminal.json")).exists())
+
+    def test_live_entries_alone_count_against_the_bound(self):
+        self.settled()
+        for number in range(job.VM_ROOT_ENTRY_LIMIT):
+            (self.vm / ("filler-" + str(number))).touch()
+        # Fillers plus the archive folder are one past the bound: what stays live still refuses.
+        plan, code, receipt = self.run_job()
+        self.assertEqual((2, "vm_root_entry_bound"), (code, receipt["failure"]))
+        self.assertEqual(0, self.qga.count("guest-exec"))
+        self.assertFalse(self.fence(plan, ".intent.json").exists())
+        self.assertEqual(90, len(self.archived()))
 
     def test_an_unreachable_agent_refuses_before_any_fence(self):
         self.qga.lose = lambda command, kind, ordinal: TimeoutError() if command == "guest-ping" else None
@@ -2101,7 +2289,12 @@ class FamilyJobTests(FamilyBase):
         plan, code, receipt, _ = self.run_family("windows-packaged-cli-smoke", prior=plan["operationId"])
         self.assertEqual((0, True), (code, receipt["windows"]["installedPackage"]))
         self.assertEqual([], self.classify()["unresolved"])
-        self.assertTrue(all(re.fullmatch(r"direct-guest-[0-9a-f-]{36}\.(?:intent|ack|terminal)\.json", path.name) for path in self.vm.iterdir()))
+        journal = r"direct-guest-[0-9a-f-]{36}\.(?:intent|ack|terminal)\.json"
+        self.assertTrue(all(re.fullmatch(journal, path.name) for path in self.vm.iterdir() if path.name != job.VM_ROOT_ARCHIVE))
+        # Each admission archived the journals of the jobs before it: only the last job's stay live.
+        archived = [path.name for folder in (self.vm / job.VM_ROOT_ARCHIVE).iterdir() for path in folder.iterdir()]
+        self.assertEqual(7, len(list((self.vm / job.VM_ROOT_ARCHIVE).iterdir())), "the seven jobs before the last")
+        self.assertTrue(archived and all(re.fullmatch(journal, name) for name in archived))
 
     def test_a_large_package_goes_in_chunks_with_no_vm_root_entry_per_chunk(self):
         plan, code, receipt, kinds = self.run_family("windows-msi-base-install")

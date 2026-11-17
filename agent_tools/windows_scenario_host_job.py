@@ -51,7 +51,13 @@ CHUNK_BYTES = 32768
 EVIDENCE_CHUNK_BYTES = 65536
 FILE_BATCH = 64
 READ_PIN_BATCH = 512
-VM_ROOT_ENTRY_LIMIT = 3500  # readiness_windows_lifecycle refuses a start above 4,096.
+VM_ROOT_ENTRY_LIMIT = 3500  # Live entries; readiness_windows_lifecycle refuses a start above 4,096.
+# Admission moves the closed journals of ended jobs into one archive folder of the VM root (Job._archive_closed), so the
+# live count above stays near what one job adds. The scan before that is bounded too: one listing, one small read per family.
+VM_ROOT_SCAN_LIMIT = 65536
+VM_ROOT_ARCHIVE = "scenario-journal-archive"
+# A family's files, moved in this order: the intent first, so the VM root never holds an intent without its terminal.
+JOURNAL_SUFFIXES = (".intent.json", ".ack.json", ".terminal.json")
 QGA_LOCK_WAIT_SECONDS = 120  # Nothing was sent while waiting; readiness keeps working between exchanges.
 PROGRAM_BUDGET_SECONDS = 600
 RUN_MARGIN_SECONDS = 1800  # Pins held before launch and at closing: a Python tree is thousands of hashes.
@@ -175,6 +181,7 @@ STOP_AFTER = frozenset({"context", "publish"})
 _TOKEN_CHARACTERS = re.compile(r"[^A-Za-z0-9_.:-]+")
 _LABEL = re.compile(r"[a-z][a-z0-9-]{0,79}\Z")
 _UUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\Z")
+_JOURNAL = re.compile(r"(direct-guest-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})(\..*)\Z", re.S)
 _BUNDLE_PATH = re.compile(r"(?:agent_tools(?:/windows_public_updater|/windows_system_collector)?|scripts|scripts/integration)/[A-Za-z0-9_.-]+\Z")
 _INSTALLED_JAR = re.compile(r"app/[A-Za-z0-9_.+-]+\.jar\Z")
 _FIXTURE_FILE = re.compile(r"[A-Za-z0-9_.+-]{1,120}\.msi\Z")
@@ -2003,7 +2010,12 @@ class Job:
         return value if type(value) is dict else None
 
     def _admit(self):
-        """A new job refuses unless every prior exit is known and every fence is terminal."""
+        """A new job refuses unless every prior exit is known and every fence is terminal.
+
+        Only then, under the admission lock and with no job of this clone running, the closed journals of those ended
+        jobs leave the VM root for its archive (_archive_closed), and the live entries left count against the bound.
+        """
+        ended = []
         for other in sorted(self.data.parent.iterdir()):
             if other.name == self.op or _UUID.fullmatch(other.name) is None:
                 continue
@@ -2011,9 +2023,11 @@ class Job:
             if (record is None or record.get("operationId") != other.name or type(record.get("exitCode")) is not int
                     or record["exitCode"] not in KNOWN_EXITS):
                 raise Refused("prior_job_exit_unknown")
-            fence = "direct-guest-" + other.name
-            if record.get("fenceAnchored") is not False and not os.path.lexists(self.root / (fence + ".intent.json")):
+            fence = "direct-guest-" + other.name + ".intent.json"
+            if (record.get("fenceAnchored") is not False and not os.path.lexists(self.root / fence)
+                    and not os.path.lexists(self.root / VM_ROOT_ARCHIVE / other.name / fence)):
                 raise Refused("prior_job_fence_missing")
+            ended.append(other.name)
         if self.row.get("priorInstall"):
             self.prior_installed = self._prior_install()
             if self.plan.get("cleanStart") is True and (self.row.get("reboot") or {}).get("phase") != "post":
@@ -2024,18 +2038,109 @@ class Job:
             self._reboot_chain()
         if self.update:
             self.target_install = self._target_install()
-        names = [path.name for path in self.root.iterdir()]
-        if len(names) > VM_ROOT_ENTRY_LIMIT:
-            raise Refused("vm_root_entry_bound")
+        names = self._root_names()
         for name in names:
             if name.startswith("direct-guest-") and name.endswith(".intent.json"):
-                terminal = self._read_record(self.root / (name[:-len(".intent.json")] + ".terminal.json"))
-                if terminal is None or terminal.get("exited") is not True or type(terminal.get("exitcode")) is not int:
+                if not self._closed(self.root / (name[:-len(".intent.json")] + ".terminal.json")):
                     raise Refused("prior_fence_open")
+        try:
+            self.rt.exclusive(lambda: self._archive_closed(ended))
+        except Refused:
+            raise
+        except Exception:
+            # Nothing reached the guest, and every file is in exactly one place: the next admission takes it from there.
+            raise Refused("vm_root_archive_failed") from None
+        if len(self._root_names()) > VM_ROOT_ENTRY_LIMIT:
+            raise Refused("vm_root_entry_bound")
         try:
             self.rt.rpc("guest-ping", {}, budget=8)
         except Exception:
             raise Refused("guest_agent_unavailable") from None
+
+    def _root_names(self):
+        """The VM root's names, read once and bounded before anything is decided from them."""
+        names = []
+        with os.scandir(self.root) as entries:
+            for entry in entries:
+                names.append(entry.name)
+                if len(names) > VM_ROOT_SCAN_LIMIT:
+                    raise Refused("vm_root_entry_bound")
+        return names
+
+    def _closed(self, path):
+        """A guest-exec terminal that closes its fence: exited, with an integer exit code."""
+        terminal = self._read_record(path)
+        return terminal is not None and terminal.get("exited") is True and type(terminal.get("exitcode")) is int
+
+    def _family_operation(self, intent_path, prefix, ended):
+        """The ended job a direct-guest family belongs to, or None: only its own names bind it.
+
+        The job's fence is direct-guest-<operation> with label scenario-fence; each of its guest programs is
+        direct-guest-uuid5(operation, label) (guest_program). A UAC decision's fence, whose operation is the decision's
+        own id, a legacy intent without a label, or any family of an operation that is not an ended job here binds none.
+        """
+        intent = self._read_record(intent_path)
+        operation = intent.get("operationId") if intent is not None else None
+        label = intent.get("label") if intent is not None else None
+        if (not isinstance(operation, str) or operation not in ended or not isinstance(label, str)
+                or _LABEL.fullmatch(label) is None):
+            return None
+        expected = operation if label == "scenario-fence" else str(uuid.uuid5(uuid.UUID(operation), label))
+        return operation if prefix == "direct-guest-" + expected else None
+
+    def _archive_closed(self, ended):
+        """Move the closed journals of ended jobs into VM_ROOT_ARCHIVE/<operation>/, unchanged, under their own names.
+
+        Admission calls this only after every prior exit was found known and every intent in the VM root closed, under
+        the admission lock and with the VM root's lock held, so no job, readiness census or UAC owner of this clone reads
+        or writes the root meanwhile. A family moves only when _family_operation binds it to one of those ended jobs and
+        its terminal closes it; any other name stays: a UAC decision's fence, readiness and lifecycle journals, a legacy
+        or unknown family, a family with a file it does not know. Each file moves by one rename inside the VM root's file
+        system and never over an existing name, intent first, so every file is in exactly one place at every instant and
+        the root never holds an intent without its terminal. A crash between renames leaves an ack or terminal whose
+        intent is archived; the next admission moves it after its intent. Nothing is deleted or rewritten: a fence check
+        (prior_job_fence_missing) or a diagnosis of a settled job reads the same bytes in the archive. Returns the
+        operations it moved files of. The root is listed again under its lock, so what is moved is what is there.
+        """
+        ended = set(ended)
+        families = {}
+        for name in self._root_names():
+            match = _JOURNAL.fullmatch(name)
+            if match is not None:
+                families.setdefault(match[1], set()).add(match[2])
+        archive = self.root / VM_ROOT_ARCHIVE
+        moved = set()
+        for prefix, suffixes in sorted(families.items()):
+            if not suffixes <= set(JOURNAL_SUFFIXES):
+                continue
+            if ".intent.json" in suffixes:
+                operation = self._family_operation(self.root / (prefix + ".intent.json"), prefix, ended)
+                if operation is None or not self._closed(self.root / (prefix + ".terminal.json")):
+                    continue
+            else:
+                # What a crash left: the intent, bound and closed when it moved, is in exactly one ended job's folder.
+                owners = [other for other in sorted(ended) if os.path.lexists(archive / other / (prefix + ".intent.json"))]
+                if len(owners) != 1 or self._family_operation(archive / owners[0] / (prefix + ".intent.json"), prefix, ended) != owners[0]:
+                    continue
+                operation = owners[0]
+            target = archive / operation
+            pairs = [(self.root / (prefix + suffix), target / (prefix + suffix)) for suffix in JOURNAL_SUFFIXES if suffix in suffixes]
+            if any(not stat.S_ISREG(os.lstat(source).st_mode) or os.path.lexists(destination) for source, destination in pairs):
+                continue  # Never a link or a folder, never over an existing name: the whole family stays live.
+            for directory in (archive, target):
+                try:
+                    os.mkdir(directory, 0o700)
+                except FileExistsError:
+                    pass
+                if not stat.S_ISDIR(os.lstat(directory).st_mode):
+                    raise Refused("vm_root_archive_unsafe")
+            for source, destination in pairs:
+                os.rename(source, destination)
+                moved.add(operation)
+        if moved:
+            for directory in [self.root, archive, *(archive / operation for operation in sorted(moved))]:
+                _sync_directory(directory)
+        return moved
 
     def _installer_record(self, prior):
         """A passed installer job of this VM: its receipt's installed facts, or a refusal."""
@@ -4422,6 +4527,20 @@ def run_job(rt, plan, files):
     return Job(rt, plan, files).run()
 
 
+def _sync_directory(path):
+    """Best effort: a rename a crash undoes leaves its file where it was, which the next admission handles alike."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        pass
+    finally:
+        os.close(descriptor)
+
+
 def locked_exchange(path, perform, *, wait=QGA_LOCK_WAIT_SECONDS, monotonic=time.monotonic, sleep=time.sleep):
     """Flock around one exchange only, released before returning, so readiness still works."""
     descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
@@ -4539,9 +4658,12 @@ def _host_main():
             descriptor = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
             fcntl.flock(descriptor, fcntl.LOCK_EX)
             return os.fdopen(descriptor, "rb")
+        def exclusive(perform):
+            # The VM root's own lock, which readiness holds for its whole census and each QGA exchange for its one call.
+            return locked_exchange(root / "intent.json", perform)
         rt = types.SimpleNamespace(root=root, pid=os.getpid(), rpc=exchange, save=durable_save, sleep=time.sleep,
                                    monotonic=time.monotonic, emit=print, open_wires=open_wires, after_read=after_read,
-                                   admission=admission, wire_mark=wire_mark, wire_since=wire_since)
+                                   admission=admission, wire_mark=wire_mark, wire_since=wire_since, exclusive=exclusive)
         files = _staged_files()
     except Exception as error:  # Nothing reached the guest and no fence exists.
         return marker(EXIT_REFUSED, "host_setup:" + _setup_reason(error))
