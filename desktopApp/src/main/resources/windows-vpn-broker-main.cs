@@ -56,14 +56,19 @@ public static class VpnRuntimeBrokerEntry {
 #endif
  }
  internal static int Execute(string[] args,Action<Invocation> run) {
+  // A refusal exits with the step it happened in (VpnBrokerStep). The client reads that code from the
+  // process it launched, since nothing else of an elevated broker that ended before its pipe reaches it.
   try {
+   VpnBrokerStep.Enter(VpnBrokerStep.Arguments);
    Invocation invocation=Parse(args);
+   VpnBrokerStep.Enter(VpnBrokerStep.RuntimeAuthority);
    RequireRuntimeAuthority(invocation);
+   VpnBrokerStep.Enter(VpnBrokerStep.Unclassified);
    run(invocation);
    return 0;
-  } catch(AuthorityFailure failure) { Console.Error.WriteLine(failure.Code);return 1;
-  } catch(OutOfMemoryException) { Console.Error.WriteLine("RESOURCE_EXHAUSTED");return 1; }
-  catch(ArgumentException) { Console.Error.WriteLine("INVALID_ARGUMENT");return 1; }
-  catch(Exception) { Console.Error.WriteLine("RUNTIME_FAILED");return 1; }
+  } catch(AuthorityFailure failure) { Console.Error.WriteLine(failure.Code);return VpnBrokerStep.Current;
+  } catch(OutOfMemoryException) { Console.Error.WriteLine("RESOURCE_EXHAUSTED");return VpnBrokerStep.Current; }
+  catch(ArgumentException) { Console.Error.WriteLine("INVALID_ARGUMENT");return VpnBrokerStep.Current; }
+  catch(Exception) { Console.Error.WriteLine("RUNTIME_FAILED");return VpnBrokerStep.Current; }
  }
 }

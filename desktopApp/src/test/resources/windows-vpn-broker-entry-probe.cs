@@ -15,13 +15,27 @@ public static class BrokerEntryAuthorityProbe {
    error=output.ToString().Trim();
   }
   if(mode=="match") Need(code==0&&calls==1&&error=="","Matching compiled runtime was not admitted exactly once");
-  else Need(code==1&&calls==0&&error==(mode=="missing"?"UNAVAILABLE":"PERMISSION_DENIED"),
+  // A refused runtime authority exits with its own step code (VpnBrokerStep.RuntimeAuthority).
+  else Need(code==11&&calls==0&&error==(mode=="missing"?"UNAVAILABLE":"PERMISSION_DENIED"),
    "Missing or mismatched runtime authority reached the privileged runner: "+code+":"+calls+":"+error);
   using(var output=new StringWriter()) {
    try { Console.SetError(output);code=VpnRuntimeBrokerEntry.Execute(new string[0],invocation=>{calls++;}); }
    finally { Console.SetError(prior); }
-   Need(code==1&&output.ToString().Trim()=="INVALID_ARGUMENT"&&calls==(mode=="match"?1:0),"Malformed argument classification changed");
+   Need(code==10&&output.ToString().Trim()=="INVALID_ARGUMENT"&&calls==(mode=="match"?1:0),"Malformed argument classification changed");
   }
-  return "BROKER_AUTHORITY_OK:"+mode+":2";
+  using(var output=new StringWriter()) {
+   // A runner failure exits with the last step the runner entered, and 1 when it entered none.
+   try {
+    Console.SetError(output);
+    code=VpnRuntimeBrokerEntry.Execute(args,invocation=>{VpnBrokerStep.Enter(VpnBrokerStep.Job);throw new IOException("fixture");});
+   } finally { Console.SetError(prior); }
+   Need(code==(mode=="match"?34:11),"A runner failure did not exit with its step: "+code);
+   try {
+    Console.SetError(output);
+    code=VpnRuntimeBrokerEntry.Execute(args,invocation=>{throw new IOException("fixture");});
+   } finally { Console.SetError(prior); }
+   Need(code==(mode=="match"?1:11),"An unclassified runner failure did not exit 1: "+code);
+  }
+  return "BROKER_AUTHORITY_OK:"+mode+":4";
  }
 }

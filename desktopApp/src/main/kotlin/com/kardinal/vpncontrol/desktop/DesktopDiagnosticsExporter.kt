@@ -26,6 +26,7 @@ object DesktopDiagnosticsExporter {
         runtimeConfigJson: String?,
         preflightReport: DesktopPreflightReport?,
         vpnCapabilityStatus: String?,
+        windowsBrokerFailure: String? = null,
     ): String {
         val logTail = logFile
             ?.takeIf { Files.exists(it) }
@@ -58,6 +59,7 @@ object DesktopDiagnosticsExporter {
             appendLine("custom_dns_endpoint_present=${state.dnsSettings.endpoint.isNotBlank()}")
             appendLine("legacy_dns_migration_pending=${state.dnsSettings.legacyRawAddress.isNotBlank()}")
             appendLine("current_proxy_port=${currentPort ?: "none"}")
+            appendLine("windows_vpn_broker_last_failure=${windowsBrokerFailure?.let(DiagnosticsSanitizer::redactText) ?: "none"}")
             appendLine("runtime_log_file=${logFile?.toAbsolutePath()?.let { DiagnosticsSanitizer.redactText(it.toString()) } ?: "none"}")
             appendLine("last_benchmark_summary=${DiagnosticsSanitizer.redactText(state.lastBenchmarkSummary)}")
             appendLine("find_best_state=${findBestState(state)}")

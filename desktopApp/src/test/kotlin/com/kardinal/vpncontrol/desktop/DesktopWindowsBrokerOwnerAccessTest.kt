@@ -6,6 +6,9 @@ import java.util.concurrent.TimeUnit
 import org.junit.Assume.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
@@ -67,6 +70,85 @@ class DesktopWindowsBrokerOwnerAccessTest {
                 problems += "the privileged retry is not limited to an ACCESS_DENIED plain open"
         }
         assertTrue(problems.isEmpty(), problems.joinToString("\n"))
+    }
+
+    @Test fun theClientReadsTheExitedBrokersStepAfterAbortAndBeforeClose() {
+        val order = mutableListOf<String>()
+        val unresolved = { error("no unresolved runtime") }
+        val gone = desktopWindowsPreparationFailure(IllegalStateException("UNAVAILABLE"),
+            DesktopWindowsRuntimePreparationStage.HELPER_CONNECTION, abort = { order += "abort"; true },
+            close = { order += "close" }, unresolved = unresolved, brokerExit = { order += "exit"; 21 })
+        assertEquals(listOf("abort", "exit", "close"), order, "the exit code must be read before close releases the handle")
+        assertEquals("UNAVAILABLE", gone.code)
+        assertEquals(21, gone.brokerExit)
+        assertEquals("scoped Windows broker ended at step owner-token (exit 21, stage HELPER_CONNECTION, code UNAVAILABLE)",
+            DesktopWindowsBrokerExit.describe(gone))
+        val reported = desktopWindowsPreparationFailure(DesktopWindowsRuntimeFailure("PERMISSION_DENIED",
+            stage = DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS), DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS,
+            abort = { true }, close = {}, unresolved = unresolved, brokerExit = { 34 })
+        assertEquals("PERMISSION_DENIED", reported.code)
+        assertEquals("job", DesktopWindowsBrokerExit.step(assertNotNull(reported.brokerExit)))
+        var read = false
+        val unknown = desktopWindowsPreparationFailure(IllegalStateException("UNAVAILABLE"),
+            DesktopWindowsRuntimePreparationStage.HELPER_CONNECTION, abort = { false }, close = {},
+            unresolved = { object : DesktopRuntimeProcess {
+                override val isAlive = true
+                override fun pid() = 7L
+                override fun destroy() = Unit
+                override fun destroyForcibly() = Unit
+                override fun waitFor(timeout: Long, unit: TimeUnit) = false
+            } }, brokerExit = { read = true; 21 })
+        assertEquals("OUTCOME_UNKNOWN", unknown.code)
+        assertFalse(read, "a broker that may still run has no exit code")
+        assertEquals("unclassified", DesktopWindowsBrokerExit.step(1))
+        assertEquals("unknown", DesktopWindowsBrokerExit.step(259))
+        val log = Files.createTempFile("vpn-broker-step-", ".log")
+        try {
+            assertEquals(DesktopWindowsBrokerExit.describe(gone), DesktopWindowsBrokerExit.record(gone, log))
+            assertEquals("vpn-control: ${DesktopWindowsBrokerExit.describe(gone)}\n", Files.readString(log))
+            assertNull(DesktopWindowsBrokerExit.record(DesktopWindowsRuntimeFailure("UNAVAILABLE"), log), "no exit, no line")
+        } finally { Files.delete(log) }
+    }
+
+    @Test fun theClientStepTableIsTheBrokersExitCodes() {
+        val broker = code("windows-vpn-broker.cs")
+        val body = classBody(broker, "VpnBrokerStep")
+        assertNotNull(body, "windows-vpn-broker.cs has no VpnBrokerStep")
+        val declaration = Regex("""public\s+const\s+int\s+([^;]+);""").find(broker.substring(body.first, body.last + 1))
+        val native = assertNotNull(declaration).groupValues[1].split(',').associate { item ->
+            val (name, value) = item.split('=').map { it.trim() }
+            value.toInt() to name.replace(Regex("(?<=[a-z])(?=[A-Z])"), "-").lowercase()
+        } + (0 to "success")
+        assertEquals(native.toSortedMap(), DesktopWindowsBrokerExit.STEPS.toSortedMap())
+        assertEquals(native.size, native.keys.toSet().size)
+    }
+
+    @Test fun theBrokerEntersEachStepBeforeItsRefusalPoints() {
+        fun steps(text: String, within: IntRange) = Regex("""VpnBrokerStep\.Enter\(VpnBrokerStep\.(\w+)\)""")
+            .findAll(text.substring(within.first, within.last + 1)).map { it.groupValues[1] }.toList()
+        fun method(text: String, declaration: String): IntRange {
+            val start = Regex(declaration).find(text)?.range?.last ?: error("no $declaration")
+            var depth = 0
+            for (index in text.indexOf('{', start) until text.length) when (text[index]) {
+                '{' -> depth++
+                '}' -> if (--depth == 0) return start..index
+            }
+            error("unclosed $declaration")
+        }
+        val broker = code("windows-vpn-broker.cs")
+        assertEquals(listOf("OwnerOpen", "OwnerIdentity", "OwnerToken", "OwnerIdentity", "PipeCreate", "PipeConnect", "Peer",
+            "Protocol", "Job", "ResourcePreparation", "RuntimeImage", "Stage", "OriginalUser", "Stage", "Configuration",
+            "ChildCreate", "ReadyAck", "Running"), steps(broker, method(broker, """public\s+static\s+void\s+Run\s*\(""")))
+        val admission = code("windows-vpn-helper-admission.cs")
+        assertEquals(listOf("OwnerOpen", "OwnerIdentity", "PackageAdmission", "OwnerOpen", "OwnerIdentity", "Unclassified"),
+            steps(admission, method(admission, """internal\s+static\s+Lease\s+Retain\s*\([^)]*Native\s+native\)""")))
+        assertEquals(listOf("OwnerToken", "OwnerIdentity"),
+            steps(admission, method(admission, """public\s+Owner\s+ObserveOwner\s*\(""")))
+        val entry = code("windows-vpn-broker-main.cs")
+        val execute = method(entry, """internal\s+static\s+int\s+Execute\s*\(""")
+        assertEquals(listOf("Arguments", "RuntimeAuthority", "Unclassified"), steps(entry, execute))
+        val returns = Regex("""return\s+([^;]+);""").findAll(entry.substring(execute.first, execute.last + 1)).map { it.groupValues[1] }.toList()
+        assertEquals(listOf("0", "VpnBrokerStep.Current", "VpnBrokerStep.Current", "VpnBrokerStep.Current", "VpnBrokerStep.Current"), returns)
     }
 
     /** Fake identities through the compiled decision, then this process's own token through the real natives. */

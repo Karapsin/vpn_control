@@ -168,7 +168,7 @@ internal object DesktopWindowsVpnBroker {
             is kotlinx.coroutines.CancellationException -> "CANCELLED"
             else -> "UNAVAILABLE"
         }, nativeFailure?.unresolvedRuntime,
-            nativeFailure?.stage ?: DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS, pending)
+            nativeFailure?.stage ?: DesktopWindowsRuntimePreparationStage.CAPTURED_INPUTS, pending, nativeFailure?.brokerExit)
     }
 
     /** Ordinary-owner admission surrounds authorization and the helper's preparation acknowledgment. */
@@ -474,6 +474,14 @@ internal object DesktopWindowsVpnBroker {
             return exchange(0)
         }
         @Synchronized override fun stop(force: Boolean) { pending = exchange(if (force) 2 else 1) }
+        @Synchronized override fun brokerExitCode(): Int? {
+            val process = broker ?: return null
+            if (closed || Kernel32.INSTANCE.WaitForSingleObject(process, 0) != 0) return null
+            // The ShellExecuteEx handle already serves GetProcessId and QueryFullProcessImageName, so it has
+            // PROCESS_QUERY_LIMITED_INFORMATION, which is all GetExitCodeProcess needs.
+            val code = IntByReference()
+            return if (Kernel32.INSTANCE.GetExitCodeProcess(process, code)) code.value else null
+        }
         override fun childExited() = closed || if (broker == null) ownedJob?.isEmpty() != false else
             (Kernel32.INSTANCE.WaitForSingleObject(broker, 0) == 0 && job.isEmpty())
         private fun exchange(command: Int): DesktopWindowsRuntimeStatus {

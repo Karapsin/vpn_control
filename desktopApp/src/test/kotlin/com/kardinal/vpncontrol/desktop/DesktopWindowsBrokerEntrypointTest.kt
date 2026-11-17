@@ -47,7 +47,7 @@ class DesktopWindowsBrokerEntrypointTest {
         }
         val output = process.inputStream.use { it.readNBytes(8193).decodeToString().take(8192) }
         assertEquals(0, process.exitValue(), output)
-        assertTrue(output.endsWith("BROKER_AUTHORITY_OK:$mode:2"), output)
+        assertTrue(output.endsWith("BROKER_AUTHORITY_OK:$mode:4"), output)
         (names + "authority.cs").forEach { Files.delete(root.resolve(it)) }
         Files.delete(root)
     }

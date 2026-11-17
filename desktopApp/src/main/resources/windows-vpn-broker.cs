@@ -425,6 +425,7 @@ public static class VpnRuntimeBroker {
  }
  public static void Run(string pipeName,uint ownerPid,long ownerStart,string ownerSid,string expectedHash) {
   // SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_DUP_HANDLE, also when another administrator approved.
+  VpnBrokerStep.Enter(VpnBrokerStep.OwnerOpen);
   int ownerError; IntPtr owner=VpnBrokerOwnerProcess.Open(ownerPid,0x101040,out ownerError); Need(owner!=IntPtr.Zero);
   IntPtr job=IntPtr.Zero,attributes=IntPtr.Zero,jobSlot=IntPtr.Zero,handles=IntPtr.Zero; bool jobAdmitted=false; PI child=new PI();
   var pins=new System.Collections.Generic.List<SafeFileHandle>(); string stage=null; SafeFileHandle stagePin=null;
@@ -434,11 +435,15 @@ public static class VpnRuntimeBroker {
   FileStream admissionStream=null;ResourceAdmissionGate admissionGate=null;
   Thread watchdog=null; int watchdogDone=0;
   try {
+   VpnBrokerStep.Enter(VpnBrokerStep.OwnerIdentity);
    long c,e,k,u; Need(GetProcessTimes(owner,out c,out e,out k,out u)&&c==ownerStart);
+   VpnBrokerStep.Enter(VpnBrokerStep.OwnerToken);
    IntPtr token; Need(OpenProcessToken(owner,8,out token));
+   VpnBrokerStep.Enter(VpnBrokerStep.OwnerIdentity);
    try { using(var identity=new WindowsIdentity(token)) Need(identity.User.Value==ownerSid); } finally { CloseHandle(token); }
    // The retained OpenProcess handle and native FILETIME bind this exact process object.
    // Do not re-resolve its PID through a second, independently raced managed process lookup.
+   VpnBrokerStep.Enter(VpnBrokerStep.PipeCreate);
    var acl=new PipeSecurity(); acl.SetAccessRuleProtection(true,false);
    acl.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(ownerSid),PipeAccessRights.ReadWrite,AccessControlType.Allow));
    acl.AddAccessRule(new PipeAccessRule(new SecurityIdentifier("S-1-5-32-544"),PipeAccessRights.FullControl,AccessControlType.Allow));
@@ -447,7 +452,9 @@ public static class VpnRuntimeBroker {
     server=CreateNamedPipe("\\\\.\\pipe\\"+pipeName,0x40080003,8,1,65536,65536,0,ref security); Need(!server.IsInvalid);
    } finally { pinned.Free(); }
    using(var pipe=new NamedPipeServerStream(PipeDirection.InOut,true,false,server)) {
+    VpnBrokerStep.Enter(VpnBrokerStep.PipeConnect);
     var connection=pipe.BeginWaitForConnection(null,null); Need(connection.AsyncWaitHandle.WaitOne(180000)); pipe.EndWaitForConnection(connection);
+    VpnBrokerStep.Enter(VpnBrokerStep.Peer);
     uint peer; Need(GetNamedPipeClientProcessId(pipe.SafePipeHandle,out peer)&&peer==ownerPid&&WaitForSingleObject(owner,0)==258);
     // Interrupt the protocol so normal finally disposal confirms child exit and cleans private input.
     // Environment.Exit bypasses finally and leaves every completed stage behind after owner death.
@@ -456,22 +463,27 @@ public static class VpnRuntimeBroker {
     }}); watchdog.IsBackground=true; watchdog.Start();
     using(var reader=new BinaryReader(pipe,Encoding.UTF8,true)) using(var writer=new BinaryWriter(pipe,Encoding.UTF8,true)) {
      try {
+     VpnBrokerStep.Enter(VpnBrokerStep.Protocol);
      int protocol=reader.ReadInt32();
      if(protocol!=4&&protocol!=5) throw new IOException("INCOMPATIBLE_PROTOCOL");
      // Duplicate only authority the authenticated ordinary owner already retained before UAC.
      // A fresh anonymous job pins every possible child even if its creation acknowledgment is lost.
+     VpnBrokerStep.Enter(VpnBrokerStep.Job);
      Need(DuplicateHandle(owner,new IntPtr(reader.ReadInt64()),GetCurrentProcess(),out job,0,false,2));
      var limits=new LIMIT(); var accounting=new ACCOUNTING();
      Need(QueryJobLimits(job,9,ref limits,Marshal.SizeOf<LIMIT>(),IntPtr.Zero)&&limits.flags==0x2008&&limits.active==1);
      Need(QueryJobAccounting(job,1,ref accounting,Marshal.SizeOf<ACCOUNTING>(),IntPtr.Zero)&&accounting.total==0&&accounting.active==0);
      jobAdmitted=true;
      if(protocol==5) {
+      VpnBrokerStep.Enter(VpnBrokerStep.ResourcePreparation);
       mutablePreparation=RuntimeResourcePreparation.ReadFrameForOwner(reader,new OwnerIdentity(ownerPid,ownerStart,ownerSid));
       foreach(var item in mutablePreparation.Inputs)
        if(item.Identity.Kind!="CACHE"&&item.Identity.Kind!="OUTPUT") throw new IOException("UNSUPPORTED");
      }
+     VpnBrokerStep.Enter(VpnBrokerStep.RuntimeImage);
      byte[] image=Blob(reader,192*1024*1024);
      using(var sha=SHA256.Create()) Need(BitConverter.ToString(sha.ComputeHash(image)).Replace("-","").ToLowerInvariant()==expectedHash);
+     VpnBrokerStep.Enter(VpnBrokerStep.Stage);
      string root=Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
      var ancestors=new System.Collections.Generic.Stack<string>(); for(var d=new DirectoryInfo(root);d!=null;d=d.Parent) ancestors.Push(d.FullName);
      foreach(var ancestor in ancestors) pins.Add(Pin(ancestor,false,pins));
@@ -486,7 +498,9 @@ public static class VpnRuntimeBroker {
       admissionStream=new FileStream(Path.Combine(stage,".admission"),FileMode.CreateNew,FileAccess.ReadWrite,FileShare.None,65536,FileOptions.WriteThrough);
       admissionGate=ResourceAdmissionGate.CreateForOriginal(admissionStream,mutablePreparation.Binding,
        ()=>WaitForSingleObject(owner,0)==258);
+      VpnBrokerStep.Enter(VpnBrokerStep.OriginalUser);
       originalUser=new OriginalUser(owner,ownerSid);
+      VpnBrokerStep.Enter(VpnBrokerStep.Stage);
       var names=new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
       foreach(var item in mutablePreparation.Inputs) { names.Add(RuntimeCacheResources.OwnedDataName(item.Identity));names.Add("publication-"+item.Identity.Id+".journal"); }
       mutableResources=new RuntimeCacheResources(originalUser,mutablePreparation.Binding,mutablePreparation.Inputs,
@@ -498,6 +512,7 @@ public static class VpnRuntimeBroker {
      }
      string executable=Path.Combine(stage,"sing-box.exe"),configuration=Path.Combine(stage,"config.json"),log=Path.Combine(stage,"runtime.log");
      using(var f=new FileStream(executable,FileMode.CreateNew,FileAccess.Write,FileShare.None)) f.Write(image,0,image.Length);
+     VpnBrokerStep.Enter(VpnBrokerStep.Configuration);
      string received=Path.Combine(stage,"received.json"); ConfigurationBlob(reader,received);
      var resources=Resources(reader,stage,resourceFiles);
      string normalized=NormalizeConfiguration(File.ReadAllText(received,new UTF8Encoding(false,true)),stage,resources,
@@ -507,6 +522,7 @@ public static class VpnRuntimeBroker {
      normalized=null; File.Delete(received);
      using(var output=new FileStream(log,FileMode.CreateNew,FileAccess.ReadWrite,FileShare.ReadWrite))
      using(var input=new FileStream(configuration,FileMode.Open,FileAccess.Read,FileShare.Read)) {
+      VpnBrokerStep.Enter(VpnBrokerStep.ChildCreate);
       IntPtr outHandle=output.SafeFileHandle.DangerousGetHandle(),inHandle=input.SafeFileHandle.DangerousGetHandle();
       Need(SetHandleInformation(outHandle,1,1)&&SetHandleInformation(inHandle,1,1));
       IntPtr size=IntPtr.Zero; InitializeProcThreadAttributeList(IntPtr.Zero,2,0,ref size); attributes=Marshal.AllocHGlobal(size);
@@ -521,11 +537,13 @@ public static class VpnRuntimeBroker {
       finally { Marshal.FreeHGlobal(environment); }
       // The original owner already retains this exact job; no undiscoverable duplicated child
       // handle leaks if the acknowledgment is lost. Only COMMIT executes the suspended child.
+      VpnBrokerStep.Enter(VpnBrokerStep.ReadyAck);
       writer.Write((byte)0); writer.Write(child.pid); writer.Flush();
       Need(reader.ReadByte()==3);
       if(mutableLifecycle==null) Need(ResumeThread(child.thread)==1);
       else mutableLifecycle.Commit(()=>Need(ResumeThread(child.thread)==1));
       writer.Write((byte)0); writer.Flush(); long offset=0;
+      VpnBrokerStep.Enter(VpnBrokerStep.Running);
       while(true) {
        int command=reader.ReadByte(); Need(command==0||command==1||command==2);
        if(command!=0) {
@@ -567,6 +585,21 @@ public static class VpnRuntimeBroker {
    if(watchdogExited) CloseHandle(owner); // Do not close a native handle while another thread waits on it.
   }
  }
+}
+
+/** The broker's exit code names the last step it entered, so a broker that ended before its pipe answered still
+ * says where it stopped. The client reads it from the process handle it holds (GetExitCodeProcess) and writes the
+ * named step to the product's runtime log and diagnostics export; DesktopWindowsBrokerExit holds the same table.
+ * 0 is success and 1 an unclassified failure before any step. Steps 20 to 22 are the owner checks of both the
+ * packaged admission and VpnRuntimeBroker.Run; 23 is the rest of the admission (images, ancestry, install gate). */
+public static class VpnBrokerStep {
+ public const int Unclassified=1,Arguments=10,RuntimeAuthority=11,
+  OwnerOpen=20,OwnerToken=21,OwnerIdentity=22,PackageAdmission=23,
+  PipeCreate=30,PipeConnect=31,Peer=32,Protocol=33,Job=34,ResourcePreparation=35,
+  RuntimeImage=40,Stage=41,OriginalUser=42,Configuration=43,ChildCreate=44,ReadyAck=45,Running=50;
+ static int current=Unclassified;
+ public static int Current { get { return Volatile.Read(ref current); } }
+ public static void Enter(int step) { Volatile.Write(ref current,step); }
 }
 
 /** How the elevated broker opens its ordinary owner process, by the PID on its own argv.

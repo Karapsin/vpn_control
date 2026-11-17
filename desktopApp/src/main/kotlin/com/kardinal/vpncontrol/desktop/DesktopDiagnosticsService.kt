@@ -19,6 +19,7 @@ internal class DesktopDiagnosticsService(
         runtimeConfigJson = desktopStore.readRuntimeConfig() ?: runtimeManager.lastAttemptedConfigJson(),
         preflightReport = runtimeManager.lastPreflightReport(),
         vpnCapabilityStatus = runtimeManager.desktopVpnCapabilityStatus(),
+        windowsBrokerFailure = runtimeManager.lastWindowsBrokerFailure(),
     )
 
     suspend fun export(selection: Result<Path?>) {

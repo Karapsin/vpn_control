@@ -15,6 +15,7 @@ internal class DesktopWindowsVpnHelperChannel(
     @Synchronized override fun status(): DesktopWindowsRuntimeStatus =
         if (channelClosed) DesktopWindowsRuntimeStatus(false) else channel.status()
     @Synchronized override fun stop(force: Boolean) { if (!channelClosed) channel.stop(force) }
+    @Synchronized override fun brokerExitCode(): Int? = if (channelClosed) null else channel.brokerExitCode()
 
     @Synchronized override fun close() {
         if (closed) return
@@ -53,7 +54,8 @@ internal fun desktopWindowsPrepareFixedHelper(
     } catch (failure: Throwable) {
         if (enteredAuthorization) {
             throw desktopWindowsPreparationFailure(failure, stage(),
-                abort = channel::abort, close = channel::close, unresolved = { checkNotNull(retained) })
+                abort = channel::abort, close = channel::close, unresolved = { checkNotNull(retained) },
+                brokerExit = channel::brokerExitCode)
         }
         // No authorization callback ran. The channel owns only an empty job and read-only pins.
         val pending = if (runCatching { channel.close() }.isFailure) channel else null

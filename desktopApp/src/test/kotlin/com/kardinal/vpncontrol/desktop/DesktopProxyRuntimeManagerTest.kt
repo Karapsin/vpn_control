@@ -262,6 +262,25 @@ class DesktopProxyRuntimeManagerTest {
         }
     }
 
+    @Test fun aBrokerThatExitedBeforeItsPipeNamesItsStepInTheRuntimeLogAndDiagnostics() = runBlocking {
+        runtimeTransitionFixture { fixture ->
+            val actual = fixture.start("127.0.0.1").getOrThrow()
+            val original = fixture.native.started.single()
+            fixture.native.prepareFailure = DesktopWindowsRuntimeFailure("UNAVAILABLE",
+                stage = DesktopWindowsRuntimePreparationStage.HELPER_CONNECTION, brokerExit = 21)
+            val result = fixture.start("127.0.0.2")
+            // The public code is still the transition's own; only the diagnostic detail is new.
+            assertEquals("RUNTIME_FAILED", result.exceptionOrNull()?.message)
+            assertTrue(original.isAlive, "A broker failure stopped actual A")
+            val line = assertNotNull(fixture.manager.lastWindowsBrokerFailure())
+            assertContains(line, "step owner-token (exit 21, stage HELPER_CONNECTION, code UNAVAILABLE)")
+            assertContains(Files.readString(fixture.manager.defaultLogFile()), "vpn-control: $line")
+            val report = DesktopDiagnosticsExporter.buildReport(com.kardinal.vpncontrol.MainUiState(), AppMode.PROXY_ONLY,
+                null, null, actual.logFile, null, null, null, fixture.manager.lastWindowsBrokerFailure())
+            assertContains(report, "windows_vpn_broker_last_failure=$line")
+        }
+    }
+
     @Test fun invalidCandidatePreservesActualChildAndPublishedInputs() = runBlocking {
         runtimeTransitionFixture { fixture ->
             val actual = fixture.start("127.0.0.1").getOrThrow()

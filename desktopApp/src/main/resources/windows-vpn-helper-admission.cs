@@ -73,8 +73,12 @@ public static class VpnPackagedBrokerAdmission {
   Need(pid>0&&created>0&&new SecurityIdentifier(sid).Value==sid,"INVALID_ARGUMENT");
   Lease lease=new Lease(native);
   try {
+   VpnBrokerStep.Enter(VpnBrokerStep.OwnerOpen);
    Handle process=lease.Keep(native.OpenOwner(pid));
-   Owner owner=native.ObserveOwner(process);RequireOwner(owner,pid,created,sid);
+   Owner owner=native.ObserveOwner(process);
+   VpnBrokerStep.Enter(VpnBrokerStep.OwnerIdentity);
+   RequireOwner(owner,pid,created,sid);
+   VpnBrokerStep.Enter(VpnBrokerStep.PackageAdmission);
    string query=PlainPath(owner.Image);
    // Pin the queried leaf before following its canonical spelling. The full linked
    // ancestry is admitted below, before opening a pipe or accepting runtime input.
@@ -119,8 +123,12 @@ public static class VpnPackagedBrokerAdmission {
      Need(bytes[8]==0,"BUSY");
     }
    }
-   Owner rechecked=native.ObserveOwner(process);RequireOwner(rechecked,pid,created,sid);
+   VpnBrokerStep.Enter(VpnBrokerStep.OwnerOpen);
+   Owner rechecked=native.ObserveOwner(process);
+   VpnBrokerStep.Enter(VpnBrokerStep.OwnerIdentity);
+   RequireOwner(rechecked,pid,created,sid);
    Need(rechecked.Image==owner.Image,"CONFLICT");
+   VpnBrokerStep.Enter(VpnBrokerStep.Unclassified);
    // Missing first gate deliberately retains both native executable pins. Existing
    // installer sibling write probes remain BUSY even after the JVM owner exits.
    return lease;
@@ -212,10 +220,13 @@ public static class VpnPackagedBrokerAdmission {
    IntPtr process=((Process)owner).Value;Need(process!=IntPtr.Zero,"UNAVAILABLE");
    uint pid=GetProcessId(process);long created,exited,kernel,user;
    Checked(GetProcessTimes(process,out created,out exited,out kernel,out user));
-   string image=Image(process);IntPtr token;Checked(OpenProcessToken(process,8,out token));tokens.Add(token);
+   string image=Image(process);IntPtr token;
+   VpnBrokerStep.Enter(VpnBrokerStep.OwnerToken);
+   Checked(OpenProcessToken(process,8,out token));tokens.Add(token);
    string sid;
    try { using(var identity=new WindowsIdentity(token)) { sid=identity.User.Value; } }
    finally { Checked(CloseHandle(token));tokens.Remove(token); }
+   VpnBrokerStep.Enter(VpnBrokerStep.OwnerIdentity);
    uint state=WaitForSingleObject(process,0);Need(state==0||state==258,"UNAVAILABLE");
    return new Owner(pid,created,sid,image,state==258);
   }

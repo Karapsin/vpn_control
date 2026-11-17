@@ -279,7 +279,15 @@ class DesktopProxyRuntimeManager(
         launch.appMode == AppMode.VPN && currentRuntimeOs() == DesktopRuntimeOs.WINDOWS
 
     private suspend fun prepareLaunch(launch: DesktopRuntimeLaunch,
-                                      caller: kotlin.coroutines.CoroutineContext): DesktopPreparedRuntimeProcess {
+                                      caller: kotlin.coroutines.CoroutineContext): DesktopPreparedRuntimeProcess = try {
+        prepareLaunchNative(launch, caller)
+    } catch (failure: DesktopWindowsRuntimeFailure) {
+        recordWindowsBrokerFailure(failure, launch.logFile)
+        throw failure
+    }
+
+    private suspend fun prepareLaunchNative(launch: DesktopRuntimeLaunch,
+                                            caller: kotlin.coroutines.CoroutineContext): DesktopPreparedRuntimeProcess {
         nativeOperations?.let { return it.prepare(launch) }
         if (scopedWindows(launch)) {
             val captured = checkNotNull(launch.captured)
@@ -360,6 +368,19 @@ class DesktopProxyRuntimeManager(
     fun defaultLogFile(): Path = baseDir.resolve("runtime-sing-box.log")
 
     fun lastPreflightReport(): DesktopPreflightReport? = lastPreflightReport
+
+    @Volatile private var lastWindowsBrokerFailure: String? = null
+
+    /** The last scoped start's broker step, for the diagnostics export. */
+    fun lastWindowsBrokerFailure(): String? = lastWindowsBrokerFailure
+
+    /**
+     * Names the step an exited broker stopped at, in the candidate's runtime log (kept as [defaultLogFile] when the
+     * launch retires) and for the diagnostics export. The failure and its public code are unchanged.
+     */
+    private fun recordWindowsBrokerFailure(failure: Throwable, logFile: Path) {
+        DesktopWindowsBrokerExit.record(failure, logFile)?.let { lastWindowsBrokerFailure = it }
+    }
 
     fun lastAttemptedConfigJson(): String? = lastAttemptedConfigJson
 

@@ -22,6 +22,8 @@ internal interface DesktopWindowsPreparedRuntimeChannel : DesktopWindowsRuntimeC
     fun commit()
     /** Abort only this candidate and return true only after its retained job and helper have exited. */
     fun abort(): Boolean
+    /** The exit code of the broker this channel launched once it has exited, or null while it runs or was never launched. */
+    fun brokerExitCode(): Int? = null
 }
 
 internal class DesktopWindowsRuntimeFailure(
@@ -31,7 +33,13 @@ internal class DesktopWindowsRuntimeFailure(
     val stage: DesktopWindowsRuntimePreparationStage? = null,
     /** Read-only native pins still belong to this preparation until exact closure succeeds. */
     val retainedAdmission: AutoCloseable? = null,
-) : java.io.IOException(code)
+    /** Diagnostic only: the exited broker's step code ([DesktopWindowsBrokerExit]). It never changes [code]. */
+    val brokerExit: Int? = null,
+) : java.io.IOException(code) {
+    fun withBrokerExit(exit: Int?): DesktopWindowsRuntimeFailure =
+        if (exit == null || brokerExit != null) this
+        else DesktopWindowsRuntimeFailure(code, unresolvedRuntime, stage, retainedAdmission, exit)
+}
 
 internal enum class DesktopWindowsRuntimePreparationStage { AUTHORIZATION, HELPER_CONNECTION, PEER_IDENTITY, CAPTURED_INPUTS, CHILD_CREATED, READY }
 
