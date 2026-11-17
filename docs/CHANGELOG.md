@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows reboot rows resolve task account names to SIDs, plant the legacy task in its creator-owned any-user shape, and refuse before any public toggle when the ordinary user could not change it.
 - Windows autostart treats a logon trigger whose Enabled element Task Scheduler omitted as enabled, so enabled tasks are no longer reported as conflicts when autostart is turned on or off.
 - Windows protected-storage update rows settle the product's process-admission refusal of a squatted install root as a known failure, removing the counterfeit before any further CLI call.
+- Windows VM instance identity no longer compares the QEMU or swtpm binary's link count and ctime, so running clones stay admissible after a host package upgrade replaces the binary on disk; the replacement is recorded.
 
 ## 2.3.2 - 2026-11-17
 
