@@ -50,7 +50,7 @@ GRADLE_CACHE_INPUTS = ("\n        with:\n          cache-read-only: true\n"
 FOOTPRINT_ENV = "          AGENT_TEST_FOOTPRINT_DIR: ${{ runner.temp }}/agent-test-footprints-0\n"
 GRADLE_CACHE_ENV = "        env:\n          GRADLE_OPTS: ${{ env.GRADLE_BUILD_CACHE_OPTS }}\n"
 GRADLE_CACHE_POLICY = "Set up Gradle build cache"
-GRADLE_RESTORE_POLICY = "Choose Gradle cache restore"
+GRADLE_RESTORE_POLICY = "Read Gradle cache restore policy"
 
 
 def steps(source, job="fast-checks"):

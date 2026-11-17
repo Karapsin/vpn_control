@@ -52,7 +52,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Choose Gradle cache restore
+      - name: Read Gradle cache restore policy
         id: gradle-restore
         shell: bash
         run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py --restore-policy

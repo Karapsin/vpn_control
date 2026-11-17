@@ -72,7 +72,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/prepare_android_native_tools.sh
 
-      - name: Choose Gradle cache restore
+      - name: Read Gradle cache restore policy
         id: gradle-restore
         if: ${{ !cancelled() }}
         shell: bash

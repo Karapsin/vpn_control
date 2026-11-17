@@ -269,7 +269,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: python scripts/test_windows_install_admission_diagnostic.py
 
-      - name: Choose Gradle cache restore
+      - name: Read Gradle cache restore policy
         id: gradle-restore
         if: ${{ !cancelled() }}
         shell: bash

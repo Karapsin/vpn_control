@@ -13,6 +13,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import check_ci_failure_discovery as discovery  # noqa: E402
 import gradle_cache_warm as warm  # noqa: E402
 import gradle_ci_cache as subject  # noqa: E402
 
@@ -29,7 +30,7 @@ CACHED_STEPS = {
     "windows-desktop.yml": ("Build Windows packages", "Run native desktop tests", "Run portable desktop tests"),
 }
 PRESERVED = ROOT / "agent_tools/tests/fixtures/agent_ci_shards/ci-gate.workflow.before.yml"
-RESTORE_STEP = "Choose Gradle cache restore"
+RESTORE_STEP = "Read Gradle cache restore policy"
 RESTORE_RUN = "run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py --restore-policy\n"
 RESTORE_INPUT = "          cache-disabled: ${{ steps.gradle-restore.outputs.restore != 'true' }}\n"
 # Main's frozen copy of the warm workflow runs a newer dev commit, so these
@@ -164,6 +165,19 @@ class WorkflowWiringTests(unittest.TestCase):
             if path.name != WARM:
                 problems += restore_problems(path.name, path.read_text(encoding="utf-8"))
         self.assertEqual([], problems)
+
+    def test_restore_policy_is_setup_so_a_job_before_its_first_check_needs_no_continuation(self):
+        # ci/2bf326354d21: "Choose Gradle cache restore" counted as the first TEST-006 check
+        # in the Windows jobs, so every later setup step "would be skipped after a failed check".
+        setup = ("      - name: Checkout\n        uses: actions/checkout@v4\n"
+                 "      - name: NAME\n        id: gradle-restore\n        shell: bash\n        " + RESTORE_RUN +
+                 "      - name: Set up Gradle\n        " + SETUP + "v4\n" + INPUTS + RESTORE_INPUT +
+                 "      - name: Run tests\n        run: ./gradlew :a:test\n")
+        workflow = "name: Sample\non: push\njobs:\n  sample:\n    runs-on: ubuntu-latest\n    steps:\n"
+        before = discovery.violations(workflow + setup.replace("NAME", "Choose Gradle cache restore"))
+        self.assertIn("workflow:sample:Set up Gradle: an earlier failed check would skip this step", before)
+        self.assertTrue(RESTORE_STEP.startswith(discovery.SETUP_PREFIXES))
+        self.assertEqual([], discovery.violations(workflow + setup.replace("NAME", RESTORE_STEP)))
 
     def test_warm_workflow_runs_only_on_dispatch_and_schedule_and_builds_a_dev_commit(self):
         text = (WORKFLOWS / WARM).read_text(encoding="utf-8")

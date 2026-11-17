@@ -55,7 +55,7 @@ jobs:
       - name: Install pinned Android native build tools
         run: bash scripts/prepare_android_native_tools.sh
 
-      - name: Choose Gradle cache restore
+      - name: Read Gradle cache restore policy
         id: gradle-restore
         shell: bash
         run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py --restore-policy
@@ -90,7 +90,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Choose Gradle cache restore
+      - name: Read Gradle cache restore policy
         id: gradle-restore
         shell: bash
         run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py --restore-policy
@@ -207,7 +207,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Choose Gradle cache restore
+      - name: Read Gradle cache restore policy
         id: gradle-restore
         shell: bash
         run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py --restore-policy
@@ -265,7 +265,7 @@ jobs:
       - name: Install pinned Android native build tools
         run: bash scripts/prepare_android_native_tools.sh
 
-      - name: Choose Gradle cache restore
+      - name: Read Gradle cache restore policy
         id: gradle-restore
         shell: bash
         run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py --restore-policy

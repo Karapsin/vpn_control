@@ -49,7 +49,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: python scripts/check_source_whitespace.py
 
-      - name: Choose Gradle cache restore
+      - name: Read Gradle cache restore policy
         id: gradle-restore
         if: ${{ !cancelled() }}
         shell: bash

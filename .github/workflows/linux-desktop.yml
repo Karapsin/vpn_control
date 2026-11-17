@@ -125,7 +125,7 @@ jobs:
       - name: Check release hygiene
         run: ./scripts/check_release_hygiene.sh
 
-      - name: Choose Gradle cache restore
+      - name: Read Gradle cache restore policy
         id: gradle-restore
         shell: bash
         run: ${{ runner.os == 'Windows' && 'python' || 'python3' }} scripts/gradle_ci_cache.py --restore-policy
@@ -226,7 +226,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: python3 -m unittest -v agent_tools.tests.test_linux_native_cleanup_enrollment
 
-      - name: Choose Gradle cache restore
+      - name: Read Gradle cache restore policy
         id: gradle-restore
         if: ${{ !cancelled() }}
         shell: bash
