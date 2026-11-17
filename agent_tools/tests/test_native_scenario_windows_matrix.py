@@ -838,7 +838,7 @@ class UpdateBase(MatrixBase):
     def install(self, scenario, package, facts, *, machine=MACHINE, kind="passed"):
         return self.row(scenario, "direct", kind, target=package, machine=machine, extra={"installed": facts})
 
-    def update(self, variant, route="direct", kind="passed", *, role="ends", change=None, value=None, machine=MACHINE):
+    def update(self, variant, route="direct", kind="passed", *, role="ends", change=None, value=None, machine=MACHINE, joined=None):
         """One update run as the fixed job records it: the base it found before its task, the two installs it names and the
         package read installed after the task (role: its variant's own end unless named), claimed when it passed with its
         variant's own. change edits the receipt fields first."""
@@ -855,7 +855,7 @@ class UpdateBase(MatrixBase):
             change(fields)
         return self.row(UPDATE + variant, route, kind, machine=machine, extra=fields, artifacts={"fixtureReceipt": self.fixture},
                         value={"priorInstall": self.base_install, "baseVersion": BASE_VERSION, "targetInstall": self.target_install,
-                               **(value or {})})
+                               **(value or {})}, joined=joined)
 
     def classified(self, correlation):
         return windows.matrix_review(self.root, "windows-installer-lifecycle", [correlation])["rows"][0]
@@ -863,6 +863,27 @@ class UpdateBase(MatrixBase):
     def bound(self, installed_package, base=None):
         return {"baseInstall": self.base_install, "basePackage": self.base if base is None else base, "targetInstall": self.target_install,
                 "installedPackage": installed_package}
+
+
+class UnansweredUpdateApprovalTests(UpdateBase):
+    """An update grant whose approval the reviewed decision refused before any input (collect names approve-refused:<reason>):
+    nothing installed because nothing approved, so the run says nothing of the product and never counts as its failure."""
+
+    def test_it_is_approval_unanswered_and_never_the_products_failure(self):
+        for reason in ("instance_uac_prompt_age", "instance_uac_consent_absent", "instance_uac_frame_unrecognized", "instance_uac_frame_ambiguous"):
+            with self.subTest(reason=reason):
+                run = self.update("success-off", kind="failed", role=None, joined="approve-refused:" + reason)
+                self.assertEqual("approval-unanswered", self.classified(run)["classification"])
+
+    def test_a_typed_approval_or_no_join_stays_the_products_failure(self):
+        for joined in (None, "approve-acknowledged-prompt-closed"):
+            with self.subTest(joined=joined):
+                self.assertEqual("failed", self.classified(self.update("success-off", kind="failed", role=None, joined=joined))["classification"])
+
+    def test_only_an_update_grant_reads_it(self):
+        # install-cancelled cancels while its prompt is up: its approval is no part of its outcome.
+        run = self.update("install-cancelled", kind="failed", role=None, joined="approve-refused:instance_uac_prompt_age")
+        self.assertEqual("failed", self.classified(run)["classification"])
 
 
 class UpdateRowTests(UpdateBase):

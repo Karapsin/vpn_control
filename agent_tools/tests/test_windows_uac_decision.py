@@ -580,6 +580,25 @@ class RefusedDecisionHostReadTests(FlowBase):
         self.assert_refused_no_key(self.run_owner(frames=[frame(fill=199)]), "instance_uac_frame_unrecognized")
         self.assertEqual({"state": "refused", "attempts": 1, "reason": "instance_uac_frame_unrecognized"}, self.read())
 
+    def test_every_refusal_before_input_reads_as_refused_whatever_its_reason(self):
+        """Native e70b8d05 (b21c6b55) refused instance_uac_prompt_age, and collect read it as refused: its read-decision
+        reply was 68 bytes, this shape. The census's age refusal and the one at the burn read alike, as do the others."""
+        pixels = bytearray(login.ppm(frame())[2])
+        paint(pixels, CROP, 200, 40)
+        ambiguous = b"P6\n%d %d\n255\n" % (WIDTH, HEIGHT) + bytes(pixels)
+        for reason, options in (("instance_uac_prompt_age", {"censuses": [census(consents=[consent(ageSeconds=90)])]}),
+                                ("instance_uac_prompt_age", {"frames": [frame()] + [frame(fill=199)] * 40 + [frame()],
+                                                             "censuses": [census(consents=[consent(ageSeconds=80)])]}),
+                                ("instance_uac_consent_absent", {"censuses": [census(consents=[])]}),
+                                ("instance_uac_frame_ambiguous", {"frames": [ambiguous]}),
+                                ("instance_uac_event_mismatch", {"censuses": [census(events=[{**census()["events"][0], "value": "x"}])]})):
+            with self.subTest(reason=reason, options=sorted(options)):
+                for path in self.root.iterdir():
+                    shutil.rmtree(path) if path.is_dir() else path.unlink()
+                self.clock[0] = 100.0
+                self.assert_refused_no_key(self.run_owner(**options), reason)
+                self.assertEqual({"state": "refused", "attempts": 1, "reason": reason}, self.read())
+
     def test_every_attempt_must_have_ended_refused_and_the_last_one_names_the_reason(self):
         self.run_owner(censuses=[census(consents=[])])
         self.clock[0] = 100.0

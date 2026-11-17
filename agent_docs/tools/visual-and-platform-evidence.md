@@ -2267,12 +2267,19 @@ unless it comes from this evidence. The observation reads each journal without c
   not prove its approving account, the coordinator elevated under it and the worker
   as the original user.
 - `approval-unanswered`: a TUN grant (`approveJoin`) whose prompt expired into the
-  product's `cancelled` known end because its `windows-uac-decision` refused before
-  any input. Collect reads that from the decision's host folder (`_READ_DECISION`:
-  no input journal, every attempt terminal `input-refused` with nothing attempted,
-  none refused for a prompt another decision burned or whose input stays unknown) and
-  names it `approve-refused:<reason>` in `uacDecision`. Nothing approved the broker,
-  so the run says nothing of the product.
+  product's `cancelled` known end, or a failed update grant (its collector has an
+  `authorization` stage), because its `windows-uac-decision` refused before any
+  input, whatever the reason (`instance_uac_prompt_age`, `_consent_absent`,
+  `_frame_unrecognized`, `_frame_ambiguous` and the rest). Collect reads that from
+  the decision's host folder (`_READ_DECISION`: no input journal, every attempt
+  terminal `input-refused` with nothing attempted, none refused for a prompt another
+  decision burned or whose input stays unknown), names it `approve-refused:<reason>`
+  in `uacDecision` and pulls the evidence as for any run. Nothing approved the broker
+  or the installer, so the run says nothing of the product. A TUN grant's run with
+  no such proof stays unsettled; an update grant's is collected as before, and one
+  whose read failed is read again. Collect, the decision read and the evidence pull
+  each take their own transport admission, the pull's with a call's budget per
+  chunk.
 - `installed-package-unproven`, `approval-unproven`, `approval-unanswered`, `stopped`, `refused` (exit 2, no receipt), `setup`,
   `failed-before-task` (a known failure before the owner's task ran) and
   `failed-after-task` never count. `failed-after-task` is a known failure of the

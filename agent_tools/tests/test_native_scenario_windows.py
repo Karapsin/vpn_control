@@ -5,6 +5,7 @@ the real durable owner through a fake ssh binary with a harmless job in its plac
 """
 import ast
 import base64
+import contextlib
 from contextlib import contextmanager, nullcontext
 import gzip
 import hashlib
@@ -75,6 +76,44 @@ def receipt_bytes(operation, *, exit_code=0, evidence=None, **changes):
                                          "enginePid": 900, "ownerPid": 901, "polls": 2, "rawStreams": []})
     value.update(changes)
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+
+
+def slow_host(case, *, call_seconds=22, admission_seconds=10):
+    """The host of b21c6b55 (NG3, S_D5, Mac load about 20): each admission took about 10 s and each SSH call 12 to 24 s,
+    and ssh_transport.run_ssh bounds every child by what is left of its admission's deadline. A call that no longer fits
+    times out with no reply, as the four pulls of that run did at 60.3 to 61.4 s into their admission."""
+    clock, deadlines, budgets = [5000.0], [], []
+
+    @contextmanager
+    def admitted(root, host, operation, *, deadline=None, requirements=None):
+        clock[0] += admission_seconds
+        deadlines.append(deadline)
+        try:
+            yield
+        finally:
+            deadlines.pop()
+    run = case.ssh.run
+
+    def slow(argv, **options):
+        remaining = deadlines[-1] - clock[0] if deadlines else options["timeout"]
+        budgets.append(remaining)
+        if remaining < call_seconds:
+            clock[0] += max(remaining, 0)
+            raise subprocess.TimeoutExpired(argv, max(remaining, 0))
+        clock[0] += call_seconds
+        return run(argv, **options)
+    case.ssh.run = slow
+    timing = types.SimpleNamespace(monotonic=lambda: clock[0], time=lambda: 1_800_000_000.0 + clock[0])
+    case.addCleanup(setattr, case.ssh, "run", run)
+    stack = contextlib.ExitStack()
+    stack.enter_context(mock.patch.object(transport, "admitted_transport", admitted))
+    stack.enter_context(mock.patch.object(windows, "time", timing))
+    return stack, budgets
+
+
+def evidence_for(case, raw=b"PK evidence of the owner journal"):
+    case.ssh.evidence = raw
+    return {"name": "evidence-1.zip", "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(), "entries": 3}
 
 
 def submitted_bindings(source):
@@ -1547,9 +1586,9 @@ class TunGrantDecisionTests(FamilyDriverBase):
         self.executor().start(self.family_request(self.GRANT))
         self.decision = str(uuid.uuid5(uuid.UUID(self.operation), "windows-uac-decision"))
 
-    def job_receipt(self, exit_code=0, known_end=None):
+    def job_receipt(self, exit_code=0, known_end=None, evidence=None):
         plan = {"scenarioId": self.GRANT, "operationId": self.operation, "machine": MACHINE, "bundleHash": self.bundle_hash}
-        value = host_job.build_receipt(plan, exit_code=exit_code, stage="receipt", failure=None, guest_programs=40)
+        value = host_job.build_receipt(plan, exit_code=exit_code, stage="receipt", failure=None, guest_programs=40, evidence=evidence)
         # As the job's _finish adds it for a grant: its collectors, and the known end its owner's journal names.
         value["tun"] = {"variant": "restart-grant", "collectors": {}, "knownEnd": known_end}
         return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
@@ -1632,6 +1671,43 @@ class TunGrantDecisionTests(FamilyDriverBase):
         self.assertEqual("approve-refused:instance_uac_frame_unrecognized", result["scenarioEvidence"]["windows"]["uacDecision"])
         self.assertEqual(("/owned/vm", self.decision), self.ssh.decision_reads[-1])
         self.assertEqual(result, self.executor().status(self.operation), "collected once; a repeat reads the journal")
+
+    def test_a_refused_grant_is_collected_with_its_evidence_on_a_slow_host(self):
+        """Native b21c6b55 (generated-grant, NG3, S_D5): decision e70b8d05 refused instance_uac_prompt_age before any input,
+        the job ended cancelled with exit 1, and four collects each read the receipt, joined the refusal (a 68-byte reply)
+        and then lost the evidence pull: collect, the decision read and every pull chunk shared one 60 s admission, which
+        the slow host had spent. Each now has its own admission, the pull's scaled to its chunks."""
+        evidence = evidence_for(self)
+        self.finished(exit_code=1, raw=self.job_receipt(exit_code=1, known_end="cancelled", evidence=evidence))
+        self.ssh.decision_reply = {"state": "refused", "attempts": 1, "reason": "instance_uac_prompt_age"}
+        self.assertEqual(68, len(json.dumps(self.ssh.decision_reply, separators=(",", ":"))) + 1, "the native reply's size")
+        stack, budgets = slow_host(self)
+        with stack:
+            result = self.executor().status(self.operation)
+        self.assertEqual(("terminal", "complete", "failed"), (result["state"], result["collectionState"], result["scenarioEvidence"]["result"]))
+        self.assertEqual("approve-refused:instance_uac_prompt_age", result["scenarioEvidence"]["windows"]["uacDecision"])
+        self.assertEqual(self.ssh.evidence, self.root.joinpath(*windows._EVIDENCE_PARENT, self.operation, "evidence-1.zip").read_bytes())
+        self.assertTrue(all(budget >= 22 for budget in budgets), budgets)
+
+    def test_a_large_pull_keeps_a_budget_for_every_chunk(self):
+        evidence = evidence_for(self, os.urandom(3 * windows._EVIDENCE_CHUNK + 5))
+        self.finished(exit_code=1, raw=self.job_receipt(exit_code=1, known_end="cancelled", evidence=evidence))
+        self.ssh.decision_reply = {"state": "refused", "attempts": 1, "reason": "instance_uac_frame_unrecognized"}
+        stack, budgets = slow_host(self)
+        with stack:
+            result = self.executor().status(self.operation)
+        self.assertEqual(("terminal", "complete"), (result["state"], result["collectionState"]))
+        self.assertEqual(4, self.ssh.pulls)
+
+    def test_a_lost_decision_read_still_leaves_the_grant_unsettled(self):
+        evidence = evidence_for(self)
+        self.finished(exit_code=1, raw=self.job_receipt(exit_code=1, known_end="cancelled", evidence=evidence))
+        self.ssh.decision_reply = {"state": "refused", "attempts": 1, "reason": "instance_uac_prompt_age"}
+        self.ssh.lost = {"read-decision"}
+        result = self.executor().status(self.operation)
+        self.assertEqual(("unknown", "terminal_collection_unverified"), (result["state"], result["reason"]))
+        self.assertEqual(0, self.ssh.pulls, "nothing is pulled for a run that stays unsettled")
+        self.assertEqual("approve-refused:instance_uac_prompt_age", self.executor().status(self.operation)["scenarioEvidence"]["windows"]["uacDecision"])
 
     def test_a_refused_decision_never_completes_a_pass(self):
         # Nothing this decision typed approved the broker, so a pass is not the reviewed approval's: it stays unsettled.
@@ -2080,6 +2156,70 @@ class UpdateCollectionTests(UpdateBase):
         result = self.executor().status(self.operation)
         self.assertEqual(("terminal", "complete", "failed"), (result["state"], result["collectionState"], result["scenarioEvidence"]["result"]))
         self.assertEqual([], self.ssh.decision_reads)
+
+
+class UpdateGrantCollectionTests(UpdateBase):
+    """An update grant (its collector has an authorization stage) whose approval the reviewed decision refused before any
+    input: its prompt expired, nothing installed and the owner failed. Collect names that refusal, as a TUN grant's, so the
+    matrix never counts the run as the product's failure; anything that could have typed is collected as before."""
+    VARIANT = "success-off"
+
+    def setUp(self):
+        super().setUp()
+        self.executor().start(self.update_request(self.VARIANT))
+        self.decision = str(uuid.uuid5(uuid.UUID(self.operation), "windows-uac-decision"))
+
+    def job_receipt(self, exit_code=1, evidence=None):
+        plan = {"scenarioId": UPDATE + self.VARIANT, "operationId": self.operation, "machine": MACHINE, "bundleHash": self.bundle_hash}
+        value = host_job.build_receipt(plan, exit_code=exit_code, stage="run", failure="task_exit_code" if exit_code else None,
+                                       guest_programs=40, evidence=evidence,
+                                       task={"state": "task-finished", "ownerExitCode": exit_code, "terminalExitCode": exit_code})
+        return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+
+    def collected(self):
+        result = self.executor().status(self.operation)
+        self.assertEqual(("terminal", "complete", "failed"), (result["state"], result["collectionState"], result["scenarioEvidence"]["result"]))
+        return result
+
+    def test_a_refusal_before_any_input_is_named_and_the_evidence_pulled(self):
+        evidence = evidence_for(self)
+        self.finished(exit_code=1, raw=self.job_receipt(evidence=evidence))
+        for reason in ("instance_uac_prompt_age",):
+            self.ssh.decision_reply = {"state": "refused", "attempts": 2, "reason": reason}
+            stack, _ = slow_host(self)
+            with stack:
+                result = self.collected()
+            self.assertEqual("approve-refused:" + reason, result["scenarioEvidence"]["windows"]["uacDecision"])
+        self.assertEqual(("/owned/vm", self.decision), self.ssh.decision_reads[-1])
+        self.assertEqual(self.ssh.evidence, self.root.joinpath(*windows._EVIDENCE_PARENT, self.operation, "evidence-1.zip").read_bytes())
+
+    def test_a_typed_approval_is_named_and_stays_the_products_failure(self):
+        self.finished(exit_code=1, raw=self.job_receipt())
+        self.ssh.decision = {"state": "input-ack-only", "operationId": self.decision, "attempt": 1, "decision": "approve", "prompt": "install-helper",
+                             "promptClosed": True, "approvalSucceeded": False, "productOutcomeProved": False, "replayAllowed": False}
+        self.assertEqual("approve-acknowledged-prompt-closed", self.collected()["scenarioEvidence"]["windows"]["uacDecision"])
+
+    def test_a_host_that_shows_no_refusal_collects_as_before(self):
+        # No decision folder, an attempt still open, a burned prompt: nothing proves the approval unanswered.
+        self.finished(exit_code=1, raw=self.job_receipt())
+        self.ssh.decision_reply = {"state": "unavailable"}
+        self.assertNotIn("uacDecision", self.collected()["scenarioEvidence"]["windows"])
+
+    def test_a_lost_decision_read_is_read_again(self):
+        self.finished(exit_code=1, raw=self.job_receipt())
+        self.ssh.decision_reply = {"state": "refused", "attempts": 1, "reason": "instance_uac_consent_absent"}
+        self.ssh.lost = {"read-decision"}
+        self.assertEqual(("unknown", "terminal_collection_unverified"), (lambda r: (r["state"], r["reason"]))(self.executor().status(self.operation)))
+        self.assertEqual("approve-refused:instance_uac_consent_absent", self.collected()["scenarioEvidence"]["windows"]["uacDecision"])
+
+    def test_a_pass_reads_no_decision(self):
+        self.finished(exit_code=0, raw=self.job_receipt(exit_code=0))
+        self.executor().status(self.operation)
+        self.assertEqual([], self.ssh.decision_reads)
+
+    def test_an_update_row_without_an_authorization_stage_reads_no_decision(self):
+        self.assertNotIn("authorization", windows.RECIPES[UPDATE + "install-cancelled"]["update"]["collectorStages"])
+        self.assertIn("authorization", windows.RECIPES[UPDATE + self.VARIANT]["update"]["collectorStages"])
 
 
 def run_plain(source, cwd):

@@ -3879,6 +3879,34 @@ module's `ROWS` were re-derived to a fixpoint. Only a native `windows-public-upd
 this chain can confirm the forms and session 0. Today the host job runs that row through the generic
 `collector_wrapper.py` and `system_bootstrap_template.ps1`, which already carry these fixes.
 
+### A refused approval collected nothing on a loaded host (native, 2026-11-17)
+
+Run `b21c6b55` of `windows-scoped-tun.generated-grant` on NG3 with S_D5 (2.3.1, MSI of `14453613`) and tools `3a081133`,
+which hold the refused-before-input join (`bf18faa8`, `6d3f80a4`). With the Mac host at load about 20, decision
+`e70b8d05` refused `instance_uac_prompt_age` before any input (76.4 s call), the prompt expired, and the job ended exit 1
+(`task_exit_code`), but collection stayed `collector_unavailable` and no evidence zip was pulled. The run's own timing
+journal (`.rag_index/native-scenario-windows/b21c6b55-*/timing.jsonl`) shows four collect rounds of the same shape:
+`collect` (a 4,504-byte reply, 12 to 23 s), `read-decision` (68 bytes, 16 to 24 s, exactly
+`{"state":"refused","attempts":1,"reason":"instance_uac_prompt_age"}` and a newline) and `pull` with no reply and no
+return code, ended 60.3 to 61.4 s into its admission. So the receipt named `knownEnd` `cancelled` (the decision is read
+only for that end), the host read matched `_refused_before_input` (a prompt_age refusal reads like any other), and the
+decision's attempts were final. The join held each time; the evidence pull did not fit: collect, the decision read and
+every pull chunk shared one `_OBSERVE_SECONDS` (60 s) admission, `ssh_transport.run_ssh` bounds every child by what is
+left of it, and the admission itself took about 10 s. The join had added a call inside that budget. Evidence and the
+unfixed source: `.runtime/windows-parity-20261107/evidence/fix-uac-approve2/before/` (`collect-rounds.txt`).
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The evidence pull of a joined refusal ran out of the collect call's admission (TOOL) | `test_native_scenario_windows.TunGrantDecisionTests.test_a_refused_grant_is_collected_with_its_evidence_on_a_slow_host` (the native shape: 10 s admissions, 22 s calls, every child bounded by its admission's deadline), `test_a_large_pull_keeps_a_budget_for_every_chunk`; controls `test_a_lost_decision_read_still_leaves_the_grant_unsettled`, the rest of `TunGrantDecisionTests` | Collect, the decision read and the evidence pull each take their own admission; the pull's has `_OBSERVE_SECONDS` per chunk. |
+| An update grant's unanswered approval would be the product's failure (TOOL) | `test_native_scenario_windows.UpdateGrantCollectionTests` (refusal named and evidence pulled on the slow host; a typed approval named; a lost read read again; controls: a host showing no refusal, a pass, a row with no authorization stage); `test_native_scenario_windows_matrix.UnansweredUpdateApprovalTests` | A failed update grant (an `authorization` collector stage) reads its decision: a refusal before any input is named `approve-refused:<reason>` and classed `approval-unanswered`; a typed approval is named and stays the product's failure; a host showing neither collects as before. |
+| (control) The host read knows every refusal before input | `test_windows_uac_decision.RefusedDecisionHostReadTests.test_every_refusal_before_input_reads_as_refused_whatever_its_reason` | The census's and the burn's `instance_uac_prompt_age`, `_consent_absent`, `_frame_ambiguous` and `_event_mismatch`, each from the real owner's files. Passes on `3a081133` too: it rules out the second hypothesis. |
+
+RED on `3a081133` with the final tests, Python 3.14 and 3.12 alike: `Ran 28 tests`, `FAILED (failures=6, errors=3)` with
+subtests; the other 22 held. GREEN: OK on both. No-replay: nothing is submitted or typed again; anything that could have
+typed stays unsettled for a TUN grant and is collected as before for an update grant.
+
+Native only: the times on a loaded host; that an update grant's expired prompt ends in the owner's failure as modelled.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

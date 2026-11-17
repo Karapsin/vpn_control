@@ -58,8 +58,8 @@ _LOCAL_STATE = (".rag_index", "native-scenario-windows")
 _EVIDENCE_PARENT = (".runtime", "windows-scenarios")
 _MAX_REPLY = 2 * 1024 * 1024  # Above native_scenario_ssh's 8,192: terminal replies carry base64 streams.
 _EVIDENCE_CHUNK = 1024 * 1024
-# One admission covers the whole pull and every chunk is a new SSH connection, so this is what
-# 60 s can carry. A row with more evidence needs a deadline scaled to its bytes and a pull that resumes.
+# The pull's one admission gives each chunk a call's budget (_pull_evidence), since every chunk is a new SSH connection.
+# A row with more evidence needs a pull that resumes.
 _MAX_EVIDENCE = 8 * 1024 * 1024
 _SUBMIT_SECONDS = 180
 _OBSERVE_SECONDS = 60
@@ -1239,14 +1239,21 @@ def _refused_before_input(reply: Any) -> bool:
             and _REFUSED_REASON.fullmatch(reply["reason"]) is not None and reply["reason"] not in _REFUSED_ELSEWHERE)
 
 
+def _update_grant(row: Mapping[str, Any]) -> bool:
+    """An update row approved by the reviewed decision: its collector has an authorization stage."""
+    return ((row.get("uac") or {}).get("decision") == "approve" and isinstance(row.get("update"), Mapping)
+            and "authorization" in row["update"].get("collectorStages", ()))
+
+
 def _approval_unanswered(row: Mapping[str, Any], summary: Mapping[str, Any], receipt: Mapping[str, Any]) -> bool:
-    """A grant whose prompt expired into the product's CANCELLED because the reviewed decision refused before any input:
-    collect joined that refusal (_decision_joined). Nothing approved the broker, so the run says nothing of the product."""
+    """A grant whose prompt expired unanswered because the reviewed decision refused before any input: a TUN grant's
+    CANCELLED, or an update grant's failure. Collect joined that refusal (_decision_joined). Nothing approved the broker
+    or the installer, so the run says nothing of the product."""
     uac = row.get("uac") or {}
     windows = summary.get("windows") if isinstance(summary.get("windows"), Mapping) else {}
     tun = receipt.get("tun") if isinstance(receipt.get("tun"), Mapping) else {}
     joined = windows.get("uacDecision")
-    return (uac.get("decision") == "approve" and row.get("approveJoin") is True and tun.get("knownEnd") == "cancelled"
+    return (uac.get("decision") == "approve" and (row.get("approveJoin") is True and tun.get("knownEnd") == "cancelled" or _update_grant(row))
             and isinstance(joined, str) and _UNANSWERED.fullmatch(joined) is not None)
 
 
@@ -1706,19 +1713,21 @@ class NativeScenarioWindowsDriver:
         data = retained["program"]["dataDirectory"]
         try:
             config = ssh_transport.load_config(self.configuration_root)
+            # The receipt, the decision read and the evidence pull each take their own admission: natively (b21c6b55, a
+            # loaded host) the three shared one 60 s budget, and every pull was cut off at its end.
             with self._admitted(config, plan, _OBSERVE_SECONDS):
                 reply = self._send(config, plan.host, _py(_COLLECT, data), seconds=_OBSERVE_SECONDS, plan=plan, label="collect")
-                if reply is None or reply.get("state") != "collected":
-                    return None
-                self._retain_host_timing(plan, reply.get("timing"))
-                raw = base64.b64decode(reply["receipt"], validate=True)
-                summary = self._summary(plan, raw, reply.get("jobExit"))
-                if summary is not None and not self._decision_joined(config, plan, summary, json.loads(raw)):
-                    # A deny row or a TUN grant passes, and a grant fails by its CANCELLED, only with its decision's own
-                    # terminal; until then unknown.
-                    return None
-                if summary is not None:
-                    self._pull_evidence(config, plan, data, json.loads(raw).get("evidence"))
+            if reply is None or reply.get("state") != "collected":
+                return None
+            self._retain_host_timing(plan, reply.get("timing"))
+            raw = base64.b64decode(reply["receipt"], validate=True)
+            summary = self._summary(plan, raw, reply.get("jobExit"))
+            if summary is not None and not self._decision_joined(config, plan, summary, json.loads(raw)):
+                # A deny row or a TUN grant passes, and a grant fails by its CANCELLED, only with its decision's own
+                # terminal; until then unknown.
+                return None
+            if summary is not None:
+                self._pull_evidence(config, plan, data, json.loads(raw).get("evidence"))
         except (OSError, ValueError, KeyError, TypeError, ssh_transport.SshConfigError):
             return None
         return summary
@@ -1742,12 +1751,18 @@ class NativeScenarioWindowsDriver:
         grant = uac.get("decision") == "approve" and row.get("approveJoin") is True
         tun = receipt.get("tun") if isinstance(receipt.get("tun"), Mapping) else {}
         cancelled = grant and summary["result"] == "failed" and tun.get("knownEnd") == "cancelled"
-        if not (uac.get("decision") == "deny" or grant) or (summary["result"] != "passed" and not cancelled):
+        # An update grant that failed: its prompt may have expired unanswered too. It is collected as before unless the
+        # decision's host folder proves a refusal before any input; only a read that failed is read again.
+        update = _update_grant(row) and summary["result"] == "failed"
+        if not (uac.get("decision") == "deny" or grant or update) or (summary["result"] != "passed" and not (cancelled or update)):
             return True
         decision = str(uuid.uuid5(uuid.UUID(plan.correlation_id), "windows-uac-decision"))
         root = _binding(self.root, plan)["spec"]["root"]
-        reply = self._send(config, plan.host, _py(_READ_DECISION, root, decision), seconds=_OBSERVE_SECONDS, plan=plan,
-                           label="read-decision")
+        with self._admitted(config, plan, _OBSERVE_SECONDS):
+            reply = self._send(config, plan.host, _py(_READ_DECISION, root, decision), seconds=_OBSERVE_SECONDS, plan=plan,
+                               label="read-decision")
+        if update and reply is None:
+            return False
         value = reply.get("value") if isinstance(reply, Mapping) and reply.get("state") == "read" else None
         joined = (isinstance(value, Mapping) and set(value) == _DECISION_FIELDS and value["state"] == "input-ack-only"
                   and value["operationId"] == decision and value["decision"] == uac["decision"] and value["prompt"] == uac["prompt"]
@@ -1759,10 +1774,10 @@ class NativeScenarioWindowsDriver:
         # Its CANCELLED after a decision that refused before any input (native c7b6562a) is a known end of the decision:
         # collected failed and naming that refusal, which the matrix never counts (approval-unanswered). A pass and a deny
         # row never join a refusal: nothing typed proves either.
-        if cancelled and _refused_before_input(reply):
+        if (cancelled or update) and _refused_before_input(reply):
             summary["windows"]["uacDecision"] = "approve-refused:" + reply["reason"]
             return True
-        return False
+        return update
 
     def _summary(self, plan: native_scenario_execution.ScenarioPlan, raw: bytes, job_exit: Any) -> dict[str, Any] | None:
         receipt = json.loads(raw)
@@ -1795,15 +1810,18 @@ class NativeScenarioWindowsDriver:
         digest = hashlib.sha256()
         parts = []
         offset = 0
-        while offset < evidence["bytes"]:
-            reply = self._send(config, plan.host, _py(_PULL, data, evidence["name"], str(offset), str(_EVIDENCE_CHUNK)), seconds=_OBSERVE_SECONDS,
-                               plan=plan, label="pull")
-            _need(reply is not None and reply.get("size") == evidence["bytes"], "windows_scenario_evidence_unavailable")
-            part = base64.b64decode(reply["data"], validate=True)
-            _need(0 < len(part) <= _EVIDENCE_CHUNK, "windows_scenario_evidence_unavailable")
-            digest.update(part)
-            parts.append(part)
-            offset += len(part)
+        # One admission for the whole pull, with a call's budget for each chunk: every chunk is a new SSH connection.
+        chunks = max(1, -(-evidence["bytes"] // _EVIDENCE_CHUNK))
+        with self._admitted(config, plan, _OBSERVE_SECONDS * chunks):
+            while offset < evidence["bytes"]:
+                reply = self._send(config, plan.host, _py(_PULL, data, evidence["name"], str(offset), str(_EVIDENCE_CHUNK)),
+                                   seconds=_OBSERVE_SECONDS, plan=plan, label="pull")
+                _need(reply is not None and reply.get("size") == evidence["bytes"], "windows_scenario_evidence_unavailable")
+                part = base64.b64decode(reply["data"], validate=True)
+                _need(0 < len(part) <= _EVIDENCE_CHUNK, "windows_scenario_evidence_unavailable")
+                digest.update(part)
+                parts.append(part)
+                offset += len(part)
         _need(offset == evidence["bytes"] and digest.hexdigest() == evidence["sha256"], "windows_scenario_evidence_changed")
         _create_private(target, b"".join(parts))
 
