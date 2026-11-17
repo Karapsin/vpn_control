@@ -91,6 +91,11 @@ def _gateway_payload_result(value,response):
                     or value.get('failureCheck')is not None and value['failureCheck']not in response['checks']):raise ValueError('private_result_refused')
         elif mode=='start' and state=='booted-observed':
             keys=base|{'qemu','swtpm','qemuStatus','guestAgentReady','ordinarySessionObserved','osName','productReady'}
+            if 'executableReplacedOnDisk'in value:
+                # Evidence only: an admitted actor's executable path was unlinked or replaced on disk.
+                rows=value['executableReplacedOnDisk'];keys|={'executableReplacedOnDisk'}
+                if(type(rows)is not dict or not rows or not set(rows)<={'qemu','swtpm'}
+                        or any(type(row)is not dict or set(row)!={'nlink','ctimeNs'}or any(type(x)is not int or x<0 for x in row.values())for row in rows.values())):raise ValueError('private_result_refused')
             for name in ('qemu','swtpm'):
                 row=value.get(name)
                 if type(row)is not dict or set(row)!={'pid','startTicks'}or any(type(x)is not int or x<=0 for x in row.values()):raise ValueError('private_result_refused')

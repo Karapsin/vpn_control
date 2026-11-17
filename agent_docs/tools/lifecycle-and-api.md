@@ -430,6 +430,22 @@ replayed. `booted-observed` reports host process facts, not completed Windows
 installation or product acceptance; `productReady` remains false. Native VM
 and product qualification are recorded separately in the current WIP.
 
+Status, stop, scenario host setup and every other caller of the instance
+`process()` check identify a running QEMU or swtpm by its start record: the same
+PID and process start ticks, the same command line and digest, the same owner,
+and a `/proc/<pid>/exe` inode with the recorded device, inode, mode, owner,
+size and mtime. A package upgrade that replaces the binary on disk unlinks the
+inode the process still runs, which changes only its link count and ctime, so
+those two fields are evidence, not identity. Then `booted-observed` (status or
+start) and a stop's `stopped-observed` add
+`executableReplacedOnDisk: {qemu|swtpm: {nlink, ctimeNs}}` for each admitted
+actor whose recorded executable was replaced. Any other change still refuses
+with `instance_process_changed`. New starts pin and record whatever binary is
+installed at start time. A lifecycle restart lineage pins the on-disk binary
+and its digest, so it still refuses with `instance_lifecycle_executable` for an
+instance whose binary was replaced, because that binary can no longer be
+relaunched.
+
 Qualification reports actual OS, setup, account groups, profile and service
 facts. `setupReady` also requires the requested image/locale and an observed
 ordinary session. The fixed noninteractive PowerShell source suppresses progress

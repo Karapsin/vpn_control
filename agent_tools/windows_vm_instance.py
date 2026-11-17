@@ -62,8 +62,26 @@ def _vm_main():
         require(type(row)is dict and set(row)=={'pid','startTicks','argv','commandSha256','executableGeneration'} and type(row['pid'])is int and row['pid']>0 and type(row['startTicks'])is int and row['startTicks']>0,'instance_process_receipt')
         pid=row['pid'];require(birth(pid)==row['startTicks'],'instance_process_changed');base='/proc/'+str(pid)
         with open(base+'/cmdline','rb') as f:raw=f.read(32769)
-        require(raw==b'\0'.join(os.fsencode(x) for x in row['argv'])+b'\0' and hashlib.sha256(raw).hexdigest()==row['commandSha256'] and list(generation(os.stat(base+'/exe')))==row['executableGeneration'] and os.stat(base).st_uid==os.geteuid() and birth(pid)==row['startTicks'],'instance_process_changed')
+        recorded=row['executableGeneration'];require(type(recorded)is list and len(recorded)==9 and all(type(x)is int for x in recorded),'instance_process_receipt')
+        # /proc/<pid>/exe is the running inode itself. A package upgrade only
+        # unlinks its path, which changes nlink and ctime and nothing else; a
+        # running executable cannot be written (ETXTBSY). So identity is device,
+        # inode, mode, owner, size and mtime; nlink/ctime are only evidence.
+        current=list(generation(os.stat(base+'/exe')))
+        require(raw==b'\0'.join(os.fsencode(x) for x in row['argv'])+b'\0' and hashlib.sha256(raw).hexdigest()==row['commandSha256'] and [current[i] for i in (0,1,2,3,4,6,7)]==[recorded[i] for i in (0,1,2,3,4,6,7)] and os.stat(base).st_uid==os.geteuid() and birth(pid)==row['startTicks'],'instance_process_changed')
         return pid
+    def replacements():
+        # Evidence only; it never admits or refuses an actor. An admitted actor
+        # whose recorded executable path was since unlinked or replaced reports
+        # the new nlink and ctime of the inode it still runs.
+        value={}
+        for name in ('qemu','swtpm'):
+            try:
+                row=read(name+'-started.json');process(row)
+                current=list(generation(os.stat('/proc/'+str(row['pid'])+'/exe')));process(row)
+            except (OSError,ValueError,KeyError,TypeError):continue
+            if current!=row['executableGeneration']:value[name]={'nlink':current[5],'ctimeNs':current[8]}
+        return {'executableReplacedOnDisk':value} if value else {}
     def owns(pid,path,is_socket=False):
         fdlist=os.listdir('/proc/'+str(pid)+'/fd');require(len(fdlist)<=8192,'instance_fd_capacity')
         if is_socket:
@@ -320,12 +338,12 @@ def _vm_main():
         phase='observation'
         if MODE=='stop' or MODE=='status' and os.path.lexists(root/'stop-intent.json'):
             def stop_closing():instance_intent();closing()
-            stop_closing()
+            stop_closing();evidence=replacements() if MODE=='stop' else {}
             value=(_stop_instance(SPEC,CONTEXT,observed,read,process,birth,qmp,save,stop_closing) if MODE=='stop'
                    else _closed_instance(SPEC,CONTEXT,read,process,birth))
             stop_closing()
             print(json.dumps({'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'state':'stopped-observed','reason':None,
-                              **value,'nativeActionAllowed':False,'replayAllowed':False},separators=(',',':')))
+                              **value,**evidence,'nativeActionAllowed':False,'replayAllowed':False},separators=(',',':')))
             return
         if MODE in ('generalize','generalize-status'):
             phase='generalize'
@@ -352,7 +370,7 @@ def _vm_main():
             value=qualify_instance(SPEC,SETUP,OPERATION_ID,MODE=='qualify-status',root,read,save,process,owns,instance_intent,closing,observed)
             print(json.dumps({'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'reason':None,**value,'nativeActionAllowed':False,'replayAllowed':False},separators=(',',':')))
             return
-        print(json.dumps({'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'state':'booted-observed','reason':None,**value,'nativeActionAllowed':False,'replayAllowed':False},separators=(',',':')))
+        print(json.dumps({'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'state':'booted-observed','reason':None,**value,**replacements(),'nativeActionAllowed':False,'replayAllowed':False},separators=(',',':')))
     except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError) as error:
         # Return only bounded check identifiers, never exception text containing
         # paths, input data or credentials. UNKNOWN never authorizes a replay.

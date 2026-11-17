@@ -1,0 +1,7 @@
+def generation(s):return (s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def process(row):
+    require(type(row)is dict and set(row)=={'pid','startTicks','argv','commandSha256','executableGeneration'} and type(row['pid'])is int and row['pid']>0 and type(row['startTicks'])is int and row['startTicks']>0,'instance_process_receipt')
+    pid=row['pid'];require(birth(pid)==row['startTicks'],'instance_process_changed');base='/proc/'+str(pid)
+    with open(base+'/cmdline','rb') as f:raw=f.read(32769)
+    require(raw==b'\0'.join(os.fsencode(x) for x in row['argv'])+b'\0' and hashlib.sha256(raw).hexdigest()==row['commandSha256'] and list(generation(os.stat(base+'/exe')))==row['executableGeneration'] and os.stat(base).st_uid==os.geteuid() and birth(pid)==row['startTicks'],'instance_process_changed')
+    return pid

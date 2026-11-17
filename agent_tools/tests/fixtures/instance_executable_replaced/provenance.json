@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "sourcePath": "agent_tools/windows_vm_instance.py",
+  "sourceCommit": "3d349640327acb227118db81b927619c0f0f95b5",
+  "fragment": "_vm_main.generation and _vm_main.process, dedented",
+  "fragmentSha256": "2a1e5d85648aad853a009f7faf787959bd615fa645ae3ba5d34bb3261af01f97",
+  "fullSourceSha256": "50d624e9e79c3f6111b5b081455beaa3b73d2f0177569a54481e3baa527f548a",
+  "failure": "A package upgrade replaced /usr/bin/qemu-system-x86_64 on the VM host at 2026-11-17T15:21:15Z. Every QEMU started before it still runs the unlinked original inode: device, inode, mode, owner, size and mtime unchanged, nlink 1 -> 0 and ctime 2026-09-21 -> 2026-11-17. process() compared the whole nine-field stat, so status, scenario host setup and stop refused every running instance with instance_process_changed.",
+  "nativeShape": {
+    "fields": [
+      "dev",
+      "ino",
+      "mode",
+      "uid",
+      "gid",
+      "nlink",
+      "size",
+      "mtimeNs",
+      "ctimeNs"
+    ],
+    "recorded": [
+      66306,
+      1234700,
+      33261,
+      0,
+      0,
+      1,
+      28940536,
+      1789559094000000000,
+      1790008459287925436
+    ],
+    "observed": [
+      66306,
+      1234700,
+      33261,
+      0,
+      0,
+      0,
+      28940536,
+      1789559094000000000,
+      1794928875234735109
+    ]
+  },
+  "nativeEvidence": "evidence/fix-instance-exe/native: resources-7.json (census before the upgrade, nlink 1), resources-8.json and resources-ne4.out (census after, nlink 0, same pid/startTicks), status-7bfbad70-2.out (status UNKNOWN failureCheck instance_process_changed)."
+}

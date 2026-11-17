@@ -346,6 +346,16 @@ def program(spec:FreshWindowsVmSpec,mode:str,*,setup=None,context=None,media_rea
     compile(body,'saved Windows VM producer','exec');return body.encode()
 
 
+def replaced_on_disk(value):
+    """The optional evidence key of an admitted actor whose executable path was since unlinked or replaced."""
+    if 'executableReplacedOnDisk' not in value:return set()
+    rows=value['executableReplacedOnDisk']
+    if (type(rows)is not dict or not rows or not set(rows)<={'qemu','swtpm'}
+            or any(type(row)is not dict or set(row)!={'nlink','ctimeNs'} or any(type(x)is not int or x<0 for x in row.values()) for row in rows.values())):
+        raise ValueError('deployment_executable_replacement')
+    return {'executableReplacedOnDisk'}
+
+
 def validate_result(spec,mode,value):
     if mode in ('secure-resolve','secure-continue','secure-continue-status'):
         from . import windows_secure_recovery as recovery
@@ -391,13 +401,13 @@ def validate_result(spec,mode,value):
                 or type(value['operationId'])is not str or str(uuid.UUID(value['operationId']))!=value['operationId']):raise ValueError('qualification_response')
         if value['state']=='setup-observed' and (type(value['setupReady'])is not bool or type(value['imageMatchesRequest'])is not bool or type(value['result'])is not dict):raise ValueError('qualification_response')
     elif value['state']=='booted-observed' and mode in ('start','status'):
-        if set(value)!=base|{'qemu','swtpm','qemuStatus','guestAgentReady','ordinarySessionObserved','osName','productReady'} or value['reason']is not None:raise ValueError('deployment_instance_response')
+        if set(value)-replaced_on_disk(value)!=base|{'qemu','swtpm','qemuStatus','guestAgentReady','ordinarySessionObserved','osName','productReady'} or value['reason']is not None:raise ValueError('deployment_instance_response')
         for key in ('qemu','swtpm'):
             if type(value[key])is not dict or set(value[key])!={'pid','startTicks'} or any(type(x)is not int or x<=0 for x in value[key].values()):raise ValueError('deployment_instance_process')
         if (type(value['qemuStatus'])is not str or type(value['guestAgentReady'])is not bool or type(value['ordinarySessionObserved'])is not bool or
                 value['osName']is not None and (type(value['osName'])is not str or not 0<len(value['osName'])<=256) or value['productReady']is not False):raise ValueError('deployment_instance_response')
     elif value['state']=='stopped-observed' and mode in ('status','stop'):
-        if (set(value)!=base|{'qemu','swtpm','positiveAbsence','productReady'} or value['reason']is not None
+        if (set(value)-(replaced_on_disk(value)if mode=='stop'else set())!=base|{'qemu','swtpm','positiveAbsence','productReady'} or value['reason']is not None
                 or value['positiveAbsence']is not True or value['productReady']is not False):raise ValueError('deployment_stop_response')
         for key in ('qemu','swtpm'):
             if type(value[key])is not dict or set(value[key])!={'pid','startTicks'} or any(type(x)is not int or x<=0 for x in value[key].values()):raise ValueError('deployment_stop_process')

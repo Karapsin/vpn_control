@@ -10721,7 +10721,7 @@
       ]
     },
     "agent_tools/tests/test_windows_vm_instance.py": {
-      "reason": "Compile only actual complete instance source and recorded guest_state/owns before fragments; physical socket nonce/flush/ownership/closing controls.",
+      "reason": "Compile only actual complete instance source and recorded guest_state/owns/process before fragments; physical socket nonce/flush/ownership/closing controls; a Linux child of a private copied executable whose file is replaced; deploy result validators.",
       "scopes": [
         "agent_tools/windows_vm_instance.py",
         "agent_tools/tests/fixtures/guest_agent_socket_closing/before.source",
@@ -10732,7 +10732,10 @@
         "agent_tools/tests/fixtures/connected_tpm_socket/provenance.json",
         "agent_tools/tests/fixtures/guest_agent_sync/before.source",
         "agent_tools/tests/fixtures/guest_agent_sync/provenance.json",
-        "agent_tools/tests/guest_agent_sync_causal.py"
+        "agent_tools/tests/guest_agent_sync_causal.py",
+        "agent_tools/tests/fixtures/instance_executable_replaced/before.source",
+        "agent_tools/tests/fixtures/instance_executable_replaced/provenance.json",
+        "agent_tools/windows_vm_deploy.py"
       ]
     },
     "agent_tools/tests/test_windows_vm_lifecycle.py": {

@@ -4203,6 +4203,30 @@ prompt, but as `UNAVAILABLE`, and a squatted root also stops every later product
 (GUI and CLI) until it is removed. Counting it a pass, or the product answering `PERMISSION_DENIED` for an admission
 trust failure, is a contract decision for the protected-storage-adversarial requirement. Native only: a rerun of the
 row on a fresh clone to record the known failure through the real collectors and the probe.
+### A QEMU upgrade on the VM host made every running clone a changed instance (native NE4 `7bfbad70`, 2026-11-17)
+
+At 15:21:15Z a package upgrade replaced `/usr/bin/qemu-system-x86_64` on the archlinux VM host; the
+boot id did not change and nothing was killed. Every QEMU started before then keeps running the old,
+now unlinked inode. Its `/proc/<pid>/exe` kept device, inode, mode, owner, size and mtime, but nlink
+went from 1 to 0 and ctime from 2026-09-21 to the upgrade time. The instance `process()` check compared
+the whole nine-field stat with the start record, so status, scenario host setup (`host_setup:instance_process_changed`)
+and stop refused all four running clones as UNKNOWN.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A running instance whose executable was replaced on disk was taken for another process (TOOL) | `test_windows_vm_instance.ExecutableReplacedOnDiskTests.test_native_unlinked_executable_before_red_fixed_green`, `PhysicalExecutableReplacementTests.test_running_child_survives_replacement_of_its_file` (Linux) | Identity is now PID, start ticks, command line and digest, owner, and the exe inode's device, inode, mode, owner, size and mtime. nlink and ctime are evidence: status and stop report `executableReplacedOnDisk: {qemu|swtpm: {nlink, ctimeNs}}`. A running executable cannot be written (ETXTBSY), so the bytes stay bound by inode, size and mtime. |
+| A looser identity could admit another process (control) | `test_every_other_identity_change_still_refuses_exactly_as_before`, `test_replacement_is_reported_only_for_an_admitted_actor`, `test_status_and_stop_results_carry_only_bounded_evidence` | A change of device, inode, mode, owner, group, size, mtime, start ticks or command line refuses with `instance_process_changed` in both the preserved and the fixed check; a malformed recorded generation refuses as `instance_process_receipt`. |
+
+Evidence: `resources-7.json` (census before the upgrade, nlink 1), `resources-8.json` and
+`resources-ne4.out` (after, same pid and start ticks, nlink 0) and `status-7bfbad70-2.out` (status
+UNKNOWN, `failureCheck: instance_process_changed`), kept under the run's private evidence
+`fix-instance-exe/native/`. Beforeimage: `agent_tools/tests/fixtures/instance_executable_replaced/`
+(the base `generation` and `process`). RED: the new module run against the unfixed `3d349640` source
+on Python 3.14 and 3.12 fails the causal test with `instance_process_changed`; GREEN on both with the
+fix. Native limits: the physical test runs only on Linux CI; the clones' own status, setup and stop
+must be rerun on the published fix. New starts are unaffected: they pin and record whatever binary is
+installed. A lifecycle restart lineage pins the on-disk binary and digest, so it still refuses for an
+instance whose binary was replaced.
 
 ## Historical coverage rule
 
