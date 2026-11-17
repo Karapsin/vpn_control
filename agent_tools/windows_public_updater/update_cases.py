@@ -57,6 +57,14 @@ COPY_LOCK_DIAGNOSTIC = {"version": 1, "stage": "INVENTORY", "kind": "OTHER"}
 # must refuse that root. It may answer OUTCOME_UNKNOWN, since its only store of the job is the root it refused, or a
 # definite RUNTIME_FAILED or PERMISSION_DENIED; any other definite answer is this row's known failure.
 COUNTERFEIT_REFUSALS = ("OUTCOME_UNKNOWN", "RUNTIME_FAILED", "PERMISSION_DENIED")
+# The product may refuse the root earlier, at process admission (5c54358f): Main.kt runs DesktopWindowsProcessAdmission
+# before it parses any command or reaches any owner, DesktopWindowsInstallAdmission pins the product's machine root and
+# WindowsInstallTrust refuses a user-owned one, and the new CLI process prints this local envelope (desktopCliJsonFailure,
+# exit 2) with a fresh request id. While the root stands, every new product process answers so, the case's own calls
+# included. It is not one of the refusals above, so a proven one is this row's known failure.
+ADMISSION_REFUSAL = {"schemaVersion": 1, "controllerId": None, "ok": False, "code": "UNAVAILABLE", "message": "UNAVAILABLE",
+                     "messageKey": None, "messageArgs": [], "final": True, "operationId": None, "configurationRevision": 0,
+                     "restartRequired": False, "data": {}, "warnings": ["OWNER_METADATA_UNAVAILABLE"]}
 COUNTERFEIT_FIELDS = frozenset(("kind", "path", "canary", "canaryText", "rootSddl", "canarySddl"))
 COUNTERFEIT_CANARY = "counterfeit-canary.json"
 COUNTERFEIT_ROOT_SDDL = "O:{sid}G:{sid}D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;{sid})"
@@ -626,25 +634,50 @@ def _reply_code(result):
     return code if type(code) is str and re.fullmatch(r"[A-Z][A-Z_]{1,63}", code) else None
 
 
+def admission_refusal(result):
+    """True only for a completed CLI call that printed the product's process-admission refusal (ADMISSION_REFUSAL)."""
+    try:
+        value = json.loads(result.stdout)
+    except ValueError:
+        return False
+    if (result.returncode != 2 or result.stderr != "" or type(value) is not dict
+            or set(value) != set(ADMISSION_REFUSAL) | {"requestId"} or type(value["requestId"]) is not str):
+        return False
+    try:
+        canonical = str(uuid.UUID(value["requestId"])) == value["requestId"]
+    except ValueError:
+        return False
+    return canonical and all(type(value[key]) is type(expected) and value[key] == expected
+                             for key, expected in ADMISSION_REFUSAL.items())
+
+
 def settle_counterfeit(owner, inputs, modules, counterfeit, fault, result, *, before, serve, gui, lease, fixture, native):
     """protected-storage-rejected once its approved install returned: end known with proof, or park.
 
-    Passed (0): the product refused (COUNTERFEIT_REFUSALS). Failed (1): the product gave any other definite answer, an
-    expired prompt's CANCELLED among them. Either needs all of: the reply from the original controller; SYSTEM's
-    terminal-actors, which the job serves only once no process of the installed helper image is left, seeing the root
-    and canary exactly as at fault-ready; this case's own view of them unchanged, the root holding the canary alone;
-    the same owner, configuration and disconnected runtime; the base registration in place and every base file the
-    owner pinned unchanged; then the serve quit, the fixture closed and the counterfeit removed by its own handles. An
-    accepted install (OK or ACCEPTED: an installer job exists somewhere), an unreadable reply, a changed root or canary
-    and any failing step park, the counterfeit kept, and nothing is retried.
+    Passed (0): the original controller refused (COUNTERFEIT_REFUSALS). Failed (1): any other definite answer from it,
+    an expired prompt's CANCELLED among them, or the product's process-admission refusal (ADMISSION_REFUSAL), which no
+    owner saw. Every end needs: SYSTEM's terminal-actors, which the job serves only once no process of the installed
+    helper image is left, seeing the root and canary exactly as at fault-ready; this case's own view of them unchanged,
+    the root holding the canary alone; for the admission refusal, a probe on the install's own admission path, which an
+    admitted CLI answers itself without any owner, refused the same way; then the counterfeit removed by its own handles
+    before any further CLI call, since the product admits no new process while it stands; the same owner,
+    configuration and disconnected runtime, and for the admission refusal no install in that owner's ledger; the base
+    registration in place and every base file the owner pinned unchanged; then the serve quit and the fixture closed.
+    An accepted install (OK or ACCEPTED: an installer job exists somewhere), an unreadable reply, any other local
+    answer (one that may follow delivery leaves an install that may still wait behind a prompt, which removing the
+    root could let through), a changed root or canary and any failing step park, and nothing is retried.
     """
     receipts, workspace, identity = modules["receipts"], Path(owner.request["workspace"]), before["controllerId"]
     code = _reply_code(result)
     require(code is not None, "counterfeit-install-reply")
     reply = json_result(result, codes=(code,), final=None)  # Envelope, empty stderr and exit code agree, whatever the code.
-    require(reply.get("controllerId") == identity, "counterfeit-original-controller")
+    admission = reply.get("controllerId") is None
+    if admission and not admission_refusal(result):
+        owner.park("counterfeit-local-reply-open", reply)
+    require(admission or reply.get("controllerId") == identity, "counterfeit-original-controller")
+    answered_by = "process-admission" if admission else "owner"
     owner.event("update-counterfeit-install-answered", {"code": code, "operationId": reply.get("operationId"),
-        "refusal": code in COUNTERFEIT_REFUSALS, "replayAllowed": False})
+        "answeredBy": answered_by, "refusal": not admission and code in COUNTERFEIT_REFUSALS, "replayAllowed": False})
     if code in ("OK", "ACCEPTED"):
         owner.park("counterfeit-root-install-accepted-open", reply)
     observed = native_evidence(owner, inputs, modules, "terminal-actors", operation=reply.get("operationId"))
@@ -652,16 +685,31 @@ def settle_counterfeit(owner, inputs, modules, counterfeit, fault, result, *, be
     view = counterfeit_view(owner, receipts, counterfeit, native)
     require(view == {"root": counterfeit["root"], "canary": counterfeit["canary"], "canarySha256": counterfeit["binding"]["canary"]["sha256"],
                      "names": [COUNTERFEIT_CANARY]}, "counterfeit-root-changed")
+    if admission:
+        # The install's admission path (a revision guard keeps it off the control-only one), on a read that an admitted
+        # CLI refuses itself (UNSUPPORTED) before reaching any owner. Refused the same way with the very root the
+        # install met, unchanged since before that CLI started, it shows the install never passed admission.
+        probe = owner.invoke(workspace, "--json", "--controller-id", identity, "--if-revision", str(before["configurationRevision"]), "status")
+        if not admission_refusal(probe):
+            owner.park("counterfeit-local-refusal-unexplained", {"exitCode": probe.returncode, "code": _reply_code(probe)})
+        owner.event("update-counterfeit-admission-refusal-reproduced", {"code": "UNAVAILABLE", "ownerReached": False,
+            "replayAllowed": False})
+    remove_counterfeit(owner, counterfeit, native)
     invariant_status(before, public(owner, workspace, identity, "status"))
+    if admission:
+        listed = public(owner, workspace, identity, "operations", "list")
+        operations = listed["data"].get("operations")
+        require(type(operations) is list and all(type(item) is dict for item in operations), "counterfeit-owner-ledger")
+        require(all(item.get("operation") != "updates.install" for item in operations),
+                "counterfeit-install-in-ledger-after-local-refusal")
     receipts.installed_registration(inputs["baseRegistration"], owner.native)
     for pin in lease.files:
         pin.digest()
     close_disconnected(owner, workspace, identity, serve, gui)
     fixture.close_known(all_update_operations_terminal=True)
-    remove_counterfeit(owner, counterfeit, native)
-    outcome = 0 if code in COUNTERFEIT_REFUSALS else 1
+    outcome = 0 if not admission and code in COUNTERFEIT_REFUSALS else 1
     owner.update_counterfeit_settled = {"variant": "protected-storage-rejected", "result": outcome, "code": code,
-        "operationId": reply.get("operationId"), "systemUnchanged": True, "rootRemoved": True}
+        "answeredBy": answered_by, "operationId": reply.get("operationId"), "systemUnchanged": True, "rootRemoved": True}
     owner.event("update-counterfeit-settled", {**owner.update_counterfeit_settled, "knownFailure": outcome == 1,
         "replayAllowed": False})
     return outcome
@@ -1107,12 +1155,13 @@ def run_update(owner, harness):
     try:
         return _run_update(owner, harness)
     except BaseException as error:
+        # A counterfeit storage root this case made and has not removed stays on the clone: never a known end. It names
+        # the park first, since its removal now precedes the serve's and fixture's close.
+        counterfeit = getattr(owner, "update_counterfeit", None)
+        if counterfeit is not None and counterfeit["created"] and not counterfeit["removed"]:
+            owner.park("update-counterfeit-root-retained", error)
         fixture = getattr(owner, "update_fixture", None)
         lease = getattr(owner, "update_application_lease", None)
         if (fixture is not None and not fixture.closed) or (lease is not None and lease.retired and not lease.admitted):
             owner.park("update-scenario-failed-with-retained-owned-resources", error)
-        # A counterfeit storage root this case made and has not removed stays on the clone: never a known end.
-        counterfeit = getattr(owner, "update_counterfeit", None)
-        if counterfeit is not None and counterfeit["created"] and not counterfeit["removed"]:
-            owner.park("update-counterfeit-root-retained", error)
         raise

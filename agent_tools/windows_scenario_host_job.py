@@ -140,6 +140,11 @@ FAULT_RECEIPT_LEAF = "native-install-failure.json"
 COUNTERFEIT_CANARY = "counterfeit-canary.json"
 COUNTERFEIT_ROOT_SDDL = "O:{sid}G:{sid}D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;{sid})"
 COUNTERFEIT_CANARY_SDDL = "O:{sid}G:{sid}D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;{sid})"
+# The product may refuse that root at process admission, before the install CLI reaches any owner (5c54358f): its reply
+# then has no controller, operation or owner metadata (update_cases.ADMISSION_REFUSAL), and terminal-actors takes it as
+# the install child's terminal answer. The case proves it with a probe before it ends the row known.
+COUNTERFEIT_ADMISSION_REFUSAL = {"controllerId": None, "ok": False, "code": "UNAVAILABLE", "final": True, "operationId": None,
+                                 "configurationRevision": 0, "data": {}, "warnings": ["OWNER_METADATA_UNAVAILABLE"]}
 # The product's original-user worker keeps polling for its job's receipt until its own ten-minute authorization deadline
 # once its coordinator refused the root; terminal-actors is served only once no helper process is left.
 HELPER_SETTLE_SECONDS = 900
@@ -3798,8 +3803,10 @@ class Job:
             # No installer job to observe: the product's reply to the approved install, no helper process left (the census
             # the stage waited for, taken again here), and the counterfeit root and canary SYSTEM reads beside them.
             reply = json.loads(observed["stdout"]["one-public-update-install"], object_pairs_hook=_unique)
-            if (type(reply) is not dict or not isinstance(reply.get("controllerId"), str) or reply.get("operationId") != need.get("productOperationId")
-                    or need.get("jobId") is not None or observed["census"]):
+            admission = type(reply) is dict and all(key in reply and type(reply[key]) is type(value) and reply[key] == value
+                                                    for key, value in COUNTERFEIT_ADMISSION_REFUSAL.items())
+            if (type(reply) is not dict or not (isinstance(reply.get("controllerId"), str) or admission)
+                    or reply.get("operationId") != need.get("productOperationId") or need.get("jobId") is not None or observed["census"]):
                 raise ValueError("collector_counterfeit_terminal")
             self._keep("collectors/terminal-actors/census.json", (json.dumps(observed["census"], sort_keys=True) + "\n").encode())
             fault = self._fault_inputs()

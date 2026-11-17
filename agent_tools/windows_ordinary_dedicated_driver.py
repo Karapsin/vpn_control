@@ -13,7 +13,7 @@ import time
 
 
 CASE_SHA = {
-    "windows-public-update": "6925c8b423751370daec6c193abb0bb3381d89acb6cbff094f16c49cbad65737",
+    "windows-public-update": "1b96532346ee2b8023922d865ef70fca67e9a063abde6e79a9d923937d47d807",
     "windows-proxy-lifecycle": "9a965b3db065ca98bdfa8c63cccaa059e676cf53a49c6705cf648e0989a3f987",
 }
 CASE_NAME = {"windows-public-update": "windows_public_updater/update_cases.py",

@@ -1632,21 +1632,39 @@ still counts. The coordinator that refused the root exits at once, but its
 original-user worker polls until its own ten-minute authorization deadline; past
 900 s the job ends UNKNOWN with `counterfeit_installer_actors_live`. That stage takes
 the census once more, and a process listed there leaves the owner waiting (UNKNOWN,
-`collector_counterfeit_terminal`). It then proves as SYSTEM the root and canary
-exactly as at `fault-ready`, and the job lists the root again.
+`collector_counterfeit_terminal`). The install child's reply it reads there must carry
+a controller, or be exactly the product's process-admission refusal below; any other
+reply without one is `collector_counterfeit_terminal` too. It then proves as SYSTEM the
+root and canary exactly as at `fault-ready`, and the job lists the root again.
 
 The case settles the run (`settle_counterfeit`):
 
-- Passed: the answer is one of the refusals; the root and canary are unchanged in
-  SYSTEM's view and in the case's own, the root holding the canary alone; owner,
-  configuration and disconnected runtime are the same; the base registration and every
-  pinned base file are in place; then the serve has quit, the fixture is closed and the
-  counterfeit is removed through handles whose volume and file index match what the case
-  made.
-- Failed (known): any other definite answer, an expired prompt's CANCELLED among them,
-  after the same proof and closing.
+- Passed: the original controller's answer is one of the refusals; the root and canary
+  are unchanged in SYSTEM's view and in the case's own, the root holding the canary
+  alone; then the counterfeit is removed through handles whose volume and file index
+  match what the case made; owner, configuration and disconnected runtime are the same;
+  the base registration and every pinned base file are in place; then the serve has
+  quit and the fixture is closed. The removal comes before every later CLI call: the
+  product admits no new process while a user-owned root stands.
+- Failed (known): any other definite answer from that controller, an expired prompt's
+  CANCELLED among them, after the same proof and closing. Also the product's
+  process-admission refusal (5c54358f): `Main.kt` runs `DesktopWindowsProcessAdmission`
+  before it parses a command or reaches an owner, `DesktopWindowsInstallAdmission`
+  pins the product's machine root and `WindowsInstallTrust` refuses a user-owned one,
+  so the install CLI prints the local `UNAVAILABLE` (no controller or operation,
+  `OWNER_METADATA_UNAVAILABLE`, final, exit 2) and no prompt ever appears. The case
+  takes exactly that envelope (`update_cases.ADMISSION_REFUSAL`), then, after the same
+  SYSTEM and own views, runs one probe on the install's admission path that an admitted
+  CLI refuses itself before any owner (`--if-revision <r> status`, `UNSUPPORTED`). It
+  must be refused the same way. Only then is the counterfeit removed, and the original
+  owner must answer unchanged with no `updates.install` in its `operations list`.
+  `UNAVAILABLE` is not one of the refusals, so the row ends failed; `answeredBy` in the
+  settlement proof says `process-admission`.
 - Parked, nothing replayed: an accepted install (OK or ACCEPTED), an unreadable reply,
-  a changed root or canary, or any failing step.
+  any other answer without a controller (one that may follow delivery, such as a local
+  OUTCOME_UNKNOWN, may leave an install waiting behind a prompt, and removing the root
+  could let it through), a probe that is not refused, an install in the ledger, a
+  changed root or canary, or any failing step.
 
 The dispatcher accepts 0 or 1 only beside the case's own settlement proof. The job
 then needs, for a pass, the root listed as SYSTEM at `terminal-actors` to hold the

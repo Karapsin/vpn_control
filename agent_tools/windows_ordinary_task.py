@@ -42,9 +42,9 @@ ACTION_FIELDS = {"pythonRuntime", "action", "msiPath", "installerLogPath", "unin
                  "uninstallLogPath", "uninstallRoot", "qualificationArgv",
                  "expectedExitCode", "cliPath", "workspace", "productVersion", "casesPath",
                  "harnessPath", "documentAcceptance", "postbootAcceptance", "responsiveWork", "bootstrap"}
-DEDICATED_DRIVER_SHA = "b28c5198926b09e975008cbce082845cc1aeb129b357e95eaa5db7c327e7066a"
+DEDICATED_DRIVER_SHA = "9d56f64826f0689c2ba57d2e724f731c7dc18bc9e4484d26e67ad4e4915c020a"
 DEDICATED_CASES = {
-    "windows-public-update": ("windows_public_updater/update_cases.py", "6925c8b423751370daec6c193abb0bb3381d89acb6cbff094f16c49cbad65737"),
+    "windows-public-update": ("windows_public_updater/update_cases.py", "1b96532346ee2b8023922d865ef70fca67e9a063abde6e79a9d923937d47d807"),
     "windows-proxy-lifecycle": ("windows_lifecycle_cases.py", "9a965b3db065ca98bdfa8c63cccaa059e676cf53a49c6705cf648e0989a3f987"),
 }
 

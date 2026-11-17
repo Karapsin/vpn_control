@@ -4163,6 +4163,47 @@ censuses ran), and the step and profile makers took no review, kept no frame, de
 accepted crops over the caret, an unchanged step frame, a tile's name and a focus-less region set. The
 ten route flow tests the review did not touch pass there as controls. GREEN: the whole module on both.
 
+### The counterfeit-root install was refused at process admission, and the case parked (native NE3 `5c54358f`, S_Q, 2026-11-17)
+
+`windows-public-update.protected-storage-rejected` on NE3 (tools `3a081133`, fixture set S_Q from `f4a66b93`)
+planted the counterfeit root, read `before-install` and `fault-ready`, started the install CLI and emitted
+`update-uac-action-pending`. The CLI exited 2 with the local envelope (`controllerId` and `operationId` null,
+`UNAVAILABLE`, `OWNER_METADATA_UNAVAILABLE`); no prompt came (`uacDecision` null). `settle_counterfeit` required the
+original controller and the owner parked (`update-scenario-failed-with-retained-owned-resources`, frames 1108, 863,
+645, 68) with the counterfeit kept. The native evidence and the before-images are under
+`evidence/fix-update-install-cli/` of the recovery runtime.
+
+Cause, by static trace of `f4a66b93` and the current source (unchanged since in `Main.kt`,
+`DesktopWindowsProcessAdmission`, `DesktopWindowsInstallAdmission` and `WindowsInstallTrust`): every Windows product
+process runs process admission in `main` before it parses its command or reaches an owner. Admission pins
+`ProgramData\vpn-control-install-jobs` as the product's final root, and `WindowsInstallTrust.verify` refuses its user
+owner ("Untrusted installer owner"). `main` maps any admission failure other than BUSY to `UNAVAILABLE` and prints
+`desktopCliJsonFailure`, the marker of every local client failure. The install request was never sent, so `UNAVAILABLE`
+with no controller is the truthful local answer (CLI-004 exit 2, CLI-005): not a CLI-002 or CLI-003 defect, which
+apply to a request that may have been delivered. The case's expectation was wrong (TOOL): it assumed the refusal
+would come from the owner or its elevated coordinator, and it called the CLI again (status, quit) while its own
+counterfeit stood, which the product refuses the same way.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The product's process-admission refusal of the counterfeit root parked the row with the root kept (TOOL) | `test_windows_update_faults.CounterfeitCaseTests.test_the_products_process_admission_refusal_ends_known_with_the_counterfeit_removed` (the native stdout byte for byte), `test_a_local_answer_it_cannot_tie_to_admission_parks_with_the_counterfeit_kept` | The case takes exactly that envelope (`ADMISSION_REFUSAL`). After SYSTEM's `terminal-actors` (no helper process, root and canary unchanged) and its own view, it runs one probe on the install's own admission path that an admitted CLI answers itself with `UNSUPPORTED` before any owner (`--if-revision <r> status`). Refused the same way, with the root unchanged since before the install CLI started, the install never passed admission. Only then is the counterfeit removed; the original owner must answer unchanged with no `updates.install` in `operations list`. `UNAVAILABLE` is not a refusal the row accepts, so it ends a known failure (1, `answeredBy: process-admission`). A local answer that may follow delivery (local OUTCOME_UNKNOWN or TIMEOUT), a probe that is admitted and an install in the ledger still park: an install that may wait behind a prompt could go through once the root is gone. |
+| The case called the CLI while its own counterfeit stood (TOOL) | `test_a_refused_counterfeit_root_settles_passed_with_proof_and_leaves_nothing` (no refused call), `test_each_refusal_passes_and_any_other_definite_answer_is_a_known_failure`, `test_a_counterfeit_that_could_not_be_removed_parks_with_it_kept`; the case peer's CLI now refuses every call while the root exists | The removal moved before `status`, `quit` and the fixture close. A removal that fails parks `update-counterfeit-root-retained` with the serve and fixture still open; `run_update` names the counterfeit first. |
+| `terminal-actors` took a reply without a controller for unobserved, so the job would have left the owner waiting on the admission refusal (TOOL, found tracing this run) | `CounterfeitJobTests.test_the_products_process_admission_refusal_is_served_at_terminal_actors`; `test_a_reply_without_a_controller_that_is_not_the_admission_refusal_stays_unobserved` (control) | `windows_scenario_host_job` accepts a reply with a controller, or exactly `COUNTERFEIT_ADMISSION_REFUSAL`; any other one stays `collector_counterfeit_terminal`. |
+
+RED on `3d349640` with only the test module changed, Python 3.14 and 3.12 alike: `FAILED (failures=12)` over 11 tests.
+The native case ended `parked:update-scenario-failed-with-retained-owned-resources` with `counterfeit-original-controller`,
+the native park; every other settled case parked the same way at its first CLI call after the answer; the job ended
+UNKNOWN `collector_stage_failed:terminal-actors:collector_counterfeit_terminal`. The three-subtest job control passed
+there, as a control must. GREEN: the module on both. Digests renewed to a fixpoint: `update_cases.py` in the
+dedicated driver's `CASE_SHA`, the planner's `DEDICATED_CASES` and `test_windows_public_updater.ROWS`, then the
+driver's in `DEDICATED_DRIVER_SHA` and the owner's held-driver literal.
+
+Open, not changed here: whether the row should pass on this refusal. The product does refuse the root, before any
+prompt, but as `UNAVAILABLE`, and a squatted root also stops every later product process of every user on the machine
+(GUI and CLI) until it is removed. Counting it a pass, or the product answering `PERMISSION_DENIED` for an admission
+trust failure, is a contract decision for the protected-storage-adversarial requirement. Native only: a rerun of the
+row on a fresh clone to record the known failure through the real collectors and the probe.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

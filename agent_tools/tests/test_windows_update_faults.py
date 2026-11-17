@@ -27,6 +27,7 @@ import tempfile
 import types
 import unittest
 from unittest import mock
+import uuid
 
 from agent_tools import native_scenario_windows as windows
 from agent_tools import windows_ordinary_dedicated_driver as dedicated_driver
@@ -289,6 +290,7 @@ class CounterfeitQga(UpdateQga):
         self.root_listings = [None, (["counterfeit-canary.json"], []), None]
         self.root_listed = []
         self.need_values = {"terminal-actors": {"jobId": None, "productOperationId": PRODUCT_OPERATION}}
+        self.install_stdout = None  # The install child's stdout SYSTEM reads at terminal-actors, when not the owner's own.
 
     def _guest_file_open(self, arguments):
         if arguments["path"].endswith("\\scenario-status.json") and arguments["mode"] == "rb":
@@ -317,6 +319,9 @@ class CounterfeitQga(UpdateQga):
             terminal = super()._publisher(m, pid)
             reply = json.loads(gzip.decompress(base64.b64decode(base64.b64decode(terminal["out-data"]))))
             reply["observation"]["census"] = json.loads(json.dumps(rows))
+            files = reply["observation"].get("files") or {}
+            if self.install_stdout is not None and "child-0005.stdout.raw" in files:
+                files["child-0005.stdout.raw"] = base64.b64encode(self.install_stdout.encode()).decode()
             return {**terminal, "out-data": out_data(reply)}
         return super()._publisher(m, pid)
 
@@ -416,6 +421,32 @@ class CounterfeitJobTests(UpdateFamilyBase):
         self.assertEqual("base", receipt["update"]["installedAfter"]["role"])
         self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
 
+    def test_the_products_process_admission_refusal_is_served_at_terminal_actors(self):
+        """5c54358f: the install child answered the CLI's local UNAVAILABLE, with no controller or operation, because the
+        product's process admission refused the root before any owner contact. terminal-actors took any reply without
+        a controller for unobserved, so the owner would have waited on it for good; it is served, and the case's known
+        failure (exit 1) is read with the base and the root's removal."""
+        self.qga.install_stdout = NATIVE_ADMISSION_REFUSAL
+        self.qga.need_values = {"terminal-actors": {"jobId": None, "productOperationId": None}}
+        plan, code, receipt = self.counterfeit(task_exit=1)
+        self.assertEqual((1, "task_exit_code"), (code, receipt["failure"]))
+        self.assertEqual(["before-install", "fault-ready", "terminal-actors"], [request["collectorRequest"]["stage"] for request in self.qga.collectors])
+        self.assertEqual({"present": False, "files": [], "directories": []}, receipt["update"]["fault"]["rootAfter"])
+        self.assertEqual("base", receipt["update"]["installedAfter"]["role"])
+
+    def test_a_reply_without_a_controller_that_is_not_the_admission_refusal_stays_unobserved(self):
+        for name, change in (("maybe-delivered", {"code": "OUTCOME_UNKNOWN", "message": "OUTCOME_UNKNOWN", "final": False}),
+                             ("owner-metadata-claimed", {"warnings": []}),
+                             ("operation-named", {"operationId": PRODUCT_OPERATION})):
+            with self.subTest(case=name):
+                self.setUp()  # A fresh journal: an UNKNOWN run leaves its fence open for the next.
+                body = json.loads(NATIVE_ADMISSION_REFUSAL)
+                body.update(change)
+                self.qga.install_stdout = json.dumps(body)
+                self.qga.need_values = {"terminal-actors": {"jobId": None, "productOperationId": body["operationId"]}}
+                plan, code, receipt = self.counterfeit(task_exit=1)
+                self.assertEqual((job.EXIT_UNKNOWN, "collector_stage_failed:terminal-actors:collector_counterfeit_terminal"), (code, receipt["failure"]))
+
     def test_a_root_still_there_or_changed_after_a_passed_task_is_this_rows_failure(self):
         for name, listings, failure in (("left", [None, (["counterfeit-canary.json"], []), (["counterfeit-canary.json"], [])], "counterfeit_root_left"),
                                         ("changed", [None, (["counterfeit-canary.json", "gate-0123"], []), None], "counterfeit_root_changed")):
@@ -428,11 +459,35 @@ class CounterfeitJobTests(UpdateFamilyBase):
                 self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
 
 
+# The installed CLI's own stdout in 5c54358f (NE3, tools 3a081133, fixture set S_Q from f4a66b93), byte for byte: the
+# install child's answer while the counterfeit root stood. Main.kt runs DesktopWindowsProcessAdmission before any CLI
+# parsing or owner contact; DesktopWindowsInstallAdmission pins ProgramData\vpn-control-install-jobs as the product's
+# final root, WindowsInstallTrust refuses its user owner ("Untrusted installer owner"), and Main prints the local
+# desktopCliJsonFailure(UNAVAILABLE), exit 2.
+NATIVE_ADMISSION_REFUSAL = ('{"schemaVersion":1,"controllerId":null,"requestId":"e19f74b3-7124-497c-a957-b7410603e31c","ok":false,'
+                            '"code":"UNAVAILABLE","message":"UNAVAILABLE","messageKey":null,"messageArgs":[],"final":true,'
+                            '"operationId":null,"configurationRevision":0,"restartRequired":false,"data":{},'
+                            '"warnings":["OWNER_METADATA_UNAVAILABLE"]}\n')
+
+
+def admission_refusal():
+    """What any new CLI process prints while the product refuses the root at process admission: a fresh request id."""
+    body = json.loads(NATIVE_ADMISSION_REFUSAL)
+    body["requestId"] = str(uuid.uuid4())
+    return subprocess.CompletedProcess([], 2, json.dumps(body, separators=(",", ":")) + "\n", "")
+
+
 class CounterfeitCli:
-    """The public CLI one update case reaches, answered by its arguments, and the install's own reply."""
+    """The public CLI one update case reaches, answered by its arguments, and the install's own reply.
+
+    refusing() models the product's process admission (Main.kt, DesktopWindowsProcessAdmission): while it is true every
+    new CLI process answers the local UNAVAILABLE before it parses its command or reaches any owner. calls keeps each
+    invocation's own arguments beside whether it was refused so.
+    """
 
     def __init__(self, controller):
-        self.controller, self.commands, self.install = controller, [], None
+        self.controller, self.commands, self.install, self.calls = controller, [], None, []
+        self.refusing = lambda: False
 
     def envelope(self, code="OK", *, exit_code=0, final=True, **data):
         body = {"schemaVersion": 1, "ok": exit_code == 0, "code": code, "final": final, "controllerId": self.controller,
@@ -440,10 +495,23 @@ class CounterfeitCli:
         return subprocess.CompletedProcess([], exit_code, json.dumps(body), "")
 
     def answer(self, arguments):
+        refused = self.refusing()
+        self.calls.append((list(arguments), refused))
+        if refused:
+            return admission_refusal()
         words = [word for word in arguments if word not in {"--json", "--async"}]
+        guarded = "--if-revision" in words
         while words and words[0] in {"--controller-id", "--if-revision"}:
             words = words[2:]
         self.commands.append(words)
+        if words == ["status"] and guarded:
+            # An admitted CLI refuses a revision guard on a read itself (DesktopCli: UNSUPPORTED), before any owner.
+            body = json.loads(NATIVE_ADMISSION_REFUSAL)
+            body.update(code="UNSUPPORTED", message="UNSUPPORTED")
+            return subprocess.CompletedProcess([], 1, json.dumps(body), "")
+        if words == ["operations", "list"]:
+            return self.envelope(operations=[{"controllerId": self.controller, "id": "bbbbbbbb-0000-4000-8000-000000000002",
+                                              "operation": "updates.download", "phase": "succeeded", "final": True, "code": "OK"}])
         if words == ["status"]:
             return self.envelope(runtimeRunning=False, activeMode=None, selectedLocationId=None, activeLocationId=None)
         if words[:2] == ["updates", "status"]:
@@ -613,6 +681,9 @@ class CounterfeitCaseTests(unittest.TestCase):
                   "faultInputs": self.binding, "returnGuiRequired": False, "connectionFixturePath": None, "upstreamFixture": None}
         self.harness = {"UPDATE_INPUTS": inputs}
         self.reply("OUTCOME_UNKNOWN", 2)
+        # The product admits no new process while the user-owned root stands (5c54358f): every CLI call the case makes
+        # then answers the local UNAVAILABLE. The install child's own reply is set per test.
+        self.owner.cli.refusing = lambda: COUNTERFEIT_ROOT in self.volume.entries
 
     def reply(self, code, exit_code, **changes):
         body = {"schemaVersion": 1, "ok": exit_code == 0, "code": code, "final": True, "controllerId": "controller-1",
@@ -698,11 +769,77 @@ class CounterfeitCaseTests(unittest.TestCase):
         self.assertTrue(all(child.terminal is not None for child in self.owner.children))
         self.assertEqual(["base-registration", "base-registration", "base-file"], self.registration,
                          "matched before the case and again after the answer: the base is still installed, byte for byte")
-        self.assertEqual({"variant": "protected-storage-rejected", "result": 0, "code": "OUTCOME_UNKNOWN",
+        self.assertEqual({"variant": "protected-storage-rejected", "result": 0, "code": "OUTCOME_UNKNOWN", "answeredBy": "owner",
                           "operationId": "cccccccc-0000-4000-8000-000000000003", "systemUnchanged": True, "rootRemoved": True},
                          self.owner.update_counterfeit_settled)
         need = [value for kind, value in self.owner.events if kind == "update-native-observation-needed" and value["stage"] == "terminal-actors"][0]
         self.assertEqual((None, "cccccccc-0000-4000-8000-000000000003"), (need["jobId"], need["productOperationId"]))
+        self.assertEqual([], [arguments for arguments, refused in self.owner.cli.calls if refused],
+                         "no CLI call while the counterfeit stands: the product admits no new process then")
+
+    def test_the_products_process_admission_refusal_ends_known_with_the_counterfeit_removed(self):
+        """5c54358f: the install CLI never reached the owner. Every new product process pins the product's machine root
+        at admission and refuses a user-owned one, so the install answered the local UNAVAILABLE (no controller, no
+        operation, OWNER_METADATA_UNAVAILABLE) right after the case asked for the prompt, and no prompt ever came. The
+        case required the original controller and parked with the counterfeit kept and both collectors read.
+
+        Provable without replay: SYSTEM sees no helper process and the root and canary unchanged; the same admission path
+        refuses a probe that, admitted, could reach no owner; only then is the counterfeit removed, after which the
+        original owner answers unchanged and its ledger holds no install. UNAVAILABLE is not a refusal the row accepts,
+        so the row ends a known failure.
+        """
+        self.owner.cli.install = subprocess.CompletedProcess([], 2, NATIVE_ADMISSION_REFUSAL, "")
+        self.assertEqual(1, self.run_case())
+        self.assertIsNone(self.owner.parked)
+        self.assertEqual({}, self.volume.entries, "the clone keeps nothing of the counterfeit")
+        self.assertEqual({"variant": "protected-storage-rejected", "result": 1, "code": "UNAVAILABLE", "answeredBy": "process-admission",
+                          "operationId": None, "systemUnchanged": True, "rootRemoved": True}, self.owner.update_counterfeit_settled)
+        stages = [value["stage"] for kind, value in self.owner.events if kind == "update-native-observation-needed"]
+        self.assertEqual(["before-install", "fault-ready", "terminal-actors"], stages)
+        refused = [arguments for arguments, refused in self.owner.cli.calls if refused]
+        self.assertEqual([["--json", "--controller-id", "controller-1", "--if-revision", "4", "status"]], refused,
+                         "while the counterfeit stands, only the probe that no admitted CLI could send to an owner")
+        kinds = self.kinds()
+        self.assertLess(kinds.index("update-counterfeit-admission-refusal-reproduced"), kinds.index("update-counterfeit-root-removed"))
+        self.assertLess(kinds.index("update-counterfeit-root-removed"), kinds.index("update-counterfeit-settled"))
+        self.assertIn(["operations", "list"], self.owner.cli.commands, "the original owner's ledger, read after the removal")
+        self.assertTrue(self.fixture.closed)
+        self.assertEqual([["quit"]], [command for command in self.owner.cli.commands if command == ["quit"]])
+        self.assertEqual(["base-registration", "base-registration", "base-file"], self.registration)
+
+    def test_a_local_answer_it_cannot_tie_to_admission_parks_with_the_counterfeit_kept(self):
+        """Only the admission refusal is provably undelivered. A local answer that may follow delivery, an admission
+        that now lets the probe through, or a ledger that names an install leaves the outcome open."""
+        maybe_delivered = json.loads(NATIVE_ADMISSION_REFUSAL)
+        maybe_delivered.update(code="OUTCOME_UNKNOWN", message="OUTCOME_UNKNOWN", final=False)
+        for name, change, reason, kept in (
+                ("maybe-delivered", lambda: setattr(self.owner.cli, "install", subprocess.CompletedProcess([], 2, json.dumps(maybe_delivered), "")),
+                 "counterfeit-local-reply-open", True),
+                ("probe-admitted", lambda: setattr(self.owner.cli, "refusing", lambda: False), "counterfeit-local-refusal-unexplained", True),
+                ("install-in-ledger", lambda: self.owner.cli.__dict__.update(answer=self.ledger_with_install(self.owner.cli.answer)),
+                 "counterfeit-install-in-ledger-after-local-refusal", False)):
+            with self.subTest(case=name):
+                self.setUp()
+                self.owner.cli.install = subprocess.CompletedProcess([], 2, NATIVE_ADMISSION_REFUSAL, "")
+                change()
+                result = self.run_case()
+                self.assertTrue(str(result).startswith("parked:"), result)
+                self.assertIn(reason, str(self.owner.parked[0]) + str(self.owner.parked[1]))
+                self.assertFalse(hasattr(self.owner, "update_counterfeit_settled"))
+                self.assertEqual(kept, job.INSTALL_JOBS in self.volume.entries)
+                if kept:
+                    self.assertNotIn("remove", [call[0] for call in self.volume.calls])
+
+    def ledger_with_install(self, answer):
+        def wrapped(arguments):
+            reply = answer(arguments)
+            if arguments[-2:] == ["operations", "list"]:
+                body = json.loads(reply.stdout)
+                body["data"]["operations"].append({"controllerId": "controller-1", "id": "eeeeeeee-0000-4000-8000-000000000009",
+                                                   "operation": "updates.install", "phase": "running", "final": False, "code": None})
+                reply = subprocess.CompletedProcess([], 0, json.dumps(body), "")
+            return reply
+        return wrapped
 
     def test_each_refusal_passes_and_any_other_definite_answer_is_a_known_failure(self):
         for code, exit_code, expected in (("RUNTIME_FAILED", 1, 0), ("PERMISSION_DENIED", 1, 0), ("CANCELLED", 130, 1),
@@ -749,10 +886,12 @@ class CounterfeitCaseTests(unittest.TestCase):
         self.assertNotIn("update-uac-action-pending", self.kinds(), "no install is asked for")
         self.assertEqual([("create-directory", job.INSTALL_JOBS, self.binding["rootSddl"])], self.volume.calls)
 
-    def test_a_counterfeit_that_could_not_be_removed_parks_even_with_everything_else_closed(self):
+    def test_a_counterfeit_that_could_not_be_removed_parks_with_it_kept(self):
+        # The removal now comes before any CLI call after the answer (the product admits no process while the root
+        # stands), so the serve and fixture are still open when it fails; the counterfeit names the park.
         self.native.remove_error = OSError(32, "sharing violation")
         self.assertEqual("parked:update-counterfeit-root-retained", self.run_case())
-        self.assertTrue(self.fixture.closed, "the fixture and serve closed first")
+        self.assertFalse(self.fixture.closed, "nothing after the removal ran")
         self.assertIn(job.INSTALL_JOBS, self.volume.entries)
         self.assertFalse(hasattr(self.owner, "update_counterfeit_settled"))
 
