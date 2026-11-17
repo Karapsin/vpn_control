@@ -652,6 +652,13 @@ VPN_CONFIG = {"log": {"level": "info"},
               "route": {"final": "proxy", "auto_detect_interface": True}}
 
 
+# b90ccd68's reply to "--json --controller-id <id> diagnostics export --output -": the client's own parse refusal, 326 bytes.
+REFUSED_RAW_JSON = ('{"schemaVersion":1,"controllerId":null,"requestId":"9a4b2c1d-0e6f-4a3b-8c7d-112233445566","ok":false,'
+                    '"code":"INVALID_ARGUMENT","message":"INVALID_ARGUMENT","messageKey":null,"messageArgs":[],"final":true,'
+                    '"operationId":null,"configurationRevision":0,"restartRequired":false,"data":{},'
+                    '"warnings":["OWNER_METADATA_UNAVAILABLE"]}\n')
+
+
 class ProductDiagnosticsTests(StageWorld):
     """79828e7d: an approved restart-grant ended RUNTIME_FAILED with A untouched, and its evidence held only status and
     operations. An unexpected terminal now publishes the product's own diagnostics, and its known end names the why."""
@@ -665,7 +672,10 @@ class ProductDiagnosticsTests(StageWorld):
         self.reports = []
 
         def invoke(workspace, *arguments, timeout=30, stdin=None):
+            """The installed CLI as ControlCliParser parses it: a raw stdout export refuses --json locally (b90ccd68)."""
             self.reports.append(arguments)
+            if "--json" in arguments and arguments[-2:] == ("--output", "-"):
+                return subprocess.CompletedProcess(arguments, 1, REFUSED_RAW_JSON, "")
             return subprocess.CompletedProcess(arguments, 0, "VPN Control Desktop Diagnostics\n[preflight]\nscoped Windows broker: PASS\n"
                                                "[connection_log]\n1: VPN start failed\n", "")
         self.owner.invoke = invoke
@@ -703,8 +713,10 @@ class ProductDiagnosticsTests(StageWorld):
         found = self.owner.events[-2][1]
         self.assertEqual(dict(LEDGER_ROW, id=self.operation), found["operation"], "the operation's own ledger record")
         self.assertEqual(["Connecting", "VPN start failed via https://<redacted>"], [row["message"] for row in found["logs"]])
-        self.assertEqual(("--json", "--controller-id", "controller-1", "diagnostics", "export", "--output", "-"), self.reports[0])
-        self.assertIn("scoped Windows broker: PASS", found["diagnosticsExport"]["text"])
+        self.assertIn("scoped Windows broker: PASS", found["diagnosticsExport"]["text"], "the product's report, not a parse refusal")
+        self.assertEqual(0, found["diagnosticsExport"]["exitCode"])
+        self.assertEqual(("--controller-id", "controller-1", "diagnostics", "export", "--output", "-"), self.reports[0],
+                         "a raw stdout export, pinned to the row's controller, never with --json")
         self.assertEqual(0, found["diagnosticsExport"]["exitCode"])
         tail = found["runtimeLog"]["tail"]
         self.assertIn("FATAL dial https://<redacted> from <ipv4> password=<redacted>", tail)

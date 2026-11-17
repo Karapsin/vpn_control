@@ -1319,8 +1319,9 @@ other than loopback, the TUN subnet and the benchmark address). The broker write
 and its exit code is not readable as the ordinary user, so the watch is how a failure
 after approval is located. On a final code the variant does not expect, before any check
 of the end, the stages publish `scoped-tun-product-diagnostics`: the operation's ledger
-record, the product's `logs` and its `diagnostics export` report (both its own
-redaction), the workspace `runtime-sing-box.log` tail and runtime folder listing (the
+record, the product's `logs` and its raw `diagnostics export --output -` report (without
+`--json`, which the parser refuses with a raw stdout export; both its own redaction),
+the workspace `runtime-sing-box.log` tail and runtime folder listing (the
 stages' redaction), a reserved job's correlation journals, the watch, and a `diagnosis`
 whose `reach` is `no-broker-observed`, `broker-ended-before-stage`,
 `broker-running-without-stage`, `broker-stage-created` or `broker-child-created`. Every

@@ -430,7 +430,9 @@ def product_diagnostics(owner, lease, runtime, terminal, timeline):
                 for row in entries[-LOG_ENTRIES:] if type(row) is dict]
 
     def report():
-        reply=owner.invoke(workspace,'--json','--controller-id',identity,'diagnostics','export','--output','-')
+        # Raw stdout and no --json: ControlCliParser refuses "JSON output cannot be combined with a raw stdout export"
+        # with a local INVALID_ARGUMENT envelope (b90ccd68). Raw, the report is all of stdout and a failure's code is on stderr.
+        reply=owner.invoke(workspace,'--controller-id',identity,'diagnostics','export','--output','-')
         raw=reply.stdout.encode()
         return {'exitCode':reply.returncode,'stderr':clip(reply.stderr,2000),'sizeBytes':len(raw),
                 'sha256':hashlib.sha256(raw).hexdigest(),'text':clip(reply.stdout)}
