@@ -4317,6 +4317,59 @@ point. Evidence: `.runtime/windows-desktop-settles/d80b34c1-7e9c-42ea-b28b-84431
 | Failure type | Regression | Notes |
 | --- | --- | --- |
 | A probe that raised wrote no result, and the settle kept no task end or stderr (TOOL) | `test_windows_desktop_settle.ProbeProgramTests.test_native_probe_whose_lookup_fails_still_writes_a_typed_error_and_its_stderr` (no owner, no class, `WinDLL` failing), `...test_the_system_side_keeps_the_task_end_and_stderr_before_it_removes_them`, `SettleFlowTests.test_native_probe_error_after_idle_is_kept_with_its_evidence_and_gets_no_key`; controls `ProbeProgramTests.test_a_null_foreground_was_never_a_crash_it_is_no_holder` and `...test_a_readable_foreground_is_written_as_before` (both hold on `f81eb342`) | The probe file (run whole over a fake `user32`) opens its own stderr in the probe folder first (`pythonw` has none), catches any exception, an import or a lookup included, and always writes `probe.json` with `window` and a typed `error` (class, message up to 512 characters). SYSTEM reads the task's `LastTaskResult` before it unregisters the task and the stderr (last 4096 characters) before it removes the folder, and returns both with every probe; a probe error refuses `desktop_probe_failed` with no key. Every probe row of the settle terminal (and `result.json`) carries `lastTaskResult`, `stderr` and `error`. A NULL foreground stays settled, as the owner's holder rule says. RED on `f81eb342` (Python 3.14 and 3.12): 25 tests, failures=5 and errors=23; `ProbeProgramTests` alone: failures=4 with both controls passing, for example `the probe died with no result: AssertionError('interactive-desktop-foreground-owner')`. GREEN: OK on both. |
+### The autostart migration's `schtasks /Change` never ended and hung the serve (native, `06ef5879`, S_D7 2.3.2, 2026-11-18)
+
+Run `06ef5879` (`windows-autostart-migration.pre`, package S_D7: the 2.3.2 MSI of `79fe27be`, which includes
+`2e9f380a`) planted the legacy task. The snapshot read it as `highest`, with `grantedAccess` `0x1F01FF` and a bare
+`<LogonTrigger />`. A read-only `settings show` then left it unchanged. Next, `--if-revision 5 settings set autostart
+true` (child 21) ran 604 s with no output and ended `{"ok":false,"code":"TIMEOUT","controllerId":null,
+"warnings":["OWNER_METADATA_UNAVAILABLE"]}`. That is the CLI's own 600 s client timeout
+(`desktopCliJsonFailure`): the serve never answered. The cleanup `quit` (child 22) got the same answer. The serve
+(child 3, pid 2184) never reached end of output. The owner then parked as
+`original-preboot-refusal-cleanup-unknown-no-replay`, which is correct. `status.json` has `uacEvents: []`. The evidence
+is under `.runtime/windows-parity-20261107/family/diag/06ef5879/`.
+
+Cause (PRODUCT, CLI-003 and CLI-005; high confidence that this is the mechanism, medium confidence on what
+`schtasks` waited for):
+- With a recognized `HighestAvailable` task, `setEnabled(true)` runs `migrateOwnedWindowsHighestTaskToOrdinaryUserLocked`.
+  That runs `schtasks /Change /TN "VPN Control" /RL LIMITED` (`DesktopAutostartManager.kt:378` and `:401-406` on
+  `3d2d681e`). This is the first time any native run reached that command. Every other command on the path had run
+  natively before:
+  - `schtasks /Query /XML` and `whoami` run at serve startup and in `inspectEnabled`.
+  - The `reg query` and the PowerShell absence probes run at the startup of every row that has no task.
+- `runCommand` (`:618-628`) started each OS command with the stdin pipe from `ProcessBuilder` left open and never
+  written. It then read stdout to end of file and called `waitFor()`, both with no bound. A command that waits
+  for input, or that never ends, blocks the caller for good. The leading suspect is the run-as password prompt that
+  `schtasks /Change` can show. Nothing on this path elevates (`schtasks`, `reg`, `whoami` and `powershell` all run
+  asInvoker), and no UAC event was seen. So this is not a deferred consent prompt. It is an unbounded wait on a child
+  process.
+- The wait ran while the manager held `vpn-control-windows-autostart.lock` and the `@Synchronized`
+  `DesktopAppService.applyControlSettings` monitor (`DesktopAppService.kt:1065-1099`). So `quit` and every later
+  request blocked behind it, and the serve could not end.
+
+Fix (`runAutostartCommand`, `DesktopAutostartManager.kt`):
+- Every autostart OS command now starts with its stdin closed, so a prompt reads end of input.
+- Output is read on a daemon thread, capped at 1 MiB.
+- The child must end within `AUTOSTART_COMMAND_TIMEOUT_MILLIS` (30 s), and its output must close by that same
+  deadline. Otherwise its descendants and the child itself are killed, and the result is `-1`/`TIMEOUT`.
+- The caller's existing failure handling then applies: `setEnabled` fails, `applyControlSettings` re-reads the
+  task, and the answer is `PERSISTENCE_FAILED` with nothing reported as changed. The lock and the monitor are released.
+- The process starter and the bound are constructor seams (`processStarter`, `commandTimeoutMillis`). The
+  `commandRunner` that production uses by default is built from them.
+
+| Failure type | Regression | RED / GREEN |
+| --- | --- | --- |
+| An autostart OS command that never ends (or waits on stdin) hung `settings set autostart true`, the task lock, the service monitor, `quit` and the serve (PRODUCT) | `DesktopAutostartBoundedCommandTest` (`:desktopApp:test`): `aMigrationWhoseChangeNeverEndsIsATypedFailureInBoundedTimeAndTheServiceStaysUsable`, `aMigrationWhoseChangeWaitsForAnAnswerOnStdinGetsEndOfInputAtOnce`, `everyAutostartCommandEndsWithinItsBoundAndOrdinaryOutputIsUnchanged` | Two tests drive the real `DesktopAppService.applyControlSettings` and `DesktopAutostartManager` over a world of child `Process`es. In that world, only `schtasks /Change` misbehaves: it never ends, or it ends only when its stdin closes. The native task shape is used: a bare any-user trigger, an interactive token, `HighestAvailable`. The first test requires `PERSISTENCE_FAILED` within 15 s, the `/Change` child killed, the task unchanged, and then a second write that migrates. That second write shows the lock and the monitor were released. The second test sets a 120 s bound and requires an answer within 15 s, so only the closed stdin can release it. RED on the decision of `3d2d681e` itself: a seams-only tree. It is `3d2d681e` with the starter and bound parameters added and the old `runCommand` body moved into `runAutostartCommand` unchanged; the bound is ignored. Result: 3 tests, 3 failures, each at its bound (`never returned`, `waited on a prompt`, `waited on a child`). The beforeimage, the seams-only file and diff, and the logs are in the builder clone's `.runtime/fix-autostart-timeout/`. GREEN on the fix: 3 tests, 0 failures. The neighbouring suites also pass with the runner now in place: `DesktopAutostartManagerTest` (30 tests, 1 skipped), `DesktopAutostartParityTest` (1) and `DesktopSettingsServiceTest` (4). |
+
+Native only:
+- what `schtasks /Change /RL LIMITED` actually waited for. The leading suspect is a run-as password prompt on the
+  stdin pipe or the hidden console. If it reads the console rather than stdin, only the bound releases it.
+- whether an unelevated `/Change` can migrate this task at all. With this fix, the rerun answers in bounded time. It
+  answers `PERSISTENCE_FAILED` if `/Change` still cannot complete, and success if it can. A migration through the
+  Task Scheduler object model (`RegisterTaskDefinition`, `TASK_UPDATE`, an interactive-token logon, no password) is
+  a proposal for the case where `/Change` turns out to need a password. It is not implemented here.
+
+The original native scenario must be rerun on a package built from this fix.
 
 ## Historical coverage rule
 

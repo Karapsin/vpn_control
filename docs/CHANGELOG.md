@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows protected-storage update rows settle the product's process-admission refusal of a squatted install root as a known failure, removing the counterfeit before any further CLI call.
 - Windows VM instance identity no longer compares the QEMU or swtpm binary's link count and ctime, so running clones stay admissible after a host package upgrade replaces the binary on disk; the replacement is recorded.
 - Windows scoped-TUN and update-install rows that expect a UAC prompt now refuse before any change while the Start menu, search, a shell flyout or a foreign console holds the ordinary desktop's foreground, instead of parking on a prompt Windows deferred to the taskbar; the holder is recorded, a UAC review or decision that finds such a refusal stops before any pointer move or key, and the explicit `windows-desktop-settle` action dismisses a Start, Search or shell-flyout foreground on an owned clone with at most two Esc keys; its session probe always writes a typed result, and each probe keeps the task's LastTaskResult and the probe's stderr.
+- Windows autostart commands now end in bounded time with stdin closed, so enabling start on login over a legacy task answers a typed failure instead of hanging the serve.
 
 ## 2.3.2 - 2026-11-17
 

@@ -12,7 +12,11 @@ internal class DesktopAutostartManager(
     private val configHome: Path = defaultConfigHome(),
     private val commandResolver: () -> String? = ::resolveLaunchCommand,
     private val platform: DesktopAutostartPlatform = currentAutostartPlatform(),
-    private val commandRunner: (List<String>) -> DesktopAutostartCommandResult = ::runCommand,
+    private val processStarter: (List<String>) -> Process = ::startAutostartProcess,
+    private val commandTimeoutMillis: Long = AUTOSTART_COMMAND_TIMEOUT_MILLIS,
+    private val commandRunner: (List<String>) -> DesktopAutostartCommandResult = { command ->
+        runAutostartCommand(command, processStarter, commandTimeoutMillis)
+    },
     private val systemctlResolver: () -> Path? = ::platformSystemctl,
     private val executableChecker: (Path) -> Boolean = Files::isExecutable,
     private val environment: () -> Map<String, String> = System::getenv,
@@ -614,19 +618,58 @@ internal class DesktopAutostartManager(
                 Paths.get("/bin/systemctl"),
             ).firstOrNull(Files::isExecutable)
         }
+    }
+}
 
-        private fun runCommand(command: List<String>): DesktopAutostartCommandResult {
-            return runCatching {
-                val process = ProcessBuilder(command)
-                    .redirectErrorStream(true)
-                    .start()
-                val output = process.inputStream.bufferedReader().use { it.readText() }
-                DesktopAutostartCommandResult(process.waitFor(), output)
-            }.getOrElse { error ->
-                DesktopAutostartCommandResult(exitCode = -1, output = error.message.orEmpty())
+internal const val AUTOSTART_COMMAND_TIMEOUT_MILLIS = 30_000L
+private const val AUTOSTART_COMMAND_OUTPUT_MAX_BYTES = 1024 * 1024
+private const val AUTOSTART_COMMAND_TIMEOUT = "TIMEOUT"
+
+internal fun startAutostartProcess(command: List<String>): Process =
+    ProcessBuilder(command).redirectErrorStream(true).start()
+
+/**
+ * Every autostart OS command (schtasks, reg, whoami, the PowerShell absence probes) ends in bounded time. Its stdin is
+ * closed at once: none of them takes input, and a prompt (schtasks /Change asking for a run-as password) must read end
+ * of input rather than wait on a pipe nobody writes. A child that still has not ended at the bound is killed with its
+ * descendants and reads as a failure, so the caller answers a typed result and releases the task lock and the
+ * service monitor (native 06ef5879: the serve and every later CLI call hung on an unbounded schtasks /Change).
+ */
+internal fun runAutostartCommand(
+    command: List<String>,
+    launch: (List<String>) -> Process,
+    timeoutMillis: Long,
+): DesktopAutostartCommandResult {
+    val process = runCatching { launch(command) }.getOrElse { error ->
+        return DesktopAutostartCommandResult(exitCode = -1, output = error.message.orEmpty())
+    }
+    runCatching { process.outputStream.close() }
+    val output = java.io.ByteArrayOutputStream()
+    val reader = Thread({
+        runCatching {
+            process.inputStream.use { input ->
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    synchronized(output) {
+                        if (output.size() < AUTOSTART_COMMAND_OUTPUT_MAX_BYTES) output.write(buffer, 0, count)
+                    }
+                }
             }
         }
+    }, "vpn-control-autostart-command").apply { isDaemon = true; start() }
+    val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+    val exited = runCatching { process.waitFor(timeoutMillis, java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrDefault(false)
+    if (exited) reader.join(java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()).coerceAtLeast(1))
+    if (!exited || reader.isAlive) {
+        runCatching { process.descendants().forEach { it.destroyForcibly() } }
+        runCatching { process.destroyForcibly() }
+        runCatching { process.inputStream.close() }
+        return DesktopAutostartCommandResult(exitCode = -1, output = AUTOSTART_COMMAND_TIMEOUT)
     }
+    val text = synchronized(output) { output.toByteArray().toString(Charsets.UTF_8) }
+    return DesktopAutostartCommandResult(process.exitValue(), text)
 }
 
 internal sealed interface WindowsTaskOwnership {
