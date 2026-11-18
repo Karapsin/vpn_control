@@ -66,6 +66,11 @@ DARK_LEVEL = 110
 _PARK_COLUMNS = 32
 _HELPER_IMAGE = {"install-helper": "vpn-control-install-helper.exe", "vpn-broker": "vpn-control-vpn-broker.exe",
                  "qualification": "whoami.exe"}
+# The guest row's typed refusal when the ordinary desktop was not settled before its request (a75acf02: a prompt raised
+# behind the Start menu goes to the taskbar). Published by windows_ordinary_process_owner.interactive_desktop; a census
+# that finds it refuses the review and the decision before any pointer move or key.
+_UNSETTLED_EVENT = {"install-helper": "update-interactive-desktop-unsettled", "vpn-broker": "scoped-tun-interactive-desktop-unsettled",
+                    "qualification": ""}
 _DECISION_NAMESPACE = "windows-uac-decision"
 _REVIEW_NAMESPACE = "windows-uac-review"
 _DECISIONS = ".runtime/windows-uac-decisions"
@@ -189,7 +194,7 @@ DIRECT_ROWS = {
 _PRELUDE = ("$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n"
             "if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18'){throw 'SYSTEM_REQUIRED'}\n")
 
-_CENSUS = r"""$root=__ROOT__;$kind=__KIND__;$field=__FIELD__;$sidKind=__SID_KIND__;$sidField=__SID_FIELD__;$administrator=__ADMINISTRATOR__;$helper=__HELPER__
+_CENSUS = r"""$root=__ROOT__;$kind=__KIND__;$field=__FIELD__;$sidKind=__SID_KIND__;$sidField=__SID_FIELD__;$administrator=__ADMINISTRATOR__;$helper=__HELPER__;$unsettledKind=__UNSETTLED_KIND__
 function Read-Owned([string]$path){
  $stream=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
  try{
@@ -206,6 +211,7 @@ function Named([string]$wanted){
 }
 $events=@(foreach($file in (Named $kind)){$e=Read-Owned $file.FullName;[ordered]@{name=[string]$file.Name;operationId=[string]$e.operationId;value=[string]$e.value.$field;variant=[string]$e.value.variant}})
 $sids=@(foreach($file in (Named $sidKind)){$e=Read-Owned $file.FullName;[string]$e.value.$sidField})
+$unsettled=@(foreach($file in (Named $unsettledKind)){[string]$file.Name})
 $parked=@(foreach($name in @('owner-parked.json','task-owner-parked.json')){if(Test-Path -LiteralPath (Join-Path $root $name)){$name}})
 $policy=Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
 $preload=(Get-ItemProperty -LiteralPath 'Registry::HKEY_USERS\.DEFAULT\Keyboard Layout\Preload').'1'
@@ -217,7 +223,7 @@ $consents=@(foreach($c in @($all|Where-Object{$_.Name -ieq 'consent.exe'}|Select
  $p=Get-Process -Id ([int]$c.ProcessId);$start=$p.StartTime.ToUniversalTime();$sig=Get-AuthenticodeSignature -LiteralPath ([string]$c.ExecutablePath)
  [ordered]@{pid=[int]$c.ProcessId;birth=$start.ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture);sessionId=[int]$c.SessionId;image=[string]$c.ExecutablePath;signature=[string]$sig.Status;signer=[string]$sig.SignerCertificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false);parentIsAppinfo=([int]$c.ParentProcessId -eq $appinfo);ageSeconds=[int][math]::Floor(([DateTime]::UtcNow-$start).TotalSeconds)}
 })
-$r=[ordered]@{policy=[ordered]@{enableLua=[int]$policy.EnableLUA;promptOnSecureDesktop=[int]$policy.PromptOnSecureDesktop;consentPromptBehaviorUser=[int]$policy.ConsentPromptBehaviorUser};preload=[string]$preload;adminSid=[string]$adminSid;bootFileTimeUtc=[string]$boot;events=$events;sidValues=$sids;parked=$parked;consents=$consents;helpers=@($all|Where-Object{$_.Name -ieq $helper}).Count}
+$r=[ordered]@{policy=[ordered]@{enableLua=[int]$policy.EnableLUA;promptOnSecureDesktop=[int]$policy.PromptOnSecureDesktop;consentPromptBehaviorUser=[int]$policy.ConsentPromptBehaviorUser};preload=[string]$preload;adminSid=[string]$adminSid;bootFileTimeUtc=[string]$boot;events=$events;sidValues=$sids;parked=$parked;unsettled=$unsettled;consents=$consents;helpers=@($all|Where-Object{$_.Name -ieq $helper}).Count}
 [Console]::WriteLine(($r|ConvertTo-Json -Depth 6 -Compress))
 """
 
@@ -258,7 +264,8 @@ def census_source(row, context, administrator):
     source = _PRELUDE + _CENSUS
     for marker, value in (("__ROOT__", context["operationRoot"]), ("__KIND__", row["event"]), ("__FIELD__", row["field"]),
                           ("__SID_KIND__", row["sidEvent"] or ""), ("__SID_FIELD__", row["sidField"] or ""),
-                          ("__ADMINISTRATOR__", administrator), ("__HELPER__", _HELPER_IMAGE[row["prompt"]])):
+                          ("__ADMINISTRATOR__", administrator), ("__HELPER__", _HELPER_IMAGE[row["prompt"]]),
+                          ("__UNSETTLED_KIND__", _UNSETTLED_EVENT[row["prompt"]])):
         if source.count(marker) != 1:
             raise ValueError("windows_uac_census_marker")
         source = source.replace(marker, _ps_literal(value))
@@ -430,12 +437,14 @@ def _uac_census(value,fresh):
     def need(ok,code):
         if not ok:raise ValueError(code)
     context=UAC_CONTEXT
-    need(type(value)is dict and set(value)=={'policy','preload','adminSid','bootFileTimeUtc','events','sidValues','parked','consents','helpers'},'instance_uac_census_shape')
+    need(type(value)is dict and set(value)=={'policy','preload','adminSid','bootFileTimeUtc','events','sidValues','parked','unsettled','consents','helpers'},'instance_uac_census_shape')
     policy=value['policy']
     need(type(policy)is dict and policy.get('enableLua')==1 and policy.get('promptOnSecureDesktop')==1 and policy.get('consentPromptBehaviorUser')in (1,3),'instance_uac_policy')
     need(value['preload']=='00000409','instance_uac_keyboard')
     need(value['bootFileTimeUtc']==context['bootFileTimeUtc'],'instance_uac_boot_changed')
     need(value['parked']==[],'instance_uac_owner_parked')
+    # The row refused before its request: the Start menu, search or a foreign console held the ordinary desktop (a75acf02).
+    need(value['unsettled']==[],'instance_uac_interactive_desktop_unsettled')
     events=value['events']
     # Too early, or a hold that has not ended: nothing is burned and the client may call again.
     need(type(events)is list and events!=[],'instance_uac_event_not_pending')

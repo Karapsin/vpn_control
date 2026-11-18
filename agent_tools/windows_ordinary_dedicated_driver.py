@@ -66,7 +66,7 @@ TUN_CONFIG_VARIANTS = frozenset({"generated-grant", "custom-grant", "large-grant
 TUN_BRANCH_VARIANTS = TUN_CONFIG_VARIANTS | {"vpn-prepare-failure", "vpn-commit-failure"}
 RESERVED_SHA = "62a6e228ea34ff91239b1cc09e05217f85a2542a233fc454460f51acb3f8b82a"
 RELAY_SHA = "b903710460bf8d5ff28dcccdc9a39eaf0756a3ce0a62a62c474b3b6af1d7c753"  # ssh-grant's in-guest SSH relay
-TUN_SHA = "ef330b60071a5b7a00fbf0ee8410c2d0de15cb440e4fdbe27567107a9b29d786"
+TUN_SHA = "0ff95f642efc92811c88cafb11770b2ab85e733b65e7a2ca5cbc9092d594a811"
 SAMPLER_SHA = "e2915de32a47f46251e1af807f181950ceb120d2e3d998c8b3c679645553a697"  # A grant's direct TUN sampler
 TUN_COLLECTOR_SHA = "5b64377c177bad09bbb1becf66a7b907797267111afe95534c1a465ca1a95828"  # windows_tun_native_observer: COLLECTORS["tun"]
 NATIVE_NEED = "update-native-observation-needed"  # The one native-need kind the SYSTEM run reports (windows_scenario_system_run).
@@ -190,6 +190,14 @@ def run_update(owner, cases, harness):
     # host job's installed-package claim of a row that ends with that base rests on (the request's productVersion
     # is the base version). A row that ends with its target has the case ask the target after the update.
     installed_version(owner)
+    if inputs["variant"] not in NO_SYSTEM:
+        # Every install asks the product's helper for elevation from the windowless CLI client: behind the Start menu
+        # Windows defers that prompt to the taskbar (a75acf02). Before any update state or hold, the owner's one guard
+        # refuses an unsettled desktop (a known failure, nothing requested) and records any other holder.
+        observer = owner.module(inputs["modules"]["broker_observer"], "_owned_dedicated_desktop_observer")
+        desktop = owner.interactive_desktop(observer.WindowsNative().processes, "update-interactive-desktop-unsettled")
+        owner.event("update-interactive-desktop", {"interactiveDesktop": desktop, "variant": inputs["variant"],
+                                                   "replayAllowed": False})
     hold = update_hold(owner, inputs, harness.SYSTEM_COLLECTOR_CLOSE_HOLD)
     try:
         result = cases.run_update(owner, harness.__dict__)

@@ -11,7 +11,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows autostart treats a logon trigger whose Enabled element Task Scheduler omitted as enabled, so enabled tasks are no longer reported as conflicts when autostart is turned on or off.
 - Windows protected-storage update rows settle the product's process-admission refusal of a squatted install root as a known failure, removing the counterfeit before any further CLI call.
 - Windows VM instance identity no longer compares the QEMU or swtpm binary's link count and ctime, so running clones stay admissible after a host package upgrade replaces the binary on disk; the replacement is recorded.
-- Windows scoped-TUN rows that expect a UAC prompt now refuse before any change while the Start menu, search, a shell flyout or a foreign console holds the ordinary desktop's foreground, instead of parking on a prompt Windows deferred to the taskbar; the holder is recorded on the prompt event.
+- Windows scoped-TUN and update-install rows that expect a UAC prompt now refuse before any change while the Start menu, search, a shell flyout or a foreign console holds the ordinary desktop's foreground, instead of parking on a prompt Windows deferred to the taskbar; the holder is recorded, and a UAC review or decision that finds such a refusal stops before any pointer move or key.
 
 ## 2.3.2 - 2026-11-17
 

@@ -197,6 +197,67 @@ def failure_detail(error):
         return {"errorClass": type(error).__name__, "detailUnavailable": type(failure).__name__}
 
 
+# a75acf02 (NG4, 2.3.1, 2026-11-18): with the Start menu open over the ordinary desktop, Windows raised the windowless
+# serve child's vpn-broker prompt as a flashing taskbar button, not on the secure desktop, so nothing could answer it
+# and the row parked with its restart pending. The product's install helper is asked for the same way. Every row that
+# expects a native consent prompt reads the foreground through this owner before any change (interactive_desktop).
+SHELL_FOREGROUND = frozenset({"startmenuexperiencehost.exe", "searchhost.exe", "searchapp.exe", "shellexperiencehost.exe"})
+CONSOLE_CLASS = "ConsoleWindowClass"
+INTERACTIVE_DESKTOP_REFUSALS = frozenset({"scoped-tun-interactive-desktop-unsettled", "update-interactive-desktop-unsettled"})
+
+
+def foreground_window():
+    """The input desktop's foreground window as this ordinary process sees it: its owner's pid and class, or None.
+
+    A console window reads back as owned by its first client process (conhost names it so), not by conhost."""
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.GetForegroundWindow.argtypes = ()
+    user32.GetForegroundWindow.restype = W.HWND
+    user32.GetWindowThreadProcessId.argtypes = (W.HWND, ctypes.POINTER(W.DWORD))
+    user32.GetWindowThreadProcessId.restype = W.DWORD
+    user32.GetClassNameW.argtypes = (W.HWND, W.LPWSTR, ctypes.c_int)
+    user32.GetClassNameW.restype = ctypes.c_int
+    window = user32.GetForegroundWindow()
+    if not window:
+        return None
+    pid = W.DWORD(0)
+    if user32.GetWindowThreadProcessId(window, ctypes.byref(pid)) == 0 or pid.value <= 0:
+        raise AssertionError("interactive-desktop-foreground-owner")
+    name = ctypes.create_unicode_buffer(257)
+    if user32.GetClassNameW(window, name, len(name)) <= 0:
+        raise AssertionError("interactive-desktop-foreground-class")
+    return {"pid": int(pid.value), "className": name.value}
+
+
+def interactive_desktop(owner, processes, refusal, pid):
+    """Who holds the ordinary desktop's foreground, read once before a row that expects a consent prompt changes anything.
+
+    The product asks for elevation from a process with no window (the serve child, the CLI install client), so while the
+    Start menu, search or another shell surface holds the foreground, or a console outside this owner's own chain (the
+    task's PowerShell, this worker), Windows defers the prompt to a flashing taskbar button that no decision can answer.
+    Such a row publishes ``refusal`` naming the holder and raises it as an AssertionError: nothing was requested, so its
+    driver closes it as a known failure. Any other holder, or none, is returned for the row to record. ``processes``
+    is the row's own observer census (pid, parentPid, name); ``pid`` is this worker's."""
+    if refusal not in INTERACTIVE_DESKTOP_REFUSALS:
+        raise AssertionError("interactive-desktop-refusal-kind")
+    window = foreground_window()
+    if window is None:
+        return {"foreground": None}
+    rows = {row["pid"]: row for row in processes()}
+    chain = set()
+    while pid in rows and pid not in chain:
+        chain.add(pid)
+        pid = rows[pid]["parentPid"]
+    image = rows.get(window["pid"], {}).get("name")
+    seen = {"foreground": {"pid": window["pid"], "image": image, "className": window["className"], "owned": window["pid"] in chain}}
+    shell = type(image) is str and image.casefold() in SHELL_FOREGROUND
+    if shell or (window["className"] == CONSOLE_CLASS and window["pid"] not in chain):
+        owner.event(refusal, {**seen, "reason": "shell-surface" if shell else "foreign-console", "promptRequested": False,
+                              "replayAllowed": False})
+        raise AssertionError(refusal)
+    return seen
+
+
 def _unreadable(error):
     raise error
 
@@ -878,6 +939,10 @@ class Owner:
             # of the failed mutation, assertion sequence, source or child occurs.
             time.sleep(1)
 
+    def interactive_desktop(self, processes, refusal):
+        """The one foreground guard of every row that expects a consent prompt (module interactive_desktop)."""
+        return interactive_desktop(self, processes, refusal, os.getpid())
+
     def child(self, label, argv, *, new_console=False, owned_desktop=None, stdin=None):
         require(str(absolute(argv[0])).casefold() in self.by_path, "child-executable-not-pinned")
         return Child(self, label, argv, new_console=new_console, owned_desktop=owned_desktop, stdin=stdin)
@@ -1046,7 +1111,7 @@ class Owner:
         if action in {"windows-public-update", "windows-proxy-lifecycle"}:
             driver_path = str(Path(__file__).with_name("windows_ordinary_dedicated_driver.py"))
             pin = self.by_path[str(absolute(driver_path)).casefold()]
-            require(pin.record["sha256"] == "45ff1d5c9614c3a72511f40ecf3e8a8bb61108e9a69cd2b371cbc5a216e975a1",
+            require(pin.record["sha256"] == "18592972cf82e489c83ea0965193f4279d8ad77f01dc542b375b564dc8fa677a",
                     "held-fixed-dedicated-driver-source")
             driver = self.module(driver_path, "_owned_fixed_dedicated_driver")
             return driver.run(self, action)

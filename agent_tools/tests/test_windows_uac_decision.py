@@ -144,7 +144,7 @@ def consent(**changes):
 def census(**changes):
     return {"policy": {"enableLua": 1, "promptOnSecureDesktop": 1, "consentPromptBehaviorUser": 3}, "preload": "00000409", "adminSid": ADMIN, "bootFileTimeUtc": BOOT,
             "events": [{"name": "event-000009-scoped-tun-awaiting-current-input.json", "operationId": CORRELATION, "value": "restart-grant", "variant": "restart-grant"}],
-            "sidValues": [ADMIN], "parked": [], "consents": [consent()], "helpers": 0, **changes}
+            "sidValues": [ADMIN], "parked": [], "unsettled": [], "consents": [consent()], "helpers": 0, **changes}
 
 
 def binding():
@@ -1959,6 +1959,8 @@ CENSUS_REFUSALS = (({"policy": {**census()["policy"], "enableLua": 0}}, "instanc
                    ({"policy": {**census()["policy"], "promptOnSecureDesktop": 0}}, "instance_uac_policy"),
                    ({"preload": "00000419"}, "instance_uac_keyboard"), ({"bootFileTimeUtc": "134368653065000001"}, "instance_uac_boot_changed"),
                    ({"parked": ["owner-parked.json"]}, "instance_uac_owner_parked"), ({"events": []}, "instance_uac_event_not_pending"),
+                   ({"unsettled": ["event-000004-scoped-tun-interactive-desktop-unsettled.json"], "events": [], "consents": []},
+                    "instance_uac_interactive_desktop_unsettled"),
                    ({"events": [{**census()["events"][0], "value": "restart-deny"}]}, "instance_uac_event_mismatch"),
                    ({"events": [{**census()["events"][0], "operationId": str(uuid.uuid4())}]}, "instance_uac_event_mismatch"),
                    ({"adminSid": SID, "sidValues": [SID]}, "instance_uac_administrator"), ({"helpers": 1}, "instance_uac_helper_present"),
@@ -2097,6 +2099,31 @@ class ReviewFlowTests(FlowBase):
                 self.assertEqual(([], []), (self.moves(), self.answered()))
                 self.clear()
                 self.assertEqual(reason, self.run_owner(fresh=fresh, censuses=censuses)["reason"], "the decision's own refusal")
+
+    def test_native_start_menu_review_is_refused_with_its_typed_reason_and_sends_nothing(self):
+        """a75acf02 (NG4): the Start menu held the desktop, so the guest row refused before its request and named it. A review
+        (and the decision after it) reads that refusal in its census and stops there: no pointer move, key, burn or frame."""
+        unsettled = census(events=[], consents=[], unsettled=["event-000004-scoped-tun-interactive-desktop-unsettled.json"])
+        for attempt, frames in ((1, [frame()]), (2, [frame(fill=0), frame()])):
+            with self.subTest(display="lit" if attempt == 1 else "dark"):
+                self.clear()
+                reply = self.run_review("deny", scenario=DENY_ROW, attempt=attempt, frames=frames, censuses=[unsettled])
+                self.assertEqual(("review-refused", "instance_uac_interactive_desktop_unsettled", False),
+                                 (reply.get("state"), reply.get("reason"), reply.get("pointerMoved")))
+                self.assertEqual(([], [], []), (self.moves(), self.keys, self.answered()))
+                self.assertNotIn("frame", reply)
+                self.assertEqual([], [call for call in self.monitor_calls if call[0] == "screendump"], "not even a frame is taken")
+        self.clear()
+        self.assertEqual("instance_uac_interactive_desktop_unsettled", self.run_owner(censuses=[unsettled])["reason"])
+        self.assertEqual([], self.keys)
+
+    def test_the_census_names_each_prompts_own_unsettled_event(self):
+        sources = {prompt: decision.census_source(row, CONTEXT, "fixtureadmin")
+                   for prompt, row in (("vpn-broker", decision.ROWS[SCENARIO]), ("install-helper", decision.ROWS[DIFFERENT]))}
+        self.assertIn("$unsettledKind='scoped-tun-interactive-desktop-unsettled'", sources["vpn-broker"])
+        self.assertIn("$unsettledKind='update-interactive-desktop-unsettled'", sources["install-helper"])
+        for source in sources.values():
+            self.assertIn("unsettled=$unsettled", source)
 
     def test_a_prompt_its_decision_burned_is_never_reviewed(self):
         self.assertEqual("input-ack-only", self.run_owner()["state"])
@@ -2750,6 +2777,18 @@ class SecondAdministratorRouteFlowTests(FlowBase):
             return found
         with mock.patch.object(self, "review_values", values):
             return self.run_review(scenario=DIFFERENT, censuses=[census(events=DIFFERENT_EVENTS)])
+
+    def test_a_route_review_behind_an_unsettled_desktop_sends_no_step(self):
+        # a75acf02: the update row refused before its install, so the route capture finds its refusal, not a prompt.
+        def values(answer, scenario, review, attempt):
+            found = ReviewFlowTests.review_values(self, answer, scenario, review, attempt)
+            found.update(UAC_ROUTE=route_screens(ROUTE_PLAN[:2]), UAC_ROUTE_SHAS=[("%x" % number) * 64 for number in range(1, 3)])
+            return found
+        unsettled = census(events=[], consents=[], unsettled=["event-000003-update-interactive-desktop-unsettled.json"])
+        with mock.patch.object(self, "review_values", values):
+            reply = self.run_review(scenario=DIFFERENT, censuses=[unsettled])
+        self.assertEqual(("review-refused", "instance_uac_interactive_desktop_unsettled"), (reply.get("state"), reply.get("reason")))
+        self.assertEqual(([], []), (self.keys, [name for name in self.tree() if "once-" in name]))
 
     def test_a_review_sends_the_reviewed_steps_and_keeps_the_frame_after_them(self):
         reply = self.run_route_review(2)

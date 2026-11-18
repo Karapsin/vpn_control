@@ -17,6 +17,7 @@ import unittest
 from unittest import mock
 import uuid
 
+from agent_tools import windows_ordinary_process_owner as process_owner
 from agent_tools import windows_scenario_proxy as proxy
 from agent_tools import windows_tun_direct_sampler as sampler
 from agent_tools import windows_tun_stages as stages
@@ -30,7 +31,7 @@ SAMPLER_INPUT = "C:\\ProgramData\\VpnControlOrdinaryTask-op\\tun-direct-traffic.
 PYTHON = "C:\\Users\\recovery\\AppData\\Local\\Programs\\Python\\Python313\\python.exe"
 CLI = "C:\\Users\\recovery\\AppData\\Local\\vpn-control\\vpn-control-cli.exe"
 BODY = "vpn-control-proxy-fixture"
-REAL_FOREGROUND = getattr(stages, "foreground_window", None)  # StageWorld replaces it with each test's own holder.
+REAL_FOREGROUND = getattr(process_owner, "foreground_window", None)  # StageWorld replaces it with each test's own holder.
 
 
 def response(body):
@@ -177,6 +178,10 @@ class Recorder:
         self.children.append((label, argv))
         return types.SimpleNamespace(ordinal=len(self.children), completed=lambda: self.output)
 
+    def interactive_desktop(self, processes, refusal):
+        """The real owner's one foreground guard, as the worker pid 6084 of the a75acf02 evidence."""
+        return process_owner.interactive_desktop(self, processes, refusal, 6084)
+
 
 class StageWorld(unittest.TestCase):
     def setUp(self):
@@ -185,10 +190,9 @@ class StageWorld(unittest.TestCase):
         self.entries = ["Microsoft", "vpn-control-vpn-0f0f0f0f-0000-4000-8000-000000000001", "VpnControlOrdinaryTask-op"]
         self.routes = []
         self.foreground = None  # No window holds the ordinary desktop's foreground.
-        fake_os = types.SimpleNamespace(name="nt", environ={"ProgramData": "C:\\ProgramData"}, listdir=lambda path: list(self.entries),
-                                        getpid=lambda: 6084)
+        fake_os = types.SimpleNamespace(name="nt", environ={"ProgramData": "C:\\ProgramData"}, listdir=lambda path: list(self.entries))
         for patcher in (mock.patch.object(stages, "os", fake_os), mock.patch.object(stages, "tun_routes", lambda: list(self.routes)),
-                        mock.patch.object(stages, "foreground_window", lambda: self.foreground, create=True)):
+                        mock.patch.object(process_owner, "foreground_window", lambda: self.foreground, create=True)):
             patcher.start()
             self.addCleanup(patcher.stop)
         self.observer = types.SimpleNamespace(WindowsNative=lambda: types.SimpleNamespace(processes=lambda: [dict(row) for row in self.processes]))
@@ -469,7 +473,7 @@ class InteractiveDesktopTests(StageWorld):
         self.assertEqual(1, order.count("foreground"))
 
     def foreground_reader(self, read):
-        patcher = mock.patch.object(stages, "foreground_window", read, create=True)
+        patcher = mock.patch.object(process_owner, "foreground_window", read, create=True)
         patcher.start()
         self.addCleanup(patcher.stop)
 

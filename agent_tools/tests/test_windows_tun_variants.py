@@ -28,6 +28,7 @@ from agent_tools import windows_tun_stages as stages
 from agent_tools import windows_uac_decision as decision
 from agent_tools.tests.test_windows_ordinary_task import DedicatedDispatchPeer
 from agent_tools.tests.test_windows_tun_grant import PRODUCT_OPERATION, REQUEST_ID, SERVE_BIRTH, SERVE_PID, GrantRecords
+from agent_tools import windows_ordinary_process_owner as process_owner
 from agent_tools.tests.test_windows_tun_stages import ADMIN, PurePathReading, StageWorld
 from agent_tools.windows_system_collector import collector_contract as contract
 
@@ -243,7 +244,7 @@ class PreparationFailureTests(VariantWorld):
         for variant, read in (("vpn-prepare-failure", False), ("vpn-commit-failure", True)):
             with self.subTest(variant=variant):
                 self.setUp()
-                with mock.patch.object(stages, "foreground_window", unread, create=True):
+                with mock.patch.object(process_owner, "foreground_window", unread, create=True):
                     if read:
                         with self.assertRaisesRegex(AssertionError, "^foreground-read$"):
                             self.begin_variant(variant)

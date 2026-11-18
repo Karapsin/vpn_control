@@ -1256,6 +1256,7 @@ class DocumentCausalRetentionTests(unittest.TestCase):
 
 
 from agent_tools import windows_ordinary_dedicated_driver as dedicated_driver
+from agent_tools import windows_ordinary_process_owner as dedicated_owner_module
 from agent_tools.windows_system_collector import hold_protocol as dedicated_protocol
 from agent_tools.windows_system_collector import collector_contract as dedicated_contract
 
@@ -1288,6 +1289,15 @@ class DedicatedDispatchPeer:
         self.result, self.case_error, self.release_error = 0, None, None
         self.modules = {}
         self.inputs = None
+        # The ordinary desktop as this owner's foreground read sees it (a75acf02): nothing in the foreground by default.
+        self.foreground, self.processes = None, [{"pid": 1380, "parentPid": 900, "name": "powershell.exe"},
+                                                 {"pid": 6084, "parentPid": 1380, "name": "python.exe"}]
+
+    def interactive_desktop(self, processes, refusal):
+        """The real owner guard over this peer's declared foreground and its own pid 6084."""
+        self.calls.append(("interactive-desktop", refusal))
+        with mock.patch.object(dedicated_owner_module, "foreground_window", lambda: self.foreground, create=True):
+            return dedicated_owner_module.interactive_desktop(self, processes, refusal, 6084)
 
     def child(self, label, argv):
         """Only the installed launcher's --help and --version: a completed call with no custody to keep."""
@@ -1319,6 +1329,8 @@ class DedicatedDispatchPeer:
             return result
         if path.endswith("hold_protocol.py"):
             return dedicated_protocol
+        if path.endswith("windows_broker_fixture_observer.py") and name == "_owned_dedicated_desktop_observer":
+            return types.SimpleNamespace(WindowsNative=lambda: types.SimpleNamespace(processes=lambda: [dict(row) for row in self.processes]))
         if path.endswith("caller_hold.py"):
             outer = self
             class Hold:
@@ -1487,6 +1499,41 @@ class DedicatedDriverControls(unittest.TestCase):
                 self.assertLess(owner.calls.index(probes[-1]), owner.calls.index("cases"))
                 if variant not in dedicated_driver.NO_SYSTEM:
                     self.assertLess(owner.calls.index(probes[-1]), owner.calls.index("arm"))
+
+    def test_native_start_menu_refuses_every_install_before_its_hold_or_case(self):
+        """a75acf02: a consent prompt asked for from a windowless client behind the Start menu goes to the taskbar. Every
+        update row that installs reads the foreground through the owner's one guard first and refuses, typed and known."""
+        for variant in sorted(dedicated_driver.FINAL_TERMINAL | dedicated_driver.FINAL_RETURNED | {"protected-storage-rejected"}):
+            with self.subTest(variant=variant):
+                owner = DedicatedDispatchPeer(Path(self.temp.name)); owner.update(variant)
+                owner.processes.append({"pid": 5400, "parentPid": 700, "name": "StartMenuExperienceHost.exe"})
+                owner.foreground = {"pid": 5400, "className": "Windows.UI.Core.CoreWindow"}
+                with self.assertRaisesRegex(AssertionError, "^update-interactive-desktop-unsettled$"):
+                    dedicated_driver.run(owner, "windows-public-update")
+                self.assertNotIn("arm", owner.calls); self.assertNotIn("cases", owner.calls)
+                refused = [call for call in owner.calls if isinstance(call, tuple) and call[0] == "update-interactive-desktop-unsettled"]
+                self.assertEqual([{"foreground": {"pid": 5400, "image": "StartMenuExperienceHost.exe", "className": "Windows.UI.Core.CoreWindow",
+                                                  "owned": False}, "reason": "shell-surface", "promptRequested": False, "replayAllowed": False}],
+                                 [value for _, value in refused])
+                self.assertFalse(hasattr(owner, "parked"), "nothing was requested: a known failure, never a park")
+
+    def test_a_settled_install_records_its_holder_and_a_promptless_row_never_reads_it(self):
+        for variant, foreground, seen in (
+                ("success-off", None, {"foreground": None}),
+                ("uac-denied", {"pid": 1380, "className": "ConsoleWindowClass"},
+                 {"foreground": {"pid": 1380, "image": "powershell.exe", "className": "ConsoleWindowClass", "owned": True}})):
+            with self.subTest(variant=variant):
+                owner = DedicatedDispatchPeer(Path(self.temp.name)); owner.update(variant)
+                owner.foreground = foreground
+                self.assertEqual(0, dedicated_driver.run(owner, "windows-public-update"))
+                recorded = [call for call in owner.calls if isinstance(call, tuple) and call[0] == "update-interactive-desktop"]
+                self.assertEqual([("update-interactive-desktop", {"interactiveDesktop": seen, "variant": variant, "replayAllowed": False})], recorded)
+                self.assertLess(owner.calls.index(recorded[0]), owner.calls.index("arm"))
+        for variant in sorted(dedicated_driver.NO_SYSTEM):
+            with self.subTest(variant=variant):
+                owner = DedicatedDispatchPeer(Path(self.temp.name)); owner.update(variant, hold=False)
+                self.assertEqual(0, dedicated_driver.run(owner, "windows-public-update"))
+                self.assertNotIn(("interactive-desktop", "update-interactive-desktop-unsettled"), owner.calls)
 
     def test_an_update_whose_launcher_reports_another_version_never_arms_or_runs_its_case(self):
         self.owner.update()

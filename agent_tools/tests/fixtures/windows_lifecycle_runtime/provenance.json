@@ -204,12 +204,12 @@
       "sha256": "5b64377c177bad09bbb1becf66a7b907797267111afe95534c1a465ca1a95828"
     },
     "agent_tools/windows_tun_stages.py": {
-      "bytes": 72427,
+      "bytes": 69694,
       "currentRoleAdjustment": "Finish waits 300 s, past the prompt's lifetime, and a known CANCELLED on a grant is a known failure. On the scenario route every input is the job's own: the frame handoff is gone, uacDecisionId is windows-uac-decision's one decision for this operation, and a closing census and a direct sampler are added. A final refusal of the request, a final code the variant does not expect or a cancelled grant is a known end that settles the lease for its closing census, and a denial must keep pending B selected. A grant asks the driver's handoff for its collector's ready record only after the product's own OK, and its machine records join the row's source, which the driver keeps on the lease. A reserved row's request refused before the product's correlation journal, with A, pending B and the census as before, is a known end too. While finish waits, a read-only preparation watch records the approved broker, its stage, its child and the launch's redacted VPN config; an unexpected terminal first publishes the product's own diagnostics and its known end names the diagnosis, and a commit-failure row that ended before its commit with A, pending B and the census as before is a known end. The diagnostics report is read as a raw stdout export without --json, which the product's parser refuses with --output -. A final refusal of the request, a final code no step expects, a reserved row's end before its correlation journal (watched while the case waits) and a reserved case's park while its outcome is open publish the same product diagnostics first. Before any change, a row that expects a prompt refuses while the Start menu, search, another shell surface or a console outside its owner chain holds the ordinary desktop foreground, and records the holder on the prompt event. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v3/tun_stages.py",
       "originalSourceBytes": 15407,
       "originalSourceSha256": "aca0ca635e813b57b3c1047ad32dc619bf059c5909b50145078d379b32c93a9a",
-      "sha256": "ef330b60071a5b7a00fbf0ee8410c2d0de15cb440e4fdbe27567107a9b29d786"
+      "sha256": "0ff95f642efc92811c88cafb11770b2ab85e733b65e7a2ca5cbc9092d594a811"
     }
   },
   "schemaVersion": 1,
