@@ -3496,6 +3496,7 @@ _VM_NATIVE_ADAPTERS = (
     'windows_guest_input',
     'windows_uac_decision',
     'windows_uac_visual',
+    'windows_desktop_settle',
     'windows_desktop_test',
     'windows_credential_recovery_ssh',
     'windows_credential_probe_ssh',
@@ -3969,6 +3970,12 @@ def _uac_decision_invalid(inputs):
             or inputs["prompt"] not in {"install-helper", "vpn-broker"} or inputs["decision"] not in {"approve", "deny"})
 
 
+def _desktop_settle_invalid(inputs):
+    return (set(inputs) != {"deploymentId", "operationId"} or any(type(v) is not str for v in inputs.values())
+            or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", inputs["deploymentId"])
+            or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", inputs["operationId"]))
+
+
 def _uac_visual_invalid(inputs):
     return (set(inputs) != {"deploymentId", "operationId", "step"} or any(type(v) is not str for v in inputs.values())
             or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", inputs["deploymentId"])
@@ -3982,6 +3989,8 @@ _UAC_REPLIES = {
     "windows-uac-decision": (frozenset({"input-ack-only"}), "uac-input-ack-only", "uac_decision_unavailable"),
     "windows-uac-review": (frozenset({"review-frame-retained"}), "uac-review-frame", "uac_review_unavailable"),
     "windows-uac-visual": (frozenset({"visual-prompt-raised", "visual-prompt-closed"}), "uac-visual-setup", "uac_visual_unavailable"),
+    # Setup class too: a settled ordinary desktop before a review, never an approval or product evidence.
+    "windows-desktop-settle": (frozenset({"desktop-settled"}), "desktop-settle-setup", "desktop_settle_unavailable"),
 }
 
 
@@ -4009,6 +4018,8 @@ def _uac_before_contact(action, inputs):
     try:
         if action == "windows-uac-visual":
             local = _agent_module("windows_uac_visual").before_contact(REPO_ROOT, inputs)
+        elif action == "windows-desktop-settle":
+            local = _agent_module("windows_desktop_settle").before_contact(REPO_ROOT, inputs)
         else:
             local = _agent_module("windows_uac_decision").before_contact(REPO_ROOT, inputs, review=action == "windows-uac-review")
     except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
@@ -4369,6 +4380,8 @@ def _vm_invalid_before_recovery(action, inputs):
         return _uac_decision_invalid(inputs)
     if action == "windows-uac-visual":
         return _uac_visual_invalid(inputs)
+    if action == "windows-desktop-settle":
+        return _desktop_settle_invalid(inputs)
     if action in {"windows-desktop-test-start", "windows-desktop-test-status"}:
         return _desktop_test_invalid(action, inputs)
     if action in {"windows-vm-deploy-start", "windows-vm-deploy-status", "windows-vm-deploy-stop",
@@ -4567,7 +4580,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
         # or a native host, so it is admitted too: its source must be clean and published (TEST-005).
         if not policy.requirements and policy.classification != "intentional_phase":
             return _vm_workflow_dispatch(action, inputs)
-        if action in {"windows-uac-decision", "windows-uac-review", "windows-uac-visual"}:
+        if action in {"windows-uac-decision", "windows-uac-review", "windows-uac-visual", "windows-desktop-settle"}:
             local = _uac_before_contact(action, inputs)
             if local is not None:
                 return local
@@ -4728,6 +4741,13 @@ def _vm_workflow_dispatch(action: str, inputs: dict[str, Any]) -> dict[str, Any]
                 return _error("vm_workflow", "UAC visual prompt requires exactly deploymentId, operationId and step.")
             try:
                 return _uac_reply(action, _agent_module("windows_uac_visual").prompt(REPO_ROOT, inputs))
+            except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
+                return _uac_unavailable(action)
+        if action == "windows-desktop-settle":
+            if _desktop_settle_invalid(inputs):
+                return _error("vm_workflow", "Desktop settle requires exactly deploymentId and operationId.")
+            try:
+                return _uac_reply(action, _agent_module("windows_desktop_settle").settle(REPO_ROOT, inputs))
             except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
                 return _uac_unavailable(action)
         if action in {"windows-desktop-test-start", "windows-desktop-test-status"}:
@@ -10223,7 +10243,7 @@ def vm_workflow(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             return retired
     if action in {"windows-input-start", "windows-input-observe", "windows-input-join",
                   "windows-input-decision", "windows-input-finish", "windows-uac-decision", "windows-uac-review",
-                  "windows-uac-visual", "windows-desktop-test-start", "windows-desktop-test-status"}:
+                  "windows-uac-visual", "windows-desktop-settle", "windows-desktop-test-start", "windows-desktop-test-status"}:
         return _vm_workflow_impl(action, inputs)
     if action in {"source-review-close", "baseline-source-inventory"}:
         # Metadata/source reads must not write native failure evidence on refusal.
@@ -10367,6 +10387,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                                       "windows-uac-decision",
                                       "windows-uac-review",
                                       "windows-uac-visual",
+                                      "windows-desktop-settle",
                                       "windows-desktop-test-start",
                                       "windows-desktop-test-status",
                                       "windows-vm-virt-firmware-install-preflight",

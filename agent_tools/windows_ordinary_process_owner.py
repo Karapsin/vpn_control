@@ -241,21 +241,33 @@ def interactive_desktop(owner, processes, refusal, pid):
     if refusal not in INTERACTIVE_DESKTOP_REFUSALS:
         raise AssertionError("interactive-desktop-refusal-kind")
     window = foreground_window()
+    seen, unsettled = desktop_holder(window, {} if window is None else {row["pid"]: row for row in processes()}, pid)
+    if unsettled is not None:
+        owner.event(refusal, {**seen, "reason": unsettled, "promptRequested": False, "replayAllowed": False})
+        raise AssertionError(refusal)
+    return seen
+
+
+def desktop_holder(window, rows, pid):
+    """The one holder rule of the ordinary desktop: (what holds the foreground, why it is unsettled or None).
+
+    ``window`` is foreground_window()'s read, ``rows`` the census by pid (pid, parentPid, name) and ``pid`` the reading
+    process, whose ancestors are its own chain. A shell surface in the foreground is "shell-surface" and a console
+    outside that chain "foreign-console"; any other holder, or none, is settled. windows_desktop_settle applies it to
+    a probe run in the user's session."""
     if window is None:
-        return {"foreground": None}
-    rows = {row["pid"]: row for row in processes()}
+        return {"foreground": None}, None
     chain = set()
     while pid in rows and pid not in chain:
         chain.add(pid)
         pid = rows[pid]["parentPid"]
     image = rows.get(window["pid"], {}).get("name")
     seen = {"foreground": {"pid": window["pid"], "image": image, "className": window["className"], "owned": window["pid"] in chain}}
-    shell = type(image) is str and image.casefold() in SHELL_FOREGROUND
-    if shell or (window["className"] == CONSOLE_CLASS and window["pid"] not in chain):
-        owner.event(refusal, {**seen, "reason": "shell-surface" if shell else "foreign-console", "promptRequested": False,
-                              "replayAllowed": False})
-        raise AssertionError(refusal)
-    return seen
+    if type(image) is str and image.casefold() in SHELL_FOREGROUND:
+        return seen, "shell-surface"
+    if window["className"] == CONSOLE_CLASS and window["pid"] not in chain:
+        return seen, "foreign-console"
+    return seen, None
 
 
 def _unreadable(error):

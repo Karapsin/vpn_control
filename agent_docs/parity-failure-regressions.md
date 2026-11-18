@@ -4280,6 +4280,27 @@ of a passing row shows what held the foreground, since it may be what let the ea
 secure desktop. The original native scenarios (this restart-deny and an update install row) must be rerun on the
 published fix; the review guard reads the guest's refusal, so it cannot see a Start menu opened after the guest's check.
 
+### Fresh clones keep a shell surface in the foreground, and the guard alone cannot settle them (native NG5 `adae4153`, 2026-11-18)
+
+Failure type `fresh-profile-shell-foreground`. After the guard (`5bc294f1`, `3d2d681e`), NG5's `restart-deny`
+review run `adae4153` refused before any prompt: `scoped-tun-interactive-desktop-unsettled`, reason `shell-surface`,
+holder `SearchHost.exe` pid 5836 (`Windows.UI.Core.CoreWindow`, not owned), a clean known failure. NG4 held Start
+(`a75acf02`), and operator B's enrolment frames of NF, NF2 and NF3 (`pin-d78c871a`, 07:45, a fresh profile with only
+Python installed and no harness console) show Start open after a wake that sends one absolute pointer move and no
+key (`readiness_windows_remote.py` `wake_display`; the screen-pin step is a SYSTEM policy write). So a fresh Windows 11
+profile keeps a shell surface in the foreground by itself, and live clones (NG5, ND4) need an explicit settle before a
+review. Evidence: `.runtime/windows-scenarios/adae4153-cd16-4745-9aee-7f5e25f821d9/evidence-1.zip` and the pin folder
+under `.runtime/windows-parity-20261107/enroll-18414f3c/` (recovery checkout).
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A live clone had no reviewed way to dismiss the Start or Search foreground that every prompting row now refuses (TOOL, fixture readiness) | `test_windows_desktop_settle`: `SettleFlowTests.test_native_start_menu_gets_one_esc_and_the_desktop_settles`, `...test_native_search_that_stays_after_one_esc_gets_a_second_and_never_a_third`; controls: the rest of the module (no key for a settled desktop, a console or any other holder; a probe refusal, a locked or changed session and a malformed probe before any key; each Esc burned first; a failure after the start unknown with its fence open; a repeat that keys nothing; the packet, the local journal and frames, the route, the catalog rows and the CLI name) | New closed setup action `vm_workflow windows-desktop-settle` (`windows_desktop_settle.py`; inputs `deploymentId`, `operationId`). It proves the console is the fixture user's unlocked session, keeps a frame, and probes the foreground in that session: SYSTEM registers a one-shot InteractiveToken, Limited task of that user running a fixed windowless `pythonw` probe built from the owner's own `foreground_window`, and removes it; the owner's `desktop_holder` (now the single rule `interactive_desktop` applies too) judges the read. Only a shell surface gets one `Esc`, burned before it is sent and probed again, at most two in all; any other holder is refused by name with no key. The last frame is kept beside the first and both come back as private files. Prompting rows still refuse and never call it. RED on `3d2d681e` (Python 3.14 and 3.12): the action is absent, 20 tests, failures=20 (`windows_desktop_settle is absent`). GREEN: OK on both. |
+
+Option a (`StartShownOnUpgrade=1` in the Default hive before first sign-in) stays a held patch, not committed, until a
+native data point shows it stops the first-sign-in Start. Native only, all of the settle: that `pythonw` exists in the
+user profile of NG5 and ND4, that an InteractiveToken task of a signed-in user reads the input desktop's foreground,
+that one `Esc` closes Start and Search, and how long SearchHost takes to let go.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

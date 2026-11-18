@@ -618,6 +618,7 @@
   "agent_tools.tests.test_windows_defender_service_roles": 0.0,
   "agent_tools.tests.test_windows_deploy_private_output": 20.5,
   "agent_tools.tests.test_windows_desktop_background": 0.0,
+  "agent_tools.tests.test_windows_desktop_settle": 10.0,
   "agent_tools.tests.test_windows_desktop_test": 38.3,
   "agent_tools.tests.test_windows_desktop_test_guest": 1.2,
   "agent_tools.tests.test_windows_desktop_test_host_job": 2.0,
