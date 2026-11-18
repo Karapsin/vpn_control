@@ -4229,6 +4229,49 @@ must be rerun on the published fix. New starts are unaffected: they pin and reco
 installed. A lifecycle restart lineage pins the on-disk binary and digest, so it still refuses for an
 instance whose binary was replaced.
 
+### The vpn-broker prompt was deferred to the taskbar behind an open Start menu (native NG4 `a75acf02`, 2.3.1, 2026-11-18)
+
+Failure type `uac-prompt-deferred-to-taskbar`. `windows-scoped-tun.restart-deny` on a fresh NG4 clone
+(`0fc0d4ae`, boot 07:28:20Z) asked for restart `9d343b1a` at about 07:49:57Z. Review `573ff844`
+found `consent.exe` under Appinfo, but its frame showed no secure desktop: the Start menu was open in
+the foreground, the vpn-broker prompt was a flashing UAC-shield taskbar button, and behind the menu
+stood a black, empty console titled `C:\Windows\System32\Wi…` whose taskbar button also flashed.
+The display was lit (no wake move); every earlier review (NG3 and before, about 30 minutes after
+create) woke a dark display and saw the dimmed secure-desktop prompt. The run parked UNKNOWN
+(`owner-parked`, `original-find-best-pending-no-replay`).
+
+Cause, from evidence and source: the console is the ordinary task's own owner PowerShell (pid 1380,
+born 07:45:53Z). The task runs `powershell.exe -NoProfile -NonInteractive ... -File
+windows_ordinary_task_owner.ps1` with an InteractiveToken principal and no hidden window style
+(`windows_ordinary_task.py` `render_task`), so every run shows that console; the owner writes nothing
+to it and starts the Python worker with `CreateNoWindow`. Its button flashing means its activation
+was refused, so the Start menu already held the foreground when the task started, about four minutes
+before the prompt. The serve child that asks for elevation (`DesktopWindowsVpnBroker` `ShellExecuteEx`
+`runas`, no window) is a background requester, so Windows deferred its consent to the taskbar.
+conhost 1960 is the serve child's own windowless console (`CREATE_NO_WINDOW`, 5.5 ms after it). The
+`BOOTSTRAP_PROBE` keyboard probe (`windows_vm_instance.py`, `meta_l`+`r`, `-noexit`) was ruled out:
+the NG4 host journals hold only start, status, host-resources, images, media, qualify and secure jobs
+before the review (its one frame job, `262a0d84`, is later and `PROBE=False`), the probe requires
+`guestAgentReady` false, and its `-noexit` console would show its output and prompt, not an empty
+buffer. No tool sent input to NG4. What opened the Start menu is not established (TOOL/fixture
+readiness, not the product: a windowless CLI's elevation in the background is Windows' documented
+deferral, and the user can still answer it from the taskbar).
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A prompting scoped-TUN row asked for its restart while the Start menu held the ordinary desktop's foreground, and parked on a prompt nothing could answer (TOOL) | `test_windows_tun_stages.InteractiveDesktopTests` (5 tests: `test_native_start_menu_in_the_foreground_refuses_before_any_change`, search, flyout and foreign-console holders, the recorded holders, the read before any product call, the native read); `test_windows_tun_variants.PreparationFailureTests.test_a_row_that_raises_no_prompt_never_reads_the_foreground` | Before any change, `windows_tun_stages.begin` reads the foreground window (`GetForegroundWindow`, its owner pid and class) for every variant that expects a prompt. A holder in `StartMenuExperienceHost.exe`, `SearchHost.exe`, `SearchApp.exe` or `ShellExperienceHost.exe`, or a `ConsoleWindowClass` window outside the owner's own process chain, publishes `scoped-tun-interactive-desktop-unsettled` (holder, reason, `promptRequested: false`) and refuses `scoped-tun-interactive-desktop-unsettled`: nothing was requested, so the row closes as a known failure instead of parking. Any other holder, or none, is recorded as `interactiveDesktop` on `scoped-tun-awaiting-current-input`, a native data point for every later prompt. RED on `79fe27be` (Python 3.14 and 3.12): 6 failures and 6 errors, for example `AssertionError not raised` for the Start menu and `KeyError: 'interactiveDesktop'`. GREEN: the stages, variants and reserved modules, 128 tests OK on both. |
+
+Evidence: the review frame and JSON under `.runtime/windows-uac-reviews/573ff844-b1da-5ff8-9585-a475bcd723f2/`
+and the run's `evidence-1.zip` under `.runtime/windows-scenarios/a75acf02-fab2-41c4-947b-52dcc01a63bf/`
+(recovery checkout). Beforeimage: commit `79fe27be`. Unresolved, for a native data point: what opened
+the Start menu (a first-sign-in shell launch on the fresh clone is the leading suspect; it is not in the
+evidence); whether NG3's prompts reached the secure desktop because the owner's console held the
+foreground or because the display was off; and whether the owner console should be hidden. Hiding it
+(`-WindowStyle Hidden` or a headless console host) stays a proposal until the recorded `interactiveDesktop`
+of a passing row shows what held the foreground, since it may be what let the earlier prompts reach the
+secure desktop. The update rows' install-helper prompt has the same exposure and no guard yet. The
+original native scenario must be rerun on the published fix.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

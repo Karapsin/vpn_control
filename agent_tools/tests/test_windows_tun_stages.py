@@ -30,6 +30,7 @@ SAMPLER_INPUT = "C:\\ProgramData\\VpnControlOrdinaryTask-op\\tun-direct-traffic.
 PYTHON = "C:\\Users\\recovery\\AppData\\Local\\Programs\\Python\\Python313\\python.exe"
 CLI = "C:\\Users\\recovery\\AppData\\Local\\vpn-control\\vpn-control-cli.exe"
 BODY = "vpn-control-proxy-fixture"
+REAL_FOREGROUND = getattr(stages, "foreground_window", None)  # StageWorld replaces it with each test's own holder.
 
 
 def response(body):
@@ -183,8 +184,11 @@ class StageWorld(unittest.TestCase):
                           {"pid": 88, "parentPid": 80, "name": "sing-box.exe"}]
         self.entries = ["Microsoft", "vpn-control-vpn-0f0f0f0f-0000-4000-8000-000000000001", "VpnControlOrdinaryTask-op"]
         self.routes = []
-        fake_os = types.SimpleNamespace(name="nt", environ={"ProgramData": "C:\\ProgramData"}, listdir=lambda path: list(self.entries))
-        for patcher in (mock.patch.object(stages, "os", fake_os), mock.patch.object(stages, "tun_routes", lambda: list(self.routes))):
+        self.foreground = None  # No window holds the ordinary desktop's foreground.
+        fake_os = types.SimpleNamespace(name="nt", environ={"ProgramData": "C:\\ProgramData"}, listdir=lambda path: list(self.entries),
+                                        getpid=lambda: 6084)
+        for patcher in (mock.patch.object(stages, "os", fake_os), mock.patch.object(stages, "tun_routes", lambda: list(self.routes)),
+                        mock.patch.object(stages, "foreground_window", lambda: self.foreground, create=True)):
             patcher.start()
             self.addCleanup(patcher.stop)
         self.observer = types.SimpleNamespace(WindowsNative=lambda: types.SimpleNamespace(processes=lambda: [dict(row) for row in self.processes]))
@@ -382,6 +386,117 @@ class BeginTests(StageWorld):
                 with self.assertRaisesRegex(AssertionError, "^scoped-tun-clean-before-row$"):
                     self.begin()
                 self.assertEqual([], self.calls)
+
+
+class InteractiveDesktopTests(StageWorld):
+    """a75acf02 (NG4, 2.3.1, 2026-11-18): the Start menu held the ordinary desktop's foreground, so Windows raised the
+    windowless serve child's vpn-broker prompt as a flashing taskbar button; nothing could answer it and the row parked
+    with restart 9d343b1a pending. Its frame showed the Start menu over the task's own PowerShell console."""
+
+    # The owner's chain as the a75acf02 evidence names it: the task's PowerShell 1380, this worker 6084, the serve 9196.
+    CHAIN = [{"pid": 1380, "parentPid": 900, "name": "powershell.exe"}, {"pid": 6084, "parentPid": 1380, "name": "python.exe"},
+             {"pid": 9196, "parentPid": 6084, "name": "vpn-control-cli.exe"}]
+
+    def setUp(self):
+        super().setUp()
+        self.processes += [dict(row) for row in self.CHAIN]
+
+    def test_native_start_menu_in_the_foreground_refuses_before_any_change(self):
+        self.processes.append({"pid": 5400, "parentPid": 700, "name": "StartMenuExperienceHost.exe"})
+        self.foreground = {"pid": 5400, "className": "Windows.UI.Core.CoreWindow"}
+        with self.assertRaisesRegex(AssertionError, "^scoped-tun-interactive-desktop-unsettled$"):
+            self.begin()
+        self.assertEqual([], self.calls, "nothing was read or changed through the product: no restart, so no prompt to park on")
+        self.assertFalse(getattr(self.owner, "tun_operation_requested", False), "a refusal here closes like any known failure")
+        self.assertEqual([("scoped-tun-interactive-desktop-unsettled",
+                           {"foreground": {"pid": 5400, "image": "StartMenuExperienceHost.exe", "className": "Windows.UI.Core.CoreWindow",
+                                           "owned": False}, "reason": "shell-surface", "promptRequested": False, "replayAllowed": False})],
+                         self.owner.events)
+
+    def test_search_another_shell_surface_or_a_foreign_console_also_refuses(self):
+        for name, row, window, reason in (
+                ("search", {"pid": 5500, "parentPid": 700, "name": "SearchHost.exe"}, {"pid": 5500, "className": "Windows.UI.Core.CoreWindow"},
+                 "shell-surface"),
+                ("flyout", {"pid": 5600, "parentPid": 700, "name": "ShellExperienceHost.exe"}, {"pid": 5600, "className": "Windows.UI.Core.CoreWindow"},
+                 "shell-surface"),
+                ("foreign-console", {"pid": 4100, "parentPid": 3000, "name": "powershell.exe"}, {"pid": 4100, "className": "ConsoleWindowClass"},
+                 "foreign-console")):
+            with self.subTest(holder=name):
+                self.setUp()
+                self.processes.append(row)
+                self.foreground = window
+                with self.assertRaisesRegex(AssertionError, "^scoped-tun-interactive-desktop-unsettled$"):
+                    self.begin(self.inputs("restart-grant"))
+                self.assertEqual([], self.calls)
+                self.assertEqual(["scoped-tun-interactive-desktop-unsettled"], [kind for kind, _ in self.owner.events])
+                self.assertEqual(reason, self.owner.events[0][1]["reason"])
+
+    def test_the_owners_own_console_another_window_or_none_is_recorded_on_the_prompt_event(self):
+        for name, extra, window, seen in (
+                ("none", None, None, {"foreground": None}),
+                ("own-console", None, {"pid": 1380, "className": "ConsoleWindowClass"},
+                 {"foreground": {"pid": 1380, "image": "powershell.exe", "className": "ConsoleWindowClass", "owned": True}}),
+                ("desktop", {"pid": 3300, "parentPid": 3200, "name": "explorer.exe"}, {"pid": 3300, "className": "Progman"},
+                 {"foreground": {"pid": 3300, "image": "explorer.exe", "className": "Progman", "owned": False}}),
+                ("exited-owner", None, {"pid": 7777, "className": "Shell_TrayWnd"},
+                 {"foreground": {"pid": 7777, "image": None, "className": "Shell_TrayWnd", "owned": False}})):
+            with self.subTest(holder=name):
+                self.setUp()
+                if extra is not None:
+                    self.processes.append(extra)
+                self.foreground = window
+                self.begin()
+                self.assertEqual(["scoped-tun-awaiting-current-input"], [kind for kind, _ in self.owner.events])
+                self.assertEqual(seen, self.owner.events[0][1]["interactiveDesktop"])
+                self.assertEqual(("--async", "restart"), self.calls[-1][-2:])
+
+    def test_the_foreground_is_read_once_before_the_product_is_asked_anything(self):
+        order = []
+        runtime = self.runtime()
+        result = runtime.result
+
+        def asked(*arguments, **options):
+            order.append("product")
+            return result(*arguments, **options)
+        runtime.result = asked
+
+        def read():
+            order.append("foreground")
+            return None
+        self.foreground_reader(read)
+        self.begin(runtime=runtime)
+        self.assertEqual(["foreground", "product"], order[:2])
+        self.assertEqual(1, order.count("foreground"))
+
+    def foreground_reader(self, read):
+        patcher = mock.patch.object(stages, "foreground_window", read, create=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_native_read_is_the_foreground_windows_owner_pid_and_class(self):
+        class Function:
+            def __init__(self, call):
+                self.call = call
+
+            def __call__(self, *arguments):
+                return self.call(*arguments)
+
+        def owner_pid(window, pid):
+            pid._obj.value = 5400
+            return 12
+
+        def class_name(window, buffer, size):
+            buffer.value = "Windows.UI.Core.CoreWindow"
+            return len(buffer.value)
+        for window, expected in ((0x1234, {"pid": 5400, "className": "Windows.UI.Core.CoreWindow"}), (None, None)):
+            with self.subTest(window=window):
+                user32 = types.SimpleNamespace(GetForegroundWindow=Function(lambda: window), GetWindowThreadProcessId=Function(owner_pid),
+                                               GetClassNameW=Function(class_name))
+                loaded = []
+                with mock.patch.object(ctypes, "WinDLL", lambda name, use_last_error: loaded.append((name, use_last_error)) or user32,
+                                       create=True):
+                    self.assertEqual(expected, REAL_FOREGROUND())
+                self.assertEqual([("user32", True)], loaded)
 
 
 class ClosingTests(StageWorld):

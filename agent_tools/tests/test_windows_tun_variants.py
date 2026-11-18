@@ -236,6 +236,21 @@ class VariantBeginTests(VariantWorld):
 
 
 class PreparationFailureTests(VariantWorld):
+    def test_a_row_that_raises_no_prompt_never_reads_the_foreground(self):
+        # a75acf02's desktop guard is for a prompt the decision must answer; a preparation failure raises none.
+        def unread():
+            raise AssertionError("foreground-read")
+        for variant, read in (("vpn-prepare-failure", False), ("vpn-commit-failure", True)):
+            with self.subTest(variant=variant):
+                self.setUp()
+                with mock.patch.object(stages, "foreground_window", unread, create=True):
+                    if read:
+                        with self.assertRaisesRegex(AssertionError, "^foreground-read$"):
+                            self.begin_variant(variant)
+                    else:
+                        self.begin_variant(variant)
+                        self.assertEqual("scoped-tun-request-accepted", self.owner.events[-1][0])
+
     def test_a_preparation_failure_in_vpn_mode_is_the_rows_own_end_with_a_kept_and_nothing_scoped(self):
         lease = self.leased("vpn-prepare-failure")
         result, actors = self.finish(lease, "RUNTIME_FAILED")

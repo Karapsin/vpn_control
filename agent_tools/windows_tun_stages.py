@@ -28,6 +28,10 @@ check of the end, and the known end names the diagnosis: a failed row shows why.
 same: a final refusal of the request itself, a final code no step expects (finish_operation's, a reserved case's), a
 reserved row's end before its correlation journal (watched while the case waits), and a reserved case's park while its
 operation's outcome is open, which reads them through the case's ``diagnose`` because a park never returns.
+
+Before any change, a row that expects a prompt reads who holds the ordinary desktop's foreground: the Start menu, search
+or another shell surface, or a console that is not of this owner's chain, refuses the row (a known failure, nothing
+requested), and any other holder is recorded on the prompt event.
 """
 from __future__ import annotations
 import hashlib
@@ -98,6 +102,12 @@ UUID_TEXT = re.compile(r'\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa
 IPV4 = re.compile(r'(?<![\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d.])')
 CREDENTIAL = re.compile(r'(?i)\b(password|passwd|token|secret|private[_-]?key|psk|auth|uuid)(\s*[=:]\s*"?)[^\s",}]+')
 LOCAL_HOSTS = frozenset({'localhost','127.0.0.1','::1','0.0.0.0'})
+# a75acf02 (NG4, 2.3.1, 2026-11-18): with the Start menu open over the ordinary desktop, Windows raised the vpn-broker
+# prompt of the windowless serve child as a flashing taskbar button, not on the secure desktop, so nothing could answer
+# it and the row parked with its restart pending. A shell surface or a console that is not this owner's holding the
+# foreground is an unsettled desktop: a prompting row refuses before any change instead.
+SHELL_FOREGROUND = frozenset({'startmenuexperiencehost.exe','searchhost.exe','searchapp.exe','shellexperiencehost.exe'})
+CONSOLE_CLASS = 'ConsoleWindowClass'
 
 
 def require(value, reason):
@@ -147,6 +157,52 @@ def tun_routes(subnet=TUN_SUBNET):
                 at=4+row*width+column
                 if int.from_bytes(raw[at:at+4],'big')&mask==base:found.add((name,socket.inet_ntoa(raw[at:at+4])))
     return sorted(found)
+
+
+def foreground_window():
+    """The input desktop's foreground window as this ordinary process sees it: its owner's pid and class, or None.
+
+    A console window reads back as owned by its first client process (conhost names it so), not by conhost."""
+    import ctypes
+    from ctypes import wintypes
+    user32=ctypes.WinDLL('user32',use_last_error=True)
+    user32.GetForegroundWindow.argtypes=();user32.GetForegroundWindow.restype=wintypes.HWND
+    user32.GetWindowThreadProcessId.argtypes=(wintypes.HWND,ctypes.POINTER(wintypes.DWORD))
+    user32.GetWindowThreadProcessId.restype=wintypes.DWORD
+    user32.GetClassNameW.argtypes=(wintypes.HWND,wintypes.LPWSTR,ctypes.c_int);user32.GetClassNameW.restype=ctypes.c_int
+    window=user32.GetForegroundWindow()
+    if not window:
+        return None
+    pid=wintypes.DWORD(0)
+    require(user32.GetWindowThreadProcessId(window,ctypes.byref(pid))!=0 and pid.value>0,'scoped-tun-foreground-owner')
+    name=ctypes.create_unicode_buffer(257)
+    require(user32.GetClassNameW(window,name,len(name))>0,'scoped-tun-foreground-class')
+    return {'pid':int(pid.value),'className':name.value}
+
+
+def interactive_desktop(owner, observer):
+    """Who holds the ordinary desktop's foreground, read once before a prompting row changes anything.
+
+    The product's prompt comes from the serve child, which has no window. While the Start menu, search or another
+    shell surface holds the foreground, or a console that is not of this owner's own chain (the task's PowerShell and
+    this worker), Windows defers that elevation to a flashing taskbar button. Such a row refuses before any change and
+    names what it saw; any other holder, or none, is recorded on the prompt event."""
+    window=foreground_window()
+    if window is None:
+        return {'foreground':None}
+    rows={row['pid']:row for row in observer.WindowsNative().processes()}
+    chain,pid=set(),os.getpid()
+    while pid in rows and pid not in chain:
+        chain.add(pid);pid=rows[pid]['parentPid']
+    image=rows.get(window['pid'],{}).get('name')
+    seen={'foreground':{'pid':window['pid'],'image':image,'className':window['className'],'owned':window['pid'] in chain}}
+    shell=type(image) is str and image.casefold() in SHELL_FOREGROUND
+    foreign_console=window['className']==CONSOLE_CLASS and window['pid'] not in chain
+    if shell or foreign_console:
+        owner.event('scoped-tun-interactive-desktop-unsettled',{**seen,'reason':'shell-surface' if shell else 'foreign-console',
+            'promptRequested':False,'replayAllowed':False})
+        require(False,'scoped-tun-interactive-desktop-unsettled')
+    return seen
 
 
 def census(inputs, observer, exclude=()):
@@ -598,6 +654,8 @@ def begin(owner, state, inputs, runtime, cases, observer, branches=None, reserve
     # Before any change: no broker and no TUN route exist, and these are the stages and runtimes not of this row.
     baseline=census(inputs,observer,exclude=(state['actors']['runtime']['pid'],))
     require(baseline['brokers']==[] and baseline['routes']==[],'scoped-tun-clean-before-row')
+    # A prompt raised behind the Start menu cannot be answered (a75acf02): refuse while the desktop is not settled.
+    desktop=None if variant in PROMPTLESS else interactive_desktop(owner,observer)
     before = runtime.result(owner,state['workspace'],state['identity'],'status')
     require(before['data']['runtimeRunning'] is True and before['data']['activeMode']=='proxy-only'
             and before['restartRequired'] is False, 'scoped-tun-active-proxy-a')
@@ -697,7 +755,7 @@ def begin(owner, state, inputs, runtime, cases, observer, branches=None, reserve
         'ordinarySessionId':owner.request['context']['ordinarySessionId'],
         'expectedApprovingAdminSid':inputs['expectedApprovingAdminSid'],
         'uacDecisionId':inputs['uacDecisionId'],
-        'ownerActor':state['actors']['owner'],'originalServeChild':state['serve'].ordinal,
+        'ownerActor':state['actors']['owner'],'originalServeChild':state['serve'].ordinal,'interactiveDesktop':desktop,
         'inputNotPerformedByThisAdapter':True,'replayAllowed':False,**({} if added is None else {'document':added})})
     return lease
 
