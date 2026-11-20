@@ -24,7 +24,8 @@ import kotlin.test.fail
  * lock for good: the CLI and the cleanup `quit` each ended TIMEOUT and the serve never ended.
  *
  * The world is Windows' command line as these processes: every command the manager runs is a [WorldProcess], and only
- * `/Change` misbehaves. Everything from the service's settings write down to the process is the product's.
+ * the migration's registration misbehaves (`/Change` up to 6579739e, `/Create /XML /F` since). Everything from the
+ * service's settings write down to the process is the product's.
  */
 class DesktopAutostartBoundedCommandTest {
     @Test
@@ -32,10 +33,10 @@ class DesktopAutostartBoundedCommandTest {
         withWorld(changeEnding = WorldProcess.Ending.NEVER, timeoutMillis = 500) { world, service ->
             val first = within(15_000) {
                 service.applyControlSettings(mapOf("autostart" to ControlValue.BooleanValue(true)))
-            } ?: fail("settings set autostart true never returned while schtasks /Change never ended")
+            } ?: fail("settings set autostart true never returned while its task registration never ended")
             assertEquals("PERSISTENCE_FAILED", first.exceptionOrNull()?.message)
-            val change = world.started.single { it.argv.take(2) == listOf("schtasks", "/Change") }
-            assertTrue(change.destroyed, "the timed-out schtasks /Change was left running")
+            val registration = world.started.single { it.argv.take(2) in listOf(listOf("schtasks", "/Change"), listOf("schtasks", "/Create")) }
+            assertTrue(registration.destroyed, "the timed-out task registration was left running")
             assertEquals("HighestAvailable", world.runLevel, "nothing changed the task")
 
             // The serve stays healthy: the monitor and the task lock were released, so the next write runs.
@@ -74,22 +75,30 @@ class DesktopAutostartBoundedCommandTest {
         assertEquals(DesktopAutostartCommandResult(-1, "not found"), missing)
     }
 
+    /**
+     * The migration's one registration misbehaves, in whichever form the product makes it: `schtasks /Change /RL
+     * LIMITED` up to 6579739e, a `schtasks /Create /XML /F` re-registration since. A registration that ends at once
+     * leaves the task the product asked for.
+     */
     private class World(@Volatile var changeEnding: WorldProcess.Ending) {
-        @Volatile var runLevel = "HighestAvailable"
+        @Volatile var task = taskXml("HighestAvailable")
         val started = CopyOnWriteArrayList<WorldProcess>()
 
+        val runLevel: String get() = taskElementTexts(task, "RunLevel").single()
+
         fun start(argv: List<String>): Process {
+            val registration = argv == listOf("schtasks", "/Change", "/TN", "VPN Control", "/RL", "LIMITED") ||
+                argv.take(2) == listOf("schtasks", "/Create")
             val process = when {
                 argv.first() == "powershell.exe" -> WorldProcess(argv, "ABSENT", 0, WorldProcess.Ending.AT_ONCE)
                 argv.first() == "whoami.exe" -> WorldProcess(argv, "\"ME\\user\",\"S-1-5-21-1\"", 0, WorldProcess.Ending.AT_ONCE)
                 argv.take(2) == listOf("reg", "query") ->
                     WorldProcess(argv, "ERROR: The system cannot find the file specified.", 1, WorldProcess.Ending.AT_ONCE)
-                argv.take(2) == listOf("schtasks", "/Query") -> WorldProcess(argv, taskXml(runLevel), 0, WorldProcess.Ending.AT_ONCE)
-                argv == listOf("schtasks", "/Change", "/TN", "VPN Control", "/RL", "LIMITED") -> when (changeEnding) {
+                argv.take(2) == listOf("schtasks", "/Query") -> WorldProcess(argv, task, 0, WorldProcess.Ending.AT_ONCE)
+                registration -> when (changeEnding) {
                     WorldProcess.Ending.AT_ONCE -> {
-                        runLevel = "LeastPrivilege"
-                        WorldProcess(argv, "SUCCESS: The parameters of scheduled task \"VPN Control\" have been changed.", 0,
-                            WorldProcess.Ending.AT_ONCE)
+                        task = registeredTaskXml(argv) ?: task.replace("HighestAvailable", "LeastPrivilege")
+                        WorldProcess(argv, "SUCCESS", 0, WorldProcess.Ending.AT_ONCE)
                     }
                     else -> WorldProcess(argv, "Please enter the run as password for ME\\user: ", 1, changeEnding)
                 }
@@ -99,8 +108,13 @@ class DesktopAutostartBoundedCommandTest {
             return process
         }
 
+    }
+
+    private companion object {
+        const val COMMAND = "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe"
+
         // The native legacy task's shape: an any-user logon trigger serialized bare, an interactive token.
-        private fun taskXml(runLevel: String) = """
+        fun taskXml(runLevel: String) = """
             <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
               <Principals><Principal id="Author"><UserId>S-1-5-21-1</UserId><LogonType>InteractiveToken</LogonType><RunLevel>$runLevel</RunLevel></Principal></Principals>
               <Triggers><LogonTrigger /></Triggers>
@@ -178,9 +192,5 @@ class DesktopAutostartBoundedCommandTest {
         val thread = Thread { result.set(runCatching(action)) }.apply { isDaemon = true; start() }
         thread.join(millis)
         return result.get()?.getOrThrow()
-    }
-
-    private companion object {
-        const val COMMAND = "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe"
     }
 }

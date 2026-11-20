@@ -4361,15 +4361,61 @@ Fix (`runAutostartCommand`, `DesktopAutostartManager.kt`):
 | --- | --- | --- |
 | An autostart OS command that never ends (or waits on stdin) hung `settings set autostart true`, the task lock, the service monitor, `quit` and the serve (PRODUCT) | `DesktopAutostartBoundedCommandTest` (`:desktopApp:test`): `aMigrationWhoseChangeNeverEndsIsATypedFailureInBoundedTimeAndTheServiceStaysUsable`, `aMigrationWhoseChangeWaitsForAnAnswerOnStdinGetsEndOfInputAtOnce`, `everyAutostartCommandEndsWithinItsBoundAndOrdinaryOutputIsUnchanged` | Two tests drive the real `DesktopAppService.applyControlSettings` and `DesktopAutostartManager` over a world of child `Process`es. In that world, only `schtasks /Change` misbehaves: it never ends, or it ends only when its stdin closes. The native task shape is used: a bare any-user trigger, an interactive token, `HighestAvailable`. The first test requires `PERSISTENCE_FAILED` within 15 s, the `/Change` child killed, the task unchanged, and then a second write that migrates. That second write shows the lock and the monitor were released. The second test sets a 120 s bound and requires an answer within 15 s, so only the closed stdin can release it. RED on the decision of `3d2d681e` itself: a seams-only tree. It is `3d2d681e` with the starter and bound parameters added and the old `runCommand` body moved into `runAutostartCommand` unchanged; the bound is ignored. Result: 3 tests, 3 failures, each at its bound (`never returned`, `waited on a prompt`, `waited on a child`). The beforeimage, the seams-only file and diff, and the logs are in the builder clone's `.runtime/fix-autostart-timeout/`. GREEN on the fix: 3 tests, 0 failures. The neighbouring suites also pass with the runner now in place: `DesktopAutostartManagerTest` (30 tests, 1 skipped), `DesktopAutostartParityTest` (1) and `DesktopSettingsServiceTest` (4). |
 
-Native only:
-- what `schtasks /Change /RL LIMITED` actually waited for. The leading suspect is a run-as password prompt on the
-  stdin pipe or the hidden console. If it reads the console rather than stdin, only the bound releases it.
-- whether an unelevated `/Change` can migrate this task at all. With this fix, the rerun answers in bounded time. It
-  answers `PERSISTENCE_FAILED` if `/Change` still cannot complete, and success if it can. A migration through the
-  Task Scheduler object model (`RegisterTaskDefinition`, `TASK_UPDATE`, an interactive-token logon, no password) is
-  a proposal for the case where `/Change` turns out to need a password. It is not implemented here.
+The bounded runner stays as the safety net. Under it, a `/Change` that prompts would only turn into
+`PERSISTENCE_FAILED`, and the user still could not migrate. The next subsection removes `/Change` altogether.
 
-The original native scenario must be rerun on a package built from this fix.
+#### One per-user XML registration for migration and fresh enable (coordinator decision, 2026-11-18)
+
+Cause (PRODUCT, DESKTOP-003; the Task Scheduler rules are known behaviour, not yet seen natively here):
+- `schtasks /Change` without `/RP` asks for the run-as password. Nothing the product starts can answer it.
+- An unelevated token may not register a logon trigger for any user, because that is an administrator's right.
+  So any re-registration that keeps the legacy any-user trigger is denied, whether it goes through `/Change` or
+  through `/Create /XML`.
+- The product's own fresh enable (`schtasks /Create /SC ONLOGON /RL LIMITED`, no `/RU`) registers exactly such a
+  trigger. So a standard user's first enable had the same exposure. No native row runs that path.
+- Native `5594b6f5` (`E_ACCESSDENIED` registering the legacy shape as the ordinary user) is consistent with this. It
+  cannot tell the trigger from the run level as the cause.
+
+Fix:
+- **Product (`DesktopAutostartManager.kt`).** One XML path serves both migration and fresh enable.
+  - Migration rebuilds the task from its own exported XML (`WindowsTaskXml.ordinaryUserMigration`). It changes only
+    RunLevel, to `LeastPrivilege`, and the logon trigger's `UserId`, to the signed-in user's SID from `whoami`. The
+    action, the settings, the `Enabled` state and the `SecurityDescriptor` stay. A trigger that already names that
+    user is kept. A trigger for another user is never taken over: the result is `CONFLICT`.
+  - Fresh enable registers `WindowsTaskXml.ordinaryTask`, the same shape: an InteractiveToken principal and a
+    logon trigger for that user, at `LeastPrivilege`, with the legacy task's settings.
+  - Both register with `schtasks /Create /TN "VPN Control" /XML <UTF-16LE file>`. Migration adds `/F`. Fresh enable
+    omits it, so a task that appeared after the absence check is never replaced unverified.
+  - Nothing is deleted first.
+  - After migration, the product re-reads the task. It must be `OwnedOrdinary`, with a trigger for this user
+    (`logonTriggerNamesUser`). Task Scheduler may write the SID back as the account name, and the comparison takes
+    that name without regard to case.
+  - Any failure is re-read and answered as `PERSISTENCE_FAILED`. `/Change` is gone.
+- **Contract.** DESKTOP-003 now states the per-user shape and the migration without elevation or a password prompt.
+- **Tool (`windows_autostart_reboot.py`).** `require_migration_preserves` (used by `toggle`) accepts exactly one
+  transformation besides RunLevel: an any-user `LogonTrigger` narrowed to the run-as principal's own SID, by SID or
+  by an account name the guest resolved to it. Every other difference still refuses with
+  `migration-preserves-action-trigger-principal`. The `autostart` role digest in `windows_ordinary_task.py` names the
+  new bytes.
+
+| Failure type | Regression | RED / GREEN |
+| --- | --- | --- |
+| The legacy migration asked for a run-as password, and an any-user trigger cannot be re-registered unelevated (PRODUCT) | `DesktopAutostartPerUserTaskTest.aLegacyAnyUserHighestTaskBecomesThisUsersOrdinaryTaskWithoutElevationOrPassword`; control `aRefusedReRegistrationLeavesTheLegacyTaskInPlaceAndAnswersPersistenceFailed` | The world is Task Scheduler as an unelevated standard user meets it, through the processes the product starts. `/Change` without `/RP` prompts on stdin and fails at end of input. A HighestAvailable or any-user registration is `Access is denied`. A SID in a trigger reads back as the account name. The legacy task is the native `06ef5879` one. GREEN requires success within 15 s, only RunLevel and the trigger user changed, and no `/Change` or `/Delete`. RED on the `3d2d681e` seams-only tree: the call never returns. RED on `6579739e`: `PERSISTENCE_FAILED` through `/Change`. The control (every registration refused) requires `PERSISTENCE_FAILED` with the legacy task byte-identical and nothing deleted. It hangs on the seams-only tree and passes on `6579739e` and on the fix. |
+| A standard user's fresh enable registered an any-user trigger (PRODUCT) | `DesktopAutostartPerUserTaskTest.aFreshEnableRegistersThisUsersOwnTaskWithoutElevation`; `DesktopAutostartManagerTest` fresh-create and workspace-quoting tests over the registered XML | GREEN requires a per-user `LeastPrivilege` task registered without `/F`, then a disable. RED on both `3d2d681e` (seams-only) and `6579739e`: `PERSISTENCE_FAILED`, because `/SC ONLOGON` is denied. |
+| The tool refused the per-user narrowing as a changed trigger (TOOL) | `test_windows_reboot_actions.PerUserMigrationTests.test_a_migration_that_narrows_the_any_user_trigger_to_the_run_as_users_own_sid_passes_the_reboot`; controls `test_only_the_narrowing_to_the_run_as_users_own_sid_is_accepted` (3 accepted, 9 refused) and the reworked `TriggerAccountTests.test_a_migration_that_writes_a_user_by_account_name_keeps_the_same_identities` (a narrowing to another user is `exact-owned-startup-task`) | RED with the unfixed `windows_autostart_reboot.py` of `6579739e` and the new tests, Python 3.14.3 and 3.12.13: `Ran 15 tests`, `FAILED (failures=2, errors=11)`. The two failures are `migration-preserves-action-trigger-principal`, for a trigger read back by name and by SID. The 11 errors are the new helper's controls, which cannot exist there. GREEN: the module, 62 tests OK (8 PowerShell-only skips), on both. |
+
+The bounded-runner regression above keeps its meaning. Its world's misbehaving command is the migration's
+registration, in whichever form the product makes it. RED on the seams-only tree: still 3 failures. The beforeimages
+(`6579739e` manager and tool module), the seams-only file and every RED/GREEN log are in the builder clone's
+`.runtime/fix-autostart-timeout/`.
+
+Native only:
+- that an unelevated `schtasks /Create /XML … /F` registers this shape with no prompt;
+- that it replaces the existing task in one step;
+- that the task keeps its descriptor (`migration-preserves-entire-task-dacl`);
+- how Task Scheduler writes the narrowed trigger and the principal back.
+
+The rerun of `windows-autostart-migration.pre` on a package built from this fix verifies all four.
 
 ## Historical coverage rule
 

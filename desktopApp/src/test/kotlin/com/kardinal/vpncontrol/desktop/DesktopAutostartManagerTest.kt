@@ -56,6 +56,7 @@ class DesktopAutostartManagerTest {
         val directories = listOf("C:\\work space\\東京", "C:\\", "C:\\work & space\\東京\\")
         directories.forEach { directory ->
             val commands = mutableListOf<List<String>>()
+            val registered = mutableListOf<String>()
             val workspace = Path.of(directory)
             val manager = DesktopAutostartManager(
                 commandResolver = { "C:\\Program Files\\VPN 東京\\vpn-control.exe" },
@@ -63,22 +64,24 @@ class DesktopAutostartManagerTest {
                 workspaceDirectory = workspace,
                 commandRunner = { command ->
                     commands += command
-                    DesktopAutostartCommandResult(
-                        if (command[1] == "/Create" || command.first() == "powershell.exe") 0 else 1,
-                        if (command.first() == "powershell.exe") "ABSENT" else missingRegistration(),
-                    )
+                    registeredTaskXml(command)?.let(registered::add)
+                    when {
+                        command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
+                        command.first() == "powershell.exe" -> DesktopAutostartCommandResult(0, "ABSENT")
+                        command[1] == "/Create" -> DesktopAutostartCommandResult(0, "")
+                        else -> DesktopAutostartCommandResult(1, missingRegistration())
+                    }
                 },
             )
             assertTrue(manager.setEnabled(true).isSuccess)
-            val create = commands.single { it.take(2) == listOf("schtasks", "/Create") }
             // Path normalizes trailing separators differently on native Windows and Unix hosts.
             val raw = workspace.toString()
             val expectedDirectory = raw + "\\".repeat(raw.takeLastWhile { it == '\\' }.length)
-            assertEquals(
-                "\"C:\\Program Files\\VPN 東京\\vpn-control.exe\" --autostart --state-dir \"$expectedDirectory\"",
-                create[create.indexOf("/TR") + 1],
-            )
-            assertTrue(commands.none { it.first() !in setOf("schtasks", "reg", "powershell.exe") })
+            val task = registered.single()
+            assertEquals(listOf("C:\\Program Files\\VPN 東京\\vpn-control.exe"), taskElementTexts(task, "Command"))
+            assertEquals(listOf("--autostart --state-dir &quot;${expectedDirectory.replace("&", "&amp;")}&quot;"),
+                taskElementTexts(task, "Arguments"))
+            assertTrue(commands.none { it.first() !in setOf("schtasks", "reg", "powershell.exe", "whoami.exe") })
         }
     }
 
@@ -487,7 +490,7 @@ class DesktopAutostartManagerTest {
     @Test
     fun setEnabledWritesAndDeletesRecognizedOrdinaryWindowsScheduledTask() {
         val commands = mutableListOf<List<String>>()
-        var taskEnabled = false
+        var task: String? = null
         var legacyRunEnabled = false
         val manager = DesktopAutostartManager(
             commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
@@ -498,15 +501,14 @@ class DesktopAutostartManagerTest {
                     command.first() == "powershell.exe" -> DesktopAutostartCommandResult(0, "ABSENT")
                     command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
                     command.take(2) == listOf("schtasks", "/Query") -> {
-                        DesktopAutostartCommandResult(if (taskEnabled) 0 else 1,
-                            if (taskEnabled && command.contains("/XML")) windowsTaskXml(runLevel = "LeastPrivilege") else missingRegistration())
+                        DesktopAutostartCommandResult(if (task != null) 0 else 1, task ?: missingRegistration())
                     }
                     command.take(2) == listOf("schtasks", "/Create") -> {
-                        taskEnabled = true
+                        task = registeredTaskXml(command)
                         DesktopAutostartCommandResult(0, "ok")
                     }
                     command.take(2) == listOf("schtasks", "/Delete") -> {
-                        taskEnabled = false
+                        task = null
                         DesktopAutostartCommandResult(0, "ok")
                     }
                     command.take(2) == listOf("reg", "query") -> {
@@ -528,20 +530,18 @@ class DesktopAutostartManagerTest {
 
         assertTrue(enableResult.isSuccess)
         assertTrue(manager.isEnabled())
-        assertTrue(commands.any { command ->
-            command == listOf(
-                "schtasks",
-                "/Create",
-                "/TN",
-                "VPN Control",
-                "/SC",
-                "ONLOGON",
-                "/TR",
-                "\"C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe\" --autostart",
-                "/RL",
-                "LIMITED",
-            )
-        })
+        // DESKTOP-003: a per-user task from the product's own XML, never replacing a task it did not inspect.
+        val create = commands.single { it.take(2) == listOf("schtasks", "/Create") }
+        assertEquals(listOf("schtasks", "/Create", "/TN", "VPN Control", "/XML"), create.take(5))
+        assertEquals(6, create.size)
+        val registered = requireNotNull(task)
+        assertEquals(listOf("S-1-5-21-1", "S-1-5-21-1"), taskElementTexts(registered, "UserId"))
+        assertEquals(listOf("S-1-5-21-1"), taskElementTexts(logonTriggerText(registered), "UserId"))
+        assertEquals(listOf("InteractiveToken"), taskElementTexts(registered, "LogonType"))
+        assertEquals(listOf("LeastPrivilege"), taskElementTexts(registered, "RunLevel"))
+        assertEquals(listOf("C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe"), taskElementTexts(registered, "Command"))
+        assertEquals(listOf("--autostart"), taskElementTexts(registered, "Arguments"))
+        assertFalse(Files.exists(Path.of(create[5])), "the task document outlived its registration")
 
         val disableResult = manager.setEnabled(false)
 
@@ -603,9 +603,10 @@ class DesktopAutostartManagerTest {
     }
 
     @Test
-    fun explicitMigrationChangesOnlyRunLevelOfRevalidatedOwnedHighestTask() {
+    fun explicitMigrationReRegistersTheRevalidatedLegacyTaskAsThisUsersOrdinaryTask() {
         val commands = mutableListOf<List<String>>()
-        var taskXml = windowsTaskXml(runLevel = "HighestAvailable")
+        val legacy = windowsTaskXml(runLevel = "HighestAvailable")
+        var taskXml = legacy
         val manager = DesktopAutostartManager(
             commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
             platform = DesktopAutostartPlatform.WINDOWS,
@@ -614,8 +615,8 @@ class DesktopAutostartManagerTest {
                 when {
                     command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
                     command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(0, taskXml)
-                    command.take(2) == listOf("schtasks", "/Change") -> {
-                        taskXml = windowsTaskXml(runLevel = "LeastPrivilege")
+                    command.take(2) == listOf("schtasks", "/Create") -> {
+                        taskXml = requireNotNull(registeredTaskXml(command))
                         DesktopAutostartCommandResult(0, "ok")
                     }
                     else -> DesktopAutostartCommandResult(1, "unexpected")
@@ -625,9 +626,16 @@ class DesktopAutostartManagerTest {
 
         assertTrue(manager.migrateOwnedWindowsHighestTaskToOrdinaryUser().isSuccess)
         assertEquals(3, commands.count { it.take(2) == listOf("schtasks", "/Query") })
-        assertEquals(listOf("schtasks", "/Change", "/TN", "VPN Control", "/RL", "LIMITED"),
-            commands.single { it.take(2) == listOf("schtasks", "/Change") })
-        assertTrue(commands.none { it.take(2) in listOf(listOf("schtasks", "/Create"), listOf("schtasks", "/Delete")) })
+        val create = commands.single { it.take(2) == listOf("schtasks", "/Create") }
+        assertEquals(listOf("schtasks", "/Create", "/TN", "VPN Control", "/XML"), create.take(5))
+        assertEquals("/F", create.last())
+        assertTrue(commands.none { it.take(2) in listOf(listOf("schtasks", "/Change"), listOf("schtasks", "/Delete")) })
+        // Exactly two changes: the run level, and the any-user trigger narrowed to this user.
+        assertEquals(listOf("LeastPrivilege"), taskElementTexts(taskXml, "RunLevel"))
+        assertEquals(listOf("S-1-5-21-1"), taskElementTexts(logonTriggerText(taskXml), "UserId"))
+        for (field in listOf("LogonType", "Command", "Arguments", "Enabled")) {
+            assertEquals(taskElementTexts(legacy, field), taskElementTexts(taskXml, field), field)
+        }
     }
 
     @Test
@@ -644,8 +652,8 @@ class DesktopAutostartManagerTest {
                     command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
                     command.take(2) == listOf("reg", "query") -> DesktopAutostartCommandResult(1, missingRegistration())
                     command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(0, taskXml)
-                    command.take(2) == listOf("schtasks", "/Change") -> {
-                        taskXml = windowsTaskXml(runLevel = "LeastPrivilege")
+                    command.take(2) == listOf("schtasks", "/Create") -> {
+                        taskXml = requireNotNull(registeredTaskXml(command))
                         DesktopAutostartCommandResult(0, "ok")
                     }
                     else -> DesktopAutostartCommandResult(1, "unexpected")
@@ -654,9 +662,8 @@ class DesktopAutostartManagerTest {
         )
 
         assertTrue(manager.setEnabled(true).isSuccess)
-        assertEquals(listOf("schtasks", "/Change", "/TN", "VPN Control", "/RL", "LIMITED"),
-            commands.single { it.take(2) == listOf("schtasks", "/Change") })
-        assertTrue(commands.none { it.take(2) == listOf("schtasks", "/Create") })
+        assertEquals("/F", commands.single { it.take(2) == listOf("schtasks", "/Create") }.last())
+        assertTrue(commands.none { it.take(2) in listOf(listOf("schtasks", "/Change"), listOf("schtasks", "/Delete")) })
     }
 
     @Test
@@ -687,8 +694,8 @@ class DesktopAutostartManagerTest {
                     argv.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
                     argv.take(2) == listOf("reg", "query") -> DesktopAutostartCommandResult(1, missingRegistration())
                     argv.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(0, taskXml)
-                    argv.take(2) == listOf("schtasks", "/Change") -> {
-                        taskXml = bare("LeastPrivilege")
+                    argv.take(2) == listOf("schtasks", "/Create") -> {
+                        taskXml = requireNotNull(registeredTaskXml(argv))
                         DesktopAutostartCommandResult(0, "ok")
                     }
                     else -> DesktopAutostartCommandResult(1, "unexpected")
@@ -697,13 +704,15 @@ class DesktopAutostartManagerTest {
         )
 
         assertTrue(manager.setEnabled(true).isSuccess)
-        assertEquals(listOf("schtasks", "/Change", "/TN", "VPN Control", "/RL", "LIMITED"),
-            commands.single { it.take(2) == listOf("schtasks", "/Change") })
-        assertTrue(commands.none { it.take(2) in listOf(listOf("schtasks", "/Create"), listOf("schtasks", "/Delete")) })
+        assertEquals("/F", commands.single { it.take(2) == listOf("schtasks", "/Create") }.last())
+        assertTrue(commands.none { it.take(2) in listOf(listOf("schtasks", "/Change"), listOf("schtasks", "/Delete")) })
+        // The bare trigger stays bare apart from its new user: no Enabled is invented.
+        assertEquals(emptyList(), taskElementTexts(logonTriggerText(taskXml), "Enabled"))
+        assertEquals(listOf("S-1-5-21-1"), taskElementTexts(logonTriggerText(taskXml), "UserId"))
     }
 
     @Test
-    fun migrationChangeFailureDoesNotReportSuccess() {
+    fun migrationRegistrationFailureDoesNotReportSuccessAndNeverDeletes() {
         val commands = mutableListOf<List<String>>()
         val manager = DesktopAutostartManager(
             commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
@@ -713,7 +722,7 @@ class DesktopAutostartManagerTest {
                 when {
                     command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
                     command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(0, windowsTaskXml(runLevel = "HighestAvailable"))
-                    command.take(2) == listOf("schtasks", "/Change") -> DesktopAutostartCommandResult(1, "denied")
+                    command.take(2) == listOf("schtasks", "/Create") -> DesktopAutostartCommandResult(1, "ERROR: Access is denied.")
                     else -> DesktopAutostartCommandResult(1, "unexpected")
                 }
             },
@@ -721,7 +730,7 @@ class DesktopAutostartManagerTest {
 
         assertTrue(manager.migrateOwnedWindowsHighestTaskToOrdinaryUser().isFailure)
         assertEquals(2, commands.count { it.take(2) == listOf("schtasks", "/Query") })
-        assertTrue(commands.none { it.take(2) == listOf("schtasks", "/Create") })
+        assertTrue(commands.none { it.take(2) in listOf(listOf("schtasks", "/Change"), listOf("schtasks", "/Delete")) })
     }
 
     @Test
@@ -735,7 +744,7 @@ class DesktopAutostartManagerTest {
                 when {
                     command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
                     command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(0, windowsTaskXml(runLevel = "HighestAvailable"))
-                    command.take(2) == listOf("schtasks", "/Change") -> DesktopAutostartCommandResult(0, "ok")
+                    command.take(2) == listOf("schtasks", "/Create") -> DesktopAutostartCommandResult(0, "ok")
                     else -> DesktopAutostartCommandResult(1, "unexpected")
                 }
             },
@@ -746,6 +755,51 @@ class DesktopAutostartManagerTest {
         assertTrue(result.isFailure)
         assertEquals("CONFLICT", result.exceptionOrNull()?.message)
         assertEquals(3, commands.count { it.take(2) == listOf("schtasks", "/Query") })
+    }
+
+    @Test
+    fun migrationOfALegacyTaskStillAnyUserAfterRegistrationIsAConflict() {
+        // A registration that left the trigger for any user is not the per-user task DESKTOP-003 requires.
+        var taskXml = windowsTaskXml(runLevel = "HighestAvailable")
+        val manager = DesktopAutostartManager(
+            commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { command ->
+                when {
+                    command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
+                    command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(0, taskXml)
+                    command.take(2) == listOf("schtasks", "/Create") -> {
+                        taskXml = windowsTaskXml(runLevel = "LeastPrivilege")
+                        DesktopAutostartCommandResult(0, "ok")
+                    }
+                    else -> DesktopAutostartCommandResult(1, "unexpected")
+                }
+            },
+        )
+
+        assertEquals("CONFLICT", manager.migrateOwnedWindowsHighestTaskToOrdinaryUser().exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun aLegacyTriggerForAnotherUserIsNeverTakenOver() {
+        val commands = mutableListOf<List<String>>()
+        val manager = DesktopAutostartManager(
+            commandResolver = { "C:\\Users\\me\\AppData\\Local\\vpn-control\\vpn-control.exe" },
+            platform = DesktopAutostartPlatform.WINDOWS,
+            commandRunner = { command ->
+                commands += command
+                when {
+                    command.first() == "whoami.exe" -> DesktopAutostartCommandResult(0, "\"ME\\\\user\",\"S-1-5-21-1\"")
+                    command.take(2) == listOf("schtasks", "/Query") -> DesktopAutostartCommandResult(0,
+                        windowsTaskXml(runLevel = "HighestAvailable").replace("<LogonTrigger><Enabled>true</Enabled></LogonTrigger>",
+                            "<LogonTrigger><Enabled>true</Enabled><UserId>ME\\other</UserId></LogonTrigger>"))
+                    else -> DesktopAutostartCommandResult(1, "unexpected")
+                }
+            },
+        )
+
+        assertEquals("CONFLICT", manager.migrateOwnedWindowsHighestTaskToOrdinaryUser().exceptionOrNull()?.message)
+        assertTrue(commands.none { it.take(2) != listOf("schtasks", "/Query") && it.first() != "whoami.exe" })
     }
 
     @Test

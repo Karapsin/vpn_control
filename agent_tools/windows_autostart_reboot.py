@@ -80,7 +80,7 @@ def task_fields(xml):
 
 # A UserId in SID form, as the snapshot's Get-TaskAccounts tells it from an account name (case-sensitive both).
 # FILE_GENERIC_READ | FILE_GENERIC_WRITE in the file mapping Task Scheduler applies to a task's descriptor: what the
-# product's own schtasks /Query /XML and /Change /RL LIMITED need of the task, as the ordinary token.
+# product's own schtasks /Query /XML and its /Create /XML /F re-registration need of the task, as the ordinary token.
 CHANGE_ACCESS = 0x12019F
 SID_FORM = re.compile(r"S-1-[0-9]+(?:-[0-9]+)+\Z")
 USER_FIELDS = ("principalUser", "triggerUser")
@@ -107,6 +107,23 @@ def identity_fields(task):
     for key in USER_FIELDS:
         fields[key] = resolved.get(fields[key], fields[key])
     return fields
+
+
+def require_migration_preserves(before_task, after_task):
+    """The product's migration changes RunLevel, and may narrow an any-user logon trigger to the run-as user's own SID.
+
+    DESKTOP-003: the product's task is per-user. An unelevated token may not register a logon trigger for any user, so
+    the product re-registers the legacy task with its trigger for the principal's own SID, which Task Scheduler may
+    write back as the account name. Exactly that narrowing is accepted; a trigger for anyone else, a widened trigger,
+    and every other difference in action, trigger or principal still refuse.
+    """
+    # A user written as a name on one side and a SID on the other is the same user.
+    before_fields, after_fields = identity_fields(before_task), identity_fields(after_task)
+    before_fields["runLevel"] = after_fields["runLevel"]
+    run_as = before_fields["principalUser"]
+    if before_fields["triggerUser"] == "" and SID_FORM.match(run_as) and after_fields["triggerUser"] == run_as:
+        before_fields["triggerUser"] = run_as
+    require(before_fields == after_fields, "migration-preserves-action-trigger-principal")
 
 
 def ownership(snapshot, gui, workspace, sid):
@@ -194,10 +211,7 @@ def toggle(owner, state, inputs, enabled):
     if enabled and before["qualifiedOwnership"] == "highest":
         # SDDL names every trustee by SID, so the DACL compares as text.
         require(after["task"]["sddl"] == before["task"]["sddl"], "migration-preserves-entire-task-dacl")
-        # A user written as a name on one side and a SID on the other is the same user.
-        before_fields, after_fields = identity_fields(before["task"]), identity_fields(after["task"])
-        before_fields["runLevel"] = after_fields["runLevel"]
-        require(before_fields == after_fields, "migration-preserves-action-trigger-principal")
+        require_migration_preserves(before["task"], after["task"])
     owner.event("autostart-public-toggle-observed", {"before": before, "after": after})
     return after
 

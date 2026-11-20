@@ -374,13 +374,25 @@ internal class DesktopAutostartManager(
         }
     }
 
+    /**
+     * DESKTOP-003: the task is per-user. A legacy task (HighestAvailable, a logon trigger for any user, registered by the
+     * elevated pre-migration app) is re-registered from its own exported XML with only two changes: RunLevel
+     * LeastPrivilege and the logon trigger narrowed to this user. Action, settings, Enabled state and security
+     * descriptor stay. An unelevated token may register exactly that shape with an interactive token and no password;
+     * `schtasks /Change` would prompt for a run-as password (native 06ef5879 hung there), and an any-user trigger needs
+     * an administrator. The registration replaces the task in one step and nothing is ever deleted first.
+     */
     private fun migrateOwnedWindowsHighestTaskToOrdinaryUserLocked(command: String): Boolean {
         val first = inspectWindowsTaskOwnership(command)
         check(first is WindowsTaskOwnership.OwnedHighest) { first.reason }
         val second = inspectWindowsTaskOwnership(command)
         check(second is WindowsTaskOwnership.OwnedHighest && second.xml == first.xml) { "CONFLICT" }
-        changeWindowsTaskRunLevelToLimited()
-        check(inspectWindowsTaskOwnership(command) is WindowsTaskOwnership.OwnedOrdinary) { "CONFLICT" }
+        val user = currentWindowsUser() ?: error("UNAVAILABLE")
+        val migrated = WindowsTaskXml.ordinaryUserMigration(first.xml, user) ?: error("CONFLICT")
+        registerWindowsTaskXml(migrated, replace = true)
+        val (after, afterXml) = inspectWindowsTask(command)
+        check(after is WindowsTaskOwnership.OwnedOrdinary && afterXml != null &&
+            WindowsTaskXml.logonTriggerNamesUser(afterXml, user)) { "CONFLICT" }
         // Native Windows evidence must verify the task DACL is preserved; XML inspection cannot do that.
         return true
     }
@@ -390,32 +402,35 @@ internal class DesktopAutostartManager(
         lock.use { return action() }
     }
 
+    /** A fresh task has the same per-user shape a migration leaves (DESKTOP-003); `schtasks /SC ONLOGON` is any-user. */
     private fun createWindowsTask(command: String) {
-        val arguments = listOf(
-            "schtasks", "/Create", "/TN", WINDOWS_TASK_NAME, "/SC", "ONLOGON",
-            "/TR", windowsScheduledTaskCommand(command, workspaceDirectory),
-            "/RL", "LIMITED",
-        )
-        val result = commandRunner(
-            arguments,
-        )
-        if (result.exitCode != 0) error(result.output.ifBlank { "Failed to create Windows startup scheduled task." })
+        val user = currentWindowsUser() ?: error("UNAVAILABLE")
+        // No /F: the task was just inspected absent, and a task that appeared since is never replaced unverified.
+        registerWindowsTaskXml(WindowsTaskXml.ordinaryTask(command, windowsTaskArguments(workspaceDirectory), user.sid), replace = false)
     }
 
-    private fun changeWindowsTaskRunLevelToLimited() {
-        val result = commandRunner(
-            listOf("schtasks", "/Change", "/TN", WINDOWS_TASK_NAME, "/RL", "LIMITED"),
-        )
-        if (result.exitCode != 0) error(result.output.ifBlank { "Failed to reduce Windows startup task privileges." })
+    private fun registerWindowsTaskXml(xml: String, replace: Boolean) {
+        val file = Files.createTempFile("vpn-control-autostart-", ".xml")
+        try {
+            // schtasks /XML reads the UTF-16 documents Task Scheduler itself exports: a little-endian BOM.
+            Files.write(file, byteArrayOf(0xFF.toByte(), 0xFE.toByte()) + xml.toByteArray(Charsets.UTF_16LE))
+            val result = commandRunner(listOf("schtasks", "/Create", "/TN", WINDOWS_TASK_NAME, "/XML", file.toString()) +
+                if (replace) listOf("/F") else emptyList())
+            if (result.exitCode != 0) error(result.output.ifBlank { "Failed to register Windows startup scheduled task." })
+        } finally {
+            Files.deleteIfExists(file)
+        }
     }
 
-    private fun inspectWindowsTaskOwnership(command: String): WindowsTaskOwnership {
+    private fun inspectWindowsTaskOwnership(command: String): WindowsTaskOwnership = inspectWindowsTask(command).first
+
+    private fun inspectWindowsTask(command: String): Pair<WindowsTaskOwnership, String?> {
         val result = commandRunner(listOf("schtasks", "/Query", "/TN", WINDOWS_TASK_NAME, "/XML"))
-        if (result.exitCode != 0) return if (WindowsAutostartReadOnlyProbe.taskAbsent(commandRunner)) WindowsTaskOwnership.Absent
-        else WindowsTaskOwnership.Unknown("UNAVAILABLE")
-        val sid = currentWindowsUserSid()
-            ?: return WindowsTaskOwnership.Unknown("UNAVAILABLE")
-        return WindowsTaskXml.inspect(result.output, command, windowsTaskArguments(workspaceDirectory), sid)
+        if (result.exitCode != 0) return (if (WindowsAutostartReadOnlyProbe.taskAbsent(commandRunner)) WindowsTaskOwnership.Absent
+        else WindowsTaskOwnership.Unknown("UNAVAILABLE")) to null
+        val sid = currentWindowsUser()?.sid
+            ?: return WindowsTaskOwnership.Unknown("UNAVAILABLE") to null
+        return WindowsTaskXml.inspect(result.output, command, windowsTaskArguments(workspaceDirectory), sid) to result.output
     }
 
     private fun inspectWindowsRunOwnership(command: String): WindowsRunOwnership {
@@ -432,10 +447,11 @@ internal class DesktopAutostartManager(
         }
     }
 
-    private fun currentWindowsUserSid(): String? {
+    private fun currentWindowsUser(): WindowsUser? {
         val result = commandRunner(listOf("whoami.exe", "/user", "/fo", "csv", "/nh"))
         if (result.exitCode != 0) return null
-        return WHOAMI_SID.matchEntire(result.output.trim())?.groupValues?.get(1)
+        val match = WHOAMI_USER.matchEntire(result.output.trim()) ?: return null
+        return WindowsUser(match.groupValues[1], match.groupValues[2])
     }
 
     private fun deleteWindowsRunEntryIfPresent() {
@@ -461,7 +477,7 @@ internal class DesktopAutostartManager(
         private const val WINDOWS_RUN_VALUE = "VPN Control"
         private const val WINDOWS_TASK_NAME = "VPN Control"
         private val WINDOWS_RUN_ENTRY = Regex("^VPN Control\\s+REG_SZ\\s+(.+)$", RegexOption.IGNORE_CASE)
-        private val WHOAMI_SID = Regex("^\"[^\"]*\",\"(S-[0-9]+-(?:[0-9]+-)*[0-9]+)\"$")
+        private val WHOAMI_USER = Regex("^\"([^\"]*)\",\"(S-[0-9]+-(?:[0-9]+-)*[0-9]+)\"$")
         private const val I3_AUTOSTART_BEGIN = "# VPN Control autostart: begin"
         private const val I3_AUTOSTART_END = "# VPN Control autostart: end"
         private const val I3_SHELL_SCRIPT = "exec \"\$1\" --autostart"
@@ -672,6 +688,9 @@ internal fun runAutostartCommand(
     return DesktopAutostartCommandResult(process.exitValue(), text)
 }
 
+/** The signed-in user as whoami names it: its account name and its SID. */
+internal data class WindowsUser(val name: String, val sid: String)
+
 internal sealed interface WindowsTaskOwnership {
     object Absent : WindowsTaskOwnership
     data class OwnedHighest(val xml: String) : WindowsTaskOwnership
@@ -695,11 +714,11 @@ private sealed interface WindowsRunOwnership {
 internal object WindowsTaskXml {
     private const val MAX_XML_BYTES = 128 * 1024
 
-    fun inspect(xml: String, expectedCommand: String, expectedArguments: String, expectedUserSid: String): WindowsTaskOwnership {
-        if (xml.toByteArray(Charsets.UTF_8).size !in 1..MAX_XML_BYTES) {
-            return WindowsTaskOwnership.Unknown("CONFLICT")
-        }
-        val document = runCatching {
+    private const val TASK_NAMESPACE = "http://schemas.microsoft.com/windows/2004/02/mit/task"
+
+    private fun parse(xml: String): org.w3c.dom.Document? {
+        if (xml.toByteArray(Charsets.UTF_8).size !in 1..MAX_XML_BYTES) return null
+        return runCatching {
             DocumentBuilderFactory.newInstance().apply {
                 isNamespaceAware = true
                 setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
@@ -712,9 +731,110 @@ internal object WindowsTaskXml {
                 isXIncludeAware = false
                 isExpandEntityReferences = false
             }.newDocumentBuilder().parse(org.xml.sax.InputSource(xml.reader()))
-        }.getOrElse {
-            return WindowsTaskOwnership.Unknown("CONFLICT")
+        }.getOrNull()
+    }
+
+    /**
+     * The product's own task (DESKTOP-003): a logon trigger for this user and this user's interactive token at
+     * LeastPrivilege, the registration an unelevated token may make without a password. The settings are the native
+     * legacy task's, so a migrated and a fresh task differ only in what the legacy one carried of its own.
+     */
+    fun ordinaryTask(command: String, arguments: String, userSid: String): String = """
+        |<?xml version="1.0" encoding="UTF-16"?>
+        |<Task version="1.2" xmlns="$TASK_NAMESPACE">
+        |  <RegistrationInfo>
+        |    <Description>Start VPN Control at sign-in</Description>
+        |  </RegistrationInfo>
+        |  <Principals>
+        |    <Principal id="Author">
+        |      <UserId>${escape(userSid)}</UserId>
+        |      <LogonType>InteractiveToken</LogonType>
+        |      <RunLevel>LeastPrivilege</RunLevel>
+        |    </Principal>
+        |  </Principals>
+        |  <Settings>
+        |    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+        |    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+        |    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+        |    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+        |  </Settings>
+        |  <Triggers>
+        |    <LogonTrigger>
+        |      <Enabled>true</Enabled>
+        |      <UserId>${escape(userSid)}</UserId>
+        |    </LogonTrigger>
+        |  </Triggers>
+        |  <Actions Context="Author">
+        |    <Exec>
+        |      <Command>${escape(command)}</Command>
+        |      <Arguments>${escape(arguments)}</Arguments>
+        |    </Exec>
+        |  </Actions>
+        |</Task>
+        |""".trimMargin()
+
+    /**
+     * The legacy task's own definition with exactly two changes: RunLevel LeastPrivilege, and the one logon trigger
+     * narrowed to [user] (a trigger already naming [user] keeps naming it, as its SID). Null for anything else,
+     * including a trigger for another user, which is never taken over.
+     */
+    fun ordinaryUserMigration(xml: String, user: WindowsUser): String? {
+        val document = parse(xml) ?: return null
+        val principal = elements(document, "Principal").singleOrNull() ?: return null
+        val runLevel = directChildren(principal).filter { it.name() == "RunLevel" }.singleOrNull() ?: return null
+        runLevel.textContent = "LeastPrivilege"
+        val triggers = elements(document, "Triggers").singleOrNull() ?: return null
+        val trigger = directChildren(triggers).singleOrNull()?.takeIf { it.name() == "LogonTrigger" } ?: return null
+        val users = directChildren(trigger).filter { it.name() == "UserId" }
+        when {
+            users.isEmpty() -> {
+                val userId = document.createElementNS(trigger.namespaceURI, "UserId")
+                userId.textContent = user.sid
+                // The schema puts UserId after the trigger's base elements and before Delay.
+                trigger.insertBefore(userId, directChildren(trigger).firstOrNull { it.name() == "Delay" })
+            }
+            users.size == 1 && namesUser(users.single().textContent, user) -> users.single().textContent = user.sid
+            else -> return null
         }
+        val written = runCatching {
+            val writer = java.io.StringWriter()
+            javax.xml.transform.TransformerFactory.newInstance().apply {
+                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+            }.newTransformer().apply {
+                setOutputProperty(javax.xml.transform.OutputKeys.OMIT_XML_DECLARATION, "yes")
+            }.transform(javax.xml.transform.dom.DOMSource(document), javax.xml.transform.stream.StreamResult(writer))
+            writer.toString()
+        }.getOrNull() ?: return null
+        return "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n$written"
+    }
+
+    /** Whether the task's one logon trigger is for [user]; Task Scheduler may write a SID back as the account name. */
+    fun logonTriggerNamesUser(xml: String, user: WindowsUser): Boolean {
+        val document = parse(xml) ?: return false
+        val triggers = elements(document, "Triggers").singleOrNull() ?: return false
+        val trigger = directChildren(triggers).singleOrNull()?.takeIf { it.name() == "LogonTrigger" } ?: return false
+        val users = directChildren(trigger).filter { it.name() == "UserId" }
+        return users.size == 1 && namesUser(users.single().textContent, user)
+    }
+
+    private fun namesUser(value: String, user: WindowsUser): Boolean =
+        value.trim().let { it == user.sid || (user.name.isNotBlank() && it.equals(user.name, ignoreCase = true)) }
+
+    private fun escape(value: String): String = buildString {
+        value.forEach { char ->
+            when (char) {
+                '&' -> append("&amp;")
+                '<' -> append("&lt;")
+                '>' -> append("&gt;")
+                '"' -> append("&quot;")
+                '\'' -> append("&apos;")
+                else -> append(char)
+            }
+        }
+    }
+
+    fun inspect(xml: String, expectedCommand: String, expectedArguments: String, expectedUserSid: String): WindowsTaskOwnership {
+        val document = parse(xml) ?: return WindowsTaskOwnership.Unknown("CONFLICT")
         val root = document.documentElement ?: return WindowsTaskOwnership.Unknown("CONFLICT")
         if (root.name() != "Task") return WindowsTaskOwnership.Unknown("CONFLICT")
         val actions = elements(document, "Actions").singleOrNull()

@@ -1747,7 +1747,7 @@ class TriggerAccountTests(WorldCase):
                 self.assertEqual("highest", owner.world.task)
 
     def test_a_migration_that_writes_a_user_by_account_name_keeps_the_same_identities(self):
-        # The product's schtasks /Change re-registers the task; a user it writes back as a name is the same user.
+        # The product's schtasks /Create /XML /F re-registers the task; a user it writes back as a name is the same user.
         for scenario in sorted(autostart.SCENARIOS):
             with self.subTest(scenario=scenario):
                 owner = self.after_reboot(scenario, principal_user={"highest": SID, "limited": ACCOUNT}, accounts={ACCOUNT: SID})
@@ -1758,8 +1758,9 @@ class TriggerAccountTests(WorldCase):
                                  "the snapshot records the name and the SID the guest resolved it to")
         for changed, code in (({"principal_user": {"highest": SID, "limited": ACCOUNT}, "accounts": {ACCOUNT: OTHER_SID}},
                                "exact-owned-startup-task"),
-                              ({"trigger": {"highest": ANY_USER_TRIGGER, "limited": NAMED_TRIGGER}, "accounts": {ACCOUNT: SID}},
-                               "migration-preserves-action-trigger-principal")):
+                              # A trigger narrowed to anyone but the ordinary user is no owned task.
+                              ({"trigger": {"highest": ANY_USER_TRIGGER, "limited": NAMED_TRIGGER}, "accounts": {ACCOUNT: OTHER_SID}},
+                               "exact-owned-startup-task")):
             with self.subTest(changed=sorted(changed)):
                 owner = self.owner("autostart-migration")
                 for key, value in changed.items():
@@ -1940,6 +1941,63 @@ class TriggerAccountTests(WorldCase):
         self.assertEqual("highest", self.owned(self.native_v3(out["native"])))
         with self.assertRaisesRegex(AssertionError, "^task-account-unresolved-on-guest$"):
             self.owned(self.native_v3(out["unmapped"], unmapped))
+
+
+OWN_SID_TRIGGER = "<LogonTrigger><Enabled>true</Enabled><UserId>" + SID + "</UserId></LogonTrigger>"
+
+
+class PerUserMigrationTests(WorldCase):
+    """DESKTOP-003 (native 06ef5879): the product's task is per-user. An unelevated token may not register a logon
+    trigger for any user, and schtasks /Change asks for a run-as password, so the product re-registers the legacy task
+    from its own XML with RunLevel LeastPrivilege and the trigger narrowed to the run-as user's own SID, which Task
+    Scheduler may write back as the account name. migration-preserves-action-trigger-principal must accept exactly that
+    and refuse every other difference."""
+
+    def task(self, trigger, principal=SID, level="<RunLevel>HighestAvailable</RunLevel>", command=GUI, context="Author",
+             accounts=None):
+        xml = ('<Task xmlns="' + autostart.NS + '"><Principals><Principal id="Author"><UserId>' + principal + '</UserId>'
+               '<LogonType>InteractiveToken</LogonType>' + level + '</Principal></Principals><Triggers>' + trigger + '</Triggers>'
+               '<Actions Context="' + context + '"><Exec><Command>' + command + '</Command><Arguments>--autostart</Arguments>'
+               '</Exec></Actions></Task>')
+        return {"xml": xml, "accounts": guest_accounts(xml, accounts or {})}
+
+    def limited(self, trigger, **changes):
+        return self.task(trigger, level="", **changes)
+
+    def test_a_migration_that_narrows_the_any_user_trigger_to_the_run_as_users_own_sid_passes_the_reboot(self):
+        # Task Scheduler writes the narrowed trigger back as the account name (7ca6638a), or keeps the SID.
+        for limited, accounts in ((NAMED_TRIGGER, {ACCOUNT: SID}), (OWN_SID_TRIGGER, {})):
+            with self.subTest(limited=limited):
+                owner = self.after_reboot("autostart-migration", trigger={"highest": ANY_USER_TRIGGER, "limited": limited},
+                                          accounts=accounts)
+                self.assertEqual(0, postboot.run_postboot(owner, owner.config, source_roles))
+                self.assertEqual("absent", owner.world.task)
+                observed = [value for kind, value in owner.events if kind == "autostart-public-toggle-observed"]
+                self.assertTrue(observed, "the migration's toggle was observed")
+
+    def test_only_the_narrowing_to_the_run_as_users_own_sid_is_accepted(self):
+        legacy = self.task(ANY_USER_TRIGGER)
+        for after in (self.limited(OWN_SID_TRIGGER), self.limited(NAMED_TRIGGER, accounts={ACCOUNT: SID}),
+                      self.limited(ANY_USER_TRIGGER)):
+            with self.subTest(after=after["xml"]):
+                autostart.require_migration_preserves(legacy, after)
+        other_trigger = "<LogonTrigger><Enabled>true</Enabled><UserId>" + OTHER_SID + "</UserId></LogonTrigger>"
+        refused = {
+            "narrowed to another SID": (legacy, self.limited(other_trigger)),
+            "narrowed to a name of another SID": (legacy, self.limited(NAMED_TRIGGER, accounts={ACCOUNT: OTHER_SID})),
+            "widened to any user": (self.task(OWN_SID_TRIGGER), self.limited(ANY_USER_TRIGGER)),
+            "narrowed and another command": (legacy, self.limited(OWN_SID_TRIGGER, command=GUI + ".old")),
+            "narrowed and another action context": (legacy, self.limited(OWN_SID_TRIGGER, context="Other")),
+            "narrowed and the trigger disabled": (legacy, self.limited(
+                "<LogonTrigger><Enabled>false</Enabled><UserId>" + SID + "</UserId></LogonTrigger>")),
+            "narrowed and another principal": (legacy, self.limited(other_trigger, principal=OTHER_SID)),
+            "narrowed and another logon type": (legacy, {"xml": self.limited(OWN_SID_TRIGGER)["xml"].replace(
+                "InteractiveToken", "Password"), "accounts": []}),
+        }
+        for name, (before, after) in refused.items():
+            with self.subTest(name):
+                with self.assertRaisesRegex(AssertionError, "^migration-preserves-action-trigger-principal$"):
+                    autostart.require_migration_preserves(before, after)
 
 
 if __name__ == "__main__":
