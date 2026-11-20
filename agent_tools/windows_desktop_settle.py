@@ -42,18 +42,34 @@ _SETTLES = ".runtime/windows-desktop-settles"
 _OPERATION = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\Z")
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
 # The probe's own refusals, named before any key.
-PROBE_REFUSALS = frozenset({"desktop_probe_python_absent", "desktop_probe_unfinished", "desktop_probe_no_output"})
+# desktop_probe_failed: the probe ran and wrote its own typed error (d80b34c1 on ND4 wrote nothing at all).
+PROBE_REFUSALS = frozenset({"desktop_probe_python_absent", "desktop_probe_unfinished", "desktop_probe_no_output", "desktop_probe_failed"})
+STDERR_CHARS = 4096  # The probe's stderr kept with its result.
+ERROR_CHARS = 512  # The probe's own exception message.
 # The action's typed ends.
 REFUSALS = PROBE_REFUSALS | {"desktop_settle_holder_not_shell", "desktop_settle_still_unsettled"}
 
-# The windowless probe the user's task runs: the owner's own foreground read, its result written create-only.
-PROBE_PYTHON = ("import ctypes,json,os,sys\nfrom ctypes import wintypes as W\n\n\n" + inspect.getsource(owner_rules.foreground_window)
-                + "\n\nwindow=foreground_window()\nwith open(sys.argv[1],'x',encoding='ascii') as stream:\n"
-                + "    stream.write(json.dumps({'window':window,'probePid':os.getpid()},separators=(',',':')))\n")
+# The windowless probe the user's task runs: the owner's own foreground read, its result written create-only. pythonw has
+# no stderr, so the probe opens its own first (argv[2]); any exception, an import or a lookup that fails included, is
+# written as a typed error with its message. d80b34c1 (ND4, display asleep two days): the original probe's
+# foreground_window raises AssertionError when a foreground handle has no owner or class (gone before it is read), and
+# that probe then died before writing anything. A NULL foreground was never a crash: it is the result window None.
+PROBE_PYTHON = ("import json,os,sys,traceback\n"
+                "sys.stderr=open(sys.argv[2],'w',encoding='ascii',errors='backslashreplace')\n"
+                "result={'probePid':os.getpid(),'window':None,'error':None}\n"
+                "try:\n    import ctypes\n    from ctypes import wintypes as W\n    imported=None\n"
+                "except BaseException as error:\n    imported=error\n\n\n"
+                + inspect.getsource(owner_rules.foreground_window)
+                + "\n\ntry:\n    if imported is not None:\n        raise imported\n    result['window']=foreground_window()\n"
+                "except BaseException as error:\n    traceback.print_exc()\n"
+                "    result['error']={'errorClass':type(error).__name__[:64],'message':str(error)[:" + str(ERROR_CHARS) + "]}\n"
+                "sys.stderr.flush()\n"
+                "with open(sys.argv[1],'x',encoding='ascii') as stream:\n"
+                "    stream.write(json.dumps(result,separators=(',',':')))\n")
 
 # SYSTEM registers one InteractiveToken task of the console user, runs the probe once, removes the task and its folder.
 _PROBE = r"""$sid=__SID__;$nonce=__NONCE__;$code=__CODE__
-$r=[ordered]@{state='observed';reason=$null;window=$null;probePid=$null;rows=@();cleaned=$true}
+$r=[ordered]@{state='observed';reason=$null;window=$null;probePid=$null;rows=@();cleaned=$true;lastTaskResult=$null;stderr=$null;error=$null}
 $profile=@(Get-CimInstance Win32_UserProfile -OperationTimeoutSec 5|Where-Object{$_.SID -ceq $sid})
 $python=$null
 if($profile.Count -eq 1){$python=Join-Path ([string]$profile[0].LocalPath) 'AppData\Local\Programs\Python\Python313\pythonw.exe'}
@@ -64,9 +80,9 @@ else{
  New-Item -ItemType Directory -Path $dir|Out-Null
  & icacls.exe $dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' ('*'+$sid+':(OI)(CI)M')|Out-Null
  if($LASTEXITCODE -ne 0){throw 'DESKTOP_PROBE_ACL'}
- $probe=Join-Path $dir 'probe.py';$out=Join-Path $dir 'probe.json'
+ $probe=Join-Path $dir 'probe.py';$out=Join-Path $dir 'probe.json';$err=Join-Path $dir 'probe.stderr.txt'
  [IO.File]::WriteAllBytes($probe,[Convert]::FromBase64String($code))
- $action=New-ScheduledTaskAction -Execute $python -Argument ('-I -S -B "'+$probe+'" "'+$out+'"') -WorkingDirectory $dir
+ $action=New-ScheduledTaskAction -Execute $python -Argument ('-I -S -B "'+$probe+'" "'+$out+'" "'+$err+'"') -WorkingDirectory $dir
  $principal=New-ScheduledTaskPrincipal -UserId $sid -LogonType Interactive -RunLevel Limited
  $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Seconds 30) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
  Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Settings $settings|Out-Null
@@ -79,19 +95,23 @@ else{
    $info=Get-ScheduledTaskInfo -TaskName $name
    $done=((Get-ScheduledTask -TaskName $name).State -eq 'Ready') -and $info.LastTaskResult -ne 267009 -and $info.LastTaskResult -ne 267011
   }
+  # The task's own end and the probe's stderr are kept before the task and its folder go.
+  $r.lastTaskResult=[int64](Get-ScheduledTaskInfo -TaskName $name).LastTaskResult
  }finally{Unregister-ScheduledTask -TaskName $name -Confirm:$false}
+ if(Test-Path -LiteralPath $err -PathType Leaf){$text=[IO.File]::ReadAllText($err);if($text.Length -gt __STDERR_CHARS__){$text=$text.Substring($text.Length-__STDERR_CHARS__)};$r.stderr=$text}
  if(-not $done){$r.state='refused';$r.reason='desktop_probe_unfinished'}
  elseif(-not (Test-Path -LiteralPath $out -PathType Leaf)){$r.state='refused';$r.reason='desktop_probe_no_output'}
  else{
   $raw=[IO.File]::ReadAllText($out)
   if($raw.Length -gt 4096){throw 'DESKTOP_PROBE_BOUND'}
   $read=$raw|ConvertFrom-Json;$r.window=$read.window;$r.probePid=[int]$read.probePid
-  if($null -ne $read.window){$r.rows=@(foreach($x in @(Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$read.window.pid) -OperationTimeoutSec 5)){[ordered]@{pid=[int]$x.ProcessId;parentPid=[int]$x.ParentProcessId;name=[string]$x.Name}})}
+  if($null -ne $read.error){$r.state='refused';$r.reason='desktop_probe_failed';$r.window=$null;$r.error=$read.error}
+  elseif($null -ne $read.window){$r.rows=@(foreach($x in @(Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$read.window.pid) -OperationTimeoutSec 5)){[ordered]@{pid=[int]$x.ProcessId;parentPid=[int]$x.ParentProcessId;name=[string]$x.Name}})}
  }
  try{Remove-Item -LiteralPath $dir -Recurse -Force}catch{$r.cleaned=$false}
 }
 [Console]::WriteLine(($r|ConvertTo-Json -Depth 6 -Compress))
-"""
+""".replace("__STDERR_CHARS__", str(STDERR_CHARS))
 
 
 def probe_source(sid, nonce):
@@ -142,16 +162,25 @@ class _DesktopSettle:
         return self.finish({'state':'desktop-settle-unknown','operationId':self.operation,'reason':reason,'replayAllowed':False})
 
 def _desktop_settle_probe(script,fresh,count):
-    """One probe of the console user's foreground: (what holds it, why it is unsettled or None), or a typed refusal."""
+    """One probe of the console user's foreground: ((what holds it, why it is unsettled or None), or None for a typed
+    refusal, that refusal, and the probe's evidence: the task's LastTaskResult, the probe's stderr and its own error)."""
     def need(ok,code):
         if not ok:raise ValueError(code)
     nonce=OPERATION.replace('-','')[:12]+'-'+str(count)
     need(type(fresh['expectedSid'])is str and re.fullmatch('S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+',fresh['expectedSid'])is not None,'instance_desktop_settle_session_changed')
     value=script('desktop-probe-'+str(count),DESKTOP_PROBE_TEMPLATE.replace('__SID__',"'"+fresh['expectedSid']+"'").replace('__NONCE__',"'"+nonce+"'"))
-    need(type(value)is dict and set(value)=={'state','reason','window','probePid','rows','cleaned'}and type(value['cleaned'])is bool,'instance_desktop_probe_shape')
+    need(type(value)is dict and set(value)=={'state','reason','window','probePid','rows','cleaned','lastTaskResult','stderr','error'}
+         and type(value['cleaned'])is bool,'instance_desktop_probe_shape')
+    error=value['error']
+    need((value['lastTaskResult']is None or type(value['lastTaskResult'])is int)
+         and (value['stderr']is None or type(value['stderr'])is str and len(value['stderr'])<=DESKTOP_PROBE_STDERR_CHARS)
+         and (error is None or type(error)is dict and set(error)=={'errorClass','message'}and type(error['errorClass'])is str
+              and 0<len(error['errorClass'])<=64 and type(error['message'])is str and len(error['message'])<=DESKTOP_PROBE_ERROR_CHARS),'instance_desktop_probe_shape')
+    evidence={'lastTaskResult':value['lastTaskResult'],'stderr':value['stderr'],'error':error}
     if value['state']=='refused':
-        need(value['reason']in DESKTOP_PROBE_REFUSALS,'instance_desktop_probe_shape')
-        return None,value['reason']
+        need(value['reason']in DESKTOP_PROBE_REFUSALS and (error is not None)==(value['reason']=='desktop_probe_failed'),'instance_desktop_probe_shape')
+        return None,value['reason'],evidence
+    need(error is None,'instance_desktop_probe_shape')
     window=value['window'];rows=value['rows']
     need(value['state']=='observed'and value['reason']is None and type(value['probePid'])is int and value['probePid']>0
          and (window is None or type(window)is dict and set(window)=={'pid','className'}and type(window['pid'])is int and window['pid']>0
@@ -159,7 +188,7 @@ def _desktop_settle_probe(script,fresh,count):
          and type(rows)is list and len(rows)<=1 and all(type(row)is dict and set(row)=={'pid','parentPid','name'}
               and type(row['pid'])is int and type(row['parentPid'])is int and type(row['name'])is str and len(row['name'])<=260
               and window is not None and row['pid']==window['pid']for row in rows),'instance_desktop_probe_shape')
-    return desktop_holder(window,{row['pid']:row for row in rows},value['probePid']),None
+    return desktop_holder(window,{row['pid']:row for row in rows},value['probePid']),None,evidence
 
 def _desktop_settle_shot(settle,monitor,guard,name):
     """One whole frame of the console, kept beside the journal under its own name."""
@@ -202,8 +231,8 @@ def _desktop_settle(settle,root,save,read,monitor,guard,script):
     frames=[_desktop_settle_shot(settle,monitor,guard,'frame-before.ppm')]
     probes=[];escapes=0
     def probe():
-        found,refused=_desktop_settle_probe(script,fresh,len(probes)+1)
-        probes.append({'refused':refused}if found is None else {'interactiveDesktop':found[0],'unsettled':found[1]})
+        found,refused,evidence=_desktop_settle_probe(script,fresh,len(probes)+1)
+        probes.append({'refused':refused,**evidence}if found is None else {'interactiveDesktop':found[0],'unsettled':found[1],**evidence})
         return found,refused
     def end(state,reason):
         frames.append(_desktop_settle_shot(settle,monitor,guard,'frame-after.ppm'))
@@ -269,6 +298,7 @@ def program(binding, operation, *, repeat=False):
         template = uac._PRELUDE + _PROBE
         code = base64.b64encode(PROBE_PYTHON.encode("ascii")).decode("ascii")
         bindings = {"DESKTOP_PROBE_TEMPLATE": template.replace("__CODE__", "'" + code + "'"), "DESKTOP_PROBE_REFUSALS": sorted(PROBE_REFUSALS),
+                    "DESKTOP_PROBE_STDERR_CHARS": STDERR_CHARS, "DESKTOP_PROBE_ERROR_CHARS": ERROR_CHARS,
                     "DESKTOP_SETTLE_ESC_LIMIT": ESC_LIMIT, "DESKTOP_SETTLE_WAIT": SETTLE_SECONDS,
                     "SHELL_FOREGROUND": sorted(owner_rules.SHELL_FOREGROUND), "CONSOLE_CLASS": owner_rules.CONSOLE_CLASS}
         sources = _SETTLE_SOURCES
@@ -366,6 +396,23 @@ def _holder(value):
     return {"foreground": dict(found)}
 
 
+_EVIDENCE = ("lastTaskResult", "stderr", "error")
+
+
+def _evidence(row):
+    """One probe's evidence as it may cross: the task's LastTaskResult, the probe's stderr and its own error, or None."""
+    if type(row) is not dict or not set(_EVIDENCE) <= set(row):
+        return None
+    last, stderr, error = (row[key] for key in _EVIDENCE)
+    if (not (last is None or type(last) is int and -2 ** 63 <= last < 2 ** 63)
+            or not (stderr is None or type(stderr) is str and len(stderr) <= STDERR_CHARS)
+            or not (error is None or type(error) is dict and set(error) == {"errorClass", "message"} and type(error["errorClass"]) is str
+                    and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", error["errorClass"]) is not None
+                    and type(error["message"]) is str and len(error["message"]) <= ERROR_CHARS)):
+        return None
+    return {"lastTaskResult": last, "stderr": stderr, "error": None if error is None else dict(error)}
+
+
 def _project(value, inputs, frames):
     """Only closed fields cross: the end, its reason, the Esc keys sent, each probe's holder and the kept frames."""
     public = {"operationId": inputs["operationId"], "deploymentId": inputs["deploymentId"], "replayAllowed": False}
@@ -381,13 +428,17 @@ def _project(value, inputs, frames):
             return unknown
         holders = []
         for row in probes:
-            if type(row) is dict and set(row) == {"refused"} and row["refused"] in PROBE_REFUSALS:
-                holders.append({"refused": row["refused"]})
-                continue
-            holder = _holder(row.get("interactiveDesktop")) if type(row) is dict and set(row) == {"interactiveDesktop", "unsettled"} else None
-            if holder is None or row["unsettled"] not in (None, "shell-surface", "foreign-console"):
+            evidence = _evidence(row)
+            if evidence is None:
                 return unknown
-            holders.append({"interactiveDesktop": holder, "unsettled": row["unsettled"]})
+            if (set(row) == {"refused", *_EVIDENCE} and row["refused"] in PROBE_REFUSALS
+                    and (evidence["error"] is not None) == (row["refused"] == "desktop_probe_failed")):
+                holders.append({"refused": row["refused"], **evidence})
+                continue
+            holder = _holder(row.get("interactiveDesktop")) if set(row) == {"interactiveDesktop", "unsettled", *_EVIDENCE} else None
+            if holder is None or row["unsettled"] not in (None, "shell-surface", "foreign-console") or evidence["error"] is not None:
+                return unknown
+            holders.append({"interactiveDesktop": holder, "unsettled": row["unsettled"], **evidence})
         last = holders[-1]
         if state == "desktop-settled" and last.get("unsettled", "refused") is not None:
             return unknown

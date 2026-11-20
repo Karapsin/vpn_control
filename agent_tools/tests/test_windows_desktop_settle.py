@@ -7,6 +7,7 @@ Esc dismisses it. Nothing here proves a Windows, Task Scheduler, pythonw or QEMU
 """
 import base64
 from contextlib import nullcontext
+import ctypes
 import hashlib
 import inspect
 import json
@@ -14,8 +15,10 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import time
+import types
 import unittest
 from unittest import mock
 import uuid
@@ -39,6 +42,7 @@ USER_SID = "S-1-5-21-1-2-3-1004"
 WIDTH, HEIGHT = 64, 40
 SETUP = {"imageName": "Windows 11 Pro", "locale": "en-US", "user": "fixtureuser", "administrator": "fixtureadmin"}
 POSIX = os.name == "posix"
+CLEAN = {"lastTaskResult": 0, "stderr": "", "error": None}  # A probe that ran, exited 0 and wrote nothing to stderr.
 START = {"pid": 5400, "className": "Windows.UI.Core.CoreWindow"}
 SEARCH = {"pid": 5836, "className": "Windows.UI.Core.CoreWindow"}
 IMAGES = {5400: "StartMenuExperienceHost.exe", 5836: "SearchHost.exe", 5600: "ShellExperienceHost.exe", 3300: "explorer.exe",
@@ -101,7 +105,7 @@ class Console:
         current = self.holder()
         rows = [] if current is None else [{"pid": current["pid"], "parentPid": 700, "name": IMAGES[current["pid"]]}]
         return {"state": "observed", "reason": None, "window": None if current is None else dict(current), "probePid": 9100, "rows": rows,
-                "cleaned": True, **self.probe_changes}
+                "cleaned": True, "lastTaskResult": 0, "stderr": "", "error": None, **self.probe_changes}
 
 
 @unittest.skipUnless(POSIX, "the journals are POSIX; the VM host is Linux")
@@ -139,6 +143,7 @@ class FlowBase(unittest.TestCase):
         template = uac._PRELUDE + settle._PROBE
         values = {"SPEC": {"deploymentId": MACHINE}, "OPERATION": OPERATION, "SESSION_SCRIPT": "fixed session",
                   "DESKTOP_PROBE_TEMPLATE": template.replace("__CODE__", "'code'"), "DESKTOP_PROBE_REFUSALS": sorted(settle.PROBE_REFUSALS),
+                  "DESKTOP_PROBE_STDERR_CHARS": settle.STDERR_CHARS, "DESKTOP_PROBE_ERROR_CHARS": settle.ERROR_CHARS,
                   "DESKTOP_SETTLE_ESC_LIMIT": settle.ESC_LIMIT, "DESKTOP_SETTLE_WAIT": settle.SETTLE_SECONDS,
                   }
 
@@ -167,8 +172,8 @@ class SettleFlowTests(FlowBase):
         self.assertEqual([(("esc",), 80)], self.console.keys, "exactly one Esc, the reviewed hold, and nothing else")
         self.assertEqual([{"interactiveDesktop": {"foreground": {"pid": 5400, "image": "StartMenuExperienceHost.exe",
                                                                  "className": "Windows.UI.Core.CoreWindow", "owned": False}},
-                           "unsettled": "shell-surface"},
-                          {"interactiveDesktop": {"foreground": None}, "unsettled": None}], reply["probes"])
+                           "unsettled": "shell-surface", **CLEAN},
+                          {"interactiveDesktop": {"foreground": None}, "unsettled": None, **CLEAN}], reply["probes"])
         before, after = reply["frames"]
         self.assertEqual(("frame-before.ppm", hashlib.sha256(frame("start")).hexdigest()), (before["name"], before["sha256"]))
         self.assertEqual(("frame-after.ppm", hashlib.sha256(frame("desktop")).hexdigest()), (after["name"], after["sha256"]))
@@ -214,13 +219,28 @@ class SettleFlowTests(FlowBase):
         self.assertEqual(("desktop_settle_holder_not_shell", 1), (reply["reason"], reply["escapes"]), "no second Esc for a console")
 
     def test_a_probe_that_cannot_read_the_session_refuses_before_any_key(self):
-        for reason in sorted(settle.PROBE_REFUSALS):
+        for reason in sorted(settle.PROBE_REFUSALS - {"desktop_probe_failed"}):
             with self.subTest(reason=reason):
                 self.setUp()
-                self.console.probe_changes = {"state": "refused", "reason": reason, "window": None, "probePid": None, "rows": []}
+                self.console.probe_changes = {"state": "refused", "reason": reason, "window": None, "probePid": None, "rows": [],
+                                              "lastTaskResult": 1, "stderr": None}
                 reply = self.run_flow()
                 self.assertEqual(("desktop-settle-refused", reason, []), (reply["state"], reply["reason"], self.console.keys))
-                self.assertEqual([{"refused": reason}], reply["probes"])
+                self.assertEqual([{"refused": reason, "lastTaskResult": 1, "stderr": None, "error": None}], reply["probes"],
+                                 "the task's own end is kept with the refusal")
+
+    def test_native_probe_error_after_idle_is_kept_with_its_evidence_and_gets_no_key(self):
+        """d80b34c1 (ND4, display asleep two days): the probe task ended Ready but wrote nothing, and the tool kept neither
+        LastTaskResult nor stderr. The probe now always writes, so its own exception comes back typed with its evidence."""
+        error = {"errorClass": "AssertionError", "message": "interactive-desktop-foreground-owner"}
+        trace = "Traceback (most recent call last):\nAssertionError: interactive-desktop-foreground-owner\n"
+        self.console.probe_changes = {"state": "refused", "reason": "desktop_probe_failed", "window": None, "probePid": 9100, "rows": [],
+                                      "lastTaskResult": 0, "stderr": trace, "error": error}
+        reply = self.run_flow()
+        self.assertEqual(("desktop-settle-refused", "desktop_probe_failed", []), (reply["state"], reply["reason"], self.console.keys))
+        self.assertEqual([{"refused": "desktop_probe_failed", "lastTaskResult": 0, "stderr": trace, "error": error}], reply["probes"])
+        terminal = json.loads((self.root / "windows-desktop-settle" / OPERATION / "settle.terminal.json").read_text())
+        self.assertEqual(trace, terminal["probes"][0]["stderr"], "the evidence is in the retained terminal too")
 
     def test_a_locked_or_changed_session_refuses_before_any_frame_or_key(self):
         for changes, reason in (({"session": {"SessionId": 2, "State": 0, "Flags": 0, "User": "fixtureuser", "Logon": 5}}, "instance_desktop_settle_session_locked"),
@@ -345,6 +365,89 @@ class PacketTests(unittest.TestCase):
         self.assertIn(owner_rules.desktop_holder, settle._SETTLE_SOURCES)
 
 
+class Function:
+    """One fake user32 export: ctypes sets argtypes and restype on it, and the probe calls it."""
+
+    def __init__(self, call):
+        self.call = call
+
+    def __call__(self, *arguments):
+        return self.call(*arguments)
+
+
+class ProbeProgramTests(unittest.TestCase):
+    """The probe file the user's task runs, executed whole over a fake user32, as pythonw would run it."""
+
+    def setUp(self):
+        absent()
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.folder = Path(temporary.name)
+        self.out, self.err = self.folder / "probe.json", self.folder / "probe.stderr.txt"
+
+    def run_probe(self, *, window=0x1234, owner=5400, name="Windows.UI.Core.CoreWindow", loads=True):
+        def owner_pid(handle, pid):
+            pid._obj.value = owner
+            return 12 if owner else 0
+
+        def class_name(handle, buffer, size):
+            buffer.value = name
+            return len(name)
+
+        def load(library, use_last_error):
+            if not loads:
+                raise OSError("[WinError 1114] A dynamic link library (DLL) initialization routine failed")
+            return types.SimpleNamespace(GetForegroundWindow=Function(lambda: window), GetWindowThreadProcessId=Function(owner_pid),
+                                         GetClassNameW=Function(class_name))
+        died, original = None, sys.stderr
+        with mock.patch.object(ctypes, "WinDLL", load, create=True), mock.patch.object(sys, "argv", ["probe.py", str(self.out), str(self.err)]), \
+                mock.patch.object(sys, "stderr", original):
+            try:
+                exec(compile(settle.PROBE_PYTHON, "probe.py", "exec"), {"__name__": "__main__"})
+            except BaseException as error:  # pythonw would have exited here, its traceback lost.
+                died = error
+            finally:
+                if sys.stderr is not original:
+                    sys.stderr.close()
+        self.assertTrue(self.out.exists(), "the probe died with no result: %r" % (died,))
+        return json.loads(self.out.read_text())
+
+    def test_a_null_foreground_was_never_a_crash_it_is_no_holder(self):
+        # The coordinator's lead: a sleeping display or a suspended shell with no foreground window.
+        # A control: the original probe wrote this result too (it has no "error" field), so no NULL read lost a result.
+        result = self.run_probe(window=None)
+        self.assertEqual((None, None), (result["window"], result.get("error")))
+
+    def test_native_probe_whose_lookup_fails_still_writes_a_typed_error_and_its_stderr(self):
+        """d80b34c1 (ND4): the task ended but probe.json was never written. The original probe raised from
+        foreground_window when the foreground handle had no owner or class, before writing anything."""
+        for changes, error_class, message in (({"owner": 0}, "AssertionError", "interactive-desktop-foreground-owner"),
+                                              ({"name": ""}, "AssertionError", "interactive-desktop-foreground-class"),
+                                              ({"loads": False}, "OSError", "[WinError 1114] A dynamic link library (DLL) initialization routine failed")):
+            with self.subTest(changes=changes):
+                for path in (self.out, self.err):
+                    path.unlink(missing_ok=True)
+                result = self.run_probe(**changes)
+                self.assertEqual((None, {"errorClass": error_class, "message": message}), (result["window"], result["error"]))
+                self.assertIn("Traceback (most recent call last)", self.err.read_text(), "pythonw's stderr is kept in the probe folder")
+                self.assertGreater(result["probePid"], 0)
+
+    def test_a_readable_foreground_is_written_as_before(self):
+        result = self.run_probe()
+        self.assertEqual(({"pid": 5400, "className": "Windows.UI.Core.CoreWindow"}, None), (result["window"], result.get("error")))
+        self.assertEqual("", self.err.read_text() if self.err.exists() else "")
+
+    def test_the_system_side_keeps_the_task_end_and_stderr_before_it_removes_them(self):
+        source = settle.probe_source(USER_SID, OPERATION.replace("-", "")[:12] + "-1")
+        self.assertIn("""-Argument ('-I -S -B "'+$probe+'" "'+$out+'" "'+$err+'"')""", source)
+        self.assertLess(source.index("$r.lastTaskResult=[int64](Get-ScheduledTaskInfo -TaskName $name).LastTaskResult"),
+                        source.index("finally{Unregister-ScheduledTask"))
+        self.assertLess(source.index("$r.stderr=$text"), source.index("Remove-Item -LiteralPath $dir"))
+        self.assertIn("$text.Substring($text.Length-%d)" % settle.STDERR_CHARS, source)
+        self.assertIn("if($null -ne $read.error){$r.state='refused';$r.reason='desktop_probe_failed'", source)
+        self.assertNotIn("__STDERR_CHARS__", source)
+
+
 @unittest.skipUnless(POSIX, "private journals are POSIX")
 class LocalTests(unittest.TestCase):
     def setUp(self):
@@ -396,8 +499,9 @@ class LocalTests(unittest.TestCase):
                 {"name": "frame-after.ppm", "bytes": len(after), "sha256": hashlib.sha256(after).hexdigest()}]
         return {"state": "desktop-settled", "operationId": OPERATION, "reason": None, "escapes": 1,
                 "probes": [{"interactiveDesktop": {"foreground": {"pid": 5400, "image": "StartMenuExperienceHost.exe",
-                                                                  "className": "Windows.UI.Core.CoreWindow", "owned": False}}, "unsettled": "shell-surface"},
-                           {"interactiveDesktop": {"foreground": None}, "unsettled": None}],
+                                                                  "className": "Windows.UI.Core.CoreWindow", "owned": False}}, "unsettled": "shell-surface",
+                            **CLEAN},
+                           {"interactiveDesktop": {"foreground": None}, "unsettled": None, **CLEAN}],
                 "frames": rows, "replayAllowed": False,
                 "frameBytes": {"frame-before.ppm": base64.b64encode(zlib.compress(before)).decode(),
                                "frame-after.ppm": base64.b64encode(zlib.compress(after)).decode()}, **changes}
@@ -437,8 +541,14 @@ class LocalTests(unittest.TestCase):
                         {"state": "desktop-settle-refused", "reason": "other"}, {"probes": []}, {"extra": 1},
                         {"frameBytes": {"frame-before.ppm": base64.b64encode(zlib.compress(before + b"x")).decode(),
                                         "frame-after.ppm": base64.b64encode(zlib.compress(frame("desktop"))).decode()}},
-                        {"probes": [{"interactiveDesktop": {"foreground": {"pid": 5400, "image": "x", "className": "y", "owned": "no"}}, "unsettled": None}]},
-                        {"probes": [{"interactiveDesktop": {"foreground": None}, "unsettled": "shell-surface"}]}):
+                        {"probes": [{"interactiveDesktop": {"foreground": {"pid": 5400, "image": "x", "className": "y", "owned": "no"}}, "unsettled": None,
+                                     **CLEAN}]},
+                        {"probes": [{"interactiveDesktop": {"foreground": None}, "unsettled": "shell-surface", **CLEAN}]},
+                        {"probes": [{"interactiveDesktop": {"foreground": None}, "unsettled": None}]},
+                        {"probes": [{"refused": "desktop_probe_failed", **CLEAN}]},
+                        {"probes": [{"refused": "desktop_probe_no_output", **CLEAN, "stderr": "x" * (settle.STDERR_CHARS + 1)}]},
+                        {"probes": [{"interactiveDesktop": {"foreground": None}, "unsettled": None, **CLEAN,
+                                     "error": {"errorClass": "1 bad", "message": ""}}]}):
             with self.subTest(changes=sorted(changes)):
                 for path in (self.root / ".runtime/windows-desktop-settles").glob("*"):
                     for item in path.iterdir():

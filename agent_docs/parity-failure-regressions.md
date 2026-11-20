@@ -4301,6 +4301,23 @@ native data point shows it stops the first-sign-in Start. Native only, all of th
 user profile of NG5 and ND4, that an InteractiveToken task of a signed-in user reads the input desktop's foreground,
 that one `Esc` closes Start and Search, and how long SearchHost takes to let go.
 
+#### The settle probe wrote nothing after a long idle, and kept no evidence (native ND4 `d80b34c1`, 2026-11-20)
+
+Failure type `desktop-probe-no-output-after-idle`. On ND4 (`f2cb0d9c`, idle about two days, display asleep, both frames
+black) the settle refused `desktop_probe_no_output`: the session check passed, `pythonw` was present, and the
+InteractiveToken task ran and ended `Ready` within 20 s (not 267009 or 267011), but `probe.json` was never written. The
+SYSTEM side then removed the task and its folder and kept neither `LastTaskResult` nor stderr, so the cause is not known.
+NG5 and NE5 (fresh, display asleep) probed fine. By source, a NULL foreground is not a crash: `foreground_window` returns
+`None` and the original probe wrote `window: null` (the control below holds on `f81eb342`). What did end the original
+probe with no file: `foreground_window` raises `AssertionError` when the foreground handle has no owning thread
+(`GetWindowThreadProcessId` 0) or no class (`GetClassNameW` 0), as a handle destroyed between the reads does, and any
+import or `WinDLL` failure; under `pythonw` such a traceback goes nowhere. Which of these ND4 hit stays a native data
+point. Evidence: `.runtime/windows-desktop-settles/d80b34c1-7e9c-42ea-b28b-84431b879b2f/` (recovery checkout).
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A probe that raised wrote no result, and the settle kept no task end or stderr (TOOL) | `test_windows_desktop_settle.ProbeProgramTests.test_native_probe_whose_lookup_fails_still_writes_a_typed_error_and_its_stderr` (no owner, no class, `WinDLL` failing), `...test_the_system_side_keeps_the_task_end_and_stderr_before_it_removes_them`, `SettleFlowTests.test_native_probe_error_after_idle_is_kept_with_its_evidence_and_gets_no_key`; controls `ProbeProgramTests.test_a_null_foreground_was_never_a_crash_it_is_no_holder` and `...test_a_readable_foreground_is_written_as_before` (both hold on `f81eb342`) | The probe file (run whole over a fake `user32`) opens its own stderr in the probe folder first (`pythonw` has none), catches any exception, an import or a lookup included, and always writes `probe.json` with `window` and a typed `error` (class, message up to 512 characters). SYSTEM reads the task's `LastTaskResult` before it unregisters the task and the stderr (last 4096 characters) before it removes the folder, and returns both with every probe; a probe error refuses `desktop_probe_failed` with no key. Every probe row of the settle terminal (and `result.json`) carries `lastTaskResult`, `stderr` and `error`. A NULL foreground stays settled, as the owner's holder rule says. RED on `f81eb342` (Python 3.14 and 3.12): 25 tests, failures=5 and errors=23; `ProbeProgramTests` alone: failures=4 with both controls passing, for example `the probe died with no result: AssertionError('interactive-desktop-foreground-owner')`. GREEN: OK on both. |
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals
