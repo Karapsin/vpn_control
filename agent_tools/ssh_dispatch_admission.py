@@ -31,8 +31,12 @@ class Admission:
             raise readiness.ReadinessBlocked('admission_closed',self.operation_identity)
         from . import ssh_transport
         budget=ssh_transport._SUBMISSION_DEADLINE.get()
+        returned=ssh_transport._RETURNED_REVALIDATION_DEADLINE.get()
         context=self.context
-        if budget is not None:
+        if returned is not None:
+            # A returned target's re-check observes in its own bounded window.
+            context=replace(context,deadline=returned)
+        elif budget is not None:
             context=replace(context,deadline=min(budget,context.deadline)if context.deadline is not None else budget)
         readiness.revalidate(context,self.ready)
         for guard in self.extra_guards:

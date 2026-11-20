@@ -4416,6 +4416,29 @@ Native only:
 - how Task Scheduler writes the narrowed trigger and the principal back.
 
 The rerun of `windows-autostart-migration.pre` on a package built from this fix verifies all four.
+### Returned replies discarded by a starved readiness re-check under load (operator B, NF4 `faf8696a`, 2026-11-18)
+
+Failure type `transport-readiness-revalidation-under-load`. At a Mac 1-minute load of about 13 to 24, `run_ssh`
+(`ssh_transport.py:1208` on `f81eb342`) raised `SubmittedResultReadinessChanged` after the remote run returned, and
+the reply was discarded. Hits: a read-only `observe` during an enrolment lease hold (`readiness_windows.py:247`,
+`readiness_observation_unavailable`) that aborted the whole run, `enroll-lease-counter.err`; the closing probe frame
+of pin run `18ba1fc8`; lock op `36ba7b52`; job-namespace controllers `7c2e581f` (`job-enroll`, no `returned.json`)
+and `309974b7` (`job-namespace-status`); earlier the job-start target of `f4fdee43` (`test_windows_job_start_after_admission`).
+Cause: the saved-program generator re-checks the admitted transport after the target returns
+(`ssh_automatic_program.py:750` `check_source_lifetime` -> `Admission.revalidate`), and that re-check ran under the
+run's own remaining submission deadline (`ssh_dispatch_admission.py:33`). A slow run left it almost nothing, so the
+probe overran it (`readiness_deadline`), or a bounded local helper inside the probe (`ps`, `ssh -O check`, clipped by
+`_remaining_timeout`) timed out or found the deadline spent (`readiness_observation_unavailable`). The budget was shared
+with the run, not short by itself; load made both slower. Evidence: `.runtime/windows-parity-20261107/CONTINUATION.md`
+(search `transport-readiness`) and `enroll-faf8696a/enroll-lease-counter.err` (recovery checkout). Beforeimage `f81eb342`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The returned target's readiness re-check shared the run's remaining budget, and its transient outcome discarded the reply (TOOL, transport) | `test_ssh_returned_revalidation`: `ReturnedRevalidationTransportTests.test_slow_probe_after_a_spent_run_RED_discards_the_reply_GREEN_returns_it`, `...test_one_transient_observation_failure_RED_discards_the_reply_GREEN_observes_again`; `DeclaredReadCallerTests.test_windows_observe_after_a_starved_recheck_RED_aborts_GREEN_reads_again`, `...test_job_controller_reads_after_a_starved_recheck_RED_abort_GREEN_read_again`; controls: the bounded window keeps the body without replay, a non-transient refusal is never observed again, the explicit `read_only=True` declaration, the reason/attempt/deadline bounds, and state-changing Windows packet and job modes submitted once | The re-check now owns a bounded 60 s window (`ssh_transport.RETURNED_REVALIDATION_SECONDS`, `_returned_revalidation`) and observes again on `readiness_deadline` or `readiness_observation_unavailable` only; it never re-sends the target. Declared reads repeat whole through `ssh_transport.retry_read_only(read_only=True)`, at most 3 attempts within the caller deadline: `readiness_windows.READ_ONLY_MODES` (`observe`, `lease-status`) and `readiness_windows_jobs.READ_ONLY_MODES` (`job-namespace-status`, `job-status`, `job-inventory`). Submits keep `take_submitted_result`. `ssh_connection_session_close._TRANSPORT_SOURCE` re-pinned to the new transport. RED on `f81eb342` with the actual owned Unix-socket SSH peer (probe delayed only after the target returned) and the preserved Windows owners; GREEN on Python 3.14 and 3.12. |
+
+Not this mechanism: the NE5 submit `d389575d` (14,249 argv bytes) runs inline under the 60,000-byte limit, and the
+inline path has no post-return re-check; its lost reply stays unresolved. Native rerun required: an enrolment
+`observe` loop and a job-namespace read-back at a 1-minute load above 12.
 
 ## Historical coverage rule
 

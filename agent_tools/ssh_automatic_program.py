@@ -747,7 +747,9 @@ def automatic_submission(argv, *, prelaunch_refusal=None):
             # The owner returned a complete body. A changed connection never
             # authorizes replay or discards that body before its owner validates.
             physical_guard(historical=True)
-            try:argv.check_source_lifetime()
+            # Its own bounded window, never the run's remainder (see
+            # transport._returned_revalidation); the target is never re-sent.
+            try:transport._returned_revalidation(argv.check_source_lifetime)
             except _readiness.ReadinessBlocked as changed:
                 physical_guard(historical=True)
                 write('returned-readiness-changed.json',_json({'reason':changed.reason,'replayAllowed':False}))

@@ -43,6 +43,9 @@ from . import private_inventory_lock as publication
 from .private_inventory_lock import Directory, PresentedPath, _rename_create_only, _generation
 
 _EXECUTING_CODE=inspect.currentframe().f_code
+# Packet modes that only read host and guest state: no intent, no recovery and
+# no guest action. Only these may be repeated by transport.retry_read_only.
+READ_ONLY_MODES=frozenset({'observe','lease-status'})
 
 
 def _need(value,reason):
@@ -227,6 +230,15 @@ class WindowsBackend:
         except BaseException:proof.close();raise
 
     def _run(self,mode,operation,deadline,*,reconcile=False,**options):
+        # A declared read is repeated whole, under a fresh admission and label,
+        # when only its returned readiness check stayed transient; every other
+        # mode may have acted and keeps its single submission.
+        if mode in READ_ONLY_MODES:
+            return transport.retry_read_only(lambda:self._run_once(mode,operation,deadline,reconcile=reconcile,**options),
+                                             deadline=deadline,read_only=True)
+        return self._run_once(mode,operation,deadline,reconcile=reconcile,**options)
+
+    def _run_once(self,mode,operation,deadline,*,reconcile=False,**options):
         self._guard();remaining=deadline-time.monotonic()
         _need(math.isfinite(remaining)and remaining>0,'windows_deadline')
         with transport.admitted_transport(self.root,self.binding['spec']['host'],operation,deadline=deadline,

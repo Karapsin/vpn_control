@@ -128,9 +128,67 @@ class _ReturnedReadinessChanged(_readiness.ReadinessBlocked):
 
 _SUBMISSION_DEADLINE=ContextVar('ssh_submission_absolute_deadline',default=None)
 _QUALIFIED_ROUTE=ContextVar('ssh_qualified_original_route',default=())
+# The readiness re-check after a target returned owns its own window. It used
+# to inherit the run's remaining submission budget, so under host load a slow
+# run starved it and the returned reply was discarded (readiness_deadline, or
+# readiness_observation_unavailable when a bounded local helper such as `ps`
+# timed out inside the probe). The re-check only observes: it never recovers,
+# dispatches or replays the target, so its window may outlive the caller's.
+RETURNED_REVALIDATION_SECONDS=60.0
+# Transient observation outcomes of a read-only re-check or read. Identity,
+# trust and staleness refusals are never in this set.
+READ_ONLY_RETRY_REASONS=frozenset({'readiness_deadline','readiness_observation_unavailable'})
+_RETURNED_REVALIDATION_DEADLINE=ContextVar('ssh_returned_revalidation_deadline',default=None)
+
+
+def _returned_revalidation(check,*,seconds=None):
+    """Run the post-return read-only readiness check in its own bounded window.
+
+    A transient observation failure is observed again within that window; it
+    never re-sends the returned target. Any other refusal propagates at once.
+    """
+    seconds=RETURNED_REVALIDATION_SECONDS if seconds is None else seconds
+    if not isinstance(seconds,(int,float))or not math.isfinite(seconds)or seconds<=0:
+        raise ValueError('invalid_returned_revalidation_window')
+    deadline=time.monotonic()+seconds
+    token=_RETURNED_REVALIDATION_DEADLINE.set(deadline)
+    try:
+        while True:
+            try:return check()
+            except _readiness.ReadinessBlocked as error:
+                left=deadline-time.monotonic()
+                if type(error)is not _readiness.ReadinessBlocked or error.reason not in READ_ONLY_RETRY_REASONS or left<=0:
+                    raise
+                time.sleep(min(1.0,left/2))
+    finally:_RETURNED_REVALIDATION_DEADLINE.reset(token)
+
+
+def retry_read_only(attempt,*,deadline,read_only,attempts=3,minimum_seconds=1.0):
+    """Repeat one whole read whose post-return readiness check stayed transient.
+
+    `read_only=True` is the caller's explicit declaration that `attempt` has no
+    effect a repeat could duplicate. Only SubmittedResultReadinessChanged with
+    a READ_ONLY_RETRY_REASONS reason is repeated, within the caller's own
+    deadline and at most `attempts` times; anything else propagates unchanged.
+    State-changing submits never use this: they keep take_submitted_result.
+    """
+    if read_only is not True:raise ValueError('read_only_declaration_required')
+    if type(attempts)is not int or attempts<1:raise ValueError('invalid_read_only_attempts')
+    if not isinstance(deadline,(int,float))or not math.isfinite(deadline):raise ValueError('invalid_read_only_deadline')
+    for number in range(1,attempts+1):
+        try:return attempt()
+        except SubmittedResultReadinessChanged as error:
+            if (error.reason not in READ_ONLY_RETRY_REASONS or number==attempts
+                    or deadline-time.monotonic()<=minimum_seconds):
+                raise
+            # A read's discarded body has no effect to preserve.
+            error.take_submitted_result()
 
 
 def _absolute_deadline(config=None,host=None):
+    returned=_RETURNED_REVALIDATION_DEADLINE.get()
+    if returned is not None:
+        return returned
     values=[_SUBMISSION_DEADLINE.get()]
     module=sys.modules.get((__package__ or 'agent_tools')+'.ssh_dispatch_admission')
     active=()if module is None else module._ACTIVE.get()

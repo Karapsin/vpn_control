@@ -439,8 +439,22 @@ class _ControllerUnsubmitted(ValueError):
         self.proof = json.loads(json.dumps(proof))
 
 
-def _run(backend, mode, original, deadline, *, expected, binding=None, count=80, interval_seconds=.25,
-         machine=None, boot=None, enrollment_operation=None, enrollment_nonce=None, _receipt=None):
+# Controller modes that only read the original namespace or job: each run is a
+# fresh controller with no guest action. Enroll and start are never repeated.
+READ_ONLY_MODES = frozenset({"job-namespace-status", "job-status", "job-inventory"})
+
+
+def _run(backend, mode, original, deadline, **options):
+    """A declared read repeats whole when only its returned readiness check stayed transient."""
+    from . import ssh_transport as transport
+    if mode in READ_ONLY_MODES:
+        return transport.retry_read_only(lambda: _run_once(backend, mode, original, deadline, **options),
+                                         deadline=deadline, read_only=True)
+    return _run_once(backend, mode, original, deadline, **options)
+
+
+def _run_once(backend, mode, original, deadline, *, expected, binding=None, count=80, interval_seconds=.25,
+              machine=None, boot=None, enrollment_operation=None, enrollment_nonce=None, _receipt=None):
     """Admit before generating; retain result and never extend caller budget."""
     import subprocess
     import time

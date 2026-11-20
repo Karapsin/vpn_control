@@ -1,0 +1,17 @@
+{
+  "beforeCommit": "f81eb342",
+  "beforeSha256": {
+    "readiness_windows.py.before.source": "0e69a55edbca4c8eb7854107b020d4436853b05cd60fa15b818ad7e5f6ba939b",
+    "readiness_windows_jobs.py.before.source": "8e495511f0f86f9f7d3b3bd7810dcc1268876ce148a5ae19999a890ee68008fe",
+    "ssh_automatic_program.py.before.source": "6add7cba90f5e92be5ee128b5781c90270ec904e5549b93b3346318b1508e558",
+    "ssh_dispatch_admission.py.before.source": "be6913d574194414f3ac44eb295c855594f4b2d7f1da3818d50ec7e2cca1041f",
+    "ssh_transport.py.before.source": "257e53420212d6c7f4476e5caa5d9cc766b852c218cae19cdc32587b619a9ce8"
+  },
+  "failureType": "transport-readiness-revalidation-under-load",
+  "nativeEvidence": [
+    ".runtime/windows-parity-20261107/enroll-faf8696a/enroll-lease-counter.err (read-only observe, readiness_windows.py:247, ssh_transport.py:1208, readiness_observation_unavailable)",
+    ".runtime/windows-parity-20261107/CONTINUATION.md 2026-11-18T12:25:49Z (pin run 18ba1fc8 closing probe frame readiness_deadline; lock op 36ba7b52 readiness_observation_unavailable; job-enroll controller 7c2e581f readiness_deadline; job-namespace-status controller 309974b7 readiness_observation_unavailable)",
+    "agent_tools/tests/test_windows_job_start_after_admission.py (f4fdee43 returned-readiness-changed.json readiness_deadline after the job-start target returned)"
+  ],
+  "scope": "Recovery checkout paths; Mac 1-minute load 13-24. Controlled RED: own Unix-socket SSH peer, the probe delayed only after the target returned, the run spending its submission budget; no VM, provider, credentials or network."
+}

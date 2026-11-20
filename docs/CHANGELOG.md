@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.3.3 - 2026-11-20
 
 - Windows UAC decisions reach a second administrator's credential through a reviewed, step-gated keyboard route, re-confirming the same consent before the secret.
 - Custom configurations: the injected direct-probe outbound resolves domains through the configuration's own default DNS server, so configs with two or more DNS servers (or SSH Routing) are no longer rejected by sing-box before the VPN or proxy starts.
@@ -13,6 +13,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows VM instance identity no longer compares the QEMU or swtpm binary's link count and ctime, so running clones stay admissible after a host package upgrade replaces the binary on disk; the replacement is recorded.
 - Windows scoped-TUN and update-install rows that expect a UAC prompt now refuse before any change while the Start menu, search, a shell flyout or a foreign console holds the ordinary desktop's foreground, instead of parking on a prompt Windows deferred to the taskbar; the holder is recorded, a UAC review or decision that finds such a refusal stops before any pointer move or key, and the explicit `windows-desktop-settle` action dismisses a Start, Search or shell-flyout foreground on an owned clone with at most two Esc keys; its session probe always writes a typed result, and each probe keeps the task's LastTaskResult and the probe's stderr.
 - Windows start on login is now a per-user task registered from the app's own XML, so a standard user can enable it and a legacy elevated task migrates without elevation or a password prompt; every autostart command also ends in bounded time instead of hanging the serve.
+- Windows scoped-TUN and update-install rows that expect a UAC prompt now refuse before any change while the Start menu, search, a shell flyout or a foreign console holds the ordinary desktop's foreground, instead of parking on a prompt Windows deferred to the taskbar; the holder is recorded, a UAC review or decision that finds such a refusal stops before any pointer move or key, and the explicit `windows-desktop-settle` action dismisses a Start, Search or shell-flyout foreground on an owned clone with at most two Esc keys.
+- Keep a returned SSH reply when its readiness re-check is slow under load, and repeat declared Windows reads instead of aborting.
 
 ## 2.3.2 - 2026-11-17
 
